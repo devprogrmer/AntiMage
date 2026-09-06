@@ -49,7 +49,7 @@ jobs:
         run: bash scripts/build_dashboard.sh
 
       - name: Verify Go suites
-        run: go test -buildvcs=false ./cmd/... ./internal/...
+        run: go test -p 1 -buildvcs=false ./cmd/... ./internal/...
 
       - name: Verify product naming
         shell: pwsh
