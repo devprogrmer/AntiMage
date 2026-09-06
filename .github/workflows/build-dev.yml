@@ -96,6 +96,8 @@ jobs:
       - name: Finalize image tags
         id: final_image_tags
         shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           set -euo pipefail
           tags="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/antimage:${GITHUB_REF_NAME}"

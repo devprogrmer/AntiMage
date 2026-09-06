@@ -220,10 +220,10 @@ export type InboundFormValues = {
 	realityPublicKey: string;
 	realityMldsa65Seed: string;
 	realityMldsa65Verify: string;
-	realityLimitFallbackUploadAfteamytes: string;
+	realityLimitFallbackUploadAfterBytes: string;
 	realityLimitFallbackUploadBytesPerSec: string;
 	realityLimitFallbackUploadBurstBytesPerSec: string;
-	realityLimitFallbackDownloadAfteamytes: string;
+	realityLimitFallbackDownloadAfterBytes: string;
 	realityLimitFallbackDownloadBytesPerSec: string;
 	realityLimitFallbackDownloadBurstBytesPerSec: string;
 	realityRawSettings: Record<string, any>;
@@ -1416,7 +1416,7 @@ export const validateInboundFormFields = (
 			}
 		}
 		for (const [field, label] of [
-			["realityLimitFallbackUploadAfteamytes", "Upload fallback after bytes"],
+			["realityLimitFallbackUploadAfterBytes", "Upload fallback after bytes"],
 			[
 				"realityLimitFallbackUploadBytesPerSec",
 				"Upload fallback bytes per second",
@@ -1426,7 +1426,7 @@ export const validateInboundFormFields = (
 				"Upload fallback burst bytes per second",
 			],
 			[
-				"realityLimitFallbackDownloadAfteamytes",
+				"realityLimitFallbackDownloadAfterBytes",
 				"Download fallback after bytes",
 			],
 			[
@@ -1734,10 +1734,10 @@ export const createDefaultInboundForm = (
 	realityPublicKey: "",
 	realityMldsa65Seed: "",
 	realityMldsa65Verify: "",
-	realityLimitFallbackUploadAfteamytes: "",
+	realityLimitFallbackUploadAfterBytes: "",
 	realityLimitFallbackUploadBytesPerSec: "",
 	realityLimitFallbackUploadBurstBytesPerSec: "",
-	realityLimitFallbackDownloadAfteamytes: "",
+	realityLimitFallbackDownloadAfterBytes: "",
 	realityLimitFallbackDownloadBytesPerSec: "",
 	realityLimitFallbackDownloadBurstBytesPerSec: "",
 	realityRawSettings: {},
@@ -2306,8 +2306,8 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			realitySettingsMeta.mldsa65Verify ??
 			realitySettings.mldsa65Verify ??
 			base.realityMldsa65Verify,
-		realityLimitFallbackUploadAfteamytes: toInputValue(
-			realitySettings.limitFallbackUpload?.afteamytes,
+		realityLimitFallbackUploadAfterBytes: toInputValue(
+			realitySettings.limitFallbackUpload?.afterBytes,
 		),
 		realityLimitFallbackUploadBytesPerSec: toInputValue(
 			realitySettings.limitFallbackUpload?.bytesPerSec,
@@ -2315,8 +2315,8 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		realityLimitFallbackUploadBurstBytesPerSec: toInputValue(
 			realitySettings.limitFallbackUpload?.burstBytesPerSec,
 		),
-		realityLimitFallbackDownloadAfteamytes: toInputValue(
-			realitySettings.limitFallbackDownload?.afteamytes,
+		realityLimitFallbackDownloadAfterBytes: toInputValue(
+			realitySettings.limitFallbackDownload?.afterBytes,
 		),
 		realityLimitFallbackDownloadBytesPerSec: toInputValue(
 			realitySettings.limitFallbackDownload?.bytesPerSec,
@@ -3785,8 +3785,8 @@ const buildStreamSettings = (
 		realityPayload.shortIds = shortIds.length ? shortIds : undefined;
 		realityPayload.mldsa65Seed = values.realityMldsa65Seed?.trim() || undefined;
 		realityPayload.limitFallbackUpload = cleanOptionalObject({
-			afteamytes: parseOptionalNumber(
-				values.realityLimitFallbackUploadAfteamytes,
+			afterBytes: parseOptionalNumber(
+				values.realityLimitFallbackUploadAfterBytes,
 			),
 			bytesPerSec: parseOptionalNumber(
 				values.realityLimitFallbackUploadBytesPerSec,
@@ -3796,8 +3796,8 @@ const buildStreamSettings = (
 			),
 		});
 		realityPayload.limitFallbackDownload = cleanOptionalObject({
-			afteamytes: parseOptionalNumber(
-				values.realityLimitFallbackDownloadAfteamytes,
+			afterBytes: parseOptionalNumber(
+				values.realityLimitFallbackDownloadAfterBytes,
 			),
 			bytesPerSec: parseOptionalNumber(
 				values.realityLimitFallbackDownloadBytesPerSec,

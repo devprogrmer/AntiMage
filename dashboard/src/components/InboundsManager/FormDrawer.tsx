@@ -6438,7 +6438,7 @@ export const InboundFormModal: FC<Props> = ({
 													{(
 														[
 															[
-																"realityLimitFallbackUploadAfteamytes",
+																"realityLimitFallbackUploadAfterBytes",
 																"Upload after bytes",
 															],
 															[
@@ -6450,7 +6450,7 @@ export const InboundFormModal: FC<Props> = ({
 																"Upload burst bytes/sec",
 															],
 															[
-																"realityLimitFallbackDownloadAfteamytes",
+																"realityLimitFallbackDownloadAfterBytes",
 																"Download after bytes",
 															],
 															[

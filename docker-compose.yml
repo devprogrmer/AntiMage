@@ -1,6 +1,6 @@
 services:
   antimage:
-    image:  antimagepanel/antimage:latest
+    image: ghcr.io/devprogrmer/antimage:latest
     restart: always
     env_file: .env
     network_mode: host

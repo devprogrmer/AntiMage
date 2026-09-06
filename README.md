@@ -30,7 +30,7 @@ curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/a
 برای نصب نسخه مشخص:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --version v0.1.0
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --version v0.1.1
 ```
 
 نصب‌کننده باینری، سرویس systemd، فایل تنظیمات و مسیر داده را آماده می‌کند:
@@ -46,13 +46,20 @@ curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/a
 curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage.sh | sudo bash -s -- install
 ```
 
+اگر Docker image را مستقیم می‌خواهید:
+
+```bash
+docker pull ghcr.io/devprogrmer/antimage:latest
+docker pull ghcr.io/devprogrmer/antimage:v0.1.1
+```
+
 برای MySQL یا MariaDB:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage.sh | sudo bash -s -- install --database mysql
 ```
 
-نصب Docker به image منتشرشده نیاز دارد. اگر image نسخه مورد نظر در رجیستری موجود نیست، از نصب Binary استفاده کنید.
+نصب Docker به image منتشرشده نیاز دارد. بعد از انتشار release جدید، تگ نسخه روی GHCR ساخته می‌شود؛ اگر image نسخه مورد نظر در رجیستری موجود نیست، از نصب Binary استفاده کنید.
 
 ## ساخت مدیر و ورود
 
@@ -155,7 +162,7 @@ sudo antimage restart
 یا نسخه مشخص:
 
 ```bash
-sudo antimage update --version v0.1.0
+sudo antimage update --version v0.1.1
 ```
 
 قبل از ارتقا سرویس را در محیط تست بررسی و از `/var/lib/antimage` backup بگیرید.

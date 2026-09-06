@@ -418,7 +418,7 @@ get_current_antimage_version() {
         version=$(tr -d '[:space:]' < "$CHANNEL_FILE")
     fi
     if [ -z "$version" ] && [ -f "$COMPOSE_FILE" ]; then
-        version=$(grep -E "image:.*antimagepanel/antimage:" "$COMPOSE_FILE" | head -n 1 | sed -E 's/.*antimagepanel\/antimage:([^"[:space:]]+).*/\1/')
+        version=$(grep -E "image:.*(ghcr.io/devprogrmer/)?antimage:" "$COMPOSE_FILE" | head -n 1 | sed -E 's/.*(ghcr.io\/devprogrmer\/)?antimage:([^"[:space:]]+).*/\2/')
     fi
     printf '%s\n' "${version:-unknown}"
 }
@@ -832,7 +832,7 @@ get_installed_antimage_channel() {
     fi
 
     if [ -f "$COMPOSE_FILE" ]; then
-        image_tag=$(grep -E "image:.*antimagepanel/antimage:" "$COMPOSE_FILE" | head -n 1 | sed -E 's/.*antimagepanel\/antimage:([^"[:space:]]+).*/\1/')
+        image_tag=$(grep -E "image:.*(ghcr.io/devprogrmer/)?antimage:" "$COMPOSE_FILE" | head -n 1 | sed -E 's/.*(ghcr.io\/devprogrmer\/)?antimage:([^"[:space:]]+).*/\2/')
         if [ -n "$image_tag" ]; then
             echo "$image_tag"
             return
@@ -2911,7 +2911,7 @@ install_antimage() {
         cat > "$docker_file_path" <<EOF
 services:
   antimage:
-    image: antimagepanel/antimage:${antimage_version}
+    image: ghcr.io/devprogrmer/antimage:${antimage_version}
     restart: always
     env_file: .env
     network_mode: host
@@ -3010,7 +3010,7 @@ EOF
         cat > "$docker_file_path" <<EOF
 services:
   antimage:
-    image: antimagepanel/antimage:${antimage_version}
+    image: ghcr.io/devprogrmer/antimage:${antimage_version}
     restart: always
     env_file: .env
     network_mode: host
@@ -3114,9 +3114,9 @@ EOF
 
         # Install requested version
         if [ "$antimage_version" == "latest" ]; then
-            yq -i '.services.antimage.image = "antimagepanel/antimage:latest"' "$docker_file_path"
+            yq -i '.services.antimage.image = "ghcr.io/devprogrmer/antimage:latest"' "$docker_file_path"
         else
-            yq -i ".services.antimage.image = \"antimagepanel/antimage:${antimage_version}\"" "$docker_file_path"
+            yq -i ".services.antimage.image = \"ghcr.io/devprogrmer/antimage:${antimage_version}\"" "$docker_file_path"
         fi
         echo "Installing $antimage_version version"
         colorized_echo green "File saved in $APP_DIR/docker-compose.yml"
@@ -4703,9 +4703,9 @@ set_compose_antimage_image_tag() {
     fi
 
     if [ "$antimage_version" = "latest" ]; then
-        yq -i '.services.antimage.image = "antimagepanel/antimage:latest"' "$COMPOSE_FILE"
+        yq -i '.services.antimage.image = "ghcr.io/devprogrmer/antimage:latest"' "$COMPOSE_FILE"
     else
-        yq -i ".services.antimage.image = \"antimagepanel/antimage:${antimage_version}\"" "$COMPOSE_FILE"
+        yq -i ".services.antimage.image = \"ghcr.io/devprogrmer/antimage:${antimage_version}\"" "$COMPOSE_FILE"
     fi
 }
 
