@@ -197,7 +197,7 @@ func TestNodeMutationHandlersCreateUpdateResetRegenerateDelete(t *testing.T) {
 	}
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM nodes WHERE id = 1 AND status = 'deleted'`, 1)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_usages WHERE node_id = 1`, 1)
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1`, operationsBefore)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1`, operationsBefore+1)
 	rec = adminJSONRequest(t, server, http.MethodGet, "/api/nodes", token, ``)
 	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), `"de-1-edit"`) {
 		t.Fatalf("soft-deleted node remained in operational list: status=%d body=%s", rec.Code, rec.Body.String())

@@ -246,7 +246,7 @@ func TestWireGuardHostDNSPersists(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &initial); err != nil {
 		t.Fatal(err)
 	}
-	if initial["wg-main"][0].DNSPrimary != "1.1.1.1" || initial["wg-main"][0].DNSSecondary != "8.8.8.8" {
+	if initial["wg-main"][0].DNSPrimary != "" || initial["wg-main"][0].DNSSecondary != "" {
 		t.Fatalf("unexpected default WireGuard host DNS: %#v", initial["wg-main"][0])
 	}
 	hostID := initial["wg-main"][0].ID

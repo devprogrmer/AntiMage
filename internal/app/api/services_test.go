@@ -585,6 +585,9 @@ func TestServiceHostChangeKeepsSubscriptionLinkAndChangesConfigOutput(t *testing
 	if _, err := db.Exec(`CREATE TABLE proxies (id INTEGER PRIMARY KEY, user_id INTEGER, type TEXT, settings TEXT)`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(`CREATE TABLE user_subscription_access (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, token TEXT, credential_key TEXT, username TEXT, user_agent TEXT, created_at DATETIME NULL, updated_at DATETIME NULL)`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec(`CREATE TABLE next_plans (
 		id INTEGER PRIMARY KEY,
 		user_id INTEGER,

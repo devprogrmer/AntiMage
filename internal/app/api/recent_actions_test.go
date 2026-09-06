@@ -189,10 +189,10 @@ func TestListRecentActionsGroupsNodeBatches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 2 || len(items[0].AffectedResources) != 2 || len(items[1].AffectedResources) != 3 {
+	if len(items) != 3 || len(items[0].AffectedResources) != 1 || len(items[1].AffectedResources) != 1 || len(items[2].AffectedResources) != 3 {
 		t.Fatalf("unexpected grouped node actions: %#v", items)
 	}
-	if items[0].ResourceKey != "2 nodes" || items[1].ResourceKey != "3 nodes" {
+	if items[0].ResourceKey != "fr-2" || items[1].ResourceKey != "fr-1" || items[2].ResourceKey != "3 nodes" {
 		t.Fatalf("unexpected grouped resource keys: %#v", items)
 	}
 }

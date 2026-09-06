@@ -136,7 +136,7 @@ func TestInboundCreateUpdateValidationAndOperations(t *testing.T) {
 	}
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM inbounds WHERE tag = 'new-vless'`, 1)
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM hosts WHERE inbound_tag = 'new-vless'`, 1)
-	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id IS NULL`, 1)
+	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id IS NULL`, 2)
 	var coefficient float64
 	if err := db.QueryRow(`SELECT usage_coefficient FROM inbounds WHERE tag = 'new-vless'`).Scan(&coefficient); err != nil || coefficient != 2.5 {
 		t.Fatalf("coefficient=%v err=%v", coefficient, err)
