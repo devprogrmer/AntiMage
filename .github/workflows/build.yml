@@ -61,7 +61,7 @@ jobs:
         run: ./scripts/verify_release_names.ps1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Resolve image tags
         id: image_tags
