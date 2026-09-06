@@ -1,95 +1,72 @@
-# AntiMage Installer Scripts
+# اسکریپت‌های نصب AntiMage
 
-Installer, lifecycle, and migration scripts for AntiMage and AntiMage Node.
+این پوشه اسکریپت‌های نصب، به‌روزرسانی، مدیریت سرویس و مهاجرت AntiMage را نگهداری می‌کند.
 
-## Install AntiMage
+## نصب Master با Binary
 
-Docker and binary installers are intentionally separate.
-
-Docker install:
+روی Ubuntu/Debian یا توزیع لینوکسی سازگار، با کاربری دارای sudo اجرا کنید:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage.sh | sudo bash -s -- install
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install
 ```
 
-Binary install:
+نسخه مشخص:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-binary.sh | sudo bash -s -- install
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --version v0.1.0
 ```
 
-Binary mode installs the published Linux release asset for the current machine.
-
-Do not run these installers with `sudo bash -c "$(curl ...)"`; the script body can exceed Linux's single-argument limit. Always pipe the download into bash as shown above.
-
-Install the dev channel explicitly:
+## نصب Master با Docker
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage.sh | sudo bash -s -- install --dev
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --dev
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage.sh | sudo bash -s -- install
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage.sh | sudo bash -s -- install --database mysql
 ```
 
-Dockerized mode supports SQLite, MySQL, and MariaDB:
+برای اجرای مطمئن، قبل از نصب Docker و Docker Compose را نصب کنید. imageهای Docker باید از طریق انتشار پروژه در دسترس باشند؛ در غیر این صورت نصب Binary را انتخاب کنید.
+
+## نصب Node
+
+نصب Docker Node:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage.sh | sudo bash -s -- install --database mysql
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage.sh | sudo bash -s -- install --database mariadb
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node.sh | sudo bash -s -- install
 ```
 
-Install a specific release:
+نصب Binary Node:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage.sh | sudo bash -s -- install --version v0.5.2
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --version v0.5.2
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install
 ```
 
-Update to the dev channel or a specific release:
+Binary Node فقط زمانی نصب می‌شود که asset مربوط به معماری سرور در بخش Releases منتشر شده باشد. برای منبع یا انتشار سفارشی می‌توانید `ANTIMAGE_NODE_RELEASE_REPO` را قبل از اجرای دستور تنظیم کنید.
+
+برای چند Node روی یک سرور، نام یکتا بدهید:
 
 ```bash
-sudo antimage update --dev
-sudo antimage update --version v0.5.2
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install --name antimage-node-2
 ```
 
-Update or change Xray-core:
+در Master از بخش Nodes، آدرس سرور Node، پورت gRPC/API و گواهی‌های mTLS را ثبت کنید و تا نمایش وضعیت Connected صبر کنید.
+
+## مدیریت و به‌روزرسانی
 
 ```bash
+sudo antimage status
+sudo antimage logs
+sudo antimage restart
+sudo antimage update
+sudo antimage update --version v0.1.0
 sudo antimage core-update
 ```
 
-## Install AntiMage Node
+قبل از update از `/var/lib/antimage` و دیتابیس نسخه پشتیبان بگیرید. اسکریپت‌های نصب را با `sudo bash -c "$(curl ...)"` اجرا نکنید؛ pipe کردن curl به bash مانند نمونه‌های بالا سازگارتر است.
 
-Docker node install:
+## مهاجرت
 
-```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-node.sh | sudo bash -s -- install
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-node.sh | sudo bash -s -- install --name antimage-node2
-```
-
-Binary node install:
+قبل از مهاجرت، compose، دیتابیس، تنظیمات و certificateها را backup کنید:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install --name antimage-node2
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/migrate_marzban_to_antimage.sh | sudo bash -s --
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/migrate_marzban_node_to_antimage.sh | sudo bash -s --
 ```
-
-Install only the node CLI:
-
-```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-node.sh | sudo bash -s -- install-script
-```
-
-## Migration Helpers
-
-Panel migration:
-
-```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/migrate_marzban_to_antimage.sh | sudo bash -s --
-```
-
-Node migration:
-
-```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/migrate_marzban_node_to_antimage.sh | sudo bash -s --
-```
-
-Back up compose files and databases before running migration scripts.

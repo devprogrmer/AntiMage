@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-ANTIMAGE_REPO="${ANTIMAGE_REPO:-antimagepanel/AntiMage}"
+ANTIMAGE_REPO="${ANTIMAGE_REPO:-devprogrmer/AntiMage}"
 ANTIMAGE_REF="${ANTIMAGE_REF:-master}"
 SCRIPT_URL="${ANTIMAGE_SCRIPT_URL:-https://raw.githubusercontent.com/${ANTIMAGE_REPO}/${ANTIMAGE_REF}/scripts/antimage/antimage.sh}"
 

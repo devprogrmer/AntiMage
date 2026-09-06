@@ -1,357 +1,198 @@
-<p align="center">
-  <a href="https://github.com/antimagepanel/AntiMage" target="_blank" rel="noopener noreferrer">
-    <img width="160" height="160" src="../dashboard/src/assets/logo.svg" alt="AntiMage logo">
-  </a>
-</p>
+# راهنمای نصب و راه‌اندازی AntiMage
 
-<h1 align="center"/>رِبِکا</h1>
+این راهنما مسیر کامل نصب پنل، ساخت مدیر، افزودن Node، تنظیم دامنه و استفاده از اشتراک‌ها را توضیح می‌دهد.
 
-<p align="center">
-     راه حل یکپارچه برای مدیریت پروتکل های مختلف. قدرت گرفته از <a href="https://github.com/XTLS/Xray-core">Xray</a>
-</p>
+## معماری پیشنهادی
 
-<br/>
-<p align="center">
-  <a href="#">
-    <img src="https://img.shields.io/github/actions/workflow/status/antimagepanel/AntiMage/build.yml?style=flat-square" />
-  </a>
-  <a href="https://hub.docker.com/r/antimagepanel/antimage" target="_blank">
-    <img src="https://img.shields.io/docker/pulls/antimagepanel/antimage?style=flat-square&logo=docker" />
-  </a>
-  <a href="#">
-    <img src="https://img.shields.io/github/license/antimagepanel/AntiMage?style=flat-square" />
-  </a>
-  <a href="https://t.me/antimagepanel_antimage" target="_blank">
-    <img src="https://img.shields.io/badge/telegram-channel-blue?style=flat-square&logo=telegram" />
-  </a>
-  <a href="#">
-    <img src="https://img.shields.io/github/stars/antimagepanel/AntiMage?style=social" />
-  </a>
-</p>
+- **Master:** پنل وب، API، کاربران، سرویس‌ها، اشتراک‌ها و مدیریت Nodeها.
+- **Node:** سرور اجرای هسته‌ها و سرویس‌های VPN که از Master فرمان می‌گیرد.
+- **دیتابیس:** SQLite برای نصب کوچک و MySQL/MariaDB برای نصب‌های بزرگ‌تر.
 
-<p align="center">
-	<a href="../README.md">
-	English
-	</a>
-	/
-	<a href="./README-fa.md">
-	فارسی
-	</a>
-  /
-  <a href="./README-zh-cn.md">
-	简体中文
-	</a>
-   /
-  <a href="./README-ru.md">
- Русский
- </a>
-</p>
+## پیش‌نیازها
 
-## فهرست مطالب
-- [بررسی اجمالی](#بررسی-اجمالی)
-  - [چرا رِبِکا؟](#چرا-رِبِکا)
-    - [امکانات](#امکانات)
-- [راهنمای نصب](#راهنمای-نصب)
-- [تنظیمات](#تنظیمات)
-- [ربات تلگرام](#ربات-تلگرام)
-- [ارسال اعلان‌ها به آدرس وبهوک](#ارسال-اعلانها-به-آدرس-وبهوک)
-- [کمک مالی](#کمک-مالی)
-- [لایسنس](#لایسنس)
-- [مشارکت در توسعه](#مشارکت-در-توسعه)
+برای Master و هر Node یک سرور لینوکس با دسترسی root یا sudo، معماری amd64 یا arm64، دسترسی خروجی اینترنت و ساعت صحیح سیستم لازم است. برای استفاده عمومی، یک دامنه و گواهی HTTPS تهیه کنید.
 
+## نصب Master با Binary
 
-# بررسی اجمالی
-
-رِبِکا یک نرم‌افزار (وب‌اپلیکیشن) مدیریت پروکسی است که امکان مدیریت چندصد حساب پروکسی را با سادگی و قدرت بالا فراهم می‌کند. رِبِکا از [Xray-core](https://github.com/XTLS/Xray-core) قدرت گرفته و با بک‌اند Go و داشبورد React پیاده‌سازی شده است.
-
-## چرا رِبِکا؟
-
-رِبِکا دارای یک رابط کاربری ساده و در عین حال پرامکانات است. رِبِکا امکان ایجاد چند نوع پروکسی برای کاربران را فراهم می‌کند بدون اینکه به تنظیمات پیچیده نیاز داشته باشید. با رابط کاربری تحت وب، می‌توانید کاربران را مانیتور، ویرایش و در صورت نیاز محدود کنید.
-
-### امکانات
-
-- **رابط کاربری تحت وب** آماده
-- به صورت **REST API** پیاده سازی شده
-- پشتیبانی از پروتکل های **Vmess**, **VLESS**, **Trojan** و **Shadowsocks**
-- امکان فعالسازی **چندین پروتکل** برای هر یوزر
-- امکان ساخت **چندین کاربر** بر روی یک inbound
-- پشتیبانی از **چندین inbound** بر روی **یک port** (به کمک fallbacks)
-- محدودیت بر اساس مصرف **ترافیک** و **تاریخ انقضا**
-- محدودیت **ترافیک دوره ای** (به عنوان مثال روزانه، هفتگی و غیره)
-- پشتیبانی از **Subscription link** سازگار با **V2ray** _(مثل نرم افزار های V2RayNG, SingBox, Nekoray و...)_ و **Clash**
-- ساخت **لینک اشتراک گذاری** و **QRcode** به صورت خودکار
-- مانیتورینگ منابع سرور و **مصرف ترافیک**
-- پشتیبانی از تنظیمات xray
-- پشتیبانی از **TLS**
-- **ربات تلگرام**
-- **رابط خط فرمان (CLI)** داخلی
-- قابلیت ایجاد **چندین مدیر** (تکمیل نشده است)
-
-# راهنمای نصب
-
-برای نصب باینری Master رِبِکا:
+روی سرور Master اجرا کنید:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-binary.sh | sudo bash -s -- install
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install
 ```
 
-نصاب‌ها را با `sudo bash -c "$(curl ...)"` اجرا نکنید؛ متن اسکریپت ممکن است از محدودیت single argument لینوکس بزرگ‌تر شود و خطای `Argument list too long` بدهد. همیشه دانلود را مثل نمونه بالا به `sudo bash -s --` pipe کنید.
-
-برای نصب کانال dev:
+نصب نسخه مشخص:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/dev/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --dev
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --version v0.1.0
 ```
 
-برای نصب باینری AntiMage-node روی هر سرور نود:
+مسیرهای مهم:
+
+| مورد | مسیر پیش‌فرض |
+| --- | --- |
+| برنامه و تنظیمات نصب | `/opt/antimage` |
+| داده، certificate و backup | `/var/lib/antimage` |
+| فایل محیطی | `/opt/antimage/.env` |
+| سرویس systemd | `antimage.service` |
+| پورت Gateway | `8000` |
+
+## نصب Master با Docker
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage.sh | sudo bash -s -- install
 ```
 
-نصاب‌های باینری سرویس native systemd می‌سازند و asset مناسب معماری سرور را خودکار دانلود می‌کنند. Master دیتابیس‌های SQLite، MySQL و MariaDB را از طریق گزینه‌های نصب پشتیبانی می‌کند؛ نصاب نود فقط runtime نود را نصب می‌کند و اتصال آن به Master از طریق certificate/token داخل پنل انجام می‌شود.
-
-وقتی نصب تمام شد:
-
-- شما لاگ های رِبِکا رو مشاهده میکنید که می‌توانید با بستن ترمینال یا فشار دادن `Ctrl+C` از آن خارج شوید
-- فایل‌های رِبِکا در پوشه `/opt/antimage` قرار می‌گیرند
-- فایل تنظیمات در مسیر `/opt/antimage/.env` قرار می‌گیرد ([تنظیمات](#تنظیمات) را مشاهده کنید)
-- فایل‌های مهم رِبِکا در مسیر `/var/lib/antimage` قرار می‌گیرند
-به دلایل امنیتی، داشبورد رِبِکا از طریق آی‌پی قابل دسترسی نیست. بنابراین باید برای دامنه خود گواهی SSL تهیه کنید و از طریق آدرس https://YOUR_DOMAIN:8000/dashboard/ وارد داشبورد شوید (نام دامنه خود را جایگزین YOUR_DOMAIN کنید)
-- همچنین می‌توانید از فوروارد کردن پورت SSH برای دسترسی لوکال به داشبورد رِبِکا بدون دامنه استفاده کنید. نام کاربری و آیپی سرور خود را جایگزین `user@serverip` کنید و دستور زیر را اجرا کنید:
+برای MySQL:
 
 ```bash
-ssh -L 8000:localhost:8000 user@serverip
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage.sh | sudo bash -s -- install --database mysql
 ```
 
-در نهایت، می‌توانید لینک زیر را در مرورگر خود وارد کنید تا به داشبورد رِبِکا دسترسی پیدا کنید:
+قبل از نصب Docker و Docker Compose را نصب و اجرای سرویس Docker را فعال کنید. اگر image نسخه مورد نظر هنوز در رجیستری انتشار داده نشده است، از نصب Binary استفاده کنید.
 
-http://localhost:8000/dashboard/
+## ساخت حساب مدیر
 
-به محض بستن ترمینال SSH، دسترسی شما به داشبورد قطع خواهد شد. بنابراین، این روش تنها برای تست  کردن توصیه می‌شود.
-
-در مرحله بعد، باید یک ادمین سودو بسازید
+پس از نصب Master:
 
 ```bash
-antimage cli admin create --sudo
+sudo antimage-cli admin create --username admin --role full_access --password 'رمز-قوی-و-منحصربه‌فرد'
 ```
 
-تمام! حالا با این اطلاعات می‌توانید وارد رِبِکا شوید
+سپس وارد مسیر زیر شوید:
 
-برای مشاهده راهنمای اسکریپت رِبِکا دستور زیر را اجرا کنید
+```text
+https://panel.example.com/dashboard/login
+```
+
+در محیط واقعی پورت ۸۰۰۰ را فقط از reverse proxy قابل دسترس کنید و آن را بدون HTTPS عمومی نکنید.
+
+## نصب Binary Node
+
+روی سرور Node اجرا کنید:
 
 ```bash
-antimage --help
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install
 ```
 
-اگر مشتاق هستید که رِبِکا را از سورس و به صورت دستی اجرا کنید، مراحل زیر را مشاهده کنید
-<details markdown="1">
-<summary><h3>نصب به صورت دستی (پیچیده)</h3></summary>
-
-لطفا xray را نصب کنید.
-شما میتواند به کمک [Xray-install](https://github.com/XTLS/Xray-install) این کار را انجام دهید.
+برای Node دوم روی همان سرور:
 
 ```bash
-curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh | bash -s -- install
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install --name antimage-node-2
 ```
 
-پروژه را clone کنید و داشبورد و باینری‌های Go را بسازید.
+این نصب‌کننده asset مناسب معماری سرور را از Releases دریافت می‌کند. اگر نسخه‌ای در Releases موجود نیست، ابتدا همان نسخه را در پروژه منتشر کنید یا مقدار `ANTIMAGE_NODE_RELEASE_REPO` را به مخزن انتشار خود تغییر دهید.
 
-```bash
-git clone https://github.com/antimagepanel/AntiMage.git
-cd AntiMage
-cd dashboard
-npm ci
-VITE_BASE_API=/api/ npm run build -- --outDir=build --assetsDir=statics
-cp ./build/index.html ./build/404.html
-cd ..
-bash scripts/build_binary.sh
+مسیرهای معمول Node:
+
+| مورد | مسیر پیش‌فرض |
+| --- | --- |
+| برنامه | `/opt/antimage-node` |
+| داده و certificate | `/var/lib/antimage-node` |
+| سرویس | `antimage-node.service` |
+
+## اتصال Node به Master
+
+1. در داشبورد Master به بخش **Nodes** بروید.
+2. یک Node جدید بسازید و نام، آدرس عمومی، پورت سرویس و پورت API/gRPC را وارد کنید.
+3. certificate و کلیدهای mTLS تولید یا بارگذاری‌شده را فقط بین Master و Node جابه‌جا کنید.
+4. تنظیمات را ذخیره کنید و منتظر بمانید وضعیت Node به **Connected** تغییر کند.
+5. سپس هسته، inbound و سرویس‌های مورد نظر را از داشبورد روی Node اعمال کنید.
+
+پورت API/gRPC همان پورتی است که در تنظیمات Node نمایش داده می‌شود؛ مقدار آن را حدس نزنید. فقط پورت‌های مورد نیاز را در firewall باز کنید و دسترسی را به IP Master محدود کنید.
+
+## تنظیمات محیطی
+
+فایل `/opt/antimage/.env` نمونه‌ای شبیه زیر دارد:
+
+```dotenv
+UVICORN_HOST=0.0.0.0
+UVICORN_PORT=8000
+SQLALCHEMY_DATABASE_URL=sqlite:///db.sqlite3
+ANTIMAGE_DATA_DIR=/var/lib/antimage
+ANTIMAGE_CERT_BASE=/var/lib/antimage/certs
+ANTIMAGE_CONFIG_DIR=/etc/antimage
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=1440
 ```
 
-سپس کامند زیر را اجرا کنید تا migrationهای Go دیتابیس اجرا شوند.
+برای SQLite مسیر مطلق استفاده کنید تا محل فایل دیتابیس روشن باشد. در نصب MySQL مقدار `SQLALCHEMY_DATABASE_URL` را با URL امن دیتابیس خود جایگزین کنید و رمز را داخل Git یا پیام عمومی قرار ندهید.
 
-```bash
-antimage migrate up
-```
+## دامنه و HTTPS با Nginx
 
-اگر می‌خواهید از CLI استفاده کنید، می‌توانید فایل `Go CLI` موجود را به نام اجرایی جدید لینک کنید و تکمیل خودکار آن را نصب کنید:
+نمونه reverse proxy:
 
-```bash
-sudo install -m 755 ./dist/antimage-cli /usr/local/bin/antimage
-antimage cli --help
-
-```
-
-حالا یک کپی از `.env.example` با نام `.env` بسازید و با یک ادیتور آن را باز کنید و تنظیمات دلخواه خود را انجام دهید. یه عنوان مثال نام کاربری و رمز عبور را می توانید در این فایل تغییر دهید.
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-> برای اطلاعات بیشتر بخش [تنظیمات](#تنظیمات) را مطالعه کنید.
-
-در انتها، رِبِکا را به کمک دستور زیر اجرا کنید.
-
-```bash
-./dist/antimage-server
-```
-
-برای نصب دستی با systemd، یک unit برای باینری Go بسازید:
-
-```ini
-[Unit]
-Description=AntiMage
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/antimage
-EnvironmentFile=/opt/antimage/.env
-ExecStart=/opt/antimage/dist/antimage-server
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-سپس آن را فعال کنید:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now antimage
-```
-
-اجرا با nginx
-```
+```nginx
 server {
     listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name  example.com;
+    server_name panel.example.com;
 
-    ssl_certificate      /etc/letsencrypt/live/example.com/fullchain.pem;
-    ssl_certificate_key  /etc/letsencrypt/live/example.com/privkey.pem;
-
-  location ~* /(dashboard|statics|sub|api|docs|redoc|openapi.json) {
-        proxy_pass http://0.0.0.0:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-}
-```
-or
-```
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-  server_name  antimage.example.com;
-
-    ssl_certificate      /etc/letsencrypt/live/example.com/fullchain.pem;
-    ssl_certificate_key  /etc/letsencrypt/live/example.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/panel.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/panel.example.com/privkey.pem;
 
     location / {
-        proxy_pass http://0.0.0.0:8000;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
     }
 }
 ```
 
-به صورت پیش‌فرض رِبِکا در آدرس `http://localhost:8000/dashboard` اجرا می‌شود. شما می‌توانید با تغییر `UVICORN_HOST` و `UVICORN_PORT` هاست و پورت را تغییر دهید.
-</details>
+قبل از فعال‌سازی، DNS دامنه را به IP Master وصل کنید و گواهی معتبر بگیرید.
 
-# تنظیمات
+## اشتراک کاربران
 
-> متغیر های زیر در فایل ‍`env` یا `.env` استفاده میشوند. شما می توانید با تعریف و تغییر آن ها، تنظیمات رِبِکا را تغییر دهید.
+برای هر کاربر، لینک اشتراک را از صفحه کاربر کپی کنید. صفحه اشتراک با توجه به سیستم‌عامل و User-Agent، برنامه‌ها و روش واردکردن مناسب همان دستگاه را نمایش می‌دهد و اطلاعات قابل استفاده کانفیگ را ارائه می‌کند.
 
-| توضیحات | متغیر |
-| ---: | :---: |
-| آدرس دیتابیس؛ این نام legacy برای سازگاری با runtime جدید Go حفظ شده است | SQLALCHEMY_DATABASE_URL |
-| هاست gateway گو (پیش‌فرض: `0.0.0.0`) | UVICORN_HOST |
-| پورت gateway گو (پیش‌فرض: `8000`) | UVICORN_PORT |
-| مسیر گواهی TLS برای gateway گو | UVICORN_SSL_CERTFILE |
-| مسیر کلید TLS برای gateway گو | UVICORN_SSL_KEYFILE |
-| نوع CA برای اسکریپت‌های نصب: `public` یا `private` | UVICORN_SSL_CA_TYPE |
-| آدرس کامل gateway؛ مقدار `UVICORN_HOST` و `UVICORN_PORT` را override می‌کند | ANTIMAGE_GATEWAY_ADDR |
-| فاصله پردازش صف node operations | ANTIMAGE_NODE_OPERATIONS_POLL_INTERVAL |
-| فاصله بررسی lifecycle کاربران | ANTIMAGE_USER_LIFECYCLE_INTERVAL |
-| فاصله reset دوره‌ای مصرف کاربران | ANTIMAGE_USER_USAGE_RESET_INTERVAL |
-| حذف خودکار کاربران منقضی پس از این تعداد روز؛ مقدار منفی یعنی غیرفعال | USERS_AUTODELETE_DAYS |
-| شامل کردن کاربران limited در حذف خودکار | USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS |
-| زمان انقضای JWT access token بر حسب دقیقه | JWT_ACCESS_TOKEN_EXPIRE_MINUTES |
-| timeout لیست بزرگ کاربران؛ مقدار `0` یعنی غیرفعال | USERS_LIST_TIMEOUT_SECONDS |
-| مسیر پایه certificateهای مدیریت‌شده | ANTIMAGE_CERT_BASE |
-| ریشه configهایی که در full backup قرار می‌گیرند | ANTIMAGE_CONFIG_DIR |
+خروجی‌ها می‌توانند شامل لینک‌ها و قالب‌های رایج Xray/V2Ray، Sing-box، Clash و لینک مستقیم پروتکل‌ها باشند. پشتیبانی عملی هر کانفیگ به پروتکل، transport، TLS و قابلیت کلاینت مقصد وابسته است؛ قبل از توزیع عمومی، لینک را با کلاینت هدف آزمایش کنید.
 
+## مدیریت سرویس
 
-# ربات تلگرام
-رِبِکا دارای یک ربات تلگرام داخلی است که می‌تواند مدیریت سرور، ایجاد و حذف کاربر و ارسال اعلان‌ها را انجام دهد. این ربات را می‌توان با چند مرحله ساده فعال کرد.
-
-برای فعال کردن ربات تلگرام:
-
-1. در تنظیمات، متغیر`TELEGRAM_API_TOKEN` را به API TOKEN ربات تلگرام خود تنظیم کنید.
-2. همینطور، متغیر`TELEGRAM_ADMIN_ID` را به شناسه عددی حساب تلگرام خود تنظیم کنید. شما می‌توانید شناسه خود را از [@userinfobot](https://t.me/userinfobot) دریافت کنید.
-
-
-# ارسال اعلان‌ها به آدرس وبهوک
-شما می‌توانید آدرسی را برای رِبِکا فراهم کنید تا تغییرات کاربران را به صورت اعلان برای شما ارسال کند.
-
-اعلان‌ها به صورت یک درخواست POST به آدرسی که در `WEBHOOK_ADDRESS` فراهم شده به همراه مقدار تعیین شده در `WEBHOOK_SECRET` به عنوان `x-webhook-secret` در header درخواست ارسال می‌شوند.
-
-نمونه‌ای از درخواست ارسال شده توسط رِبِکا:
-
-```
-Headers:
-Host: 0.0.0.0:9000
-User-Agent: python-requests/2.28.1
-Accept-Encoding: gzip, deflate
-Accept: */*
-Connection: keep-alive
-x-webhook-secret: something-very-very-secret
-Content-Length: 107
-Content-Type: application/json
-
-
-
-Body:
-{"username": "antimage_test_user", "action": "user_updated", "enqueued_at": 1680506457.636369, "tries": 0}
+```bash
+sudo antimage status
+sudo antimage logs
+sudo antimage restart
+sudo antimage update
+sudo antimage update --version v0.1.0
+sudo antimage core-update
 ```
 
-انواع مختلف actionهایی که رِبِکا ارسال می‌کند: `user_created`, `user_updated`, `user_deleted`, `user_limited`, `user_expired`, `user_disabled`, `user_enabled`
+برای Node از CLI مربوط به Node استفاده کنید:
 
+```bash
+sudo antimage-node status
+sudo antimage-node logs
+sudo antimage-node restart
+```
 
-# کمک مالی
-اگر رِبِکا را برای شما مفید بوده و می‌خواهید از توسعه آن حمایت کنید، می‌توانید در یکی از شبکه های کریپتو زیر کمک مالی کنید:
+## Backup و ارتقا
 
-- TRON network (TRC20): `TGftLESDAeRncE7yMAHrTUCsixuUwPc6qp`
-- ETH, BNB, MATIC network (ERC20, BEP20): `0x413eb47C430a3eb0E4262f267C1AE020E0C7F84D`
-- TON network: `UQDNpA3SlFMorlrCJJcqQjix93ijJfhAwIxnbTwZTLiHZ0Xa`
+قبل از هر ارتقا این موارد را backup کنید:
 
+- `/var/lib/antimage`
+- `/opt/antimage/.env`
+- دیتابیس MySQL/MariaDB در صورت استفاده
+- certificateها و کلیدهای Master و Node
 
-از حمایت شما متشکرم!
+پس از ارتقا، ورود به داشبورد، سلامت Node، ساخت یک کاربر آزمایشی و دریافت اشتراک را بررسی کنید.
 
+## عیب‌یابی سریع
 
-# لایسنس
+| نشانه | بررسی |
+| --- | --- |
+| صفحه باز نمی‌شود | `sudo antimage status`، پورت ۸۰۰۰، firewall و Nginx را بررسی کنید. |
+| ورود خطا می‌دهد | مدیر را با `antimage-cli admin list` بررسی و در صورت نیاز مدیر جدید بسازید. |
+| Node متصل نمی‌شود | آدرس، پورت API/gRPC، ساعت سیستم، certificate و دسترسی firewall را بررسی کنید. |
+| مصرف یا عملیات دیر به‌روز می‌شود | لاگ Master و Node و وضعیت صف عملیات را بررسی کنید. |
+| اشتراک در کلاینت کار نمی‌کند | قالب خروجی، transport، TLS/SNI و سازگاری کلاینت مقصد را بررسی کنید. |
 
-توسعه‌یافته در [ناشناس!] و منتشر شده تحت لایسنس [AGPL-3.0](./LICENSE).
+## حمایت از توسعه
 
+| شبکه | آدرس |
+| --- | --- |
+| TON | `UQBUIbaYP0MfRys9AC6vJoAlSXu1a0feylJNg-M2-XYJ-0dC` |
+| USDT TRC20 | `THhizvBJD4SjZEVD3KvUpjW1PjbxcpqDzM` |
 
-# مشارکت در توسعه
-این ❤️‍🔥 تقدیم به همه‌ی کسانی که در توسعه رِبِکا مشارکت می‌کنند! اگر می‌خواهید مشارکت داشته باشید، لطفاً [دستورالعمل‌های مشارکت](CONTRIBUTING.md) را بررسی کنید و در صورت تمایل Pull Request ارسال کنید یا یک Issue باز کنید.
+## مجوز
 
-لطفاً با بررسی [لیست کارها](https://github.com/antimagepanel/AntiMage/issues) به ما در بهبود رِبِکا کمک کنید. کمک‌های شما با آغوش باز پذیرفته می‌شود.
-
-<p align="center">
-با تشکر از همه همکارانی که به بهبود رِبِکا کمک کردند:
-</p>
-<p align="center">
-<a href="https://github.com/antimagepanel/AntiMage/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=antimagepanel/AntiMage" />
-</a>
-</p>
-<p align="center">
-  ساخته شده با <a rel="noopener noreferrer" target="_blank" href="https://contrib.rocks">contrib.rocks</a>
-</p>
+AntiMage تحت GNU AGPL-3.0 منتشر می‌شود. متن مجوز و notices مربوط به اجزای ثالث در پوشه `LICENSES/` قرار دارد.
