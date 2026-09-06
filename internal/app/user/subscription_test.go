@@ -2269,7 +2269,7 @@ func TestBundledSubscriptionPageTemplateRendersPanelStyleContext(t *testing.T) {
 		`data-lang-choice="zh"`,
 		`id="appDownloadList"`,
 		`data-fallback-platform="android"`,
-		`class="rb-app-icon"`,
+		`class="am-app-icon"`,
 		`https://raw.githubusercontent.com/2dust/v2rayNG/master/V2rayNG/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png`,
 		`appDownloadsTitle: 'Download apps'`,
 		`name: 'v2rayNG'`,

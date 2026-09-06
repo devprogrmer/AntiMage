@@ -204,7 +204,7 @@ export const UsersFilterBar: FC = () => {
 					minW: 0,
 					maxW: { base: "100%", sm: "380px" },
 				}}
-				className="rb-users-search-input"
+				className="am-users-search-input"
 				placeholder={t("search")}
 				value={search}
 				onChange={onSearchChange}
@@ -252,7 +252,7 @@ export const UsersFilterBar: FC = () => {
 						/>
 						{hasClearableFilters && (
 							<Badge
-								className="rb-users-filter-badge"
+								className="am-users-filter-badge"
 								colorScheme="primary"
 								variant="solid"
 								borderRadius="full"
@@ -351,7 +351,7 @@ export const UsersFilterBar: FC = () => {
 			{showCreateButton &&
 				(isMobile ? (
 					<IconButton
-						className="rb-users-create-btn"
+						className="am-users-create-btn"
 						aria-label={t("createUser")}
 						icon={<PlusIconStyled w={5} h={5} />}
 						colorScheme="primary"
@@ -363,7 +363,7 @@ export const UsersFilterBar: FC = () => {
 					/>
 				) : (
 					<Button
-						className="rb-users-create-btn"
+						className="am-users-create-btn"
 						colorScheme="primary"
 						leftIcon={<PlusIconStyled />}
 						borderRadius="full"

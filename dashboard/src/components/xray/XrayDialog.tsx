@@ -27,7 +27,7 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 	const bodyBg = useColorModeValue("gray.50", "blackAlpha.300");
 	const borderColor = useColorModeValue("gray.200", "whiteAlpha.300");
 	const sectionBg = useColorModeValue("white", "whiteAlpha.50");
-	const sectionHoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.50");
+	const sectionHoveamg = useColorModeValue("blackAlpha.50", "whiteAlpha.50");
 	const fieldBg = useColorModeValue("white", "whiteAlpha.50");
 	const labelColor = useColorModeValue("gray.700", "gray.200");
 	const mutedColor = useColorModeValue("gray.500", "gray.400");
@@ -43,10 +43,10 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 			borderRadius="md"
 			overflow="hidden"
 			maxH={{
-				base: "var(--rb-dialog-viewport-height, 100dvh)",
-				md: "calc(var(--rb-dialog-viewport-height, 100dvh) - 7.5rem)",
+				base: "var(--am-dialog-viewport-height, 100dvh)",
+				md: "calc(var(--am-dialog-viewport-height, 100dvh) - 7.5rem)",
 			}}
-			h={{ base: "var(--rb-dialog-viewport-height, 100dvh)", md: "auto" }}
+			h={{ base: "var(--am-dialog-viewport-height, 100dvh)", md: "auto" }}
 			display="flex"
 			flexDirection="column"
 			boxShadow="xl"
@@ -54,8 +54,8 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 				"@media (max-width: 48em)": {
 					width: "100vw !important",
 					maxWidth: "100vw !important",
-					height: "var(--rb-dialog-viewport-height, 100dvh) !important",
-					maxHeight: "var(--rb-dialog-viewport-height, 100dvh) !important",
+					height: "var(--am-dialog-viewport-height, 100dvh) !important",
+					maxHeight: "var(--am-dialog-viewport-height, 100dvh) !important",
 					margin: "0 !important",
 					borderRadius: "0 !important",
 				},
@@ -101,7 +101,7 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					fontSize: "13px",
 					width: "100%",
 				},
-				"input.rb-multi-value-autocomplete-input": {
+				"input.am-multi-value-autocomplete-input": {
 					bg: "transparent !important",
 					border: "0 !important",
 					borderRadius: "0 !important",
@@ -180,11 +180,11 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					borderRadius: "6px",
 					p: { base: 3, md: 3 },
 				},
-				".xray-dialog-section.rb-dialog-collapsible-section": {
+				".xray-dialog-section.am-dialog-collapsible-section": {
 					p: 0,
 					overflow: "hidden",
 				},
-				".rb-dialog-collapsible-trigger": {
+				".am-dialog-collapsible-trigger": {
 					alignItems: "center",
 					cursor: "pointer",
 					display: "flex",
@@ -195,22 +195,22 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					py: 2.5,
 					transition: "background-color 0.12s ease",
 				},
-				".rb-dialog-collapsible-trigger:hover": {
-					bg: sectionHoverBg,
+				".am-dialog-collapsible-trigger:hover": {
+					bg: sectionHoveamg,
 				},
-				".rb-dialog-collapsible-title": {
+				".am-dialog-collapsible-title": {
 					fontSize: "sm",
 					fontWeight: "semibold",
 					lineHeight: 1.35,
 				},
-				".rb-dialog-collapsible-body": {
+				".am-dialog-collapsible-body": {
 					borderTop: "1px solid",
 					borderColor,
 					px: 3,
 					pb: 3,
 					pt: 3,
 				},
-				".rb-dialog-switch-row": {
+				".am-dialog-switch-row": {
 					alignItems: "center",
 					bg: sectionBg,
 					border: "1px solid",
@@ -223,10 +223,10 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					px: 3,
 					py: 2,
 				},
-				".rb-dialog-switch-row .chakra-form__label": {
+				".am-dialog-switch-row .chakra-form__label": {
 					mb: "0 !important",
 				},
-				".rb-dialog-switch-row + .chakra-form-control, .rb-dialog-switch-row + .chakra-collapse":
+				".am-dialog-switch-row + .chakra-form-control, .am-dialog-switch-row + .chakra-collapse":
 					{
 						mt: 3,
 					},
@@ -275,7 +275,7 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					"input, select": {
 						minH: "42px",
 					},
-					"input.rb-multi-value-autocomplete-input": {
+					"input.am-multi-value-autocomplete-input": {
 						fontSize: "16px !important",
 						h: "24px !important",
 						minH: "24px !important",
@@ -310,7 +310,7 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 						bottom: 0,
 						zIndex: 1,
 						boxShadow: "0 -14px 28px rgba(0, 0, 0, 0.22)",
-						paddingBottom: "var(--rb-dialog-safe-bottom)",
+						paddingBottom: "var(--am-dialog-safe-bottom)",
 					},
 				},
 				...sx,

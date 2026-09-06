@@ -353,7 +353,7 @@ const TrafficSubmenu: FC<{
 			</MenuButton>
 			<Portal>
 				<MenuList
-					data-rb-context-menu=""
+					data-am-context-menu=""
 					minW="152px"
 					maxH="min(70vh, 320px)"
 					overflowY="auto"
@@ -958,7 +958,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						</Text>
 						<UserAdminChip adminUsername={user.admin_username} />
 						<Text
-							className="rb-user-card-status"
+							className="am-user-card-status"
 							fontSize="xs"
 							fontWeight="semibold"
 							color={USER_STATUS_TEXT_COLORS[user.status] ?? "panel.text"}
@@ -1457,28 +1457,28 @@ export const UsersTable: FC<UsersTableProps> = ({
 			return action ? [action] : [];
 		});
 		return (
-			<Box className="rb-resource-expanded">
-				<Box className="rb-resource-details" data-density="compact">
+			<Box className="am-resource-expanded">
+				<Box className="am-resource-details" data-density="compact">
 					{detailColumns.map((column) => (
-						<Box key={column.id} className="rb-resource-meta">
+						<Box key={column.id} className="am-resource-meta">
 							<Text as="span" color="panel.textMuted">
 								{column.mobileMetaLabel ?? column.mobileLabel ?? column.header}
 							</Text>
-							<Box color="panel.text" minW={0} className="rb-resource-meta-value">
+							<Box color="panel.text" minW={0} className="am-resource-meta-value">
 								{column.mobileDetailCell?.(user) ?? column.cell?.(user)}
 							</Box>
 						</Box>
 					))}
 				</Box>
 				<Flex
-					className="rb-resource-expanded-actions"
+					className="am-resource-expanded-actions"
 					align="center"
 					justify="flex-end"
 					gap={1}
 					flexWrap="wrap"
 					onClick={(event) => event.stopPropagation()}
 				>
-					<HStack className="rb-expanded-user-actions" spacing={1}>
+					<HStack className="am-expanded-user-actions" spacing={1}>
 						{expandedActions.map((action) => (
 							<Tooltip key={action.id} label={action.label}>
 								<span>
@@ -1604,7 +1604,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						selectedLabel={t("usersTable.selectedCount", {
 							count: selectedUsers.length,
 						})}
-						renderBulkActions={() => (
+							renderBulkActions={() => (
 							<>
 								{canToggleUserStatus && (
 									<Button

@@ -48,10 +48,11 @@ func Open(databaseURL string) (Pool, error) {
 	}
 
 	if dialect == "sqlite" {
-		// WAL permits readers while another connection is writing. A single
-		// connection turns any slow write into a queue for the whole panel.
-		sqlDB.SetMaxOpenConns(8)
-		sqlDB.SetMaxIdleConns(4)
+		// SQLite has one writer per database file. Keep the embedded panel's
+		// worker pool on one connection so concurrent jobs cannot contend for
+		// the same file lock; WAL still keeps the connection's reads efficient.
+		sqlDB.SetMaxOpenConns(1)
+		sqlDB.SetMaxIdleConns(1)
 		sqlDB.SetConnMaxIdleTime(30 * time.Second)
 	} else {
 		sqlDB.SetMaxOpenConns(64)
@@ -103,7 +104,9 @@ func sqliteDSN(path string) string {
 	if strings.HasPrefix(path, "file:") {
 		return path
 	}
-	query := "_busy_timeout=30000&_journal_mode=WAL&_synchronous=NORMAL"
+	// The pinned modernc.org/sqlite version supports these through _pragma.
+	// The newer mattn-compatible shorthand options are not portable to it.
+	query := "_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
 	if strings.Contains(path, "?") {
 		return "file:" + path + "&" + query
 	}

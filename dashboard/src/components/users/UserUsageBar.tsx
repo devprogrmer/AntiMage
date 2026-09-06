@@ -55,13 +55,13 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 
 	const track = (
 		<Box
-			className="rb-user-usage-track"
+			className="am-user-usage-track"
 			flex={variant === "inline" ? "1 1 0" : "1 1 auto"}
 			w={variant === "inline" ? "auto" : undefined}
 			minW={0}
 		>
 			<Box
-				className="rb-user-usage-fill"
+				className="am-user-usage-fill"
 				style={{
 					width: fillWidth,
 					backgroundImage: usageToneGradients[tone],
@@ -73,7 +73,7 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 	if (variant === "compact") {
 		return (
 			<Stack
-				className="rb-user-usage"
+				className="am-user-usage"
 				data-tone={tone}
 				data-variant={variant}
 				spacing={1}
@@ -93,14 +93,14 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 					whiteSpace="nowrap"
 				>
 					<Text
-						className="rb-user-usage-pair"
+						className="am-user-usage-pair"
 						noOfLines={1}
 						minW={0}
 						sx={{ unicodeBidi: "isolate" }}
 					>
 						{formatUsagePair(used, total)}
 					</Text>
-					<Text className="rb-user-usage-percent" flexShrink={0}>
+					<Text className="am-user-usage-percent" flexShrink={0}>
 						{percentLabel}
 					</Text>
 				</HStack>
@@ -111,7 +111,7 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 	if (variant === "inline") {
 		return (
 			<Flex
-				className="rb-user-usage"
+				className="am-user-usage"
 				data-tone={tone}
 				data-variant={variant}
 				align="center"
@@ -121,7 +121,7 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 				dir="ltr"
 			>
 				<Text
-					className="rb-user-usage-pair"
+					className="am-user-usage-pair"
 					flex={`0 0 ${INLINE_VALUE_SLOT_WIDTH}`}
 					fontSize="xs"
 					textAlign="end"
@@ -131,7 +131,7 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 				</Text>
 				{track}
 				<Text
-					className="rb-user-usage-pair"
+					className="am-user-usage-pair"
 					flex={`0 0 ${INLINE_VALUE_SLOT_WIDTH}`}
 					fontSize={isUnlimited ? "xl" : "xs"}
 					fontWeight={isUnlimited ? "semibold" : undefined}
@@ -152,7 +152,7 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 	// column gets too narrow to fit both on one line.
 	return (
 		<Stack
-			className="rb-user-usage"
+			className="am-user-usage"
 			data-tone={tone}
 			data-variant={variant}
 			spacing={0.5}
@@ -163,7 +163,7 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 			<Flex align="center" gap={0} w="full" minW={0}>
 				{track}
 				<Text
-					className="rb-user-usage-percent"
+					className="am-user-usage-percent"
 					flex={`0 0 ${PERCENT_SLOT_WIDTH}`}
 					textAlign="start"
 					dir="ltr"
@@ -183,7 +183,7 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 					dir="ltr"
 				>
 					<Text
-						className="rb-user-usage-pair"
+						className="am-user-usage-pair"
 						noOfLines={1}
 						minW={0}
 						flex="0 1 auto"

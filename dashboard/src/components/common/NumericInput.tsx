@@ -35,7 +35,7 @@ export const NumericInput = ({
 			{...props}
 			sx={{
 				"@media (hover: none)": {
-					".rb-number-stepper": {
+					".am-number-stepper": {
 						opacity: 1,
 						pointerEvents: "auto",
 					},
@@ -50,7 +50,7 @@ export const NumericInput = ({
 				pr={fieldPaddingRight}
 			/>
 			<NumberInputStepper
-				className="rb-number-stepper"
+				className="am-number-stepper"
 				opacity={0}
 				pointerEvents="none"
 				transition="opacity 0.15s ease"

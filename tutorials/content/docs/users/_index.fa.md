@@ -6,7 +6,7 @@ description: "ساخت، جست‌وجو، تمدید و عیب‌یابی کا�
 
 صفحه کاربران فضای اصلی کارهای روزمره است؛ از اینجا حساب می‌سازید، وضعیت دسترسی را می‌بینید و لینک سابسکریپشن را تحویل می‌دهید. در هر ردیف، وضعیت فعلی کاربر، تاریخ انقضا، مصرف و عملیات مرتبط در دسترس است.
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/users">باز کردن کاربران</a><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/users" data-session-key="openCreateUser" data-session-value="true">ساخت کاربر</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/users">باز کردن کاربران</a><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/users" data-session-key="openCreateUser" data-session-value="true">ساخت کاربر</a></p>
 
 ## انتخاب کار
 

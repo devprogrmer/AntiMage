@@ -567,24 +567,24 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 		}, [validation, validationLabel]);
 
 		const borderColor = useColorModeValue(
-			"var(--rb-panel-border)",
-			"var(--rb-panel-border)",
+			"var(--am-panel-border)",
+			"var(--am-panel-border)",
 		);
 		const bg = useColorModeValue(
-			"var(--rb-panel-surface)",
-			"var(--rb-panel-surface)",
+			"var(--am-panel-surface)",
+			"var(--am-panel-surface)",
 		);
 		const elevatedBg = useColorModeValue(
-			"var(--rb-panel-elevated)",
-			"var(--rb-panel-elevated)",
+			"var(--am-panel-elevated)",
+			"var(--am-panel-elevated)",
 		);
 		const textColor = useColorModeValue(
-			"var(--rb-panel-text)",
-			"var(--rb-panel-text)",
+			"var(--am-panel-text)",
+			"var(--am-panel-text)",
 		);
 		const mutedColor = useColorModeValue(
-			"var(--rb-panel-text-muted)",
-			"var(--rb-panel-text-muted)",
+			"var(--am-panel-text-muted)",
+			"var(--am-panel-text-muted)",
 		);
 
 		return (

@@ -187,14 +187,14 @@ export function AppLayout() {
 		"0 6px 14px rgba(0, 0, 0, 0.24)",
 	);
 	const shellBorder = useColorModeValue("panel.border", "panel.border");
-	const shellHeaderBg = useColorModeValue("panel.surface", "panel.surface");
+	const shellHeadeamg = useColorModeValue("panel.surface", "panel.surface");
 	const shellHeaderShadow = useColorModeValue(
 		"0 18px 48px rgba(15, 23, 42, 0.10)",
 		"0 18px 48px rgba(0, 0, 0, 0.32)",
 	);
 	const shellMainBg = useColorModeValue("panel.main", "panel.main");
-	const headerButtonBg = useColorModeValue("panel.elevated", "panel.elevated");
-	const headerButtonHoverBg = useColorModeValue(
+	const headeamuttonBg = useColorModeValue("panel.elevated", "panel.elevated");
+	const headeamuttonHoveamg = useColorModeValue(
 		"panel.borderStrong",
 		"panel.borderStrong",
 	);
@@ -772,7 +772,7 @@ export function AppLayout() {
 				dir={isRTL ? "rtl" : "ltr"}
 				bg="panel.app"
 				sx={{
-					"--rb-sidebar-offset": isMobile
+					"--am-sidebar-offset": isMobile
 						? "0px"
 						: sidebarCollapsed
 							? "88px"
@@ -803,7 +803,7 @@ export function AppLayout() {
 						borderWidth="1px"
 						borderColor={shellBorder}
 						borderRadius="2xl"
-						bg={shellHeaderBg}
+						bg={shellHeadeamg}
 						boxShadow={shellHeaderShadow}
 						mt="3"
 						mx={{ base: "3", md: "4" }}
@@ -829,9 +829,9 @@ export function AppLayout() {
 								}}
 								icon={<MenuIcon />}
 								flexShrink={0}
-								bg={headerButtonBg}
+								bg={headeamuttonBg}
 								borderColor={shellBorder}
-								_hover={{ bg: headerButtonHoverBg }}
+								_hover={{ bg: headeamuttonHoveamg }}
 							/>
 							<HStack
 								aria-label="Current location"
@@ -904,9 +904,9 @@ export function AppLayout() {
 										aria-label={t("a11y.userMenu")}
 										fontSize="sm"
 										fontWeight="medium"
-										bg={headerButtonBg}
+										bg={headeamuttonBg}
 										borderColor={shellBorder}
-										_hover={{ bg: headerButtonHoverBg }}
+										_hover={{ bg: headeamuttonHoveamg }}
 										onClick={() => {
 											if (userMenu.isOpen) {
 												handleUserMenuClose();
@@ -945,7 +945,7 @@ export function AppLayout() {
 													bg: "transparent !important",
 												},
 											},
-											".rb-logout-menu-item[data-focus]:not(:hover):not(:focus-visible)":
+											".am-logout-menu-item[data-focus]:not(:hover):not(:focus-visible)":
 												{
 													bg: "transparent !important",
 												},
@@ -1087,7 +1087,7 @@ export function AppLayout() {
 
 										{/* Logout */}
 										<MenuItem
-											className="rb-logout-menu-item"
+											className="am-logout-menu-item"
 											icon={<LogoutIcon />}
 											color="red.500"
 											bg="transparent"
@@ -1422,7 +1422,7 @@ export function AppLayout() {
 															borderWidth="1px"
 															boxShadow="xl"
 														>
-															<PopoverBody position="relative" zIndex={1} p="2">
+											<PopoverBody position="relative" zIndex={1} p="2">
 																<VStack align="stretch" spacing={1}>
 																	{settingsMenuItems.map((entry) => {
 																		const ItemIcon = entry.icon;
@@ -1465,7 +1465,7 @@ export function AppLayout() {
 																		);
 																	})}
 																</VStack>
-															</PopoverBody>
+											</PopoverBody>
 														</PopoverContent>
 													</Portal>
 												</Popover>
@@ -1550,7 +1550,7 @@ export function AppLayout() {
 															borderWidth="1px"
 															boxShadow="xl"
 														>
-															<PopoverBody position="relative" zIndex={1} p="2">
+											<PopoverBody position="relative" zIndex={1} p="2">
 																<Button
 																	variant="ghost"
 																	size="sm"
@@ -1574,7 +1574,7 @@ export function AppLayout() {
 																>
 																	{t("header.logout")}
 																</Button>
-															</PopoverBody>
+											</PopoverBody>
 														</PopoverContent>
 													</Portal>
 												</Popover>

@@ -73,7 +73,7 @@ export const ConfirmDialog = ({
 		>
 			<AlertDialogOverlay bg="blackAlpha.500">
 				<AlertDialogContent
-					className="rb-confirm-dialog-content"
+					className="am-confirm-dialog-content"
 					bg={dialogBg}
 					borderWidth="1px"
 					borderColor={dialogBorder}
@@ -133,7 +133,7 @@ export const ConfirmDialog = ({
 						gap={1.5}
 						flexWrap="wrap"
 						justifyContent="flex-end"
-						className="rb-confirm-dialog-actions"
+						className="am-confirm-dialog-actions"
 					>
 						<Button
 							ref={cancelRef}

@@ -8,7 +8,7 @@ description: "برای دیدن مصرف ادمین، کلیدهای API و تغ
 
 برای دیدن مصرف ادمین، کلیدهای API و تغییر رمز از این صفحه استفاده کن.
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/myaccount">باز کردن حساب من</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/myaccount">باز کردن حساب من</a></p>
 
 ## مراحل
 

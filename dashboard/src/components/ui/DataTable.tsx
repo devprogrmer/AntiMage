@@ -122,7 +122,7 @@ const installSelectAllShortcut = () => {
 
 const ActionsHeaderIcon = () => (
 	<Box
-		className="rb-actions-header-icon"
+		className="am-actions-header-icon"
 		display="inline-flex"
 		alignItems="center"
 		justifyContent="flex-end"
@@ -286,7 +286,7 @@ const DataTableCellContent = <TData,>({
 
 	const content = (
 		<Flex
-			className="rb-cell-content"
+			className="am-cell-content"
 			data-truncate={shouldTruncate ? "true" : undefined}
 			data-multiline={multiline ? "true" : undefined}
 			data-copyable={shouldCopy ? "true" : undefined}
@@ -298,7 +298,7 @@ const DataTableCellContent = <TData,>({
 			maxW="full"
 			overflow={multiline ? "visible" : "hidden"}
 		>
-			<Box className="rb-cell-value" minW={0} flex="1 1 auto" maxW="full">
+			<Box className="am-cell-value" minW={0} flex="1 1 auto" maxW="full">
 				{children}
 			</Box>
 			{shouldCopy && (
@@ -307,7 +307,7 @@ const DataTableCellContent = <TData,>({
 					icon={<Box as={DocumentDuplicateIcon} w={3.5} h={3.5} />}
 					size="xs"
 					variant="ghost"
-					className="rb-cell-copy"
+					className="am-cell-copy"
 					flexShrink={0}
 					onClick={(event) => {
 						event.stopPropagation();
@@ -353,7 +353,7 @@ const InlineRowActions = ({ actions }: { actions: RowActionItem[] }) => {
 
 	return (
 		<HStack
-			className="rb-inline-actions"
+			className="am-inline-actions"
 			spacing={1}
 			justify="flex-start"
 			onClick={(event) => event.stopPropagation()}
@@ -379,7 +379,7 @@ const InlineRowActions = ({ actions }: { actions: RowActionItem[] }) => {
 											icon={action.icon ?? <DocumentDuplicateIcon />}
 											size="sm"
 											variant="ghost"
-											className="rb-inline-action"
+											className="am-inline-action"
 											color={action.color}
 											colorScheme={action.isDanger ? "red" : undefined}
 											isDisabled={action.isDisabled}
@@ -411,7 +411,7 @@ const InlineRowActions = ({ actions }: { actions: RowActionItem[] }) => {
 							icon={action.icon}
 							size="sm"
 							variant="ghost"
-							className="rb-inline-action"
+							className="am-inline-action"
 							color={action.color}
 							colorScheme={action.isDanger ? "red" : undefined}
 							isDisabled={action.isDisabled}
@@ -426,7 +426,7 @@ const InlineRowActions = ({ actions }: { actions: RowActionItem[] }) => {
 						key={action.id}
 						size="sm"
 						variant="ghost"
-						className="rb-inline-action"
+						className="am-inline-action"
 						color={action.color}
 						colorScheme={action.isDanger ? "red" : undefined}
 						isDisabled={action.isDisabled}
@@ -585,7 +585,7 @@ export function DataTable<TData>({
 			const target = event.target;
 			if (
 				target instanceof Element &&
-				target.closest("[data-rb-context-menu]")
+				target.closest("[data-am-context-menu]")
 			) {
 				return;
 			}
@@ -606,7 +606,7 @@ export function DataTable<TData>({
 				if (renderRowActionsRef.current) {
 					return (
 						<Box
-							className="rb-inline-actions"
+							className="am-inline-actions"
 							onClick={(event) => event.stopPropagation()}
 						>
 							{renderRowActionsRef.current(row)}
@@ -842,7 +842,7 @@ export function DataTable<TData>({
 		[visibleColumnCount],
 	);
 	const bulkChildren =
-		renderBulkActions?.(selectedRows, selectedIds) ??
+	renderBulkActions?.(selectedRows, selectedIds) ??
 		bulkActions?.map((action) => {
 			const isDisabled =
 				typeof action.isDisabled === "function"
@@ -877,24 +877,24 @@ export function DataTable<TData>({
 		...rootContainerProps
 	} = containerProps ?? {};
 	const { className: tableClassName, ...resolvedTableProps } = tableProps ?? {};
-	const rootClassName = ["rb-data-table-root", containerClassName]
+	const rootClassName = ["am-data-table-root", containerClassName]
 		.filter(Boolean)
 		.join(" ");
-	const tableClassNameValue = ["rb-data-table", tableClassName]
+	const tableClassNameValue = ["am-data-table", tableClassName]
 		.filter(Boolean)
 		.join(" ");
 
 	const renderState = () => {
 		if (error) {
 			return (
-				<Box className="rb-resource-state" color="red.300">
+				<Box className="am-resource-state" color="red.300">
 					{error}
 				</Box>
 			);
 		}
 		if (!showLoadingState && rows.length === 0) {
 			return (
-				<Box className="rb-resource-state">
+				<Box className="am-resource-state">
 					{emptyState ?? t("noData")}
 				</Box>
 			);
@@ -930,7 +930,7 @@ export function DataTable<TData>({
 			data-actions-always={actionsAlwaysVisible ? "true" : undefined}
 			sx={
 				{
-					"--rb-actions-column-width":
+					"--am-actions-column-width":
 						typeof actionsColumnWidth === "number"
 							? `${actionsColumnWidth}px`
 							: actionsColumnWidth,
@@ -940,17 +940,17 @@ export function DataTable<TData>({
 			{...rootContainerProps}
 		>
 			{isMobile ? (
-				<VStack className="rb-resource-list" spacing={2.5} align="stretch">
+				<VStack className="am-resource-list" spacing={2.5} align="stretch">
 					{!showLoadingState && (rows.length > 0 || state) && (
 						<HStack
-							className="rb-resource-mobile-head"
+							className="am-resource-mobile-head"
 							align="center"
 							spacing={2.5}
 							minW={0}
 						>
 							{enableSelection && (
 								<Box
-									className="rb-resource-mobile-head-select"
+									className="am-resource-mobile-head-select"
 									display="flex"
 									alignItems="center"
 									flexShrink={0}
@@ -970,16 +970,16 @@ export function DataTable<TData>({
 									gap={2.5}
 									minW={0}
 								>
-									<Box minW={0} flex="1" className="rb-resource-mobile-head-primary">
+									<Box minW={0} flex="1" className="am-resource-mobile-head-primary">
 										{renderHeaderLabel(mobileVisibleColumns.primary)}
 									</Box>
 									{mobileVisibleColumns.summary && (
-										<Box className="rb-resource-mobile-head-summary">
+										<Box className="am-resource-mobile-head-summary">
 											{renderHeaderLabel(mobileVisibleColumns.summary)}
 										</Box>
 									)}
 									{hasActions && (
-										<Box className="rb-resource-mobile-head-actions">
+										<Box className="am-resource-mobile-head-actions">
 											<ActionsHeaderIcon />
 										</Box>
 									)}
@@ -989,7 +989,7 @@ export function DataTable<TData>({
 					)}
 					{showLoadingState
 						? loadingRowKeys.map((rowKey) => (
-								<Box className="rb-resource-card" key={rowKey.id}>
+								<Box className="am-resource-card" key={rowKey.id}>
 									<SkeletonText noOfLines={1} w="50%" />
 									<Skeleton h="3" w="80%" mt={3} />
 									<Skeleton h="3" w="62%" mt={2} />
@@ -1017,7 +1017,7 @@ export function DataTable<TData>({
 								return (
 									<Box
 										key={row.id}
-										className="rb-resource-card"
+										className="am-resource-card"
 										data-expanded={isExpanded ? "true" : undefined}
 										data-selected={row.getIsSelected() ? "true" : undefined}
 										role={canExpand ? "button" : undefined}
@@ -1035,7 +1035,7 @@ export function DataTable<TData>({
 									>
 										<HStack
 											align="center"
-											className="rb-resource-card-main"
+											className="am-resource-card-main"
 											spacing={2.5}
 											minW={0}
 										>
@@ -1052,18 +1052,18 @@ export function DataTable<TData>({
 											)}
 											<Box minW={0} flex="1">
 												<Flex align="center" justify="space-between" gap={2.5} minW={0}>
-													<Box minW={0} flex="1" className="rb-resource-primary">
+													<Box minW={0} flex="1" className="am-resource-primary">
 														{primary ? (
 															<DataTableCell row={row} column={primary} />
 														) : null}
 													</Box>
 													{summary && (
-														<Box className="rb-resource-summary">
+														<Box className="am-resource-summary">
 															<DataTableCell row={row} column={summary} />
 														</Box>
 													)}
 													{hasActions && (
-														<Box flexShrink={0} className="rb-mobile-actions">
+														<Box flexShrink={0} className="am-mobile-actions">
 															{resolvedRowActions.length > 0 ? (
 																<RowActionsMenu
 																	actions={resolvedRowActions}
@@ -1076,20 +1076,20 @@ export function DataTable<TData>({
 											</Box>
 										</HStack>
 										{(isExpanded || hasExpandedRow) && (
-											<Box className="rb-resource-expanded">
+											<Box className="am-resource-expanded">
 												<Box
-													className="rb-resource-details"
+													className="am-resource-details"
 													data-density={compactDetails ? "compact" : undefined}
 												>
 													{detailColumns.map((column) => (
 														<Box
 															key={`${row.id}-${column.id}`}
-															className="rb-resource-meta"
+															className="am-resource-meta"
 														>
 															<Text as="span" color="panel.textMuted" flexShrink={0}>
 																{column.mobileMetaLabel ?? column.mobileLabel ?? column.header}
 															</Text>
-															<Box color="panel.text" minW={0} className="rb-resource-meta-value">
+															<Box color="panel.text" minW={0} className="am-resource-meta-value">
 																<DataTableCell
 																	row={row}
 																	column={column}
@@ -1101,7 +1101,7 @@ export function DataTable<TData>({
 												</Box>
 												{(resolvedRowActions.length > 0 || renderRowActions) && (
 													<Flex
-														className="rb-resource-expanded-actions"
+														className="am-resource-expanded-actions"
 														align="center"
 														justify="flex-end"
 														gap={2}
@@ -1111,7 +1111,7 @@ export function DataTable<TData>({
 																<InlineRowActions actions={resolvedRowActions} />
 															) : renderRowActions ? (
 																<Box
-																	className="rb-inline-actions"
+																	className="am-inline-actions"
 																	onClick={(event) => event.stopPropagation()}
 																>
 																	{renderRowActions(original)}
@@ -1124,7 +1124,7 @@ export function DataTable<TData>({
 										)}
 										{hasExpandedRow && (
 											<Box
-												className="rb-resource-expanded"
+												className="am-resource-expanded"
 												onClick={(event) => event.stopPropagation()}
 											>
 												{renderExpandedRow?.(original)}
@@ -1136,7 +1136,7 @@ export function DataTable<TData>({
 					{state}
 				</VStack>
 			) : (
-				<Box className="rb-data-table-wrap">
+				<Box className="am-data-table-wrap">
 					<Table
 						size="sm"
 						variant="simple"
@@ -1144,7 +1144,7 @@ export function DataTable<TData>({
 						aria-label={ariaLabel}
 						{...resolvedTableProps}
 					>
-						<Thead className="rb-data-table-head">
+						<Thead className="am-data-table-head">
 							{table.getHeaderGroups().map((headerGroup) => (
 								<Tr key={headerGroup.id}>
 									{headerGroup.headers.map((header) => {
@@ -1173,9 +1173,9 @@ export function DataTable<TData>({
 											<Th
 												key={header.id}
 												className={[
-													isSelectColumn ? "rb-select-cell" : "",
-													isActionsColumn ? "rb-actions-cell" : "",
-													config?.isPrimary ? "rb-primary-cell" : "",
+													isSelectColumn ? "am-select-cell" : "",
+													isActionsColumn ? "am-actions-cell" : "",
+													config?.isPrimary ? "am-primary-cell" : "",
 												].filter(Boolean).join(" ")}
 												w={
 													isSelectColumn
@@ -1279,7 +1279,7 @@ export function DataTable<TData>({
 								: rows.map((row) => (
 										<Fragment key={row.id}>
 											<Tr
-											className="rb-data-table-row"
+											className="am-data-table-row"
 											data-selected={row.getIsSelected() ? "true" : undefined}
 											data-expanded={
 												renderExpandedRow && isRowExpanded?.(row.original)
@@ -1315,10 +1315,10 @@ export function DataTable<TData>({
 													<Td
 														key={cell.id}
 														className={[
-															isSelectColumn ? "rb-select-cell" : "",
-															isActionsColumn ? "rb-actions-cell" : "",
-															config?.isPrimary ? "rb-primary-cell" : "",
-															config?.isMeta ? "rb-meta-cell" : "",
+															isSelectColumn ? "am-select-cell" : "",
+															isActionsColumn ? "am-actions-cell" : "",
+															config?.isPrimary ? "am-primary-cell" : "",
+															config?.isMeta ? "am-meta-cell" : "",
 														].filter(Boolean).join(" ")}
 														textAlign={
 															isActionsColumn
@@ -1378,9 +1378,9 @@ export function DataTable<TData>({
 											})}
 											</Tr>
 											{renderExpandedRow && isRowExpanded?.(row.original) && (
-												<Tr className="rb-data-table-row-detail">
+												<Tr className="am-data-table-row-detail">
 													<Td colSpan={visibleColumnCount} p={0}>
-														<Box className="rb-data-table-expanded-content" p={4}>
+														<Box className="am-data-table-expanded-content" p={4}>
 															{renderExpandedRow(row.original)}
 														</Box>
 													</Td>
@@ -1397,7 +1397,7 @@ export function DataTable<TData>({
 					</Table>
 				</Box>
 			)}
-			{pagination ? <Box mt={3} className="rb-data-table-pagination">{pagination}</Box> : null}
+			{pagination ? <Box mt={3} className="am-data-table-pagination">{pagination}</Box> : null}
 			{bulkChildren && (
 				<BulkActionBar
 					selectedCount={selectedCount}
@@ -1429,7 +1429,7 @@ export function DataTable<TData>({
 					/>
 					<Portal>
 						<MenuList
-							data-rb-context-menu=""
+							data-am-context-menu=""
 							minW="220px"
 							maxW="calc(100vw - 24px)"
 							maxH="min(70vh, 420px)"

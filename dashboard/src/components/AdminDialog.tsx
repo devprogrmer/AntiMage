@@ -1393,7 +1393,7 @@ export const AdminDialog: FC = () => {
 													borderColor: isSelected ? "primary.300" : "gray.600",
 													bg: isSelected ? "gray.700" : "transparent",
 												}}
-												transition="background-color 140ms var(--rb-ease-out), border-color 140ms var(--rb-ease-out), box-shadow 140ms var(--rb-ease-out), transform 120ms var(--rb-ease-out)"
+												transition="background-color 140ms var(--am-ease-out), border-color 140ms var(--am-ease-out), box-shadow 140ms var(--am-ease-out), transform 120ms var(--am-ease-out)"
 												_active={{ transform: "scale(0.99)" }}
 												onClick={() => handleServiceToggle(service.id)}
 												onKeyDown={(event) => {

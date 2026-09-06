@@ -63,6 +63,10 @@ func NewServer(cfg Config) (*Server, error) {
 			handler.ServeHTTP(w, r)
 			return
 		}
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.Path == "/" {
+			http.Redirect(w, r, "/dashboard/login", http.StatusTemporaryRedirect)
+			return
+		}
 		if dashboard.matches(r) {
 			dashboard.serve(w, r)
 			return

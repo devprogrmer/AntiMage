@@ -274,7 +274,7 @@ exit 0`)
 		ID: "0123456789ab", Template: "mirzabot", Domain: "bot.example.com", Path: "bot0123456789ab",
 		Runtime: "php", Version: "0.3.1", SourceSHA: oldSHA, IndexFile: "index.php", Root: root,
 		Socket: socket, Service: "php8.4-fpm", PHPVersion: "8.4", SystemUser: "rbphp_0123456789ab",
-		Database: "rb_mirza_0123456789ab", storageBase: base,
+		Database: "am_mirza_0123456789ab", storageBase: base,
 	}
 	manager := &Manager{
 		baseDir: base, apps: map[string]Record{record.ID: record}, httpClient: server.Client(),
@@ -717,7 +717,7 @@ func TestMirzaBotDatabaseBackupDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin)
-	record := Record{ID: "0123456789ab", Template: "mirzabot", Database: "rb_mirza_0123456789ab"}
+	record := Record{ID: "0123456789ab", Template: "mirzabot", Database: "am_mirza_0123456789ab"}
 	manager := &Manager{apps: map[string]Record{record.ID: record}}
 	request := httptest.NewRequest(http.MethodGet, "/api/settings/external-apps/"+record.ID+"/database-backup", nil)
 	response := httptest.NewRecorder()

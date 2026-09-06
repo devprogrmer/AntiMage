@@ -6,7 +6,7 @@ description: "Manage your own password, API keys, and usage information."
 
 Account contains personal settings for the administrator who is currently signed in. Changes here affect your own login and credentials, not other admins.
 
-<p class="rb-panel-actions"><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/myaccount">Open My Account</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/myaccount">Open My Account</a></p>
 
 ## Guide
 

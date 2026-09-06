@@ -95,9 +95,9 @@ const Moon = chakra(MoonIcon, { baseStyle: { h: 4, w: 4 } });
 const Sun = chakra(SunIcon, { baseStyle: { h: 4, w: 4 } });
 const Check = chakra(CheckIcon, { baseStyle: { h: 4, w: 4 } });
 
-const THEME_KEY = "rb-theme";
+const THEME_KEY = "am-theme";
 const CHAKRA_THEME_KEY = "chakra-ui-color-mode";
-const CUSTOM_THEMES_KEY = "rb-custom-themes";
+const CUSTOM_THEMES_KEY = "am-custom-themes";
 
 type LoginThemeMode = "dark" | "light";
 
@@ -130,18 +130,18 @@ const LoginField: FC<LoginFieldProps> = ({
 	type = "text",
 }) => {
 	const isInvalid = Boolean(errorMessage);
-	const fieldBg = useColorModeValue("white", "var(--rb-panel-main)");
+	const fieldBg = useColorModeValue("white", "var(--am-panel-main)");
 	const borderColor = useColorModeValue(
-		"var(--rb-panel-border)",
-		"var(--rb-panel-border)",
+		"var(--am-panel-border)",
+		"var(--am-panel-border)",
 	);
 	const textColor = useColorModeValue(
-		"var(--rb-panel-text)",
-		"var(--rb-panel-text)",
+		"var(--am-panel-text)",
+		"var(--am-panel-text)",
 	);
 	const mutedColor = useColorModeValue(
-		"var(--rb-panel-text-muted)",
-		"var(--rb-panel-text-muted)",
+		"var(--am-panel-text-muted)",
+		"var(--am-panel-text-muted)",
 	);
 
 	return (
@@ -176,13 +176,13 @@ const LoginField: FC<LoginFieldProps> = ({
 					_hover={{
 						borderColor: isInvalid
 							? "red.400"
-							: "var(--rb-panel-border-strong)",
+							: "var(--am-panel-border-strong)",
 					}}
 					_focusVisible={{
-						borderColor: isInvalid ? "red.400" : "var(--rb-panel-accent)",
+						borderColor: isInvalid ? "red.400" : "var(--am-panel-accent)",
 						boxShadow: isInvalid
 							? "0 0 0 1px rgba(248, 113, 113, 0.6)"
-							: "0 0 0 1px var(--rb-panel-accent)",
+							: "0 0 0 1px var(--am-panel-accent)",
 					}}
 				/>
 				{endElement && (
@@ -208,12 +208,12 @@ const applyLoginThemeMode = (theme: LoginThemeMode) => {
 	) as HTMLElement[];
 	targets.forEach((target) => {
 		target.classList.remove(
-			"rb-theme-light",
-			"rb-theme-dark",
+			"am-theme-light",
+			"am-theme-dark",
 			"chakra-ui-light",
 			"chakra-ui-dark",
 		);
-		target.classList.add(`rb-theme-${theme}`, `chakra-ui-${theme}`);
+		target.classList.add(`am-theme-${theme}`, `chakra-ui-${theme}`);
 		target.dataset.theme = theme;
 		target.style.colorScheme = theme;
 	});
@@ -226,7 +226,7 @@ const LoginThemeMenu: FC = () => {
 	const activeTheme = colorMode === "light" ? "light" : "dark";
 	const menuBg = useColorModeValue("panel.surface", "panel.surface");
 	const menuBorder = useColorModeValue("panel.border", "panel.border");
-	const hoverBg = useColorModeValue("panel.elevated", "panel.elevated");
+	const hoveamg = useColorModeValue("panel.elevated", "panel.elevated");
 	const textColor = useColorModeValue("panel.text", "panel.text");
 
 	const selectTheme = (theme: LoginThemeMode) => {
@@ -265,7 +265,7 @@ const LoginThemeMenu: FC = () => {
 							key={option.key}
 							icon={option.icon}
 							onClick={() => selectTheme(option.key)}
-							_hover={{ bg: hoverBg }}
+							_hover={{ bg: hoveamg }}
 						>
 							<HStack justify="space-between" w="full">
 								<Text>{option.label}</Text>
@@ -292,34 +292,31 @@ export const Login: FC = () => {
 	const { t, i18n } = useTranslation();
 	const dir = i18n.language === "fa" ? "rtl" : "ltr";
 	const pageBg = useColorModeValue(
-		"var(--rb-panel-main)",
-		"var(--rb-panel-main)",
+		"var(--am-panel-main)",
+		"var(--am-panel-main)",
 	);
 	const surfaceBg = useColorModeValue(
-		"var(--rb-panel-surface)",
-		"var(--rb-panel-surface)",
+		"var(--am-panel-surface)",
+		"var(--am-panel-surface)",
 	);
 	const elevatedBg = useColorModeValue(
-		"var(--rb-panel-elevated)",
-		"var(--rb-panel-elevated)",
+		"var(--am-panel-elevated)",
+		"var(--am-panel-elevated)",
 	);
 	const borderColor = useColorModeValue(
-		"var(--rb-panel-border)",
-		"var(--rb-panel-border)",
+		"var(--am-panel-border)",
+		"var(--am-panel-border)",
 	);
 	const textColor = useColorModeValue(
-		"var(--rb-panel-text)",
-		"var(--rb-panel-text)",
+		"var(--am-panel-text)",
+		"var(--am-panel-text)",
 	);
 	const mutedColor = useColorModeValue(
-		"var(--rb-panel-text-muted)",
-		"var(--rb-panel-text-muted)",
+		"var(--am-panel-text-muted)",
+		"var(--am-panel-text-muted)",
 	);
-	const logoFilter = useColorModeValue(
-		"brightness(0)",
-		"brightness(0) invert(1)",
-	);
-	const accentColor = "var(--rb-panel-accent)";
+	const accentColor = "var(--am-panel-accent)";
+	const signalColor = "#63D8CF";
 
 	const {
 		register,
@@ -454,23 +451,109 @@ export const Login: FC = () => {
 
 	return (
 		<Box
-			alignItems="center"
+			alignItems="stretch"
 			bg={pageBg}
-			display="flex"
+			display="grid"
+			gridTemplateColumns={{
+				base: "minmax(0, 420px)",
+				lg: "minmax(0, 1fr) minmax(360px, 430px)",
+			}}
+			gap={{ base: 6, lg: 16 }}
 			justifyContent="center"
 			minH="100dvh"
-			px={{ base: 4, md: 10 }}
+			maxW="1120px"
+			mx="auto"
+			px={{ base: 4, md: 10, lg: 12 }}
 			py={{ base: 6, md: 10 }}
 			w="full"
 		>
-			<VStack maxW="400px" spacing={6} w="full">
+			<VStack
+				align="stretch"
+				display={{ base: "none", lg: "flex" }}
+				justify="center"
+				pb={12}
+				spacing={10}
+			>
+				<HStack align="center" spacing={5}>
+					<Box
+						alignItems="center"
+						bg={elevatedBg}
+						borderColor={borderColor}
+						borderRadius="18px"
+						borderWidth="1px"
+						display="inline-flex"
+						flexShrink={0}
+						h={24}
+						justifyContent="center"
+						w={24}
+					>
+						<LogoIcon alt="AntiMage" h={20} w={20} src={logoUrl} />
+					</Box>
+					<VStack align="start" spacing={1}>
+						<Text
+							color={textColor}
+							fontSize={{ lg: "3xl", xl: "4xl" }}
+							fontWeight="800"
+							lineHeight="1"
+						>
+							AntiMage
+						</Text>
+						<Text
+							color={signalColor}
+							fontSize="xs"
+							fontWeight="800"
+							letterSpacing="0.18em"
+						>
+							CONTROL PLANE
+						</Text>
+					</VStack>
+				</HStack>
+
+				<Box borderInlineStartWidth="2px" borderColor={accentColor} ps={7}>
+					<Text color={textColor} fontSize="2xl" fontWeight="700" lineHeight="1.25" maxW="460px">
+						Private infrastructure, under your control.
+					</Text>
+					<Text color={mutedColor} fontSize="md" lineHeight="1.8" mt={4} maxW="450px">
+						Manage access, nodes, services, and traffic from one focused operator console.
+					</Text>
+				</Box>
+
+				<HStack aria-hidden="true" spacing={1}>
+					{[
+						{ color: accentColor, width: "26%" },
+						{ color: signalColor, width: "42%" },
+						{ color: signalColor, width: "68%" },
+						{ color: accentColor, width: "34%" },
+						{ color: signalColor, width: "84%" },
+						{ color: signalColor, width: "51%" },
+						{ color: accentColor, width: "72%" },
+						{ color: signalColor, width: "38%" },
+					].map((bar) => (
+						<Box
+							key={bar.width}
+							bg={bar.color}
+							h="3px"
+							opacity={bar.color === accentColor ? 0.9 : 0.55}
+							w={bar.width}
+						/>
+					))}
+				</HStack>
+			</VStack>
+
+			<VStack justify="center" spacing={4} w="full">
+				<HStack alignSelf="flex-end" flexShrink={0} spacing={2}>
+					<Language triggerVariant="ghost" />
+					<LoginThemeMenu />
+				</HStack>
 				<Box
 					bg={surfaceBg}
 					borderColor={borderColor}
-					borderRadius="8px"
+					borderRadius="12px"
+					borderTopColor={accentColor}
+					borderTopWidth="3px"
 					borderWidth="1px"
-					boxShadow="0 18px 60px rgba(0, 0, 0, 0.22)"
-					p={{ base: 5, sm: 6 }}
+					boxShadow="0 24px 72px rgba(0, 0, 0, 0.28)"
+					p={{ base: 5, sm: 7 }}
 					w="full"
 				>
 					<HStack justifyContent="space-between" mb={7} spacing={3}>
@@ -479,7 +562,7 @@ export const Login: FC = () => {
 								alignItems="center"
 								bg={elevatedBg}
 								borderColor={borderColor}
-								borderRadius="8px"
+								borderRadius="10px"
 								borderWidth="1px"
 								display="inline-flex"
 								flexShrink={0}
@@ -487,19 +570,16 @@ export const Login: FC = () => {
 								justifyContent="center"
 								w={10}
 							>
-								<LogoIcon
-									alt={t("menu")}
-									filter={logoFilter}
-									src={logoUrl}
-								/>
+								<LogoIcon alt={t("menu")} src={logoUrl} />
 							</Box>
-							<Text fontSize="lg" fontWeight="800" noOfLines={1}>
-								AntiMage
-							</Text>
-						</HStack>
-						<HStack flexShrink={0} spacing={2}>
-							<Language triggerVariant="ghost" />
-							<LoginThemeMenu />
+							<VStack align="start" minW={0} spacing={0}>
+								<Text fontSize="md" fontWeight="800" noOfLines={1}>
+									AntiMage
+								</Text>
+								<Text color={signalColor} fontSize="9px" fontWeight="800" letterSpacing="0.12em">
+									ADMIN ACCESS
+								</Text>
+							</VStack>
 						</HStack>
 					</HStack>
 
@@ -577,7 +657,7 @@ export const Login: FC = () => {
 									mt={1}
 									type="submit"
 									w="full"
-									_hover={{ bg: "var(--rb-panel-accent-hover)" }}
+									_hover={{ bg: "var(--am-panel-accent-hover)" }}
 									_active={{ transform: "translateY(1px)" }}
 								>
 									{t("login")}

@@ -614,8 +614,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			};
 
 	const { colorMode } = useColorMode();
-	const footerBg = useColorModeValue("white", "gray.900");
-	const footerBorderColor = useColorModeValue("gray.200", "whiteAlpha.300");
+	const footeamg = useColorModeValue("white", "gray.900");
+	const footeamorderColor = useColorModeValue("gray.200", "whiteAlpha.300");
 
 	const UNIT_RADIUS = "6px";
 
@@ -3022,7 +3022,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 												>
 													{hasExistingKey && canSetCustomKey && (
 														<>
-															<FormControl className="rb-dialog-switch-row">
+															<FormControl className="am-dialog-switch-row">
 																<FormLabel mb={0}>
 																	{t("userDialog.allowManualKeyEntry")}
 																</FormLabel>
@@ -3090,13 +3090,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
 													minW={0}
 												>
 													<Box
-														className="xray-dialog-section rb-dialog-collapsible-section"
+														className="xray-dialog-section am-dialog-collapsible-section"
 														w="full"
 														minW={0}
 														mb="10px"
 													>
 														<Flex
-															className="rb-dialog-collapsible-trigger"
+															className="am-dialog-collapsible-trigger"
 															align="center"
 															justify="space-between"
 															cursor="pointer"
@@ -3111,7 +3111,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																justify="flex-start"
 															>
 																<Text
-																	className="rb-dialog-collapsible-title"
+																	className="am-dialog-collapsible-title"
 																	fontWeight="semibold"
 																	textAlign={isRTL ? "right" : "left"}
 																	w="full"
@@ -3135,7 +3135,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 														</Flex>
 														<Collapse in={autoRenewOpen} animateOpacity>
 															<VStack
-																className="rb-dialog-collapsible-body"
+																className="am-dialog-collapsible-body"
 																align="stretch"
 																spacing={4}
 																w="full"
@@ -3482,13 +3482,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
 													minW={0}
 												>
 													<Box
-														className="xray-dialog-section rb-dialog-collapsible-section"
+														className="xray-dialog-section am-dialog-collapsible-section"
 														w="full"
 														minW={0}
 														mb="10px"
 													>
 														<Flex
-															className="rb-dialog-collapsible-trigger"
+															className="am-dialog-collapsible-trigger"
 															align="center"
 															justify="space-between"
 															cursor="pointer"
@@ -3496,7 +3496,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 															gap={3}
 														>
 															<Text
-																className="rb-dialog-collapsible-title"
+																className="am-dialog-collapsible-title"
 																fontWeight="semibold"
 																textAlign="start"
 																flex="1"
@@ -3514,7 +3514,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 														</Flex>
 														<Collapse in={otherInfoOpen} animateOpacity>
 															<VStack
-																className="rb-dialog-collapsible-body"
+																className="am-dialog-collapsible-body"
 																align="stretch"
 																spacing={3}
 																w="full"
@@ -3890,13 +3890,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
 								bottom={0}
 								zIndex="sticky"
 								flexShrink={0}
-								bg={footerBg}
+								bg={footeamg}
 								borderTopWidth="1px"
-								borderColor={footerBorderColor}
+								borderColor={footeamorderColor}
 								px={{ base: 3, sm: 4, md: 5 }}
 								pt={{ base: 2.5, md: 3 }}
 								pb={{
-									base: "var(--rb-dialog-safe-bottom)",
+									base: "var(--am-dialog-safe-bottom)",
 									md: 3,
 								}}
 								boxShadow={{

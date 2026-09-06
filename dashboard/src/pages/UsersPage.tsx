@@ -354,7 +354,7 @@ export const UsersPage: FC = () => {
 
 	return (
 		<VStack
-			className="rb-users-section"
+			className="am-users-section"
 			spacing={4}
 			align="stretch"
 			dir={isRTL ? "rtl" : "ltr"}

@@ -29,7 +29,7 @@ const normalizeThemeMode = (value?: string | null): ThemeMode =>
 const getInitialThemeMode = (): ThemeMode => {
 	try {
 		return normalizeThemeMode(
-			localStorage.getItem("rb-theme") || localStorageManager.get(),
+			localStorage.getItem("am-theme") || localStorageManager.get(),
 		);
 	} catch {
 		return "dark";
@@ -38,7 +38,7 @@ const getInitialThemeMode = (): ThemeMode => {
 
 const applyInitialThemeMode = (mode: ThemeMode) => {
 	try {
-		localStorage.setItem("rb-theme", mode);
+		localStorage.setItem("am-theme", mode);
 		localStorage.setItem("chakra-ui-color-mode", mode);
 	} catch {}
 	const targets = [document.documentElement, document.body].filter(
@@ -46,12 +46,12 @@ const applyInitialThemeMode = (mode: ThemeMode) => {
 	) as HTMLElement[];
 	targets.forEach((target) => {
 		target.classList.remove(
-			"rb-theme-light",
-			"rb-theme-dark",
+			"am-theme-light",
+			"am-theme-dark",
 			"chakra-ui-light",
 			"chakra-ui-dark",
 		);
-		target.classList.add(`rb-theme-${mode}`, `chakra-ui-${mode}`);
+		target.classList.add(`am-theme-${mode}`, `chakra-ui-${mode}`);
 		target.dataset.theme = mode;
 		target.style.colorScheme = mode;
 	});

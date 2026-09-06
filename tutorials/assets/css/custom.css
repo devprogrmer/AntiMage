@@ -18,7 +18,7 @@
 	--primary-hue: 344deg;
 	--primary-saturation: 100%;
 	--primary-lightness: 44%;
-	--rb-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+	--am-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 	--hx-tracking-tight: 0;
 	--hx-tracking-tighter: 0;
 }
@@ -49,14 +49,14 @@ html.dark .hextra-nav-container-blur {
 	display: none;
 }
 
-.rb-panel-actions {
+.am-panel-actions {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0.5rem;
 	margin-block: 1rem;
 }
 
-.rb-panel-button {
+.am-panel-button {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -71,56 +71,56 @@ html.dark .hextra-nav-container-blur {
 	font-weight: 600;
 	text-decoration: none;
 	transition:
-		transform 100ms var(--rb-ease-out),
+		transform 100ms var(--am-ease-out),
 		background-color 150ms ease,
 		color 150ms ease;
 }
 
-.rb-panel-button[data-primary="true"] {
+.am-panel-button[data-primary="true"] {
 	background: hsl(
 		var(--primary-hue) var(--primary-saturation) var(--primary-lightness)
 	);
 	color: white;
 }
 
-.rb-panel-button:active {
+.am-panel-button:active {
 	transform: scale(0.98);
 }
 
 @media (hover: hover) and (pointer: fine) {
-	.rb-panel-button:hover {
+	.am-panel-button:hover {
 		background: hsl(var(--primary-hue) var(--primary-saturation) 96%);
 	}
 
-	.dark .rb-panel-button:hover {
+	.dark .am-panel-button:hover {
 		background: hsl(var(--primary-hue) 30% 20%);
 	}
 
-	.rb-panel-button[data-primary="true"]:hover {
+	.am-panel-button[data-primary="true"]:hover {
 		background: hsl(var(--primary-hue) var(--primary-saturation) 38%);
 	}
 }
 
-html:not([data-rb-privileged="true"])
+html:not([data-am-privileged="true"])
 	.hextra-sidebar-container
 	li:has(
 		> .hextra-sidebar-item
 			> a:is([href*="/admin/"], [href*="/settings/"])
 	),
-html:not([data-rb-privileged="true"])
+html:not([data-am-privileged="true"])
 	.hextra-search-results
 	li:has(a:is([href*="/admin/"], [href*="/settings/"])),
-html:not([data-rb-privileged="true"])
+html:not([data-am-privileged="true"])
 	main
 	li:has(> a[href*="/settings/"]) {
 	display: none;
 }
 
-html:not([data-rb-privileged="true"]) .rb-admin-only {
+html:not([data-am-privileged="true"]) .am-admin-only {
 	display: none;
 }
 
-html[data-rb-admin-page="true"]:not([data-rb-privileged="true"]) main {
+html[data-am-admin-page="true"]:not([data-am-privileged="true"]) main {
 	visibility: hidden;
 }
 
@@ -132,18 +132,18 @@ html[data-rb-admin-page="true"]:not([data-rb-privileged="true"]) main {
 
 @media (max-width: 48rem) {
 	.hextra-sidebar-container {
-		transition: transform 220ms var(--rb-ease-out);
+		transition: transform 220ms var(--am-ease-out);
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.rb-panel-button {
+	.am-panel-button {
 		transition:
 			background-color 100ms ease,
 			color 100ms ease;
 	}
 
-	.rb-panel-button:active {
+	.am-panel-button:active {
 		transform: none;
 	}
 }

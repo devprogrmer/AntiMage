@@ -28,7 +28,7 @@ AntiMage panel to create, manage, and troubleshoot users, admins, and nodes. Mai
 - [Review account settings](account/) — manage your password, API keys, and usage.
 - [Configure the panel](settings/) — understand each settings tab before changing shared behavior.
 
-<p class="rb-admin-only"><a href="admin/">Open administration guides</a> — nodes, admins, roles, and automation for privileged administrators.</p>
+<p class="am-admin-only"><a href="admin/">Open administration guides</a> — nodes, admins, roles, and automation for privileged administrators.</p>
 
 ## Quick tips
 

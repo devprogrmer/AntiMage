@@ -220,10 +220,10 @@ export type InboundFormValues = {
 	realityPublicKey: string;
 	realityMldsa65Seed: string;
 	realityMldsa65Verify: string;
-	realityLimitFallbackUploadAfterBytes: string;
+	realityLimitFallbackUploadAfteamytes: string;
 	realityLimitFallbackUploadBytesPerSec: string;
 	realityLimitFallbackUploadBurstBytesPerSec: string;
-	realityLimitFallbackDownloadAfterBytes: string;
+	realityLimitFallbackDownloadAfteamytes: string;
 	realityLimitFallbackDownloadBytesPerSec: string;
 	realityLimitFallbackDownloadBurstBytesPerSec: string;
 	realityRawSettings: Record<string, any>;
@@ -602,7 +602,7 @@ const defaultPortText = (protocol: Protocol): string => {
 	return randomPortText();
 };
 
-const defaultL2TPPSK = (): string => `rb-l2tp-${randomLowerAndNum(24)}`;
+const defaultL2TPPSK = (): string => `am-l2tp-${randomLowerAndNum(24)}`;
 
 export const createDefaultHysteriaUdpMask = (): HysteriaUdpMaskForm => ({
 	type: "salamander",
@@ -1416,7 +1416,7 @@ export const validateInboundFormFields = (
 			}
 		}
 		for (const [field, label] of [
-			["realityLimitFallbackUploadAfterBytes", "Upload fallback after bytes"],
+			["realityLimitFallbackUploadAfteamytes", "Upload fallback after bytes"],
 			[
 				"realityLimitFallbackUploadBytesPerSec",
 				"Upload fallback bytes per second",
@@ -1426,7 +1426,7 @@ export const validateInboundFormFields = (
 				"Upload fallback burst bytes per second",
 			],
 			[
-				"realityLimitFallbackDownloadAfterBytes",
+				"realityLimitFallbackDownloadAfteamytes",
 				"Download fallback after bytes",
 			],
 			[
@@ -1734,10 +1734,10 @@ export const createDefaultInboundForm = (
 	realityPublicKey: "",
 	realityMldsa65Seed: "",
 	realityMldsa65Verify: "",
-	realityLimitFallbackUploadAfterBytes: "",
+	realityLimitFallbackUploadAfteamytes: "",
 	realityLimitFallbackUploadBytesPerSec: "",
 	realityLimitFallbackUploadBurstBytesPerSec: "",
-	realityLimitFallbackDownloadAfterBytes: "",
+	realityLimitFallbackDownloadAfteamytes: "",
 	realityLimitFallbackDownloadBytesPerSec: "",
 	realityLimitFallbackDownloadBurstBytesPerSec: "",
 	realityRawSettings: {},
@@ -2306,8 +2306,8 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			realitySettingsMeta.mldsa65Verify ??
 			realitySettings.mldsa65Verify ??
 			base.realityMldsa65Verify,
-		realityLimitFallbackUploadAfterBytes: toInputValue(
-			realitySettings.limitFallbackUpload?.afterBytes,
+		realityLimitFallbackUploadAfteamytes: toInputValue(
+			realitySettings.limitFallbackUpload?.afteamytes,
 		),
 		realityLimitFallbackUploadBytesPerSec: toInputValue(
 			realitySettings.limitFallbackUpload?.bytesPerSec,
@@ -2315,8 +2315,8 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		realityLimitFallbackUploadBurstBytesPerSec: toInputValue(
 			realitySettings.limitFallbackUpload?.burstBytesPerSec,
 		),
-		realityLimitFallbackDownloadAfterBytes: toInputValue(
-			realitySettings.limitFallbackDownload?.afterBytes,
+		realityLimitFallbackDownloadAfteamytes: toInputValue(
+			realitySettings.limitFallbackDownload?.afteamytes,
 		),
 		realityLimitFallbackDownloadBytesPerSec: toInputValue(
 			realitySettings.limitFallbackDownload?.bytesPerSec,
@@ -3785,8 +3785,8 @@ const buildStreamSettings = (
 		realityPayload.shortIds = shortIds.length ? shortIds : undefined;
 		realityPayload.mldsa65Seed = values.realityMldsa65Seed?.trim() || undefined;
 		realityPayload.limitFallbackUpload = cleanOptionalObject({
-			afterBytes: parseOptionalNumber(
-				values.realityLimitFallbackUploadAfterBytes,
+			afteamytes: parseOptionalNumber(
+				values.realityLimitFallbackUploadAfteamytes,
 			),
 			bytesPerSec: parseOptionalNumber(
 				values.realityLimitFallbackUploadBytesPerSec,
@@ -3796,8 +3796,8 @@ const buildStreamSettings = (
 			),
 		});
 		realityPayload.limitFallbackDownload = cleanOptionalObject({
-			afterBytes: parseOptionalNumber(
-				values.realityLimitFallbackDownloadAfterBytes,
+			afteamytes: parseOptionalNumber(
+				values.realityLimitFallbackDownloadAfteamytes,
 			),
 			bytesPerSec: parseOptionalNumber(
 				values.realityLimitFallbackDownloadBytesPerSec,

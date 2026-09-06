@@ -12,11 +12,11 @@ export const UserOnlineBadge: FC<UserOnlineBadgeProps> = ({ isOnline }) => {
 	return (
 		<HStack
 			as="span"
-			className="rb-user-online-tag"
+			className="am-user-online-tag"
 			data-online={isOnline ? "true" : "false"}
 			spacing={1}
 		>
-			<Box as="span" className="rb-user-status-dot" aria-hidden="true" />
+			<Box as="span" className="am-user-status-dot" aria-hidden="true" />
 			<Text as="span">
 				{t(isOnline ? "usersTable.online" : "usersTable.offline")}
 			</Text>

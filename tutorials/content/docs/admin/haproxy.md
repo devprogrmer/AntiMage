@@ -9,7 +9,7 @@ adminOnly: true
 
 AntiMage can run HAProxy on selected nodes and use one public TCP port for several destinations. HAProxy reads the beginning of each connection, matches an SNI, HTTP Host, or HTTP Path, then passes the original TCP stream to the correct Xray inbound, external service, or website. It does not decrypt Xray traffic.
 
-<p class="rb-panel-actions"><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/haproxy">Open HAProxy</a><a class="rb-panel-button" href="#eligible-inbounds">Check inbound eligibility</a><a class="rb-panel-button" href="#troubleshooting">Troubleshooting</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/haproxy">Open HAProxy</a><a class="am-panel-button" href="#eligible-inbounds">Check inbound eligibility</a><a class="am-panel-button" href="#troubleshooting">Troubleshooting</a></p>
 
 {{< callout type="warning" >}}
 The public port belongs to HAProxy after the configuration is enabled. Do not leave Xray, Nginx, Apache, OpenVPN, or another process listening on the same address and port. Every selected Xray inbound also needs its own different backend port.

@@ -1,6 +1,9 @@
 import { type FetchOptions, $fetch as ohMyFetch } from "ofetch";
 
-const configuredBaseURL = import.meta.env.VITE_BASE_API || "";
+// The embedded dashboard always talks to the gateway under /api. Keep an
+// explicit environment override for hosted deployments, but make the
+// standalone build correct without requiring a .env file.
+const configuredBaseURL = import.meta.env.VITE_BASE_API || "/api";
 
 const getDevProxyBaseURL = (baseURL: string) => {
 	try {

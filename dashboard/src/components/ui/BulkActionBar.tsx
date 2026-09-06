@@ -29,12 +29,12 @@ export const BulkActionBar: FC<BulkActionBarProps> = ({
 	const isVisible = selectedCount > 0;
 	const sidebarInset = {
 		base: "12px",
-		md: "calc(var(--rb-sidebar-offset, 0px) + 16px)",
+		md: "calc(var(--am-sidebar-offset, 0px) + 16px)",
 	};
 
 	return (
 		<Box
-			className="rb-bulk-action-bar"
+			className="am-bulk-action-bar"
 			data-visible={isVisible ? "true" : undefined}
 			aria-hidden={!isVisible}
 			position="fixed"

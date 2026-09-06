@@ -1,15 +1,15 @@
-<meta name="rb-tutorial-version" content="{{ site.Params.tutorialVersion }}" />
-<meta name="rb-admin-only" content="{{ .Params.adminOnly | default false }}" />
+<meta name="am-tutorial-version" content="{{ site.Params.tutorialVersion }}" />
+<meta name="am-admin-only" content="{{ .Params.adminOnly | default false }}" />
 <script>
 	(() => {
 		try {
-			const mode = localStorage.getItem("rb-theme") || localStorage.getItem("chakra-ui-color-mode");
+			const mode = localStorage.getItem("am-theme") || localStorage.getItem("chakra-ui-color-mode");
 			if (mode === "light" || mode === "dark") {
 				localStorage.setItem("color-theme", mode);
 				setTheme(mode);
 			}
-			if (document.querySelector('meta[name="rb-admin-only"]')?.content === "true") {
-				document.documentElement.dataset.rbAdminPage = "true";
+			if (document.querySelector('meta[name="am-admin-only"]')?.content === "true") {
+				document.documentElement.dataset.amAdminPage = "true";
 			}
 		} catch {}
 	})();

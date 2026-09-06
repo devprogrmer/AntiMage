@@ -9,7 +9,7 @@ adminOnly: true
 
 سه بخش: معرفی صفحه ادمین، آموزش مدیریت، و رول‌های ادمین (هر رول در باکس جدا).
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/admins">رفتن به ادمین‌ها</a><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/admins" data-session-key="openCreateAdmin" data-session-value="true">ساخت ادمین</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/admins">رفتن به ادمین‌ها</a><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/admins" data-session-key="openCreateAdmin" data-session-value="true">ساخت ادمین</a></p>
 
 ## معرفی {#section-admins-page-intro}
 

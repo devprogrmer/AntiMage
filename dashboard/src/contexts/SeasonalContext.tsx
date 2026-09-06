@@ -34,7 +34,7 @@ export const SeasonalProvider: FC<{ children: ReactNode }> = ({ children }) => {
 	const [now, setNow] = useState(() => new Date());
 	const [snowEnabled, setSnowEnabled] = useState<boolean>(() => {
 		try {
-			const stored = localStorage.getItem("rb-snow-enabled");
+			const stored = localStorage.getItem("am-snow-enabled");
 			return stored === null ? true : stored === "true";
 		} catch {
 			return true;
@@ -56,7 +56,7 @@ export const SeasonalProvider: FC<{ children: ReactNode }> = ({ children }) => {
 
 	useEffect(() => {
 		try {
-			localStorage.setItem("rb-snow-enabled", String(snowEnabled));
+			localStorage.setItem("am-snow-enabled", String(snowEnabled));
 		} catch {}
 	}, [snowEnabled]);
 
@@ -64,11 +64,11 @@ export const SeasonalProvider: FC<{ children: ReactNode }> = ({ children }) => {
 	useEffect(() => {
 		const root = document.documentElement;
 		if (isChristmas) {
-			root.classList.add("rb-seasonal-christmas");
+			root.classList.add("am-seasonal-christmas");
 		} else {
-			root.classList.remove("rb-seasonal-christmas");
+			root.classList.remove("am-seasonal-christmas");
 		}
-		return () => root.classList.remove("rb-seasonal-christmas");
+		return () => root.classList.remove("am-seasonal-christmas");
 	}, [isChristmas]);
 
 	return (

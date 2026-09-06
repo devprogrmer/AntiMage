@@ -9,7 +9,7 @@ adminOnly: true
 
 AntiMage می‌تواند HAProxy را روی نودهای انتخاب‌شده اجرا کند و چند مقصد را پشت یک پورت عمومی TCP قرار دهد. HAProxy ابتدای هر اتصال را می‌خواند، SNI یا HTTP Host یا HTTP Path را تشخیص می‌دهد و همان جریان TCP را به اینباند Xray، سرویس خارجی یا وب‌سایت درست می‌فرستد. ترافیک Xray در این مسیر رمزگشایی نمی‌شود.
 
-<p class="rb-panel-actions"><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/haproxy">باز کردن HAProxy</a><a class="rb-panel-button" href="#eligible-inbounds">بررسی شرایط اینباندها</a><a class="rb-panel-button" href="#troubleshooting">عیب‌یابی</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/haproxy">باز کردن HAProxy</a><a class="am-panel-button" href="#eligible-inbounds">بررسی شرایط اینباندها</a><a class="am-panel-button" href="#troubleshooting">عیب‌یابی</a></p>
 
 {{< callout type="warning" >}}
 بعد از فعال‌شدن تنظیمات، پورت عمومی در اختیار HAProxy است. Xray، Nginx، Apache، OpenVPN یا برنامه دیگری نباید روی همان آدرس و پورت درحال Listen باشد. هر اینباند Xray انتخاب‌شده نیز باید پورت مقصد جداگانه‌ای داشته باشد که با پورت عمومی HAProxy فرق کند.

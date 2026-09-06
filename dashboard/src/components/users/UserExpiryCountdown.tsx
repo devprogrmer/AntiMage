@@ -102,7 +102,7 @@ export const UserExpiryCountdown: FC<UserExpiryCountdownProps> = ({
 
 	return (
 		<Text
-			className="rb-user-expiry-countdown"
+			className="am-user-expiry-countdown"
 			data-urgency={urgency}
 			fontSize="sm"
 			fontWeight="semibold"

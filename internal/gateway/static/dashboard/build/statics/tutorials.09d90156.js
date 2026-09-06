@@ -1,0 +1,1 @@
+const a=t=>(t||"en").toLowerCase().startsWith("fa")?"fa":"en",e=t=>{const o=t.replace(/\/+$/,"");return o==="/"?"":o},n="tutorial-content",c=(t,o,s="")=>{const r=e(t),l=a(o)==="fa"?"fa/":"";return`${r}/${n}/${l}docs/${s.replace(/^\/+/,"")}`},i=t=>`${e(t)}/${n}/manifest.json`,u=t=>`am-tutorials-seen-${a(t)}`;export{u as a,c as b,i as g,a as n};

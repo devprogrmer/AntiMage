@@ -7,7 +7,7 @@ description: "آشنایی با تب‌های Panel، Telegram، Subscriptions �
 
 صفحه تنظیمات رفتارهای مشترک پنل و یکپارچه‌سازی‌ها را کنترل می‌کند. تب‌ها و عملیات قابل مشاهده به مجوز ادمین و نوع نصب بستگی دارند.
 
-<p class="rb-panel-actions"><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/settings#panel">باز کردن تنظیمات</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/settings#panel">باز کردن تنظیمات</a></p>
 
 ## پیش از هر تغییر
 
@@ -18,7 +18,7 @@ description: "آشنایی با تب‌های Panel، Telegram، Subscriptions �
 
 ## تب Panel {#panel-tab}
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/settings#panel">باز کردن تب Panel</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/settings#panel">باز کردن تب Panel</a></p>
 
 ### فرمت پیش‌فرض لینک سابسکریپشن
 
@@ -50,7 +50,7 @@ description: "آشنایی با تب‌های Panel، Telegram، Subscriptions �
 
 ## نگهداری و بکاپ در داشبورد {#dashboard-maintenance}
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/">باز کردن داشبورد</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/">باز کردن داشبورد</a></p>
 
 نسخه پنل و دکمه‌های **Restart panel**، **Backup** و **Update panel** اکنون در هدر **System overview** داشبورد قرار دارند. این عملیات سطح host به مجوز مربوط و نصب باینری نیاز دارند.
 
@@ -64,7 +64,7 @@ description: "آشنایی با تب‌های Panel، Telegram، Subscriptions �
 
 ### Backup
 
-AntiMage یک فایل قابل‌حمل با پسوند `.rbbackup` می‌سازد که میان نصب‌های SQLite، MySQL و MariaDB قابل بازیابی است.
+AntiMage یک فایل قابل‌حمل با پسوند `.ambackup` می‌سازد که میان نصب‌های SQLite، MySQL و MariaDB قابل بازیابی است.
 
 | محدوده | داده‌های داخل بکاپ |
 | --- | --- |
@@ -75,7 +75,7 @@ AntiMage یک فایل قابل‌حمل با پسوند `.rbbackup` می‌سا
 
 ## تب Telegram {#telegram-tab}
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/settings#telegram">باز کردن تب Telegram</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/settings#telegram">باز کردن تب Telegram</a></p>
 
 1. یک بات بسازید و **Bot API Token** آن را وارد کنید. توکن را مانند رمز عبور نگهداری کنید.
 2. شناسه‌های عددی را در **Admin Chat IDs** وارد کنید. اگر لاگ‌ها باید به مقصد دیگری بروند، **Logs Chat ID** را جدا تنظیم کنید.
@@ -93,7 +93,7 @@ AntiMage یک فایل قابل‌حمل با پسوند `.rbbackup` می‌سا
 
 ## تب Subscriptions {#subscriptions-tab}
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/settings#subscriptions">باز کردن تب Subscriptions</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/settings#subscriptions">باز کردن تب Subscriptions</a></p>
 
 تنظیمات Global سابسکریپشن برای همه ادمین‌ها اعمال می‌شود، مگر برای ادمینی که Override جداگانه دارد.
 
@@ -109,7 +109,7 @@ Override ادمین باید استثنا باشد. مقادیر مشترک را
 
 ## تب SSL {#ssl-tab}
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/settings#ssl">باز کردن تب SSL</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/settings#ssl">باز کردن تب SSL</a></p>
 
 تب SSL گواهی‌های ذخیره‌شده را نشان می‌دهد و امکان جست‌وجو براساس دامنه، ارائه‌دهنده یا وضعیت را دارد. با فیلتر انقضا می‌توانید گواهی‌هایی را ببینید که در هفت روز آینده منقضی می‌شوند.
 

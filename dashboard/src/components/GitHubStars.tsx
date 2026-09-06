@@ -48,7 +48,7 @@ export const GitHubStars: FC = () => {
 			}}
 			_active={{ bg: "panel.surface" }}
 			_focusVisible={{
-				boxShadow: "0 0 0 2px var(--rb-panel-accent)",
+				boxShadow: "0 0 0 2px var(--am-panel-accent)",
 				outline: "none",
 			}}
 			transition="background 0.15s ease, border-color 0.15s ease, color 0.15s ease"

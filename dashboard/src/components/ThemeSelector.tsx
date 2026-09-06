@@ -34,10 +34,10 @@ import {
 import { useTranslation } from "react-i18next";
 import { updateThemeColor } from "utils/themeColor";
 
-const THEME_KEY = "rb-theme";
+const THEME_KEY = "am-theme";
 const CHAKRA_THEME_KEY = "chakra-ui-color-mode";
-const ACCENT_KEY = "rb-accent";
-const CUSTOM_THEMES_KEY = "rb-custom-themes";
+const ACCENT_KEY = "am-accent";
+const CUSTOM_THEMES_KEY = "am-custom-themes";
 
 type ThemeMode = "dark" | "light";
 
@@ -87,10 +87,10 @@ const SwatchIconChakra = chakra(SwatchIcon, {
 
 const ACCENT_OPTIONS: AccentOption[] = [
 	{
-		key: "crimson",
-		label: "Red / Crimson",
-		color: "#e0003c",
-		hover: "#f01446",
+		key: "coral",
+		label: "Coral",
+		color: "#f05e63",
+		hover: "#ff7377",
 	},
 	{ key: "blue", label: "Blue", color: "#2563eb", hover: "#3b82f6" },
 	{ key: "green", label: "Green", color: "#16a34a", hover: "#22c55e" },
@@ -223,13 +223,13 @@ const normalizeTheme = (value?: string | null): ThemeMode =>
 	value === "light" ? "light" : "dark";
 
 const normalizeAccent = (value?: string | null) =>
-	ACCENT_OPTIONS.some((option) => option.key === value) ? value! : "crimson";
+	ACCENT_OPTIONS.some((option) => option.key === value) ? value! : "coral";
 
 const getStoredAccent = () => {
 	try {
 		return normalizeAccent(localStorage.getItem(ACCENT_KEY));
 	} catch {
-		return "crimson";
+		return "coral";
 	}
 };
 
@@ -238,8 +238,8 @@ const applyAccent = (accentKey: string) => {
 		ACCENT_OPTIONS.find((option) => option.key === accentKey) ??
 		ACCENT_OPTIONS[0];
 	const root = document.documentElement;
-	root.style.setProperty("--rb-panel-accent", accent.color);
-	root.style.setProperty("--rb-panel-accent-hover", accent.hover);
+	root.style.setProperty("--am-panel-accent", accent.color);
+	root.style.setProperty("--am-panel-accent-hover", accent.hover);
 	Object.entries(generatePalette(accent.color)).forEach(([key, value]) => {
 		root.style.setProperty(key, value);
 	});
@@ -257,12 +257,12 @@ const applyThemeMode = (theme: ThemeMode) => {
 	) as HTMLElement[];
 	targets.forEach((target) => {
 		target.classList.remove(
-			"rb-theme-light",
-			"rb-theme-dark",
+			"am-theme-light",
+			"am-theme-dark",
 			"chakra-ui-light",
 			"chakra-ui-dark",
 		);
-		target.classList.add(`rb-theme-${theme}`, `chakra-ui-${theme}`);
+		target.classList.add(`am-theme-${theme}`, `chakra-ui-${theme}`);
 		target.dataset.theme = theme;
 		target.style.colorScheme = theme;
 	});
@@ -457,7 +457,7 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 											borderColor: "panel.text",
 										}}
 										_focusVisible={{
-											boxShadow: "0 0 0 2px var(--rb-panel-accent)",
+											boxShadow: "0 0 0 2px var(--am-panel-accent)",
 										}}
 										onClick={() => selectAccent(accent.key)}
 									/>

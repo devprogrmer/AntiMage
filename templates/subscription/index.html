@@ -23,63 +23,63 @@
 
         :root {
             color-scheme: dark;
-            --rb-font-ltr: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-            --rb-font-rtl: "Arad", var(--rb-font-ltr);
-            --rb-panel-bg: #101010;
-            --rb-panel-main: #111111;
-            --rb-panel-sidebar: #2b2b2b;
-            --rb-panel-surface: #242424;
-            --rb-panel-elevated: #2f2f2f;
-            --rb-panel-border: #3a3a3a;
-            --rb-panel-border-strong: #4a4a4a;
-            --rb-panel-text: #f5f5f5;
-            --rb-panel-text-secondary: #b8b8b8;
-            --rb-panel-text-muted: #8a8a8a;
-            --rb-panel-accent: #e0003c;
-            --rb-panel-accent-hover: #f01446;
-            --rb-panel-success: #22c55e;
-            --rb-panel-warning: #f59e0b;
-            --rb-panel-danger: #ef4444;
-            --rb-panel-info: #2563eb;
-            --rb-accent-rgb: 224, 0, 60;
-            --primary-50: #ffe6ed;
-            --primary-100: #ffb8c9;
-            --primary-200: #ff88a5;
-            --primary-300: #fb5a82;
-            --primary-400: #f42d62;
-            --primary-500: #e0003c;
-            --primary-600: #bf0033;
-            --primary-700: #990029;
-            --primary-800: #73001f;
-            --primary-900: #4c0015;
+            --am-font-ltr: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            --am-font-rtl: "Arad", var(--am-font-ltr);
+            --am-panel-bg: #0b1118;
+            --am-panel-main: #0e151d;
+            --am-panel-sidebar: #121d26;
+            --am-panel-surface: #17232d;
+            --am-panel-elevated: #1d2c37;
+            --am-panel-border: #2b3a45;
+            --am-panel-border-strong: #3c505d;
+            --am-panel-text: #eef5f4;
+            --am-panel-text-secondary: #c2d0d1;
+            --am-panel-text-muted: #81939a;
+            --am-panel-accent: #f05e63;
+            --am-panel-accent-hover: #ff7377;
+            --am-panel-success: #22c55e;
+            --am-panel-warning: #f59e0b;
+            --am-panel-danger: #ef4444;
+            --am-panel-info: #2563eb;
+            --am-accent-rgb: 240, 94, 99;
+            --primary-50: #fff0f0;
+            --primary-100: #ffd4d5;
+            --primary-200: #ffb5b7;
+            --primary-300: #ff9699;
+            --primary-400: #ff7377;
+            --primary-500: #f05e63;
+            --primary-600: #d84a50;
+            --primary-700: #b83b42;
+            --primary-800: #8f3036;
+            --primary-900: #65252a;
         }
 
-        .rb-theme-light {
+        .am-theme-light {
             color-scheme: light;
-            --rb-panel-bg: #f4f5f7;
-            --rb-panel-main: #f7f8fa;
-            --rb-panel-sidebar: #ffffff;
-            --rb-panel-surface: #ffffff;
-            --rb-panel-elevated: #eef0f3;
-            --rb-panel-border: #d8dce2;
-            --rb-panel-border-strong: #c2c8d0;
-            --rb-panel-text: #17191c;
-            --rb-panel-text-secondary: #4f5661;
-            --rb-panel-text-muted: #7a828e;
+            --am-panel-bg: #f4f5f7;
+            --am-panel-main: #f7f8fa;
+            --am-panel-sidebar: #ffffff;
+            --am-panel-surface: #ffffff;
+            --am-panel-elevated: #eef0f3;
+            --am-panel-border: #d8dce2;
+            --am-panel-border-strong: #c2c8d0;
+            --am-panel-text: #17191c;
+            --am-panel-text-secondary: #4f5661;
+            --am-panel-text-muted: #7a828e;
         }
 
-        .rb-theme-dark {
+        .am-theme-dark {
             color-scheme: dark;
-            --rb-panel-bg: #101010;
-            --rb-panel-main: #111111;
-            --rb-panel-sidebar: #2b2b2b;
-            --rb-panel-surface: #242424;
-            --rb-panel-elevated: #2f2f2f;
-            --rb-panel-border: #3a3a3a;
-            --rb-panel-border-strong: #4a4a4a;
-            --rb-panel-text: #f5f5f5;
-            --rb-panel-text-secondary: #b8b8b8;
-            --rb-panel-text-muted: #8a8a8a;
+            --am-panel-bg: #0b1118;
+            --am-panel-main: #0e151d;
+            --am-panel-sidebar: #121d26;
+            --am-panel-surface: #17232d;
+            --am-panel-elevated: #1d2c37;
+            --am-panel-border: #2b3a45;
+            --am-panel-border-strong: #3c505d;
+            --am-panel-text: #eef5f4;
+            --am-panel-text-secondary: #c2d0d1;
+            --am-panel-text-muted: #81939a;
         }
 
         * {
@@ -91,23 +91,23 @@
         }
 
         html {
-            font-family: var(--rb-font-ltr);
-            background: var(--rb-panel-bg);
-            color: var(--rb-panel-text);
+            font-family: var(--am-font-ltr);
+            background: var(--am-panel-bg);
+            color: var(--am-panel-text);
         }
 
         html[dir="rtl"] {
-            font-family: var(--rb-font-rtl);
+            font-family: var(--am-font-rtl);
         }
 
         body {
             margin: 0;
             min-height: 100vh;
             background:
-                radial-gradient(circle at top left, rgba(var(--rb-accent-rgb), 0.18), transparent 24rem),
-                radial-gradient(circle at bottom right, rgba(var(--rb-accent-rgb), 0.1), transparent 22rem),
-                linear-gradient(180deg, var(--rb-panel-main), var(--rb-panel-bg));
-            color: var(--rb-panel-text);
+                radial-gradient(circle at top left, rgba(var(--am-accent-rgb), 0.18), transparent 24rem),
+                radial-gradient(circle at bottom right, rgba(var(--am-accent-rgb), 0.1), transparent 22rem),
+                linear-gradient(180deg, var(--am-panel-main), var(--am-panel-bg));
+            color: var(--am-panel-text);
             -webkit-font-smoothing: antialiased;
             text-rendering: optimizeLegibility;
         }
@@ -125,25 +125,25 @@
         }
 
         ::selection {
-            background: rgba(var(--rb-accent-rgb), 0.26);
+            background: rgba(var(--am-accent-rgb), 0.26);
         }
 
-        .rb-shell {
+        .am-shell {
             width: min(1220px, calc(100% - 24px));
             margin: 0 auto;
             padding: 18px 0 36px;
         }
 
-        .rb-panel-card {
-            border: 1px solid var(--rb-panel-border);
+        .am-panel-card {
+            border: 1px solid var(--am-panel-border);
             border-radius: 18px;
             background: rgba(17, 17, 17, 0.82);
-            background: color-mix(in srgb, var(--rb-panel-surface) 90%, transparent);
+            background: color-mix(in srgb, var(--am-panel-surface) 90%, transparent);
             box-shadow: 0 22px 40px rgba(0, 0, 0, 0.16);
             backdrop-filter: blur(18px);
         }
 
-        .rb-topbar {
+        .am-topbar {
             display: flex;
             align-items: flex-start;
             justify-content: space-between;
@@ -154,20 +154,20 @@
             z-index: 50;
         }
 
-        .rb-topbar-copy {
+        .am-topbar-copy {
             min-width: 0;
         }
 
-        .rb-eyebrow {
+        .am-eyebrow {
             margin: 0 0 8px;
-            color: var(--rb-panel-text-muted);
+            color: var(--am-panel-text-muted);
             font-size: 0.74rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.08em;
         }
 
-        .rb-title-row {
+        .am-title-row {
             display: flex;
             align-items: center;
             flex-wrap: wrap;
@@ -175,108 +175,108 @@
             margin-bottom: 6px;
         }
 
-        .rb-title {
+        .am-title {
             margin: 0;
             font-size: clamp(1.5rem, 3vw, 2.15rem);
             line-height: 1.04;
             letter-spacing: -0.03em;
         }
 
-        .rb-subtitle {
+        .am-subtitle {
             margin: 0;
-            color: var(--rb-panel-text-secondary);
+            color: var(--am-panel-text-secondary);
             font-size: 0.98rem;
         }
 
-        .rb-badge {
+        .am-badge {
             display: inline-flex;
             align-items: center;
             gap: 6px;
             min-height: 30px;
             padding: 0 12px;
             border-radius: 999px;
-            border: 1px solid var(--rb-panel-border);
-            background: var(--rb-panel-elevated);
-            color: var(--rb-panel-text);
+            border: 1px solid var(--am-panel-border);
+            background: var(--am-panel-elevated);
+            color: var(--am-panel-text);
             font-size: 0.82rem;
             font-weight: 700;
         }
 
-        .rb-badge--service {
-            color: var(--rb-panel-accent);
-            border-color: rgba(var(--rb-accent-rgb), 0.42);
-            background: rgba(var(--rb-accent-rgb), 0.1);
+        .am-badge--service {
+            color: var(--am-panel-accent);
+            border-color: rgba(var(--am-accent-rgb), 0.42);
+            background: rgba(var(--am-accent-rgb), 0.1);
         }
 
-        .rb-toolbar {
+        .am-toolbar {
             display: flex;
             flex-wrap: wrap;
             justify-content: flex-end;
             gap: 10px;
         }
 
-        .rb-toolbar-menu-shell {
+        .am-toolbar-menu-shell {
             position: relative;
         }
 
-        .rb-toolbar-icon {
+        .am-toolbar-icon {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             width: 44px;
             height: 44px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 14px;
             background: rgba(255, 255, 255, 0.02);
-            color: var(--rb-panel-text);
+            color: var(--am-panel-text);
             cursor: pointer;
             transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
         }
 
-        .rb-toolbar-icon:hover {
-            background: var(--rb-panel-elevated);
-            border-color: var(--rb-panel-border-strong);
+        .am-toolbar-icon:hover {
+            background: var(--am-panel-elevated);
+            border-color: var(--am-panel-border-strong);
             transform: translateY(-1px);
         }
 
-        .rb-toolbar-menu {
+        .am-toolbar-menu {
             position: absolute;
             top: calc(100% + 10px);
             inset-inline-end: 0;
             z-index: 30;
             min-width: 230px;
             padding: 8px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 16px;
-            background: var(--rb-panel-surface);
+            background: var(--am-panel-surface);
             box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22);
         }
 
-        .rb-toolbar-menu[hidden] {
+        .am-toolbar-menu[hidden] {
             display: none;
         }
 
-        .rb-menu-section {
+        .am-menu-section {
             display: grid;
             gap: 4px;
         }
 
-        .rb-menu-section + .rb-menu-section {
+        .am-menu-section + .am-menu-section {
             margin-top: 8px;
             padding-top: 8px;
-            border-top: 1px solid var(--rb-panel-border);
+            border-top: 1px solid var(--am-panel-border);
         }
 
-        .rb-menu-heading {
+        .am-menu-heading {
             padding: 4px 10px;
-            color: var(--rb-panel-text-muted);
+            color: var(--am-panel-text-muted);
             font-size: 0.72rem;
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.06em;
         }
 
-        .rb-menu-item {
+        .am-menu-item {
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -286,52 +286,52 @@
             border: 0;
             border-radius: 12px;
             background: transparent;
-            color: var(--rb-panel-text);
+            color: var(--am-panel-text);
             cursor: pointer;
             text-align: start;
         }
 
-        .rb-menu-item:hover {
-            background: var(--rb-panel-elevated);
+        .am-menu-item:hover {
+            background: var(--am-panel-elevated);
         }
 
-        .rb-menu-item.is-active {
-            background: rgba(var(--rb-accent-rgb), 0.12);
+        .am-menu-item.is-active {
+            background: rgba(var(--am-accent-rgb), 0.12);
         }
 
-        .rb-menu-item-main {
+        .am-menu-item-main {
             display: inline-flex;
             align-items: center;
             gap: 10px;
             min-width: 0;
         }
 
-        .rb-menu-check {
-            color: var(--rb-panel-accent);
+        .am-menu-check {
+            color: var(--am-panel-accent);
             font-size: 0.94rem;
             font-weight: 800;
             opacity: 0;
         }
 
-        .rb-menu-item.is-active .rb-menu-check {
+        .am-menu-item.is-active .am-menu-check {
             opacity: 1;
         }
 
-        .rb-menu-item-main img.rb-flag-emoji {
+        .am-menu-item-main img.am-flag-emoji {
             width: 22px;
             height: 22px;
             border-radius: 5px;
             flex: none;
         }
 
-        .rb-overview {
+        .am-overview {
             padding: 18px;
             margin-bottom: 16px;
             position: relative;
             z-index: 50;
         }
 
-        .rb-overview-header {
+        .am-overview-header {
             display: flex;
             align-items: flex-start;
             justify-content: space-between;
@@ -339,11 +339,11 @@
             margin-bottom: 16px;
         }
 
-        .rb-overview-meta {
+        .am-overview-meta {
             min-width: 0;
         }
 
-        .rb-username-row {
+        .am-username-row {
             display: flex;
             align-items: center;
             flex-wrap: wrap;
@@ -351,11 +351,11 @@
             margin-bottom: 6px;
         }
 
-        .rb-username-row .rb-label {
+        .am-username-row .am-label {
             margin: 0;
         }
 
-        .rb-overview-actions {
+        .am-overview-actions {
             display: flex;
             flex-direction: column;
             align-items: flex-end;
@@ -363,16 +363,16 @@
             flex: none;
         }
 
-        .rb-label {
+        .am-label {
             margin: 0 0 6px;
-            color: var(--rb-panel-text-muted);
+            color: var(--am-panel-text-muted);
             font-size: 0.78rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.06em;
         }
 
-        .rb-username {
+        .am-username {
             margin: 0;
             font-size: clamp(1.3rem, 2vw, 1.72rem);
             line-height: 1.08;
@@ -380,7 +380,7 @@
             word-break: break-word;
         }
 
-        .rb-status-chip {
+        .am-status-chip {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -393,57 +393,57 @@
             text-transform: capitalize;
         }
 
-        .rb-status-chip[data-state="active"] {
+        .am-status-chip[data-state="active"] {
             background: rgba(34, 197, 94, 0.14);
             border-color: rgba(34, 197, 94, 0.34);
             color: #7ee8a6;
         }
 
-        .rb-status-chip[data-state="on_hold"] {
+        .am-status-chip[data-state="on_hold"] {
             background: rgba(37, 99, 235, 0.14);
             border-color: rgba(37, 99, 235, 0.34);
             color: #8cb4ff;
         }
 
-        .rb-status-chip[data-state="limited"] {
+        .am-status-chip[data-state="limited"] {
             background: rgba(245, 158, 11, 0.15);
             border-color: rgba(245, 158, 11, 0.32);
             color: #ffd27b;
         }
 
-        .rb-status-chip[data-state="expired"] {
+        .am-status-chip[data-state="expired"] {
             background: rgba(239, 68, 68, 0.14);
             border-color: rgba(239, 68, 68, 0.32);
             color: #ff9b9b;
         }
 
-        .rb-status-chip[data-state="disabled"] {
+        .am-status-chip[data-state="disabled"] {
             background: rgba(148, 163, 184, 0.16);
             border-color: rgba(148, 163, 184, 0.28);
             color: #d5dbe4;
         }
 
-        .rb-status-note {
+        .am-status-note {
             margin: 10px 0 0;
-            color: var(--rb-panel-text-secondary);
+            color: var(--am-panel-text-secondary);
             font-size: 0.94rem;
         }
 
-        .rb-metrics {
+        .am-metrics {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 12px;
             margin-bottom: 16px;
         }
 
-        .rb-metric {
+        .am-metric {
             padding: 14px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 16px;
             background: rgba(255, 255, 255, 0.02);
         }
 
-        .rb-metric-value {
+        .am-metric-value {
             display: block;
             margin-top: 8px;
             font-size: 1.24rem;
@@ -451,18 +451,18 @@
             letter-spacing: -0.03em;
         }
 
-        .rb-metric-value[dir="ltr"] {
+        .am-metric-value[dir="ltr"] {
             unicode-bidi: isolate;
         }
 
-        .rb-usage-block {
+        .am-usage-block {
             padding: 18px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 16px;
-            background: linear-gradient(180deg, rgba(var(--rb-accent-rgb), 0.08), transparent 120px), var(--rb-panel-main);
+            background: linear-gradient(180deg, rgba(var(--am-accent-rgb), 0.08), transparent 120px), var(--am-panel-main);
         }
 
-        .rb-usage-row {
+        .am-usage-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -470,14 +470,14 @@
             margin-bottom: 10px;
         }
 
-        .rb-usage-summary {
+        .am-usage-summary {
             margin: 0 0 12px;
-            color: var(--rb-panel-text-secondary);
+            color: var(--am-panel-text-secondary);
             font-size: 0.92rem;
             line-height: 1.65;
         }
 
-        .rb-progress {
+        .am-progress {
             position: relative;
             height: 10px;
             border-radius: 999px;
@@ -485,23 +485,23 @@
             background: rgba(255, 255, 255, 0.08);
         }
 
-        .rb-progress-fill {
+        .am-progress-fill {
             height: 100%;
             width: 0;
             border-radius: inherit;
-            background: linear-gradient(90deg, var(--rb-panel-accent), var(--rb-panel-accent-hover));
+            background: linear-gradient(90deg, var(--am-panel-accent), var(--am-panel-accent-hover));
             transition: width 180ms ease;
         }
 
-        .rb-account-block {
+        .am-account-block {
             margin-top: 16px;
             padding: 18px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 16px;
-            background: var(--rb-panel-main);
+            background: var(--am-panel-main);
         }
 
-        .rb-account-block .rb-label {
+        .am-account-block .am-label {
             margin: 0 0 12px;
         }
             display: grid;
@@ -510,17 +510,17 @@
             align-items: center;
         }
 
-        .rb-subscription-card .rb-card-body {
+        .am-subscription-card .am-card-body {
             padding: 14px 16px;
         }
 
-        .rb-subscription-preview {
+        .am-subscription-preview {
             min-width: 0;
         }
 
-        .rb-subscription-url {
+        .am-subscription-url {
             margin: 4px 0 0;
-            color: var(--rb-panel-text-secondary);
+            color: var(--am-panel-text-secondary);
             font-size: 0.94rem;
             white-space: nowrap;
             overflow: hidden;
@@ -529,19 +529,19 @@
             unicode-bidi: isolate;
         }
 
-        .rb-button-row {
+        .am-button-row {
             display: flex;
             align-items: center;
             flex-wrap: wrap;
             gap: 8px;
         }
 
-        .rb-card-head .rb-button-row {
+        .am-card-head .am-button-row {
             margin-inline-end: 15px;
         }
 
-        .rb-button,
-        .rb-link-button {
+        .am-button,
+        .am-link-button {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -549,57 +549,57 @@
             height: 38px;
             padding: 0 14px;
             border-radius: 12px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             background: transparent;
-            color: var(--rb-panel-text);
+            color: var(--am-panel-text);
             cursor: pointer;
             transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease, color 120ms ease;
         }
 
-        .rb-button:hover,
-        .rb-link-button:hover {
+        .am-button:hover,
+        .am-link-button:hover {
             transform: translateY(-1px);
-            background: var(--rb-panel-elevated);
-            border-color: var(--rb-panel-border-strong);
+            background: var(--am-panel-elevated);
+            border-color: var(--am-panel-border-strong);
         }
 
-        .rb-button:disabled {
+        .am-button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
             transform: none;
         }
 
-        .rb-button--primary {
-            border-color: rgba(var(--rb-accent-rgb), 0.42);
-            background: var(--rb-panel-accent);
+        .am-button--primary {
+            border-color: rgba(var(--am-accent-rgb), 0.42);
+            background: var(--am-panel-accent);
             color: #ffffff;
         }
 
-        .rb-button--primary:hover {
-            background: var(--rb-panel-accent-hover);
-            border-color: rgba(var(--rb-accent-rgb), 0.48);
+        .am-button--primary:hover {
+            background: var(--am-panel-accent-hover);
+            border-color: rgba(var(--am-accent-rgb), 0.48);
         }
 
-        .rb-button--icon {
+        .am-button--icon {
             width: 38px;
             min-width: 38px;
             padding: 0;
             gap: 0;
         }
 
-        .rb-button--icon span {
+        .am-button--icon span {
             display: inline-flex;
             align-items: center;
             justify-content: center;
         }
 
-        .rb-button--icon svg {
+        .am-button--icon svg {
             display: block;
             width: 17px;
             height: 17px;
         }
 
-        .rb-icon-button {
+        .am-icon-button {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -609,50 +609,50 @@
             border: 1px solid transparent;
             border-radius: 10px;
             background: rgba(255, 255, 255, 0.04);
-            color: var(--rb-panel-text-secondary);
+            color: var(--am-panel-text-secondary);
             cursor: pointer;
             transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
         }
 
-        .rb-icon-button span {
+        .am-icon-button span {
             display: inline-flex;
             align-items: center;
             justify-content: center;
         }
 
-        .rb-icon-button svg {
+        .am-icon-button svg {
             display: block;
         }
 
-        .rb-icon-button:hover {
-            background: var(--rb-panel-elevated);
-            border-color: var(--rb-panel-border);
-            color: var(--rb-panel-text);
+        .am-icon-button:hover {
+            background: var(--am-panel-elevated);
+            border-color: var(--am-panel-border);
+            color: var(--am-panel-text);
         }
 
-        .rb-icon-button.is-copied {
+        .am-icon-button.is-copied {
             color: #7ee8a6;
             border-color: rgba(34, 197, 94, 0.3);
             background: rgba(34, 197, 94, 0.12);
         }
 
-        .rb-main-grid {
+        .am-main-grid {
             display: grid;
             grid-template-columns: 1fr;
             gap: 16px;
             align-items: start;
         }
 
-        .rb-stack {
+        .am-stack {
             display: grid;
             gap: 16px;
         }
 
-        .rb-card-body {
+        .am-card-body {
             padding: 18px;
         }
 
-        .rb-card-head {
+        .am-card-head {
             display: flex;
             align-items: flex-start;
             justify-content: space-between;
@@ -660,66 +660,66 @@
             margin-bottom: 16px;
         }
 
-        .rb-card-title {
+        .am-card-title {
             margin: 0;
             font-size: 1.08rem;
             letter-spacing: -0.02em;
         }
 
-        .rb-card-copy {
+        .am-card-copy {
             margin: 6px 0 0;
-            color: var(--rb-panel-text-secondary);
+            color: var(--am-panel-text-secondary);
             font-size: 0.92rem;
         }
 
-        .rb-search {
+        .am-search {
             display: flex;
             align-items: center;
             gap: 10px;
             margin-bottom: 12px;
             padding: 0 12px;
             height: 42px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 14px;
-            background: var(--rb-panel-main);
+            background: var(--am-panel-main);
         }
 
-        .rb-search svg {
+        .am-search svg {
             flex: 0 0 auto;
-            color: var(--rb-panel-text-muted);
+            color: var(--am-panel-text-muted);
         }
 
-        .rb-search input {
+        .am-search input {
             width: 100%;
             border: 0;
             outline: 0;
             background: transparent;
-            color: var(--rb-panel-text);
+            color: var(--am-panel-text);
         }
 
-        .rb-search input::placeholder {
-            color: var(--rb-panel-text-muted);
+        .am-search input::placeholder {
+            color: var(--am-panel-text-muted);
         }
 
-        .rb-protocol-tabs-wrap {
+        .am-protocol-tabs-wrap {
             margin-bottom: 14px;
         }
 
-        .rb-protocol-tabs-wrap[hidden] {
+        .am-protocol-tabs-wrap[hidden] {
             display: none;
         }
 
-        .rb-protocol-tabs {
+        .am-protocol-tabs {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
             padding: 6px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 18px;
-            background: var(--rb-panel-main);
+            background: var(--am-panel-main);
         }
 
-        .rb-protocol-tab {
+        .am-protocol-tab {
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -730,22 +730,22 @@
             border: 1px solid transparent;
             border-radius: 14px;
             background: transparent;
-            color: var(--rb-panel-text);
+            color: var(--am-panel-text);
             cursor: pointer;
             transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
         }
 
-        .rb-protocol-tab:hover {
-            background: var(--rb-panel-elevated);
+        .am-protocol-tab:hover {
+            background: var(--am-panel-elevated);
             transform: translateY(-1px);
         }
 
-        .rb-protocol-tab.is-active {
-            border-color: rgba(var(--rb-accent-rgb), 0.42);
-            background: rgba(var(--rb-accent-rgb), 0.14);
+        .am-protocol-tab.is-active {
+            border-color: rgba(var(--am-accent-rgb), 0.42);
+            background: rgba(var(--am-accent-rgb), 0.14);
         }
 
-        .rb-protocol-tab-label {
+        .am-protocol-tab-label {
             display: inline-flex;
             align-items: center;
             gap: 8px;
@@ -756,7 +756,7 @@
             text-transform: lowercase;
         }
 
-        .rb-protocol-tab-count {
+        .am-protocol-tab-count {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -765,51 +765,118 @@
             padding: 0 10px;
             border-radius: 999px;
             background: rgba(255, 255, 255, 0.05);
-            color: var(--rb-panel-text);
+            color: var(--am-panel-text);
             font-size: 0.8rem;
             font-weight: 800;
         }
 
-        .rb-protocol-panel[hidden] {
+        .am-protocol-panel[hidden] {
             display: none;
         }
 
-        .rb-config-list {
+        .am-config-list {
             display: grid;
             gap: 10px;
         }
 
-        .rb-config-item {
+        .am-config-item {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
             padding: 12px 14px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 14px;
-            background: var(--rb-panel-main);
+            background: var(--am-panel-main);
             transition: border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
         }
 
-        .rb-config-item:hover {
-            border-color: var(--rb-panel-border-strong);
-            background: var(--rb-panel-elevated);
+        .am-config-item:hover {
+            border-color: var(--am-panel-border-strong);
+            background: var(--am-panel-elevated);
             transform: translateY(-1px);
         }
 
-        .rb-config-main {
+        .am-config-main {
             min-width: 0;
             flex: 1 1 auto;
         }
 
-        .rb-config-top {
+        .am-config-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 8px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--am-panel-border);
+        }
+
+        .am-config-detail {
+            min-width: 0;
+            padding: 8px 10px;
+            border: 1px solid var(--am-panel-border);
+            border-radius: 8px;
+            background: var(--am-panel-surface);
+        }
+
+        .am-config-detail-label,
+        .am-config-detail-value {
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .am-config-detail-label {
+            color: var(--am-panel-text-muted);
+            font-size: 0.68rem;
+            text-transform: uppercase;
+        }
+
+        .am-config-detail-value {
+            margin-top: 3px;
+            color: var(--am-panel-text);
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .am-device-note {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            margin-top: 8px;
+            padding: 6px 9px;
+            border: 1px solid rgba(99, 216, 207, 0.28);
+            border-radius: 8px;
+            color: var(--am-panel-text-secondary);
+            background: rgba(99, 216, 207, 0.08);
+            font-size: 0.76rem;
+        }
+
+        .am-text-button {
+            margin-top: 8px;
+            padding: 0;
+            border: 0;
+            color: var(--am-panel-accent-hover);
+            background: transparent;
+            cursor: pointer;
+            font: inherit;
+            font-size: 0.76rem;
+            font-weight: 700;
+        }
+
+        .am-text-button:hover {
+            text-decoration: underline;
+        }
+
+        .am-config-top {
             display: flex;
             align-items: center;
             flex-wrap: wrap;
             gap: 8px;
         }
 
-        .rb-config-name {
+        .am-config-name {
             display: inline-flex;
             align-items: center;
             gap: 6px;
@@ -820,7 +887,7 @@
             white-space: nowrap;
         }
 
-        .rb-flag-emoji {
+        .am-flag-emoji {
             display: inline-block;
             width: 1.05em;
             height: 1.05em;
@@ -829,41 +896,41 @@
             flex: none;
         }
 
-        .rb-protocol-badge {
+        .am-protocol-badge {
             display: inline-flex;
             align-items: center;
             min-height: 24px;
             padding: 0 10px;
             border-radius: 999px;
-            background: rgba(var(--rb-accent-rgb), 0.1);
-            color: var(--rb-panel-accent);
+            background: rgba(var(--am-accent-rgb), 0.1);
+            color: var(--am-panel-accent);
             font-size: 0.74rem;
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.06em;
         }
 
-        .rb-config-url {
+        .am-config-url {
             display: none;
         }
 
-        .rb-config-actions {
+        .am-config-actions {
             display: flex;
             align-items: center;
             flex: none;
             gap: 6px;
         }
 
-        .rb-empty {
+        .am-empty {
             margin: 0;
             padding: 16px;
-            border: 1px dashed var(--rb-panel-border);
+            border: 1px dashed var(--am-panel-border);
             border-radius: 14px;
-            color: var(--rb-panel-text-muted);
+            color: var(--am-panel-text-muted);
             text-align: center;
         }
 
-        .rb-detail-list {
+        .am-detail-list {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             grid-template-rows: repeat(3, auto);
@@ -872,136 +939,136 @@
             row-gap: 0;
         }
 
-        .rb-detail-row {
+        .am-detail-row {
             display: grid;
             grid-template-columns: minmax(0, 132px) minmax(0, 1fr);
             align-items: center;
             gap: 10px;
             padding: 12px 0;
-            border-bottom: 1px solid var(--rb-panel-border);
+            border-bottom: 1px solid var(--am-panel-border);
         }
 
-        .rb-detail-list .rb-detail-row:nth-child(3),
-        .rb-detail-list .rb-detail-row:last-child {
+        .am-detail-list .am-detail-row:nth-child(3),
+        .am-detail-list .am-detail-row:last-child {
             border-bottom: 0;
             padding-bottom: 0;
         }
 
-        .rb-detail-key {
-            color: var(--rb-panel-text-muted);
+        .am-detail-key {
+            color: var(--am-panel-text-muted);
             font-size: 0.82rem;
             font-weight: 700;
         }
 
-        .rb-detail-value {
-            color: var(--rb-panel-text);
+        .am-detail-value {
+            color: var(--am-panel-text);
             font-weight: 600;
             text-align: end;
             word-break: break-word;
         }
 
-        .rb-detail-value[dir="ltr"] {
+        .am-detail-value[dir="ltr"] {
             unicode-bidi: isolate;
         }
 
-        .rb-detail-row--actions {
+        .am-detail-row--actions {
             grid-template-columns: 1fr;
         }
 
-        .rb-detail-row--actions .rb-quick-links {
+        .am-detail-row--actions .am-quick-links {
             margin-top: 0;
         }
 
-        .rb-detail-row--actions .rb-quick-links a {
+        .am-detail-row--actions .am-quick-links a {
             flex: 1 1 0;
         }
 
-        .rb-quick-links {
+        .am-quick-links {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
             margin-top: 16px;
         }
 
-        .rb-quick-links a {
+        .am-quick-links a {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             min-height: 36px;
             padding: 0 12px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 12px;
-            color: var(--rb-panel-text-secondary);
+            color: var(--am-panel-text-secondary);
             transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
         }
 
-        .rb-quick-links a:hover {
-            background: var(--rb-panel-elevated);
-            border-color: var(--rb-panel-border-strong);
-            color: var(--rb-panel-text);
+        .am-quick-links a:hover {
+            background: var(--am-panel-elevated);
+            border-color: var(--am-panel-border-strong);
+            color: var(--am-panel-text);
         }
 
-        .rb-vpn-block {
+        .am-vpn-block {
             display: grid;
             gap: 12px;
         }
 
-        .rb-vpn-group {
+        .am-vpn-group {
             padding: 14px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 16px;
-            background: var(--rb-panel-main);
+            background: var(--am-panel-main);
         }
 
-        .rb-vpn-title {
+        .am-vpn-title {
             margin: 0 0 12px;
             font-size: 0.96rem;
             font-weight: 800;
             letter-spacing: -0.02em;
         }
 
-        .rb-vpn-download {
+        .am-vpn-download {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 10px;
             padding: 12px 0;
-            border-bottom: 1px solid var(--rb-panel-border);
+            border-bottom: 1px solid var(--am-panel-border);
         }
 
-        .rb-vpn-download:last-child {
+        .am-vpn-download:last-child {
             border-bottom: 0;
             padding-bottom: 0;
         }
 
-        .rb-vpn-name {
+        .am-vpn-name {
             display: block;
             font-weight: 700;
         }
 
-        .rb-vpn-meta {
+        .am-vpn-meta {
             display: block;
             margin-top: 4px;
-            color: var(--rb-panel-text-muted);
+            color: var(--am-panel-text-muted);
             font-size: 0.84rem;
         }
 
-        .rb-vpn-actions {
+        .am-vpn-actions {
             display: flex;
             flex-wrap: wrap;
             justify-content: flex-end;
             gap: 8px;
         }
 
-        .rb-wg-config {
+        .am-wg-config {
             width: 100%;
             min-height: 180px;
             margin-top: 10px;
             padding: 10px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 12px;
-            background: var(--rb-panel-surface);
-            color: var(--rb-panel-text-secondary);
+            background: var(--am-panel-surface);
+            color: var(--am-panel-text-secondary);
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
             font-size: 0.78rem;
             line-height: 1.55;
@@ -1009,181 +1076,181 @@
             resize: vertical;
         }
 
-        .rb-credential-list {
+        .am-credential-list {
             display: grid;
             gap: 10px;
         }
 
-        .rb-credential-card {
+        .am-credential-card {
             padding: 12px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 14px;
             background: rgba(255, 255, 255, 0.02);
         }
 
-        .rb-credential-name {
+        .am-credential-name {
             margin: 0 0 10px;
             font-size: 0.92rem;
             font-weight: 800;
         }
 
-        .rb-credential-grid {
+        .am-credential-grid {
             display: grid;
             gap: 8px;
         }
 
-        .rb-credential-row {
+        .am-credential-row {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
             gap: 10px;
             align-items: center;
             padding: 8px 10px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 12px;
-            background: var(--rb-panel-surface);
+            background: var(--am-panel-surface);
         }
 
-        .rb-credential-copy {
+        .am-credential-copy {
             min-width: 0;
-            color: var(--rb-panel-text-secondary);
+            color: var(--am-panel-text-secondary);
             font-size: 0.83rem;
             word-break: break-word;
         }
 
-        .rb-chart-shell {
+        .am-chart-shell {
             display: grid;
             gap: 14px;
         }
 
-        .rb-range-row {
+        .am-range-row {
             display: flex;
             align-items: center;
             flex-wrap: wrap;
             gap: 8px;
         }
 
-        .rb-range-pill {
+        .am-range-pill {
             min-height: 32px;
             padding: 0 12px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 999px;
             background: transparent;
-            color: var(--rb-panel-text-secondary);
+            color: var(--am-panel-text-secondary);
             cursor: pointer;
         }
 
-        .rb-range-pill:hover {
-            background: var(--rb-panel-elevated);
-            color: var(--rb-panel-text);
+        .am-range-pill:hover {
+            background: var(--am-panel-elevated);
+            color: var(--am-panel-text);
         }
 
-        .rb-range-pill.is-active {
-            border-color: rgba(var(--rb-accent-rgb), 0.42);
-            background: rgba(var(--rb-accent-rgb), 0.12);
-            color: var(--rb-panel-text);
+        .am-range-pill.is-active {
+            border-color: rgba(var(--am-accent-rgb), 0.42);
+            background: rgba(var(--am-accent-rgb), 0.12);
+            color: var(--am-panel-text);
         }
 
-        .rb-chart {
+        .am-chart {
             min-height: 220px;
             padding: 16px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 16px;
-            background: var(--rb-panel-main);
+            background: var(--am-panel-main);
         }
 
-        .rb-chart-svg-wrap {
+        .am-chart-svg-wrap {
             width: 100%;
             min-height: 200px;
         }
 
-        .rb-chart-svg {
+        .am-chart-svg {
             display: block;
             width: 100%;
             height: 240px;
             overflow: visible;
         }
 
-        .rb-chart-gridline {
-            stroke: var(--rb-panel-border);
+        .am-chart-gridline {
+            stroke: var(--am-panel-border);
             stroke-width: 1;
         }
 
-        .rb-chart-axis-label {
-            fill: var(--rb-panel-text-muted);
+        .am-chart-axis-label {
+            fill: var(--am-panel-text-muted);
             font-size: 10px;
             direction: ltr;
         }
 
-        .rb-chart-area {
-            fill: url(#rbChartFill);
+        .am-chart-area {
+            fill: url(#amChartFill);
             stroke: none;
         }
 
-        .rb-chart-line {
+        .am-chart-line {
             fill: none;
-            stroke: var(--rb-panel-accent);
+            stroke: var(--am-panel-accent);
             stroke-width: 2.4;
             stroke-linecap: round;
             stroke-linejoin: round;
         }
 
 
-        .rb-chart-foot {
+        .am-chart-foot {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 10px;
             margin-top: 14px;
-            color: var(--rb-panel-text-secondary);
+            color: var(--am-panel-text-secondary);
             font-size: 0.88rem;
         }
 
-        .rb-chart-message {
+        .am-chart-message {
             display: flex;
             align-items: center;
             justify-content: center;
             min-height: 150px;
-            color: var(--rb-panel-text-muted);
+            color: var(--am-panel-text-muted);
             text-align: center;
         }
 
-        .rb-app-downloads {
+        .am-app-downloads {
             margin-top: 16px;
         }
 
-        .rb-app-tabs {
+        .am-app-tabs {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
             margin-bottom: 14px;
         }
 
-        .rb-app-tab {
+        .am-app-tab {
             display: inline-flex;
             align-items: center;
             gap: 8px;
             min-height: 34px;
             padding: 0 12px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 999px;
             background: transparent;
-            color: var(--rb-panel-text-secondary);
+            color: var(--am-panel-text-secondary);
             cursor: pointer;
             line-height: 1;
         }
 
-        .rb-app-tab:hover {
-            background: var(--rb-panel-elevated);
-            color: var(--rb-panel-text);
+        .am-app-tab:hover {
+            background: var(--am-panel-elevated);
+            color: var(--am-panel-text);
         }
 
-        .rb-app-tab.is-active {
-            border-color: rgba(var(--rb-accent-rgb), 0.42);
-            background: rgba(var(--rb-accent-rgb), 0.12);
-            color: var(--rb-panel-text);
+        .am-app-tab.is-active {
+            border-color: rgba(var(--am-accent-rgb), 0.42);
+            background: rgba(var(--am-accent-rgb), 0.12);
+            color: var(--am-panel-text);
         }
 
-        .rb-os-icon {
+        .am-os-icon {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -1192,78 +1259,78 @@
             height: 18px;
         }
 
-        .rb-os-icon svg {
+        .am-os-icon svg {
             width: 18px;
             height: 18px;
         }
 
-        .rb-app-list {
+        .am-app-list {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 10px;
         }
 
-        .rb-app-item {
+        .am-app-item {
             display: grid;
             grid-template-columns: auto minmax(0, 1fr);
             gap: 10px 12px;
             align-items: center;
             padding: 14px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 14px;
-            background: var(--rb-panel-main);
+            background: var(--am-panel-main);
         }
 
-        .rb-app-item--full {
+        .am-app-item--full {
             grid-column: 1 / -1;
         }
 
-        .rb-app-icon-shell {
+        .am-app-icon-shell {
             position: relative;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             width: 46px;
             height: 46px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 12px;
-            background: var(--rb-panel-elevated);
+            background: var(--am-panel-elevated);
             overflow: hidden;
         }
 
-        .rb-app-icon {
+        .am-app-icon {
             width: 100%;
             height: 100%;
             object-fit: contain;
         }
 
-        .rb-app-icon-fallback {
+        .am-app-icon-fallback {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             width: 100%;
             height: 100%;
-            color: var(--rb-panel-text);
+            color: var(--am-panel-text);
             font-size: 0.84rem;
             font-weight: 900;
             letter-spacing: 0;
-            background: rgba(var(--rb-accent-rgb), 0.18);
+            background: rgba(var(--am-accent-rgb), 0.18);
         }
 
-        .rb-app-name {
+        .am-app-name {
             display: block;
             font-weight: 800;
             letter-spacing: 0;
         }
 
-        .rb-app-meta {
+        .am-app-meta {
             display: block;
             margin-top: 4px;
-            color: var(--rb-panel-text-muted);
+            color: var(--am-panel-text-muted);
             font-size: 0.84rem;
         }
 
-        .rb-app-actions {
+        .am-app-actions {
             display: flex;
             flex-wrap: wrap;
             justify-content: stretch;
@@ -1271,16 +1338,16 @@
             grid-column: 1 / -1;
         }
 
-        .rb-app-actions .rb-link-button {
+        .am-app-actions .am-link-button {
             flex: 1 1 0;
         }
 
-        .rb-modal[hidden],
-        .rb-toast[hidden] {
+        .am-modal[hidden],
+        .am-toast[hidden] {
             display: none;
         }
 
-        .rb-modal {
+        .am-modal {
             position: fixed;
             inset: 0;
             z-index: 1000;
@@ -1290,24 +1357,24 @@
             padding: 18px;
         }
 
-        .rb-modal-backdrop {
+        .am-modal-backdrop {
             position: absolute;
             inset: 0;
             background: rgba(0, 0, 0, 0.62);
             backdrop-filter: blur(10px);
         }
 
-        .rb-modal-card {
+        .am-modal-card {
             position: relative;
             width: min(420px, 100%);
             padding: 18px;
-            border: 1px solid var(--rb-panel-border-strong);
+            border: 1px solid var(--am-panel-border-strong);
             border-radius: 20px;
-            background: var(--rb-panel-surface);
+            background: var(--am-panel-surface);
             box-shadow: 0 28px 50px rgba(0, 0, 0, 0.28);
         }
 
-        .rb-modal-head {
+        .am-modal-head {
             display: flex;
             align-items: flex-start;
             justify-content: space-between;
@@ -1315,25 +1382,25 @@
             margin-bottom: 14px;
         }
 
-        .rb-modal-head-meta {
+        .am-modal-head-meta {
             min-width: 0;
         }
 
-        .rb-modal-title {
+        .am-modal-title {
             margin: 0;
             font-size: 1.02rem;
         }
 
-        .rb-modal-subtitle {
+        .am-modal-subtitle {
             margin: 6px 0 0;
             overflow: hidden;
-            color: var(--rb-panel-text-secondary);
+            color: var(--am-panel-text-secondary);
             font-size: 0.9rem;
             white-space: nowrap;
             text-overflow: ellipsis;
         }
 
-        .rb-qr-frame {
+        .am-qr-frame {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1341,18 +1408,18 @@
             aspect-ratio: 1 / 1;
             margin: 0 auto;
             padding: 10px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 16px;
             background: #ffffff;
         }
 
-        .rb-modal-url {
+        .am-modal-url {
             margin: 14px 0 0;
             padding: 10px 12px;
-            border: 1px solid var(--rb-panel-border);
+            border: 1px solid var(--am-panel-border);
             border-radius: 12px;
-            background: var(--rb-panel-main);
-            color: var(--rb-panel-text-muted);
+            background: var(--am-panel-main);
+            color: var(--am-panel-text-muted);
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
             font-size: 0.76rem;
             line-height: 1.5;
@@ -1365,142 +1432,142 @@
             overflow: hidden;
         }
 
-        .rb-modal-actions {
+        .am-modal-actions {
             display: flex;
             justify-content: flex-end;
             gap: 8px;
             margin-top: 16px;
         }
 
-        .rb-toast {
+        .am-toast {
             position: fixed;
             top: 16px;
             inset-inline-end: 16px;
             z-index: 1100;
             max-width: min(320px, calc(100% - 24px));
             padding: 12px 14px;
-            border: 1px solid rgba(var(--rb-accent-rgb), 0.38);
+            border: 1px solid rgba(var(--am-accent-rgb), 0.38);
             border-radius: 14px;
-            background: var(--rb-panel-surface);
-            color: var(--rb-panel-text);
+            background: var(--am-panel-surface);
+            color: var(--am-panel-text);
             box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22);
         }
 
-        [dir="rtl"] .rb-topbar,
-        [dir="rtl"] .rb-overview-header,
-        [dir="rtl"] .rb-card-head,
-        [dir="rtl"] .rb-usage-row,
-        [dir="rtl"] .rb-subscription-box,
-        [dir="rtl"] .rb-config-item,
-        [dir="rtl"] .rb-vpn-download,
-        [dir="rtl"] .rb-modal-head {
+        [dir="rtl"] .am-topbar,
+        [dir="rtl"] .am-overview-header,
+        [dir="rtl"] .am-card-head,
+        [dir="rtl"] .am-usage-row,
+        [dir="rtl"] .am-subscription-box,
+        [dir="rtl"] .am-config-item,
+        [dir="rtl"] .am-vpn-download,
+        [dir="rtl"] .am-modal-head {
             direction: rtl;
         }
 
-        [dir="rtl"] .rb-detail-value {
+        [dir="rtl"] .am-detail-value {
             text-align: start;
         }
 
-        [dir="rtl"] .rb-toolbar {
+        [dir="rtl"] .am-toolbar {
             justify-content: flex-start;
         }
 
-        [dir="rtl"] .rb-toolbar-menu {
+        [dir="rtl"] .am-toolbar-menu {
             inset-inline-start: 0;
             inset-inline-end: auto;
         }
 
-        [dir="rtl"] .rb-quick-links,
-        [dir="rtl"] .rb-button-row,
-        [dir="rtl"] .rb-config-actions,
-        [dir="rtl"] .rb-range-row,
-        [dir="rtl"] .rb-app-tabs,
-        [dir="rtl"] .rb-app-actions {
+        [dir="rtl"] .am-quick-links,
+        [dir="rtl"] .am-button-row,
+        [dir="rtl"] .am-config-actions,
+        [dir="rtl"] .am-range-row,
+        [dir="rtl"] .am-app-tabs,
+        [dir="rtl"] .am-app-actions {
             justify-content: flex-start;
         }
 
         @media (max-width: 1040px) {
-            .rb-main-grid {
+            .am-main-grid {
                 grid-template-columns: 1fr;
             }
 
-            .rb-metrics {
+            .am-metrics {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
 
         @media (max-width: 760px) {
-            .rb-shell {
+            .am-shell {
                 width: min(100% - 18px, 100%);
                 padding-top: 10px;
             }
 
-            .rb-topbar,
-            .rb-overview,
-            .rb-account-block,
-            .rb-card-body {
+            .am-topbar,
+            .am-overview,
+            .am-account-block,
+            .am-card-body {
                 padding: 14px;
             }
 
-            .rb-topbar,
-            .rb-card-head,
-            .rb-subscription-box,
-            .rb-config-item,
-            .rb-vpn-download {
+            .am-topbar,
+            .am-card-head,
+            .am-subscription-box,
+            .am-config-item,
+            .am-vpn-download {
                 display: grid;
                 grid-template-columns: 1fr;
             }
 
-            .rb-overview-header {
+            .am-overview-header {
                 gap: 10px;
             }
 
-            .rb-overview-actions {
+            .am-overview-actions {
                 gap: 8px;
             }
 
-            .rb-toolbar-icon {
+            .am-toolbar-icon {
                 width: 38px;
                 height: 38px;
             }
 
-            .rb-status-chip {
+            .am-status-chip {
                 min-height: 32px;
                 padding: 0 12px;
                 font-size: 0.8rem;
             }
 
-            .rb-metrics {
+            .am-metrics {
                 grid-template-columns: 1fr;
             }
 
-            .rb-protocol-tab {
+            .am-protocol-tab {
                 flex-basis: calc(50% - 4px);
             }
 
-            .rb-detail-list {
+            .am-detail-list {
                 grid-template-columns: 1fr;
                 grid-template-rows: none;
                 grid-auto-flow: row;
                 row-gap: 0;
             }
 
-            .rb-detail-list .rb-detail-row:nth-child(3) {
-                border-bottom: 1px solid var(--rb-panel-border);
+            .am-detail-list .am-detail-row:nth-child(3) {
+                border-bottom: 1px solid var(--am-panel-border);
                 padding-bottom: 10px;
             }
 
-            .rb-detail-row {
+            .am-detail-row {
                 grid-template-columns: 1fr;
                 gap: 4px;
                 padding: 10px 0;
             }
 
-            .rb-detail-value {
+            .am-detail-value {
                 text-align: start;
             }
 
-            .rb-app-list {
+            .am-app-list {
                 grid-template-columns: 1fr;
             }
         }
@@ -1508,7 +1575,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body
-    class="rb-theme-dark"
+    class="am-theme-dark"
     data-username="{{ user.username }}"
     data-status="{{ user.status }}"
     data-used-traffic="{{ user.used_traffic }}"
@@ -1521,26 +1588,26 @@
     data-usage-url="{{ usage_url }}"
     data-service-name="{% if user.service_name %}{{ user.service_name }}{% endif %}"
 >
-    <main class="rb-shell">
-        <section class="rb-overview rb-panel-card">
-            <div class="rb-overview-header">
-                <div class="rb-overview-meta">
-                    <div class="rb-username-row">
-                        <p class="rb-label" data-i18n="usernameLabel">Username</p>
+    <main class="am-shell">
+        <section class="am-overview am-panel-card">
+            <div class="am-overview-header">
+                <div class="am-overview-meta">
+                    <div class="am-username-row">
+                        <p class="am-label" data-i18n="usernameLabel">Username</p>
                         {% if user.service_name %}
-                        <span class="rb-badge rb-badge--service">{{ user.service_name }}</span>
+                        <span class="am-badge am-badge--service">{{ user.service_name }}</span>
                         {% endif %}
                     </div>
-                    <h2 class="rb-username">{{ user.username }}</h2>
-                    <p class="rb-status-note" id="statusNote"></p>
+                    <h2 class="am-username">{{ user.username }}</h2>
+                    <p class="am-status-note" id="statusNote"></p>
                 </div>
-                <div class="rb-overview-actions">
-                    <div class="rb-toolbar">
-                        <button class="rb-toolbar-icon" type="button" id="themeToggleButton" title="Theme">
+                <div class="am-overview-actions">
+                    <div class="am-toolbar">
+                        <button class="am-toolbar-icon" type="button" id="themeToggleButton" title="Theme">
                             <span id="themeToggleIcon" aria-hidden="true"></span>
                         </button>
-                        <div class="rb-toolbar-menu-shell">
-                            <button class="rb-toolbar-icon" type="button" id="langMenuButton" aria-haspopup="menu" aria-expanded="false" title="Language">
+                        <div class="am-toolbar-menu-shell">
+                            <button class="am-toolbar-icon" type="button" id="langMenuButton" aria-haspopup="menu" aria-expanded="false" title="Language">
                                 <span aria-hidden="true">
                                     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                         <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.55"></circle>
@@ -1549,88 +1616,88 @@
                                     </svg>
                                 </span>
                             </button>
-                            <div class="rb-toolbar-menu" id="langMenu" hidden>
-                                <div class="rb-menu-section">
-                                    <span class="rb-menu-heading" data-i18n="languageLabel">Language</span>
-                                    <button class="rb-menu-item" type="button" data-lang-choice="en">
-                                        <span class="rb-menu-item-main"><img class="rb-flag-emoji rb-menu-lang-flag" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.1.2/img/apple/64/1f1fa-1f1f8.png" alt="" loading="lazy"><span>English</span></span>
-                                        <span class="rb-menu-check">✓</span>
+                            <div class="am-toolbar-menu" id="langMenu" hidden>
+                                <div class="am-menu-section">
+                                    <span class="am-menu-heading" data-i18n="languageLabel">Language</span>
+                                    <button class="am-menu-item" type="button" data-lang-choice="en">
+                                        <span class="am-menu-item-main"><img class="am-flag-emoji am-menu-lang-flag" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.1.2/img/apple/64/1f1fa-1f1f8.png" alt="" loading="lazy"><span>English</span></span>
+                                        <span class="am-menu-check">✓</span>
                                     </button>
-                                    <button class="rb-menu-item" type="button" data-lang-choice="fa">
-                                        <span class="rb-menu-item-main"><img class="rb-flag-emoji rb-menu-lang-flag" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.1.2/img/apple/64/1f1ee-1f1f7.png" alt="" loading="lazy"><span>فارسی</span></span>
-                                        <span class="rb-menu-check">✓</span>
+                                    <button class="am-menu-item" type="button" data-lang-choice="fa">
+                                        <span class="am-menu-item-main"><img class="am-flag-emoji am-menu-lang-flag" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.1.2/img/apple/64/1f1ee-1f1f7.png" alt="" loading="lazy"><span>فارسی</span></span>
+                                        <span class="am-menu-check">✓</span>
                                     </button>
-                                    <button class="rb-menu-item" type="button" data-lang-choice="ru">
-                                        <span class="rb-menu-item-main"><img class="rb-flag-emoji rb-menu-lang-flag" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.1.2/img/apple/64/1f1f7-1f1fa.png" alt="" loading="lazy"><span>Русский</span></span>
-                                        <span class="rb-menu-check">✓</span>
+                                    <button class="am-menu-item" type="button" data-lang-choice="ru">
+                                        <span class="am-menu-item-main"><img class="am-flag-emoji am-menu-lang-flag" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.1.2/img/apple/64/1f1f7-1f1fa.png" alt="" loading="lazy"><span>Русский</span></span>
+                                        <span class="am-menu-check">✓</span>
                                     </button>
-                                    <button class="rb-menu-item" type="button" data-lang-choice="zh">
-                                        <span class="rb-menu-item-main"><img class="rb-flag-emoji rb-menu-lang-flag" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.1.2/img/apple/64/1f1e8-1f1f3.png" alt="" loading="lazy"><span>中文</span></span>
-                                        <span class="rb-menu-check">✓</span>
+                                    <button class="am-menu-item" type="button" data-lang-choice="zh">
+                                        <span class="am-menu-item-main"><img class="am-flag-emoji am-menu-lang-flag" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.1.2/img/apple/64/1f1e8-1f1f3.png" alt="" loading="lazy"><span>中文</span></span>
+                                        <span class="am-menu-check">✓</span>
                                     </button>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="rb-status-chip" id="statusChip" data-state="{{ user.status }}">{{ user.status }}</div>
+                    <div class="am-status-chip" id="statusChip" data-state="{{ user.status }}">{{ user.status }}</div>
                 </div>
             </div>
 
-            <div class="rb-metrics">
-                <div class="rb-metric">
-                    <span class="rb-label" data-i18n="usedLabel">Used</span>
-                    <strong class="rb-metric-value" id="metricUsed" dir="ltr"></strong>
+            <div class="am-metrics">
+                <div class="am-metric">
+                    <span class="am-label" data-i18n="usedLabel">Used</span>
+                    <strong class="am-metric-value" id="metricUsed" dir="ltr"></strong>
                 </div>
-                <div class="rb-metric">
-                    <span class="rb-label" data-i18n="totalLabel">Total</span>
-                    <strong class="rb-metric-value" id="metricTotal" dir="ltr"></strong>
+                <div class="am-metric">
+                    <span class="am-label" data-i18n="totalLabel">Total</span>
+                    <strong class="am-metric-value" id="metricTotal" dir="ltr"></strong>
                 </div>
-                <div class="rb-metric">
-                    <span class="rb-label" data-i18n="remainingLabel">Remaining</span>
-                    <strong class="rb-metric-value" id="metricRemaining" dir="ltr"></strong>
+                <div class="am-metric">
+                    <span class="am-label" data-i18n="remainingLabel">Remaining</span>
+                    <strong class="am-metric-value" id="metricRemaining" dir="ltr"></strong>
                 </div>
-                <div class="rb-metric">
-                    <span class="rb-label" data-i18n="expireLabel">Expire</span>
-                    <strong class="rb-metric-value" id="metricExpire"></strong>
-                </div>
-            </div>
-
-            <div class="rb-usage-block">
-                <div class="rb-usage-row">
-                    <p class="rb-label" data-i18n="usageOverviewLabel">Usage overview</p>
-                    <span class="rb-badge" id="resetStrategyBadge"></span>
-                </div>
-                <p class="rb-usage-summary" id="usageSummaryText"></p>
-                <div class="rb-progress" aria-hidden="true">
-                    <div class="rb-progress-fill" id="usageProgressFill"></div>
+                <div class="am-metric">
+                    <span class="am-label" data-i18n="expireLabel">Expire</span>
+                    <strong class="am-metric-value" id="metricExpire"></strong>
                 </div>
             </div>
 
-            <div class="rb-account-block">
-                <p class="rb-label" data-i18n="accountTitle">Account details</p>
-                <div class="rb-detail-list">
-                    <div class="rb-detail-row">
-                        <span class="rb-detail-key" data-i18n="detailStatus">Status</span>
-                        <span class="rb-detail-value" id="detailStatus"></span>
+            <div class="am-usage-block">
+                <div class="am-usage-row">
+                    <p class="am-label" data-i18n="usageOverviewLabel">Usage overview</p>
+                    <span class="am-badge" id="resetStrategyBadge"></span>
+                </div>
+                <p class="am-usage-summary" id="usageSummaryText"></p>
+                <div class="am-progress" aria-hidden="true">
+                    <div class="am-progress-fill" id="usageProgressFill"></div>
+                </div>
+            </div>
+
+            <div class="am-account-block">
+                <p class="am-label" data-i18n="accountTitle">Account details</p>
+                <div class="am-detail-list">
+                    <div class="am-detail-row">
+                        <span class="am-detail-key" data-i18n="detailStatus">Status</span>
+                        <span class="am-detail-value" id="detailStatus"></span>
                     </div>
-                    <div class="rb-detail-row">
-                        <span class="rb-detail-key" data-i18n="detailLastOnline">Last online</span>
-                        <span class="rb-detail-value" id="detailLastOnline"></span>
+                    <div class="am-detail-row">
+                        <span class="am-detail-key" data-i18n="detailLastOnline">Last online</span>
+                        <span class="am-detail-value" id="detailLastOnline"></span>
                     </div>
-                    <div class="rb-detail-row">
-                        <span class="rb-detail-key" data-i18n="detailCreatedAt">Created at</span>
-                        <span class="rb-detail-value" id="detailCreatedAt"></span>
+                    <div class="am-detail-row">
+                        <span class="am-detail-key" data-i18n="detailCreatedAt">Created at</span>
+                        <span class="am-detail-value" id="detailCreatedAt"></span>
                     </div>
-                    <div class="rb-detail-row">
-                        <span class="rb-detail-key" data-i18n="detailExpiry">Expiry</span>
-                        <span class="rb-detail-value" id="detailExpiry"></span>
+                    <div class="am-detail-row">
+                        <span class="am-detail-key" data-i18n="detailExpiry">Expiry</span>
+                        <span class="am-detail-value" id="detailExpiry"></span>
                     </div>
-                    <div class="rb-detail-row">
-                        <span class="rb-detail-key" data-i18n="detailReset">Reset</span>
-                        <span class="rb-detail-value" id="detailReset"></span>
+                    <div class="am-detail-row">
+                        <span class="am-detail-key" data-i18n="detailReset">Reset</span>
+                        <span class="am-detail-value" id="detailReset"></span>
                     </div>
-                    <div class="rb-detail-row rb-detail-row--actions">
-                        <div class="rb-quick-links">
+                    <div class="am-detail-row am-detail-row--actions">
+                        <div class="am-quick-links">
                             <a href="{{ usage_url }}" target="_blank" rel="noopener noreferrer" data-i18n="usageApiButton">Usage API</a>
                             {% if support_url %}
                             <a href="{{ support_url }}" target="_blank" rel="noopener noreferrer" data-i18n="supportButton">Support</a>
@@ -1642,122 +1709,122 @@
 
         </section>
 
-        <div class="rb-main-grid">
-            <div class="rb-stack">
-                <section class="rb-panel-card">
-                    <div class="rb-card-body">
-                        <div class="rb-card-head">
+        <div class="am-main-grid">
+            <div class="am-stack">
+                <section class="am-panel-card">
+                    <div class="am-card-body">
+                        <div class="am-card-head">
                             <div>
-                                <h3 class="rb-card-title" id="protocolCardTitle" data-i18n="configsTitle">Configurations</h3>
-                                <p class="rb-card-copy" id="configsCountText"></p>
+                                <h3 class="am-card-title" id="protocolCardTitle" data-i18n="configsTitle">Configurations</h3>
+                                <p class="am-card-copy" id="configsCountText"></p>
                             </div>
-                            <div class="rb-button-row">
-                                <button class="rb-button" type="button" id="copyAllConfigsButton">
+                            <div class="am-button-row">
+                                <button class="am-button" type="button" id="copyAllConfigsButton">
                                     <span data-i18n="copyAllButton">Copy all</span>
                                 </button>
-                                <button class="rb-icon-button" type="button" id="showSubscriptionQrButton" title="QR code">
+                                <button class="am-icon-button" type="button" id="showSubscriptionQrButton" title="QR code">
                                     <span id="showSubscriptionQrButtonIcon" aria-hidden="true"></span>
                                 </button>
                             </div>
                         </div>
-                        <div class="rb-protocol-tabs-wrap" id="protocolTabsWrap" hidden>
-                            <div class="rb-protocol-tabs" id="protocolTabs"></div>
+                        <div class="am-protocol-tabs-wrap" id="protocolTabsWrap" hidden>
+                            <div class="am-protocol-tabs" id="protocolTabs"></div>
                         </div>
 
-                        <div class="rb-protocol-panel" id="linksProtocolPanel">
-                            <label class="rb-search" id="configSearchWrap">
+                        <div class="am-protocol-panel" id="linksProtocolPanel">
+                            <label class="am-search" id="configSearchWrap">
                                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                     <path d="M21 21L16.65 16.65M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
                                 </svg>
                                 <input id="configsSearchInput" type="search" autocomplete="off" spellcheck="false">
                             </label>
-                            <div class="rb-config-list" id="configList"></div>
-                            <p class="rb-empty" id="configEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
+                            <div class="am-config-list" id="configList"></div>
+                            <p class="am-empty" id="configEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
                         </div>
 
-                        <div class="rb-protocol-panel" id="ovpnProtocolPanel" hidden>
-                            <div class="rb-vpn-block">
+                        <div class="am-protocol-panel" id="ovpnProtocolPanel" hidden>
+                            <div class="am-vpn-block">
                                 {% if openvpn.downloads %}
-                                <div class="rb-vpn-group">
-                                    <h4 class="rb-vpn-title" data-i18n="openvpnTitle">OpenVPN downloads</h4>
+                                <div class="am-vpn-group">
+                                    <h4 class="am-vpn-title" data-i18n="openvpnTitle">OpenVPN downloads</h4>
                                     {% for item in openvpn.profiles %}
-                                    <div class="rb-vpn-download" data-ovpn-profile>
+                                    <div class="am-vpn-download" data-ovpn-profile>
                                         <div>
-                                            <span class="rb-vpn-name">{% if item.Remark %}{{ item.Remark }}{% else %}{{ item.Filename }}{% endif %}</span>
-                                            <span class="rb-vpn-meta">{{ item.Filename }}</span>
+                                            <span class="am-vpn-name">{% if item.Remark %}{{ item.Remark }}{% else %}{{ item.Filename }}{% endif %}</span>
+                                            <span class="am-vpn-meta">{{ item.Filename }}</span>
                                         </div>
-                                        <a class="rb-link-button" href="{{ item.DownloadURL }}" target="_blank" rel="noopener noreferrer" data-i18n="downloadButton">Download</a>
+                                        <a class="am-link-button" href="{{ item.DownloadURL }}" target="_blank" rel="noopener noreferrer" data-i18n="downloadButton">Download</a>
                                     </div>
                                     {% endfor %}
                                 </div>
                                 {% endif %}
                             </div>
-                            <p class="rb-empty" id="ovpnEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
+                            <p class="am-empty" id="ovpnEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
                         </div>
 
-                        <div class="rb-protocol-panel" id="wgProtocolPanel" hidden>
-                            <div class="rb-vpn-block">
+                        <div class="am-protocol-panel" id="wgProtocolPanel" hidden>
+                            <div class="am-vpn-block">
                                 {% if wireguard.profiles %}
-                                <div class="rb-vpn-group">
-                                    <h4 class="rb-vpn-title" data-i18n="wireguardTitle">WireGuard configs</h4>
+                                <div class="am-vpn-group">
+                                    <h4 class="am-vpn-title" data-i18n="wireguardTitle">WireGuard configs</h4>
                                     {% for item in wireguard.profiles %}
-                                    <div class="rb-vpn-download" data-wg-profile>
+                                    <div class="am-vpn-download" data-wg-profile>
                                         <div>
-                                            <span class="rb-vpn-name">{% if item.Remark %}{{ item.Remark }}{% else %}{{ item.Filename }}{% endif %}</span>
-                                            <span class="rb-vpn-meta">{{ item.Filename }}</span>
+                                            <span class="am-vpn-name">{% if item.Remark %}{{ item.Remark }}{% else %}{{ item.Filename }}{% endif %}</span>
+                                            <span class="am-vpn-meta">{{ item.Filename }}</span>
                                         </div>
-                                        <div class="rb-vpn-actions">
-                                            <a class="rb-link-button" href="{{ item.DownloadURL }}" target="_blank" rel="noopener noreferrer" data-i18n="downloadButton">Download</a>
+                                        <div class="am-vpn-actions">
+                                            <a class="am-link-button" href="{{ item.DownloadURL }}" target="_blank" rel="noopener noreferrer" data-i18n="downloadButton">Download</a>
                                             {% if item.Link %}
-                                            <button class="rb-link-button" type="button" data-copy-text="{{ item.Link }}" data-i18n="copyLinkButton">Copy link</button>
+                                            <button class="am-link-button" type="button" data-copy-text="{{ item.Link }}" data-i18n="copyLinkButton">Copy link</button>
                                             {% endif %}
                                             {% if item.Body %}
-                                            <button class="rb-link-button" type="button" data-copy-target="wg-config-{{ item.HostTag }}" data-i18n="copyConfigButton">Copy config</button>
+                                            <button class="am-link-button" type="button" data-copy-target="wg-config-{{ item.HostTag }}" data-i18n="copyConfigButton">Copy config</button>
                                             {% endif %}
                                         </div>
                                     </div>
                                     {% if item.Body %}
-                                    <textarea class="rb-wg-config" id="wg-config-{{ item.HostTag }}" readonly>{{ item.Body }}</textarea>
+                                    <textarea class="am-wg-config" id="wg-config-{{ item.HostTag }}" readonly>{{ item.Body }}</textarea>
                                     {% endif %}
                                     {% endfor %}
                                 </div>
                                 {% endif %}
                             </div>
-                            <p class="rb-empty" id="wgEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
+                            <p class="am-empty" id="wgEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
                         </div>
 
-                        <div class="rb-protocol-panel" id="l2tpProtocolPanel" hidden>
-                            <div class="rb-vpn-block">
+                        <div class="am-protocol-panel" id="l2tpProtocolPanel" hidden>
+                            <div class="am-vpn-block">
                                 {% if l2tp %}
-                                <div class="rb-vpn-group">
-                                    <h4 class="rb-vpn-title" data-i18n="l2tpTitle">L2TP / IPSec</h4>
-                                    <div class="rb-credential-list">
+                                <div class="am-vpn-group">
+                                    <h4 class="am-vpn-title" data-i18n="l2tpTitle">L2TP / IPSec</h4>
+                                    <div class="am-credential-list">
                                         {% for item in l2tp %}
-                                        <div class="rb-credential-card" data-l2tp-card>
-                                            <p class="rb-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
-                                            <div class="rb-credential-grid">
-                                                <div class="rb-credential-row">
-                                                    <span class="rb-credential-copy" dir="ltr">{{ item.Server }}</span>
-                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server">
+                                        <div class="am-credential-card" data-l2tp-card>
+                                            <p class="am-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
+                                            <div class="am-credential-grid">
+                                                <div class="am-credential-row">
+                                                    <span class="am-credential-copy" dir="ltr">{{ item.Server }}</span>
+                                                    <button class="am-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                                                     </button>
                                                 </div>
-                                                <div class="rb-credential-row">
-                                                    <span class="rb-credential-copy" dir="ltr">{{ item.Username }}</span>
-                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username">
+                                                <div class="am-credential-row">
+                                                    <span class="am-credential-copy" dir="ltr">{{ item.Username }}</span>
+                                                    <button class="am-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                                                     </button>
                                                 </div>
-                                                <div class="rb-credential-row">
-                                                    <span class="rb-credential-copy" dir="ltr">{{ item.Password }}</span>
-                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password">
+                                                <div class="am-credential-row">
+                                                    <span class="am-credential-copy" dir="ltr">{{ item.Password }}</span>
+                                                    <button class="am-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                                                     </button>
                                                 </div>
                                                 {% if item.IPSecPSK %}
-                                                <div class="rb-credential-row">
-                                                    <span class="rb-credential-copy" dir="ltr">{{ item.IPSecPSK }}</span>
-                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.IPSecPSK }}" data-copy-title="psk">
+                                                <div class="am-credential-row">
+                                                    <span class="am-credential-copy" dir="ltr">{{ item.IPSecPSK }}</span>
+                                                    <button class="am-icon-button" type="button" data-copy-text="{{ item.IPSecPSK }}" data-copy-title="psk">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                                                     </button>
                                                 </div>
@@ -1770,28 +1837,28 @@
                                 {% endif %}
 
                                 {% if pptp %}
-                                <div class="rb-vpn-group">
-                                    <h4 class="rb-vpn-title" data-i18n="pptpTitle">PPTP</h4>
-                                    <div class="rb-credential-list">
+                                <div class="am-vpn-group">
+                                    <h4 class="am-vpn-title" data-i18n="pptpTitle">PPTP</h4>
+                                    <div class="am-credential-list">
                                         {% for item in pptp %}
-                                        <div class="rb-credential-card" data-pptp-card>
-                                            <p class="rb-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
-                                            <div class="rb-credential-grid">
-                                                <div class="rb-credential-row">
-                                                    <span class="rb-credential-copy" dir="ltr">{{ item.Server }}</span>
-                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server">
+                                        <div class="am-credential-card" data-pptp-card>
+                                            <p class="am-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
+                                            <div class="am-credential-grid">
+                                                <div class="am-credential-row">
+                                                    <span class="am-credential-copy" dir="ltr">{{ item.Server }}</span>
+                                                    <button class="am-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                                                     </button>
                                                 </div>
-                                                <div class="rb-credential-row">
-                                                    <span class="rb-credential-copy" dir="ltr">{{ item.Username }}</span>
-                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username">
+                                                <div class="am-credential-row">
+                                                    <span class="am-credential-copy" dir="ltr">{{ item.Username }}</span>
+                                                    <button class="am-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                                                     </button>
                                                 </div>
-                                                <div class="rb-credential-row">
-                                                    <span class="rb-credential-copy" dir="ltr">{{ item.Password }}</span>
-                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password">
+                                                <div class="am-credential-row">
+                                                    <span class="am-credential-copy" dir="ltr">{{ item.Password }}</span>
+                                                    <button class="am-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                                                     </button>
                                                 </div>
@@ -1802,22 +1869,22 @@
                                 </div>
                                 {% endif %}
                             </div>
-                            <p class="rb-empty" id="l2tpEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
+                            <p class="am-empty" id="l2tpEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
                         </div>
 
-                        <div class="rb-protocol-panel" id="remoteAccessProtocolPanel" hidden>
-                            <div class="rb-vpn-block">
+                        <div class="am-protocol-panel" id="remoteAccessProtocolPanel" hidden>
+                            <div class="am-vpn-block">
                                 {% if ikev2 %}
-                                <div class="rb-vpn-group">
-                                    <h4 class="rb-vpn-title" data-i18n="ikev2Title">IKEv2</h4>
-                                    <div class="rb-credential-list">
+                                <div class="am-vpn-group">
+                                    <h4 class="am-vpn-title" data-i18n="ikev2Title">IKEv2</h4>
+                                    <div class="am-credential-list">
                                         {% for item in ikev2 %}
-                                        <div class="rb-credential-card" data-remote-access-card>
-                                            <p class="rb-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
-                                            <div class="rb-credential-grid">
-                                                <div class="rb-credential-row"><span class="rb-credential-copy" dir="ltr">{{ item.Server }}:{{ item.Port }}</span><button class="rb-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>
-                                                {% if item.Username %}<div class="rb-credential-row"><span class="rb-credential-copy" dir="ltr">{{ item.Username }}</span><button class="rb-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>{% endif %}
-                                                {% if item.Password %}<div class="rb-credential-row"><span class="rb-credential-copy" dir="ltr">{{ item.Password }}</span><button class="rb-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>{% endif %}
+                                        <div class="am-credential-card" data-remote-access-card>
+                                            <p class="am-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
+                                            <div class="am-credential-grid">
+                                                <div class="am-credential-row"><span class="am-credential-copy" dir="ltr">{{ item.Server }}:{{ item.Port }}</span><button class="am-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>
+                                                {% if item.Username %}<div class="am-credential-row"><span class="am-credential-copy" dir="ltr">{{ item.Username }}</span><button class="am-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>{% endif %}
+                                                {% if item.Password %}<div class="am-credential-row"><span class="am-credential-copy" dir="ltr">{{ item.Password }}</span><button class="am-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>{% endif %}
                                             </div>
                                         </div>
                                         {% endfor %}
@@ -1826,16 +1893,16 @@
                                 {% endif %}
 
                                 {% if anyconnect %}
-                                <div class="rb-vpn-group">
-                                    <h4 class="rb-vpn-title" data-i18n="anyconnectTitle">Cisco AnyConnect</h4>
-                                    <div class="rb-credential-list">
+                                <div class="am-vpn-group">
+                                    <h4 class="am-vpn-title" data-i18n="anyconnectTitle">Cisco AnyConnect</h4>
+                                    <div class="am-credential-list">
                                         {% for item in anyconnect %}
-                                        <div class="rb-credential-card" data-remote-access-card>
-                                            <p class="rb-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
-                                            <div class="rb-credential-grid">
-                                                <div class="rb-credential-row"><span class="rb-credential-copy" dir="ltr">{{ item.Server }}:{{ item.Port }}</span><button class="rb-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>
-                                                {% if item.Username %}<div class="rb-credential-row"><span class="rb-credential-copy" dir="ltr">{{ item.Username }}</span><button class="rb-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>{% endif %}
-                                                {% if item.Password %}<div class="rb-credential-row"><span class="rb-credential-copy" dir="ltr">{{ item.Password }}</span><button class="rb-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>{% endif %}
+                                        <div class="am-credential-card" data-remote-access-card>
+                                            <p class="am-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
+                                            <div class="am-credential-grid">
+                                                <div class="am-credential-row"><span class="am-credential-copy" dir="ltr">{{ item.Server }}:{{ item.Port }}</span><button class="am-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>
+                                                {% if item.Username %}<div class="am-credential-row"><span class="am-credential-copy" dir="ltr">{{ item.Username }}</span><button class="am-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>{% endif %}
+                                                {% if item.Password %}<div class="am-credential-row"><span class="am-credential-copy" dir="ltr">{{ item.Password }}</span><button class="am-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>{% endif %}
                                             </div>
                                         </div>
                                         {% endfor %}
@@ -1843,64 +1910,65 @@
                                 </div>
                                 {% endif %}
                             </div>
-                            <p class="rb-empty" id="remoteAccessEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
+                            <p class="am-empty" id="remoteAccessEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
                         </div>
                     </div>
                 </section>
 
-                <section class="rb-panel-card">
-                    <div class="rb-card-body">
-                        <div class="rb-card-head">
+                <section class="am-panel-card">
+                    <div class="am-card-body">
+                        <div class="am-card-head">
                             <div>
-                                <h3 class="rb-card-title" data-i18n="usageChartTitle">Usage history</h3>
-                                <p class="rb-card-copy" data-i18n="usageChartCopy">Daily traffic pulled from the panel usage endpoint.</p>
+                                <h3 class="am-card-title" data-i18n="usageChartTitle">Usage history</h3>
+                                <p class="am-card-copy" data-i18n="usageChartCopy">Daily traffic pulled from the panel usage endpoint.</p>
                             </div>
                         </div>
-                        <div class="rb-chart-shell">
-                            <div class="rb-range-row">
-                                <button class="rb-range-pill is-active" type="button" data-range-days="7">7D</button>
-                                <button class="rb-range-pill" type="button" data-range-days="30">30D</button>
-                                <button class="rb-range-pill" type="button" data-range-days="90">90D</button>
+                        <div class="am-chart-shell">
+                            <div class="am-range-row">
+                                <button class="am-range-pill is-active" type="button" data-range-days="7">7D</button>
+                                <button class="am-range-pill" type="button" data-range-days="30">30D</button>
+                                <button class="am-range-pill" type="button" data-range-days="90">90D</button>
                             </div>
-                            <div class="rb-chart" id="usageChart"></div>
+                            <div class="am-chart" id="usageChart"></div>
                         </div>
                     </div>
                 </section>
             </div>
         </div>
 
-        <section class="rb-panel-card rb-app-downloads">
-            <div class="rb-card-body">
-                <div class="rb-card-head">
+        <section class="am-panel-card am-app-downloads">
+            <div class="am-card-body">
+                <div class="am-card-head">
                     <div>
-                        <h3 class="rb-card-title" data-i18n="appDownloadsTitle">Download apps</h3>
-                        <p class="rb-card-copy" data-i18n="appDownloadsCopy">Pick your platform, download a client, then add this subscription directly.</p>
+                        <h3 class="am-card-title" data-i18n="appDownloadsTitle">Download apps</h3>
+                        <p class="am-card-copy" data-i18n="appDownloadsCopy">Pick your platform, download a client, then add this subscription directly.</p>
+                        <div class="am-device-note" id="detectedDeviceNote" hidden></div>
                     </div>
                 </div>
-                <div class="rb-app-tabs" id="appPlatformTabs">
-                    <button class="rb-app-tab is-active" type="button" data-fallback-platform="ios">
-                        <span class="rb-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M16.7 2.4C16.2 3.8 15.1 5 13.8 5.1C13.6 3.7 14.5 2.4 15.2 1.9C15.8 1.5 16.4 1.3 16.7 1.3V2.4Z" fill="currentColor"></path><path d="M19.2 17.5C18.6 18.8 18.3 19.3 17.5 20.5C16.4 22.1 14.8 22.1 14.1 22.1C13.4 22.1 12.6 21.6 11.8 21.6C11 21.6 10.1 22.1 9.3 22.1C8.5 22.1 7.1 22 6 20.5C3.7 17.1 3.4 13.1 4.9 10.8C6 9.2 7.6 8.3 9.1 8.3C9.9 8.3 10.7 8.8 11.5 8.8C12.2 8.8 13.2 8.2 14.4 8.2C15.3 8.2 17 8.4 18.2 10.2C15.4 11.7 15.9 15.8 19.2 17.5Z" fill="currentColor"></path></svg></span>
+                <div class="am-app-tabs" id="appPlatformTabs">
+                    <button class="am-app-tab is-active" type="button" data-fallback-platform="ios">
+                        <span class="am-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M16.7 2.4C16.2 3.8 15.1 5 13.8 5.1C13.6 3.7 14.5 2.4 15.2 1.9C15.8 1.5 16.4 1.3 16.7 1.3V2.4Z" fill="currentColor"></path><path d="M19.2 17.5C18.6 18.8 18.3 19.3 17.5 20.5C16.4 22.1 14.8 22.1 14.1 22.1C13.4 22.1 12.6 21.6 11.8 21.6C11 21.6 10.1 22.1 9.3 22.1C8.5 22.1 7.1 22 6 20.5C3.7 17.1 3.4 13.1 4.9 10.8C6 9.2 7.6 8.3 9.1 8.3C9.9 8.3 10.7 8.8 11.5 8.8C12.2 8.8 13.2 8.2 14.4 8.2C15.3 8.2 17 8.4 18.2 10.2C15.4 11.7 15.9 15.8 19.2 17.5Z" fill="currentColor"></path></svg></span>
                         <span>iOS</span>
                     </button>
-                    <button class="rb-app-tab" type="button" data-fallback-platform="android">
-                        <span class="rb-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7.3 8.2H16.7C18 8.2 19 9.2 19 10.5V17.5C19 18.8 18 19.8 16.7 19.8H7.3C6 19.8 5 18.8 5 17.5V10.5C5 9.2 6 8.2 7.3 8.2Z" stroke="currentColor" stroke-width="1.6"></path><path d="M8 8L6.4 5.4M16 8L17.6 5.4M8.5 12.2H8.6M15.4 12.2H15.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path><path d="M8 20V22M16 20V22M3 11V17M21 11V17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span>
+                    <button class="am-app-tab" type="button" data-fallback-platform="android">
+                        <span class="am-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7.3 8.2H16.7C18 8.2 19 9.2 19 10.5V17.5C19 18.8 18 19.8 16.7 19.8H7.3C6 19.8 5 18.8 5 17.5V10.5C5 9.2 6 8.2 7.3 8.2Z" stroke="currentColor" stroke-width="1.6"></path><path d="M8 8L6.4 5.4M16 8L17.6 5.4M8.5 12.2H8.6M15.4 12.2H15.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path><path d="M8 20V22M16 20V22M3 11V17M21 11V17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span>
                         <span>Android</span>
                     </button>
-                    <button class="rb-app-tab" type="button" data-fallback-platform="windows">
-                        <span class="rb-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3.5 5.2L10.5 4.2V11.2H3.5V5.2ZM12 4L20.5 2.8V11.2H12V4ZM3.5 12.8H10.5V19.8L3.5 18.8V12.8ZM12 12.8H20.5V21.2L12 20V12.8Z" fill="currentColor"></path></svg></span>
+                    <button class="am-app-tab" type="button" data-fallback-platform="windows">
+                        <span class="am-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3.5 5.2L10.5 4.2V11.2H3.5V5.2ZM12 4L20.5 2.8V11.2H12V4ZM3.5 12.8H10.5V19.8L3.5 18.8V12.8ZM12 12.8H20.5V21.2L12 20V12.8Z" fill="currentColor"></path></svg></span>
                         <span>Windows</span>
                     </button>
-                    <button class="rb-app-tab" type="button" data-fallback-platform="macos">
-                        <span class="rb-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="16" height="11" rx="2" stroke="currentColor" stroke-width="1.6"></rect><path d="M9 20H15M12 16V20" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span>
+                    <button class="am-app-tab" type="button" data-fallback-platform="macos">
+                        <span class="am-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="16" height="11" rx="2" stroke="currentColor" stroke-width="1.6"></rect><path d="M9 20H15M12 16V20" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span>
                         <span>macOS</span>
                     </button>
-                    <button class="rb-app-tab" type="button" data-fallback-platform="linux">
-                        <span class="rb-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 7.5C5 6.1 6.1 5 7.5 5H16.5C17.9 5 19 6.1 19 7.5V16.5C19 17.9 17.9 19 16.5 19H7.5C6.1 19 5 17.9 5 16.5V7.5Z" stroke="currentColor" stroke-width="1.6"></path><path d="M8.5 9L11 11.5L8.5 14M12.5 15H16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+                    <button class="am-app-tab" type="button" data-fallback-platform="linux">
+                        <span class="am-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 7.5C5 6.1 6.1 5 7.5 5H16.5C17.9 5 19 6.1 19 7.5V16.5C19 17.9 17.9 19 16.5 19H7.5C6.1 19 5 17.9 5 16.5V7.5Z" stroke="currentColor" stroke-width="1.6"></path><path d="M8.5 9L11 11.5L8.5 14M12.5 15H16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                         <span>Linux</span>
                     </button>
                 </div>
-                <div class="rb-app-list" id="appDownloadList"></div>
-                <p class="rb-empty" id="appDownloadEmptyState" hidden data-i18n="appDownloadEmpty">No apps available for this platform.</p>
+                <div class="am-app-list" id="appDownloadList"></div>
+                <p class="am-empty" id="appDownloadEmptyState" hidden data-i18n="appDownloadEmpty">No apps available for this platform.</p>
             </div>
         </section>
     </main>
@@ -2047,16 +2115,16 @@
                     matches.forEach(function (app, index) {
                         var downloadHref = (app.downloadLinks && app.downloadLinks[osName]) || app.link;
                         var addHref = buildAddUrl(app, subUrl);
-                        var fullClass = (matches.length % 2 === 1 && index === matches.length - 1) ? ' rb-app-item--full' : '';
-                        html += '<article class="rb-app-item' + fullClass + '" data-fallback-app-platform="' + platformKey + '" hidden>' +
-                            '<span class="rb-app-icon-shell">' +
-                            (app.icon ? '<img class="rb-app-icon" src="' + app.icon + '" alt="" loading="lazy">' : '') +
-                            '<span class="rb-app-icon-fallback"' + (app.icon ? ' hidden' : '') + '>' + app.initials + '</span>' +
+                        var fullClass = (matches.length % 2 === 1 && index === matches.length - 1) ? ' am-app-item--full' : '';
+                        html += '<article class="am-app-item' + fullClass + '" data-fallback-app-platform="' + platformKey + '" hidden>' +
+                            '<span class="am-app-icon-shell">' +
+                            (app.icon ? '<img class="am-app-icon" src="' + app.icon + '" alt="" loading="lazy">' : '') +
+                            '<span class="am-app-icon-fallback"' + (app.icon ? ' hidden' : '') + '>' + app.initials + '</span>' +
                             '</span>' +
-                            '<div><span class="rb-app-name">' + app.name + '</span><span class="rb-app-meta">' + osName + '</span></div>' +
-                            '<div class="rb-app-actions">' +
-                            '<a class="rb-link-button" href="' + downloadHref + '" target="_blank" rel="noopener noreferrer">Download</a>' +
-                            (addHref ? '<a class="rb-link-button rb-button--primary" href="' + addHref + '">Add to app</a>' : '') +
+                            '<div><span class="am-app-name">' + app.name + '</span><span class="am-app-meta">' + osName + '</span></div>' +
+                            '<div class="am-app-actions">' +
+                            '<a class="am-link-button" href="' + downloadHref + '" target="_blank" rel="noopener noreferrer">Download</a>' +
+                            (addHref ? '<a class="am-link-button am-button--primary" href="' + addHref + '">Add to app</a>' : '') +
                             '</div></article>';
                     });
                 });
@@ -2081,7 +2149,7 @@
             }
 
             function installImageFallbacks() {
-                document.querySelectorAll('.rb-app-icon').forEach(function (image) {
+                document.querySelectorAll('.am-app-icon').forEach(function (image) {
                     image.addEventListener('error', function () {
                         image.hidden = true;
                         if (image.nextElementSibling) {
@@ -2114,43 +2182,43 @@
         })();
     </script>
 
-    <div class="rb-modal" id="qrModal" hidden>
-        <div class="rb-modal-backdrop" data-close-qr></div>
-        <div class="rb-modal-card">
-            <div class="rb-modal-head">
-                <div class="rb-modal-head-meta">
-                    <h4 class="rb-modal-title" data-i18n="qrModalTitle">QR code</h4>
-                    <p class="rb-modal-subtitle" id="qrModalSubtitle"></p>
+    <div class="am-modal" id="qrModal" hidden>
+        <div class="am-modal-backdrop" data-close-qr></div>
+        <div class="am-modal-card">
+            <div class="am-modal-head">
+                <div class="am-modal-head-meta">
+                    <h4 class="am-modal-title" data-i18n="qrModalTitle">QR code</h4>
+                    <p class="am-modal-subtitle" id="qrModalSubtitle"></p>
                 </div>
-                <button class="rb-icon-button" type="button" data-close-qr aria-label="close">✕</button>
+                <button class="am-icon-button" type="button" data-close-qr aria-label="close">✕</button>
             </div>
-            <div class="rb-qr-frame" id="qrCodeFrame"></div>
-            <p class="rb-modal-url" id="qrModalUrl"></p>
-            <div class="rb-modal-actions">
-                <button class="rb-button" type="button" id="copyQrValueButton">
+            <div class="am-qr-frame" id="qrCodeFrame"></div>
+            <p class="am-modal-url" id="qrModalUrl"></p>
+            <div class="am-modal-actions">
+                <button class="am-button" type="button" id="copyQrValueButton">
                     <span data-i18n="copyButton">Copy</span>
                 </button>
-                <button class="rb-button rb-button--primary" type="button" data-close-qr>
+                <button class="am-button am-button--primary" type="button" data-close-qr>
                     <span data-i18n="closeButton">Close</span>
                 </button>
             </div>
         </div>
     </div>
 
-    <div class="rb-toast" id="toast" hidden></div>
+    <div class="am-toast" id="toast" hidden></div>
 
     <script>
         (function () {
-            var themeKey = 'rb-theme';
+            var themeKey = 'am-theme';
             var chakraThemeKey = 'chakra-ui-color-mode';
-            var accentKey = 'rb-accent';
+            var accentKey = 'am-accent';
             var languageKey = 'i18nextLng';
             var languageCookieKey = 'i18next';
             var onlineWindowSeconds = 20;
             var config = document.body.dataset || {};
             var rawLinks = {{ links_text|safe }};
             var accentMap = {
-                crimson: { color: '#e0003c', hover: '#f01446' },
+                coral: { color: '#f05e63', hover: '#ff7377' },
                 blue: { color: '#2563eb', hover: '#3b82f6' },
                 green: { color: '#16a34a', hover: '#22c55e' },
                 purple: { color: '#7c3aed', hover: '#8b5cf6' },
@@ -2160,7 +2228,7 @@
                 en: {
                     panelLabel: 'AntiMage Panel',
                     pageTitle: 'Subscription Workspace',
-                    pageSubtitle: 'A subscription page rebuilt with the same panel language and theme.',
+                    pageSubtitle: 'Your secure AntiMage connection workspace.',
                     themeLabel: 'Theme',
                     settingsLabel: 'Settings',
                     themeDark: 'Dark',
@@ -2195,7 +2263,7 @@
                     usageChartTitle: 'Usage history',
                     usageChartCopy: 'Your daily data usage over time.',
                     accountTitle: 'Account details',
-                    accountCopy: 'Status, expiry and recent activity in the same panel tone.',
+                    accountCopy: 'Status, expiry and recent activity for your connection.',
                     detailStatus: 'Status',
                     detailLastOnline: 'Last online',
                     detailCreatedAt: 'Created at',
@@ -2257,15 +2325,21 @@
                     usageTotal: 'Range total',
                     qrSubscriptionLabel: 'Main subscription',
                     qrConfigLabel: 'Configuration',
+                    configDetails: 'Show details',
+                    hideConfigDetails: 'Hide details',
+                    deviceDetected: 'Recommended for [[device]]',
+                    configServer: 'Server',
+                    configPort: 'Port',
+                    rawConfig: 'Raw configuration',
                     server: 'Server',
                     username: 'Username',
                     password: 'Password',
                     psk: 'PSK'
                 },
                 fa: {
-                    panelLabel: 'پنل ربکا',
+                    panelLabel: 'پنل AntiMage',
                     pageTitle: 'فضای اشتراک',
-                    pageSubtitle: 'صفحه اشتراکی که با همان زبان و تم پنل بازسازی شده است.',
+                    pageSubtitle: 'فضای امن AntiMage برای مدیریت و اتصال اشتراک شما.',
                     themeLabel: 'تم',
                     settingsLabel: 'تنظیمات',
                     themeDark: 'تیره',
@@ -2300,7 +2374,7 @@
                     usageChartTitle: 'تاریخچه مصرف',
                     usageChartCopy: 'روند مصرف روزانه‌ی شما در طول زمان.',
                     accountTitle: 'جزئیات حساب',
-                    accountCopy: 'وضعیت، انقضا و فعالیت اخیر با همان حس خود پنل.',
+                    accountCopy: 'وضعیت، انقضا و فعالیت اخیر اتصال شما.',
                     detailStatus: 'وضعیت',
                     detailLastOnline: 'آخرین آنلاین',
                     detailCreatedAt: 'تاریخ ساخت',
@@ -2362,6 +2436,12 @@
                     usageTotal: 'جمع بازه',
                     qrSubscriptionLabel: 'اشتراک اصلی',
                     qrConfigLabel: 'کانفیگ',
+                    configDetails: 'نمایش جزئیات',
+                    hideConfigDetails: 'بستن جزئیات',
+                    deviceDetected: 'پیشنهاد مناسب برای [[device]]',
+                    configServer: 'سرور',
+                    configPort: 'پورت',
+                    rawConfig: 'کانفیگ خام',
                     server: 'سرور',
                     username: 'نام کاربری',
                     password: 'رمز عبور',
@@ -2370,7 +2450,7 @@
                 ru: {
                     panelLabel: 'Панель AntiMage',
                     pageTitle: 'Подписка',
-                    pageSubtitle: 'Страница подписки в том же визуальном стиле, что и панель.',
+                    pageSubtitle: 'Ваше защищённое рабочее пространство AntiMage.',
                     themeLabel: 'Тема',
                     settingsLabel: 'Настройки',
                     themeDark: 'Темная',
@@ -2405,7 +2485,7 @@
                     usageChartTitle: 'История трафика',
                     usageChartCopy: 'Ваш ежедневный расход трафика.',
                     accountTitle: 'Детали аккаунта',
-                    accountCopy: 'Статус, срок и недавняя активность в стиле панели.',
+                    accountCopy: 'Статус, срок и недавняя активность подключения.',
                     detailStatus: 'Статус',
                     detailLastOnline: 'Последний онлайн',
                     detailCreatedAt: 'Создан',
@@ -2467,6 +2547,12 @@
                     usageTotal: 'Итого за период',
                     qrSubscriptionLabel: 'Основная подписка',
                     qrConfigLabel: 'Конфиг',
+                    configDetails: 'Показать детали',
+                    hideConfigDetails: 'Скрыть детали',
+                    deviceDetected: 'Рекомендовано для [[device]]',
+                    configServer: 'Сервер',
+                    configPort: 'Порт',
+                    rawConfig: 'Исходная конфигурация',
                     server: 'Сервер',
                     username: 'Имя пользователя',
                     password: 'Пароль',
@@ -2475,7 +2561,7 @@
                 zh: {
                     panelLabel: 'AntiMage 面板',
                     pageTitle: '订阅空间',
-                    pageSubtitle: '按面板主题与语言重新打造的订阅页。',
+                    pageSubtitle: '您的 AntiMage 安全连接工作区。',
                     themeLabel: '主题',
                     settingsLabel: '设置',
                     themeDark: '深色',
@@ -2510,7 +2596,7 @@
                     usageChartTitle: '流量历史',
                     usageChartCopy: '您每日的流量使用趋势。',
                     accountTitle: '账户详情',
-                    accountCopy: '状态、到期与近期活动，统一为面板风格。',
+                    accountCopy: '连接状态、到期时间与近期活动。',
                     detailStatus: '状态',
                     detailLastOnline: '最后在线',
                     detailCreatedAt: '创建时间',
@@ -2572,6 +2658,12 @@
                     usageTotal: '区间总量',
                     qrSubscriptionLabel: '主订阅',
                     qrConfigLabel: '配置',
+                    configDetails: '显示详情',
+                    hideConfigDetails: '隐藏详情',
+                    deviceDetected: '推荐用于[[device]]',
+                    configServer: '服务器',
+                    configPort: '端口',
+                    rawConfig: '原始配置',
                     server: '服务器',
                     username: '用户名',
                     password: '密码',
@@ -2813,17 +2905,17 @@
             }
 
             function applyAccent() {
-                var stored = readStorage(accentKey) || 'crimson';
-                var accent = accentMap[stored] || accentMap.crimson;
+                var stored = readStorage(accentKey) || 'coral';
+                var accent = accentMap[stored] || accentMap.coral;
                 var rgb = hexToRgb(accent.color);
-                document.documentElement.style.setProperty('--rb-panel-accent', accent.color);
-                document.documentElement.style.setProperty('--rb-panel-accent-hover', accent.hover);
-                document.documentElement.style.setProperty('--rb-accent-rgb', rgb.r + ', ' + rgb.g + ', ' + rgb.b);
+                document.documentElement.style.setProperty('--am-panel-accent', accent.color);
+                document.documentElement.style.setProperty('--am-panel-accent-hover', accent.hover);
+                document.documentElement.style.setProperty('--am-accent-rgb', rgb.r + ', ' + rgb.g + ', ' + rgb.b);
                 generatePalette(accent.color);
             }
 
             function iconThemeDark() {
-                return '<svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><mask id="rbMoonMask"><rect width="24" height="24" fill="#fff"></rect><circle cx="15.5" cy="8.5" r="6.5" fill="#000"></circle></mask><circle cx="12" cy="12" r="8" fill="currentColor" mask="url(#rbMoonMask)"></circle></svg>';
+                return '<svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><mask id="amMoonMask"><rect width="24" height="24" fill="#fff"></rect><circle cx="15.5" cy="8.5" r="6.5" fill="#000"></circle></mask><circle cx="12" cy="12" r="8" fill="currentColor" mask="url(#amMoonMask)"></circle></svg>';
             }
 
             function iconThemeLight() {
@@ -2878,8 +2970,8 @@
                 var targets = [document.documentElement, document.body];
                 targets.forEach(function (target) {
                     if (!target) return;
-                    target.classList.remove('rb-theme-light', 'rb-theme-dark', 'chakra-ui-light', 'chakra-ui-dark');
-                    target.classList.add('rb-theme-' + state.theme, 'chakra-ui-' + state.theme);
+                    target.classList.remove('am-theme-light', 'am-theme-dark', 'chakra-ui-light', 'chakra-ui-dark');
+                    target.classList.add('am-theme-' + state.theme, 'chakra-ui-' + state.theme);
                     target.dataset.theme = state.theme;
                     target.style.colorScheme = state.theme;
                 });
@@ -3162,7 +3254,7 @@
                         codePoints.push(flag.codePointAt(i).toString(16));
                     }
                     var src = APPLE_EMOJI_BASE + codePoints.join('-') + '.png';
-                    return '<img class="rb-flag-emoji" src="' + src + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">';
+                    return '<img class="am-flag-emoji" src="' + src + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">';
                 });
             }
 
@@ -3363,10 +3455,10 @@
                 availableTabs.forEach(function (tab) {
                     var button = document.createElement('button');
                     button.type = 'button';
-                    button.className = 'rb-protocol-tab' + (state.activeView === tab.key ? ' is-active' : '');
+                    button.className = 'am-protocol-tab' + (state.activeView === tab.key ? ' is-active' : '');
                     button.innerHTML =
-                        '<span class="rb-protocol-tab-label">' + tabLabel(tab.key) + '</span>' +
-                        '<span class="rb-protocol-tab-count" dir="ltr">' + formatNumber(tab.count) + '</span>';
+                        '<span class="am-protocol-tab-label">' + tabLabel(tab.key) + '</span>' +
+                        '<span class="am-protocol-tab-count" dir="ltr">' + formatNumber(tab.count) + '</span>';
                     button.addEventListener('click', function () {
                         state.activeView = tab.key;
                         renderProtocolTabs();
@@ -3381,6 +3473,47 @@
                     var haystack = (item.label + ' ' + item.protocol + ' ' + item.value).toLowerCase();
                     return haystack.indexOf(state.query) >= 0;
                 });
+            }
+
+            function configDetailEntries(item) {
+                var entries = [];
+                var parsed;
+                try {
+                    parsed = new URL(item.value);
+                } catch (error) {
+                    parsed = null;
+                }
+                if (parsed) {
+                    if (parsed.hostname) entries.push([t('configServer'), parsed.hostname]);
+                    if (parsed.port) entries.push([t('configPort'), parsed.port]);
+                    parsed.searchParams.forEach(function (value, key) {
+                        if (value !== '') entries.push([key, value]);
+                    });
+                }
+                if (entries.length === 0) entries.push([t('rawConfig'), item.value]);
+                return entries;
+            }
+
+            function renderConfigDetails(item) {
+                var details = document.createElement('div');
+                details.className = 'am-config-details';
+                details.hidden = true;
+                configDetailEntries(item).forEach(function (entry) {
+                    var cell = document.createElement('div');
+                    cell.className = 'am-config-detail';
+                    var label = document.createElement('span');
+                    label.className = 'am-config-detail-label';
+                    label.textContent = entry[0];
+                    var value = document.createElement('span');
+                    value.className = 'am-config-detail-value';
+                    value.textContent = entry[1];
+                    value.dir = 'ltr';
+                    value.title = entry[1];
+                    cell.appendChild(label);
+                    cell.appendChild(value);
+                    details.appendChild(cell);
+                });
+                return details;
             }
 
             function openQrModal(value, label) {
@@ -3542,26 +3675,37 @@
                 if (items.length === 0) return;
                 items.forEach(function (item, index) {
                     var row = document.createElement('article');
-                    row.className = 'rb-config-item';
+                    row.className = 'am-config-item';
                     row.title = item.value;
                     var main = document.createElement('div');
-                    main.className = 'rb-config-main';
+                    main.className = 'am-config-main';
                     var top = document.createElement('div');
-                    top.className = 'rb-config-top';
+                    top.className = 'am-config-top';
                     var name = document.createElement('span');
-                    name.className = 'rb-config-name';
+                    name.className = 'am-config-name';
                     name.innerHTML = renderNameWithFlags(item.label || (t('qrConfigLabel') + ' #' + item.order));
                     var protocol = document.createElement('span');
-                    protocol.className = 'rb-protocol-badge';
+                    protocol.className = 'am-protocol-badge';
                     protocol.textContent = item.protocol.toUpperCase();
                     top.appendChild(name);
                     top.appendChild(protocol);
                     main.appendChild(top);
+                    var details = renderConfigDetails(item);
+                    var detailsButton = document.createElement('button');
+                    detailsButton.type = 'button';
+                    detailsButton.className = 'am-text-button';
+                    detailsButton.textContent = t('configDetails');
+                    detailsButton.addEventListener('click', function () {
+                        details.hidden = !details.hidden;
+                        detailsButton.textContent = details.hidden ? t('configDetails') : t('hideConfigDetails');
+                    });
+                    main.appendChild(detailsButton);
+                    main.appendChild(details);
                     var actions = document.createElement('div');
-                    actions.className = 'rb-config-actions';
+                    actions.className = 'am-config-actions';
                     var copyButton = document.createElement('button');
                     copyButton.type = 'button';
-                    copyButton.className = 'rb-icon-button';
+                    copyButton.className = 'am-icon-button';
                     copyButton.title = t('copySubscriptionButton');
                     copyButton.innerHTML = iconCopySolid();
                     copyButton.addEventListener('click', function () {
@@ -3569,7 +3713,7 @@
                     });
                     var qrButton = document.createElement('button');
                     qrButton.type = 'button';
-                    qrButton.className = 'rb-icon-button';
+                    qrButton.className = 'am-icon-button';
                     qrButton.title = t('qrButton');
                     qrButton.innerHTML = iconQrSolid();
                     qrButton.addEventListener('click', function () {
@@ -3680,14 +3824,14 @@
 
             function buildAppIcon(app) {
                 var shell = document.createElement('span');
-                shell.className = 'rb-app-icon-shell';
+                shell.className = 'am-app-icon-shell';
                 var image = document.createElement('img');
-                image.className = 'rb-app-icon';
+                image.className = 'am-app-icon';
                 image.src = app.icon || '';
                 image.alt = '';
                 image.loading = 'lazy';
                 var fallback = document.createElement('span');
-                fallback.className = 'rb-app-icon-fallback';
+                fallback.className = 'am-app-icon-fallback';
                 fallback.textContent = appInitials(app);
                 fallback.hidden = Boolean(app.icon);
                 image.addEventListener('error', function () {
@@ -3712,10 +3856,10 @@
                 platforms.forEach(function (platform) {
                     var button = document.createElement('button');
                     button.type = 'button';
-                    button.className = 'rb-app-tab' + (state.activeAppPlatform === platform ? ' is-active' : '');
+                    button.className = 'am-app-tab' + (state.activeAppPlatform === platform ? ' is-active' : '');
                     button.setAttribute('aria-selected', state.activeAppPlatform === platform ? 'true' : 'false');
                     var icon = document.createElement('span');
-                    icon.className = 'rb-os-icon';
+                    icon.className = 'am-os-icon';
                     icon.setAttribute('aria-hidden', 'true');
                     icon.innerHTML = osIcon(platform);
                     var label = document.createElement('span');
@@ -3735,39 +3879,49 @@
                 var root = document.getElementById('appDownloadList');
                 var empty = document.getElementById('appDownloadEmptyState');
                 if (!root || !empty) return;
+                var deviceNote = document.getElementById('detectedDeviceNote');
+                if (deviceNote) {
+                    deviceNote.hidden = false;
+                    deviceNote.textContent = interpolate(t('deviceDetected'), { device: appPlatformLabel(state.activeAppPlatform) });
+                }
                 var items = appCatalog.filter(function (app) {
                     return app.platform === state.activeAppPlatform;
                 });
+                var deviceNote = document.getElementById('detectedDeviceNote');
+                if (deviceNote) {
+                    deviceNote.hidden = false;
+                    deviceNote.textContent = interpolate(t('deviceDetected'), { device: appPlatformLabel(state.activeAppPlatform) });
+                }
                 root.innerHTML = '';
                 empty.hidden = items.length > 0;
                 if (items.length === 0) return;
                 items.forEach(function (app, index) {
                     var row = document.createElement('article');
-                    row.className = 'rb-app-item';
+                    row.className = 'am-app-item';
                     if (items.length % 2 === 1 && index === items.length - 1) {
-                        row.className += ' rb-app-item--full';
+                        row.className += ' am-app-item--full';
                     }
                     var icon = buildAppIcon(app);
                     var info = document.createElement('div');
                     var name = document.createElement('span');
-                    name.className = 'rb-app-name';
+                    name.className = 'am-app-name';
                     name.textContent = app.name;
                     var meta = document.createElement('span');
-                    meta.className = 'rb-app-meta';
+                    meta.className = 'am-app-meta';
                     meta.textContent = app.meta;
                     info.appendChild(name);
                     info.appendChild(meta);
 
                     var actions = document.createElement('div');
-                    actions.className = 'rb-app-actions';
+                    actions.className = 'am-app-actions';
                     var download = document.createElement('a');
-                    download.className = 'rb-link-button';
+                    download.className = 'am-link-button';
                     download.href = app.download;
                     download.target = '_blank';
                     download.rel = 'noopener noreferrer';
                     download.textContent = t('downloadButton');
                     var add = document.createElement('a');
-                    add.className = 'rb-link-button rb-button--primary';
+                    add.className = 'am-link-button am-button--primary';
                     add.href = appAddUrl(app);
                     add.textContent = t('appAddButton');
                     actions.appendChild(download);
@@ -3819,7 +3973,7 @@
                 var root = document.getElementById('usageChart');
                 if (!root) return;
                 if (!Array.isArray(points) || points.length === 0) {
-                    root.innerHTML = '<div class="rb-chart-message">' + t('usageEmpty') + '</div>';
+                    root.innerHTML = '<div class="am-chart-message">' + t('usageEmpty') + '</div>';
                     return;
                 }
                 var values = points.map(function (item) { return toNumber(item.used_traffic); });
@@ -3854,8 +4008,8 @@
                 for (var g = 0; g <= gridSteps; g++) {
                     var gy = padTop + (plotH * g) / gridSteps;
                     var gVal = chartMax - (chartMax * g) / gridSteps;
-                    gridSvg += '<line class="rb-chart-gridline" x1="' + padLeft + '" y1="' + gy.toFixed(2) + '" x2="' + (width - padRight) + '" y2="' + gy.toFixed(2) + '"></line>';
-                    gridSvg += '<text class="rb-chart-axis-label" x="' + (padLeft - 8) + '" y="' + (gy + 3.5).toFixed(2) + '" text-anchor="end">' + formatBytes(gVal) + '</text>';
+                    gridSvg += '<line class="am-chart-gridline" x1="' + padLeft + '" y1="' + gy.toFixed(2) + '" x2="' + (width - padRight) + '" y2="' + gy.toFixed(2) + '"></line>';
+                    gridSvg += '<text class="am-chart-axis-label" x="' + (padLeft - 8) + '" y="' + (gy + 3.5).toFixed(2) + '" text-anchor="end">' + formatBytes(gVal) + '</text>';
                 }
 
                 var step = Math.max(1, Math.ceil(points.length / 8));
@@ -3866,22 +4020,22 @@
                     var label = String(item.date || item.timestamp || '').slice(5, 10);
                     if (!label) return;
                     var anchor = index === 0 ? 'start' : (index === points.length - 1 ? 'end' : 'middle');
-                    xLabelsSvg += '<text class="rb-chart-axis-label" x="' + coords[index].x.toFixed(2) + '" y="' + (height - 8) + '" text-anchor="' + anchor + '">' + label + '</text>';
+                    xLabelsSvg += '<text class="am-chart-axis-label" x="' + coords[index].x.toFixed(2) + '" y="' + (height - 8) + '" text-anchor="' + anchor + '">' + label + '</text>';
                 });
 
-                var svg = '<svg class="rb-chart-svg" viewBox="0 0 ' + width + ' ' + height + '" preserveAspectRatio="none" role="img" aria-label="' + t('usageChartTitle') + '">' +
-                    '<defs><linearGradient id="rbChartFill" x1="0" y1="0" x2="0" y2="1">' +
-                    '<stop offset="0%" stop-color="var(--rb-panel-accent)" stop-opacity="0.4"></stop>' +
-                    '<stop offset="100%" stop-color="var(--rb-panel-accent)" stop-opacity="0"></stop>' +
+                var svg = '<svg class="am-chart-svg" viewBox="0 0 ' + width + ' ' + height + '" preserveAspectRatio="none" role="img" aria-label="' + t('usageChartTitle') + '">' +
+                    '<defs><linearGradient id="amChartFill" x1="0" y1="0" x2="0" y2="1">' +
+                    '<stop offset="0%" stop-color="var(--am-panel-accent)" stop-opacity="0.4"></stop>' +
+                    '<stop offset="100%" stop-color="var(--am-panel-accent)" stop-opacity="0"></stop>' +
                     '</linearGradient></defs>' +
                     gridSvg +
-                    '<path class="rb-chart-area" d="' + areaPath + '"></path>' +
-                    '<path class="rb-chart-line" d="' + linePath + '"></path>' +
+                    '<path class="am-chart-area" d="' + areaPath + '"></path>' +
+                    '<path class="am-chart-line" d="' + linePath + '"></path>' +
                     xLabelsSvg +
                     '</svg>';
 
-                root.innerHTML = '<div class="rb-chart-svg-wrap">' + svg + '</div>' +
-                    '<div class="rb-chart-foot"><span>' + t('usageTotal') + '</span><strong dir="ltr">' + formatBytes(total) + '</strong></div>';
+                root.innerHTML = '<div class="am-chart-svg-wrap">' + svg + '</div>' +
+                    '<div class="am-chart-foot"><span>' + t('usageTotal') + '</span><strong dir="ltr">' + formatBytes(total) + '</strong></div>';
             }
 
             var usageChartRequestId = 0;
@@ -3892,7 +4046,7 @@
                 var root = document.getElementById('usageChart');
                 if (!root) return;
                 var requestId = ++usageChartRequestId;
-                root.innerHTML = '<div class="rb-chart-message">' + t('usageLoading') + '</div>';
+                root.innerHTML = '<div class="am-chart-message">' + t('usageLoading') + '</div>';
                 fetch(usageUrlForDays(days), {
                     cache: 'no-store',
                     headers: {
@@ -3909,12 +4063,12 @@
                     })
                     .catch(function () {
                         if (requestId !== usageChartRequestId) return;
-                        root.innerHTML = '<div class="rb-chart-message">' + t('usageUnavailable') + '</div>';
+                        root.innerHTML = '<div class="am-chart-message">' + t('usageUnavailable') + '</div>';
                     });
             }
 
             function wireEvents() {
-                var themeShell = document.querySelector('.rb-toolbar-menu-shell');
+                var themeShell = document.querySelector('.am-toolbar-menu-shell');
                 var themeToggleButton = document.getElementById('themeToggleButton');
                 var langMenuButton = document.getElementById('langMenuButton');
                 var langMenu = document.getElementById('langMenu');

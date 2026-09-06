@@ -8,7 +8,7 @@ description: "See your own usage, API keys, and password from one place."
 
 See your own usage, API keys, and password from one place.
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/myaccount">Open My Account</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/myaccount">Open My Account</a></p>
 
 ## Steps
 

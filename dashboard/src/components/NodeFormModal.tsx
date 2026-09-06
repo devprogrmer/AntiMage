@@ -831,7 +831,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 									</Text>
 								</FormControl>
 							</SimpleGrid>
-							<FormControl className="node-switch-control rb-dialog-switch-row">
+							<FormControl className="node-switch-control am-dialog-switch-row">
 								<FormLabel mb={0}>
 									{t("nodes.useProxy")}
 								</FormLabel>

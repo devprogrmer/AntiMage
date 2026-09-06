@@ -905,7 +905,7 @@ func (m *Manager) installMirzaBot(ctx context.Context, request InstallRequest) (
 		CronConfig:   filepath.Join("/etc/cron.d", "antimage-php-"+suffix),
 		Service:      "php" + phpVersion + "-fpm",
 		SystemUser:   "rbphp_" + suffix,
-		Database:     "rb_mirza_" + suffix,
+		Database:     "am_mirza_" + suffix,
 		DatabaseUser: "rbm_" + suffix,
 		storageBase:  m.baseDir,
 	}

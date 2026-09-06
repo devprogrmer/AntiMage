@@ -184,7 +184,7 @@ export const Pagination: FC<PaginationProps> = ({
 
 	return (
 		<HStack
-			className="rb-data-table-pagination"
+			className="am-data-table-pagination"
 			justifyContent="space-between"
 			mt={4}
 			w="full"

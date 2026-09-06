@@ -4,7 +4,6 @@ import {
 	HStack,
 	Text,
 	Tooltip,
-	useColorMode,
 	useColorModeValue,
 	VStack,
 } from "@chakra-ui/react";
@@ -119,15 +118,14 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	const location = useLocation();
 	const navigate = useNavigate();
 	const dashboardRoot = useHref("/");
-	const { colorMode } = useColorMode();
 	const { userData } = useGetUser();
 	const currentLanguage = i18n.language || "en";
 	const tutorialsUrl = "/tutorials";
 	const sectionAccess = userData.permissions?.sections;
 	const isFullAccess = userData.role === AdminRole.FullAccess;
 	const isPrivilegedAdmin = isFullAccess || userData.role === AdminRole.Sudo;
-	const sidebarBg = useColorModeValue("panel.sidebar", "panel.sidebar");
-	const sidebarBorderColor = useColorModeValue("panel.border", "panel.border");
+	const sidebaamg = useColorModeValue("panel.sidebar", "panel.sidebar");
+	const sidebaamorderColor = useColorModeValue("panel.border", "panel.border");
 	const sidebarPanelBg = useColorModeValue("panel.elevated", "panel.elevated");
 	const sidebarPanelBorder = useColorModeValue("panel.border", "panel.border");
 	const sidebarShadow = useColorModeValue(
@@ -415,9 +413,9 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			w={inDrawer ? "full" : collapsed ? "16" : "56"}
 			h={inDrawer ? "100%" : "calc(100vh - 24px)"}
 			maxH={inDrawer ? "100%" : "calc(100vh - 24px)"}
-			bg={sidebarBg}
+			bg={sidebaamg}
 			borderWidth={inDrawer ? undefined : "1px"}
-			borderColor={inDrawer ? undefined : sidebarBorderColor}
+			borderColor={inDrawer ? undefined : sidebaamorderColor}
 			borderRadius={inDrawer ? undefined : "2xl"}
 			boxShadow={inDrawer ? undefined : sidebarShadow}
 			transition="width 0.3s ease"
@@ -442,7 +440,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 					minH={0}
 					overflowY="auto"
 					overflowX="hidden"
-					className="rb-sidebar-scroll"
+					className="am-sidebar-scroll"
 					data-dir={isRTL ? "rtl" : "ltr"}
 					data-collapsed={collapsed ? "true" : "false"}
 					dir={isRTL ? "rtl" : "ltr"}
@@ -456,18 +454,22 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 							py={3}
 							borderWidth="1px"
 							borderColor={sidebarPanelBorder}
+							borderTopColor="panel.accent"
+							borderTopWidth="2px"
 							borderRadius="md"
 							bg={sidebarPanelBg}
 						>
 							<LogoIcon
 								src={logoUrl}
 								alt="AntiMage"
-								filter={
-									colorMode === "dark" ? "brightness(0) invert(1)" : "none"
-								}
 							/>
-							<Text fontSize="lg" fontWeight="bold" color={logoTextColor}>
-								{t("menu")}
+							<Text
+								color={logoTextColor}
+								fontSize="lg"
+								fontWeight="800"
+								letterSpacing="0.02em"
+							>
+								AntiMage
 							</Text>
 						</HStack>
 					) : (
@@ -476,6 +478,8 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 							mb={5}
 							borderWidth="1px"
 							borderColor={sidebarPanelBorder}
+							borderTopColor="panel.accent"
+							borderTopWidth="2px"
 							borderRadius="md"
 							bg={sidebarPanelBg}
 							py={2}
@@ -484,9 +488,6 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 								<LogoIcon
 									src={logoUrl}
 									alt="AntiMage"
-									filter={
-										colorMode === "dark" ? "brightness(0) invert(1)" : "none"
-									}
 								/>
 							</Tooltip>
 						</HStack>
@@ -571,7 +572,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 																	bg="panel.accent"
 																	color="white"
 																	border="2px solid"
-																	borderColor={sidebarBg}
+																	borderColor={sidebaamg}
 																	display="inline-flex"
 																	alignItems="center"
 																	justifyContent="center"

@@ -6,5 +6,5 @@ export const SeasonalOverlay: FC = () => {
 
 	if (!isChristmas) return null;
 
-	return <>{shouldSnow && <div className="rb-snow-layer" aria-hidden />}</>;
+	return <>{shouldSnow && <div className="am-snow-layer" aria-hidden />}</>;
 };

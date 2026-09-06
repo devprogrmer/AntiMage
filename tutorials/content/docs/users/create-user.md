@@ -8,7 +8,7 @@ description: "Create a user fast and hand over the link—no backend work needed
 
 Create a user fast and hand over the link—no backend work needed.
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/users">Open users</a><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/users" data-session-key="openCreateUser" data-session-value="true">Create user</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/users">Open users</a><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/users" data-session-key="openCreateUser" data-session-value="true">Create user</a></p>
 
 ## Steps
 

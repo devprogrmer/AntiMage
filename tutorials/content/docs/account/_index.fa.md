@@ -6,7 +6,7 @@ description: "مدیریت رمز عبور، کلیدهای API و اطلاعا�
 
 بخش حساب برای تنظیمات شخصی ادمینی است که اکنون وارد پنل شده است. تغییرهای این بخش روی ورود و اعتبارنامه‌های خودتان اثر دارد، نه ادمین‌های دیگر.
 
-<p class="rb-panel-actions"><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/myaccount">باز کردن حساب من</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/myaccount">باز کردن حساب من</a></p>
 
 ## راهنما
 

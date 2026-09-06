@@ -241,14 +241,14 @@ const AccessInsightsPage: FC = () => {
 				mobilePriority: 1,
 				mobileSummary: true,
 				cell: (client) => {
-					const operatorByIP = new Map(
+					const operatoamyIP = new Map(
 						(client.operators || []).map((operator) => [operator.ip, operator]),
 					);
 					const sources = uniqueStrings(client.sources || []);
 					return (
 						<VStack align="stretch" spacing={2} minW={0}>
 							{sources.slice(0, 3).map((ip) => {
-								const operator = operatorByIP.get(ip);
+								const operator = operatoamyIP.get(ip);
 								const nodes = uniqueStrings(client.source_nodes?.[ip] || []);
 								return (
 									<HStack key={ip} align="center" spacing={2} minW={0}>
@@ -391,7 +391,7 @@ const AccessInsightsPage: FC = () => {
 			</HStack>
 		) : null;
 	const selectedSources = uniqueStrings(selectedClient?.sources || []);
-	const selectedOperatorByIP = new Map(
+	const selectedOperatoamyIP = new Map(
 		(selectedClient?.operators || []).map((operator) => [
 			operator.ip,
 			operator,
@@ -542,7 +542,7 @@ const AccessInsightsPage: FC = () => {
 					mobileBreakpoint="md"
 					dir={isRTL ? "rtl" : "ltr"}
 					tableProps={{
-						className: isRTL ? "rb-rtl-table" : undefined,
+						className: isRTL ? "am-rtl-table" : undefined,
 						w: "full",
 						sx: {
 							tableLayout: "fixed",
@@ -650,7 +650,7 @@ const AccessInsightsPage: FC = () => {
 							</HStack>
 							<VStack align="stretch" spacing={0} maxH="320px" overflowY="auto">
 								{selectedSources.map((ip) => {
-									const operator = selectedOperatorByIP.get(ip);
+									const operator = selectedOperatoamyIP.get(ip);
 									const nodes = uniqueStrings(
 										selectedClient.source_nodes?.[ip] || [],
 									);
@@ -658,7 +658,7 @@ const AccessInsightsPage: FC = () => {
 										<HStack
 											key={ip}
 											py={2}
-											borderBottomWidth="1px"
+										borderBottomWidth="1px"
 											borderColor="panel.border"
 											align="center"
 										>

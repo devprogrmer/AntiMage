@@ -8,7 +8,7 @@ description: "یوزر را سریع بساز و لینک را بده؛ نیاز
 
 یوزر را سریع بساز و لینک را بده؛ نیاز به تنظیمات بک‌اند نیست.
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/users">باز کردن کاربران</a><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/users" data-session-key="openCreateUser" data-session-value="true">ساخت یوزر</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/users">باز کردن کاربران</a><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/users" data-session-key="openCreateUser" data-session-value="true">ساخت یوزر</a></p>
 
 ## مراحل
 

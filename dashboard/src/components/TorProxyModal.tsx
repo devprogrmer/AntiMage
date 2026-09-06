@@ -317,7 +317,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 												key={item.country}
 												justify="space-between"
 												minH="34px"
-												borderBottomWidth="1px"
+										borderBottomWidth="1px"
 												borderColor={borderColor}
 												fontSize="xs"
 											>
@@ -330,7 +330,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 									</VStack>
 								</Box>
 							</XrayDialogSection>
-							<FormControl className="rb-dialog-switch-row">
+							<FormControl className="am-dialog-switch-row">
 								<FormLabel>
 									{t("pages.xray.tor.strict")}
 								</FormLabel>

@@ -25,7 +25,7 @@ export const NodeModalStatusBadge: FC<UserStatusProps> = ({
 	return (
 		<>
 			<Badge
-				className="rb-status-badge"
+				className="am-status-badge"
 				colorScheme={statusColors[userStatus].statusColor}
 				rounded="full"
 				display="inline-flex"
@@ -43,7 +43,7 @@ export const NodeModalStatusBadge: FC<UserStatusProps> = ({
 				<Icon w={compact ? 3 : 4} flexShrink={0} />
 				{showDetail && (
 					<Text
-						className="rb-status-badge-text"
+						className="am-status-badge-text"
 						textTransform="capitalize"
 						fontSize={compact ? ".7rem" : ".875rem"}
 						lineHeight={compact ? "1rem" : "1.25rem"}

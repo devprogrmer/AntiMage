@@ -9,7 +9,7 @@ type UserAdminChipProps = {
 
 /**
  * "by <admin>" tag for rows owned by another admin/reseller. Deliberately
- * muted and uniform (styled via .rb-user-admin-chip with the panel theme
+ * muted and uniform (styled via .am-user-admin-chip with the panel theme
  * tokens) so it reads as quiet metadata rather than a colored label.
  */
 export const UserAdminChip: FC<UserAdminChipProps> = ({
@@ -22,7 +22,7 @@ export const UserAdminChip: FC<UserAdminChipProps> = ({
 
 	return (
 		<chakra.span
-			className="rb-user-admin-chip"
+			className="am-user-admin-chip"
 			dir="ltr"
 			sx={{ unicodeBidi: "isolate" }}
 		>

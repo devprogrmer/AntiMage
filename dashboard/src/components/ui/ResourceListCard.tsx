@@ -123,7 +123,7 @@ export const ResourceListCard: FC<ResourceListCardProps> = ({
 						align={{ base: "stretch", xl: "center" }}
 						justify="space-between"
 					>
-						<Stack flex="1" minW={0} className="rb-resource-card-controls">
+						<Stack flex="1" minW={0} className="am-resource-card-controls">
 							{children}
 						</Stack>
 						{footerActions && (

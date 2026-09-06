@@ -22,4 +22,4 @@ export const getTutorialManifestUrl = (dashboardRoot: string) =>
 	`${normalizeDashboardRoot(dashboardRoot)}/${tutorialContentPath}/manifest.json`;
 
 export const getTutorialSeenKey = (lang?: string | null) =>
-	`rb-tutorials-seen-${normalizeTutorialLang(lang)}`;
+	`am-tutorials-seen-${normalizeTutorialLang(lang)}`;

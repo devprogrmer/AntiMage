@@ -105,7 +105,7 @@ export const TabSystem: FC<TabSystemProps> = ({ tabs, ...props }) => {
 
 	return (
 		<Box
-			className="rb-tab-system"
+			className="am-tab-system"
 			display="flex"
 			gap={6}
 			minH="10"

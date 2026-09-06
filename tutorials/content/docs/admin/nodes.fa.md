@@ -9,7 +9,7 @@ adminOnly: true
 
 هر نود یک رکورد جدا در پنل و یک بسته گواهی mTLS اختصاصی دارد. ابتدا رکورد را در AntiMage بسازید؛ پنل بعد از ساخت، بسته‌ای را تولید می‌کند که installer نود به آن نیاز دارد.
 
-<p class="rb-panel-actions"><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/node-settings">باز کردن تنظیمات نود</a><a class="rb-panel-button" href="https://github.com/antimagepanel/AntiMage#antimage-node" target="_blank" rel="noopener noreferrer">مشاهده مستندات نود</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/node-settings">باز کردن تنظیمات نود</a><a class="am-panel-button" href="https://github.com/antimagepanel/AntiMage#antimage-node" target="_blank" rel="noopener noreferrer">مشاهده مستندات نود</a></p>
 
 ## پیش‌نیازها {#section-nodes-admin-intro}
 

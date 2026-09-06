@@ -9,7 +9,7 @@ adminOnly: true
 
 Three parts: admin overview, how to manage, and admin roles (each role its own box).
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/admins">Go to Admins</a><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/admins" data-session-key="openCreateAdmin" data-session-value="true">Create admin</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/admins">Go to Admins</a><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/admins" data-session-key="openCreateAdmin" data-session-value="true">Create admin</a></p>
 
 ## Overview {#section-admins-page-intro}
 

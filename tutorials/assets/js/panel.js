@@ -17,9 +17,9 @@
 	};
 
 	const version = document.querySelector(
-		'meta[name="rb-tutorial-version"]',
+		'meta[name="am-tutorial-version"]',
 	)?.content;
-	if (version) localStorage.setItem(`rb-tutorials-seen-${lang}`, version);
+	if (version) localStorage.setItem(`am-tutorials-seen-${lang}`, version);
 
 	document.querySelectorAll("a[data-panel-route]").forEach((link) => {
 		const route = link.dataset.panelRoute || "/";
@@ -54,7 +54,7 @@
 
 	window.addEventListener("storage", (event) => {
 		if (
-			(event.key === "rb-theme" || event.key === "chakra-ui-color-mode") &&
+			(event.key === "am-theme" || event.key === "chakra-ui-color-mode") &&
 			(event.newValue === "light" || event.newValue === "dark")
 		) {
 			localStorage.setItem("color-theme", event.newValue);
@@ -80,19 +80,19 @@
 			}
 			const admin = session.admin;
 			const privileged = admin && ["sudo", "full_access"].includes(admin.role);
-			document.documentElement.dataset.rbPrivileged = privileged
+			document.documentElement.dataset.amPrivileged = privileged
 				? "true"
 				: "false";
 			if (
-				document.documentElement.dataset.rbAdminPage === "true" &&
+				document.documentElement.dataset.amAdminPage === "true" &&
 				!privileged
 			) {
 				location.replace(`${docsRoot}/${lang === "fa" ? "fa/" : ""}docs/`);
 			}
 		})
 		.catch(() => {
-			document.documentElement.dataset.rbPrivileged = "false";
-			if (document.documentElement.dataset.rbAdminPage === "true") {
+			document.documentElement.dataset.amPrivileged = "false";
+			if (document.documentElement.dataset.amAdminPage === "true") {
 				location.replace(`${docsRoot}/${lang === "fa" ? "fa/" : ""}docs/`);
 			}
 		});

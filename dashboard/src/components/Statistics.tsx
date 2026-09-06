@@ -508,7 +508,7 @@ const HistoryModal: FC<{
 					justifyContent="space-between"
 					px={6}
 					py={4}
-					borderBottomWidth="1px"
+				borderBottomWidth="1px"
 					borderColor="panel.border"
 					fontSize="md"
 					fontWeight="bold"
@@ -752,7 +752,7 @@ const UsageMetricCard: FC<{
 					fontSize="xs"
 					fontWeight="medium"
 					color={mutedColor}
-					className="rb-usage-pair"
+					className="am-usage-pair"
 					minH="16px"
 					noOfLines={1}
 					title={detail}

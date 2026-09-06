@@ -36,7 +36,6 @@ func TestGatewayForwardsAPIDirectlyToInProcessHandler(t *testing.T) {
 		{method: http.MethodGet, path: "/api/system"},
 		{method: http.MethodPost, path: "/admin/token"},
 		{method: http.MethodGet, path: "/sub/token"},
-		{method: http.MethodGet, path: "/"},
 	} {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, nil)
@@ -48,7 +47,14 @@ func TestGatewayForwardsAPIDirectlyToInProcessHandler(t *testing.T) {
 		})
 	}
 
-	if strings.Join(hits, ",") != "GET /api/system,POST /admin/token,GET /sub/token,GET /" {
+	rootReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	rootRec := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(rootRec, rootReq)
+	if rootRec.Code != http.StatusTemporaryRedirect || rootRec.Header().Get("Location") != "/dashboard/login" {
+		t.Fatalf("root redirect status=%d location=%q", rootRec.Code, rootRec.Header().Get("Location"))
+	}
+
+	if strings.Join(hits, ",") != "GET /api/system,POST /admin/token,GET /sub/token" {
 		t.Fatalf("unexpected API hits: %#v", hits)
 	}
 }

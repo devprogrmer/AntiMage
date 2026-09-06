@@ -71,7 +71,7 @@ export const RowActionsMenu: FC<RowActionsMenuProps> = ({
 						icon={<EllipsisIcon />}
 						size="sm"
 						variant="ghost"
-						className="rb-row-action"
+						className="am-row-action"
 						minW="32px"
 						h="32px"
 						onClick={(event) => event.stopPropagation()}

@@ -797,7 +797,7 @@ export const InboundFormModal: FC<Props> = ({
 			});
 		}
 		if (!String(form.getValues("l2tpIPSecPSK") || "").trim()) {
-			form.setValue("l2tpIPSecPSK", `rb-l2tp-${randomLowerAndNum(24)}`, {
+			form.setValue("l2tpIPSecPSK", `am-l2tp-${randomLowerAndNum(24)}`, {
 				shouldDirty: true,
 				shouldValidate: true,
 			});
@@ -1715,7 +1715,7 @@ export const InboundFormModal: FC<Props> = ({
 																if (!form.getValues("l2tpIPSecPSK")) {
 																	form.setValue(
 																		"l2tpIPSecPSK",
-																		`rb-l2tp-${randomLowerAndNum(24)}`,
+																		`am-l2tp-${randomLowerAndNum(24)}`,
 																		{
 																			shouldDirty: true,
 																			shouldValidate: true,
@@ -4914,19 +4914,19 @@ export const InboundFormModal: FC<Props> = ({
 
 																<FormControl
 																	isInvalid={
-																		!!fieldValidationErrors.xhttpServerMaxHeaderBytes
+														!!fieldValidationErrors.xhttpServerMaxHeaderBytes
 																	}
 																>
 																	<FormLabel>
-																		{t("inbounds.xhttp.serverMaxHeaderBytes")}
+													{t("inbounds.xhttp.serverMaxHeaderBytes")}
 																	</FormLabel>
 																	<Input
-																		{...register("xhttpServerMaxHeaderBytes")}
+													{...register("xhttpServerMaxHeaderBytes")}
 																		placeholder="0"
 																	/>
-																	{fieldValidationErrors.xhttpServerMaxHeaderBytes && (
+													{fieldValidationErrors.xhttpServerMaxHeaderBytes && (
 																		<Text fontSize="xs" color="red.500" mt={1}>
-																			{fieldValidationErrors.xhttpServerMaxHeaderBytes}
+															{fieldValidationErrors.xhttpServerMaxHeaderBytes}
 																		</Text>
 																	)}
 																</FormControl>
@@ -6438,7 +6438,7 @@ export const InboundFormModal: FC<Props> = ({
 													{(
 														[
 															[
-																"realityLimitFallbackUploadAfterBytes",
+																"realityLimitFallbackUploadAfteamytes",
 																"Upload after bytes",
 															],
 															[
@@ -6450,7 +6450,7 @@ export const InboundFormModal: FC<Props> = ({
 																"Upload burst bytes/sec",
 															],
 															[
-																"realityLimitFallbackDownloadAfterBytes",
+																"realityLimitFallbackDownloadAfteamytes",
 																"Download after bytes",
 															],
 															[

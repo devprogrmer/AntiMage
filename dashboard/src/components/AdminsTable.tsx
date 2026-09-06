@@ -665,7 +665,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		},
 	};
 	const tableClassName = isRTL
-		? classNames(className, "rb-rtl-table")
+		? classNames(className, "am-rtl-table")
 		: className;
 	const tableProps = {
 		...restProps,

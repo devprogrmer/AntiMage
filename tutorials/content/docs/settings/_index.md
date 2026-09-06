@@ -7,7 +7,7 @@ description: "Understand the Panel, Telegram, Subscriptions, and SSL tabs, plus 
 
 Settings controls shared panel behavior and integrations. Available tabs and actions depend on your administrator permissions and installation mode.
 
-<p class="rb-panel-actions"><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/settings#panel">Open settings</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/settings#panel">Open settings</a></p>
 
 ## Before you change anything
 
@@ -18,7 +18,7 @@ Settings controls shared panel behavior and integrations. Available tabs and act
 
 ## Panel tab {#panel-tab}
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/settings#panel">Open Panel tab</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/settings#panel">Open Panel tab</a></p>
 
 ### Default subscription link format
 
@@ -50,7 +50,7 @@ The phpMyAdmin section is available for MySQL and MariaDB installations. It can 
 
 ## Dashboard maintenance and backup {#dashboard-maintenance}
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/">Open Dashboard</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/">Open Dashboard</a></p>
 
 The panel version, **Restart panel**, **Backup**, and **Update panel** controls are now in the **System overview** header on the Dashboard. These host-level actions require the matching admin permission and a binary installation.
 
@@ -64,7 +64,7 @@ The panel version, **Restart panel**, **Backup**, and **Update panel** controls 
 
 ### Backup
 
-AntiMage exports a portable `.rbbackup` file that can be restored across SQLite, MySQL, and MariaDB installations.
+AntiMage exports a portable `.ambackup` file that can be restored across SQLite, MySQL, and MariaDB installations.
 
 | Scope | Included data |
 | --- | --- |
@@ -75,7 +75,7 @@ Open **Backup** beside **Restart panel**, then choose **Export backup** or **Imp
 
 ## Telegram tab {#telegram-tab}
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/settings#telegram">Open Telegram tab</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/settings#telegram">Open Telegram tab</a></p>
 
 1. Create a bot and paste its **Bot API Token**. Treat the token as a password.
 2. Add numeric **Admin Chat IDs**. Use **Logs Chat ID** when logs should go to a different chat or channel.
@@ -93,7 +93,7 @@ Notification groups cover user, admin, node, login, and error events. Enable onl
 
 ## Subscriptions tab {#subscriptions-tab}
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/settings#subscriptions">Open Subscriptions tab</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/settings#subscriptions">Open Subscriptions tab</a></p>
 
 Global subscription settings apply to every admin unless that admin has an override.
 
@@ -109,7 +109,7 @@ Admin overrides should be the exception. Keep common values global, override onl
 
 ## SSL tab {#ssl-tab}
 
-<p class="rb-panel-actions"><a class="rb-panel-button" href="#" data-panel-route="/settings#ssl">Open SSL tab</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" href="#" data-panel-route="/settings#ssl">Open SSL tab</a></p>
 
 The SSL tab lists saved certificates and supports search by domain, provider, or status. Use the expiry filter to find certificates that expire in the next seven days.
 
