@@ -87,9 +87,12 @@ func TestHostsCRUDOnMigratedSQLite(t *testing.T) {
 }
 
 func TestHostsMoveUsesConfigInboundMissingFromRegistry(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "hosts-move.sqlite3")
+	testDir := t.TempDir()
+	dbPath := filepath.Join(testDir, "hosts-move.sqlite3")
 	server, err := New(Config{
 		Database:                    "sqlite:///" + filepath.ToSlash(dbPath),
+		CertificateBase:             filepath.Join(testDir, "certificates"),
+		ExternalAppsBase:            filepath.Join(testDir, "apps"),
 		JWTAccessTokenExpireMinutes: 1440,
 	})
 	if err != nil {

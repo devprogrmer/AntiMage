@@ -166,7 +166,13 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			port INTEGER NULL,
 			path TEXT NULL,
 			sni TEXT NULL,
+			sni_options TEXT NULL,
+			sni_selection_mode TEXT NOT NULL DEFAULT 'random',
+			sni_ttl_seconds INTEGER NOT NULL DEFAULT 0,
 			host TEXT NULL,
+			host_options TEXT NULL,
+			host_selection_mode TEXT NOT NULL DEFAULT 'random',
+			host_ttl_seconds INTEGER NOT NULL DEFAULT 0,
 			security TEXT NOT NULL DEFAULT 'inbound_default',
 			alpn TEXT NOT NULL DEFAULT 'none',
 			fingerprint TEXT NOT NULL DEFAULT 'none',
@@ -358,6 +364,17 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 	server.telegramBackup = telegramapp.NewBackupDelivery(telegramRepo, telegramSender)
 	server.nodeMutations = server.nodeMutations.WithRecentActionRecorder(server.recordRecentActionEventTx)
 	return server, db
+}
+
+func execTestSchemaStatement(t *testing.T, db *sql.DB, statement string) {
+	t.Helper()
+	if _, err := db.Exec(statement); err != nil {
+		message := strings.ToLower(err.Error())
+		if strings.Contains(message, "duplicate column") || strings.Contains(message, "already exists") {
+			return
+		}
+		t.Fatalf("exec %q: %v", statement, err)
+	}
 }
 
 func insertMasterAPIAdmin(t *testing.T, db *sql.DB, id int64, username string, password string, role adminapp.AdminRole, status adminapp.AdminStatus) {

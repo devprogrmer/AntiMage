@@ -365,7 +365,7 @@ func TestSubscriptionSettingsRoutes(t *testing.T) {
 		t.Fatalf("unexpected updated settings: %#v", updated)
 	}
 	aliases := updated["subscription_aliases"].([]any)
-	if len(aliases) != 2 || aliases[0] != "/a" || aliases[1] != "/b/" {
+	if len(aliases) != 2 || aliases[0] != "/a/" || aliases[1] != "/b/" {
 		t.Fatalf("unexpected aliases: %#v", aliases)
 	}
 	ports := updated["subscription_ports"].([]any)

@@ -61,9 +61,7 @@ func testUserReadServer(t *testing.T) (*Server, *sql.DB) {
 		`INSERT INTO subscription_settings (id, subscription_url_prefix, subscription_path, subscription_ports) VALUES (1, '', 'sub', '')`,
 	}
 	for _, statement := range statements {
-		if _, err := db.Exec(statement); err != nil {
-			t.Fatalf("exec %q: %v", statement, err)
-		}
+		execTestSchemaStatement(t, db, statement)
 	}
 	return server, db
 }

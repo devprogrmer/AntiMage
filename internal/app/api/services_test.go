@@ -73,9 +73,7 @@ func testServiceServer(t *testing.T) (*Server, *sql.DB, string) {
 			(2, 'vmess-in', 'second', 'example.org', 8443, 'inbound_default', 'none', 'none', 0, 0, 0, 0)`,
 	}
 	for _, statement := range statements {
-		if _, err := db.Exec(statement); err != nil {
-			t.Fatalf("exec %q: %v", statement, err)
-		}
+		execTestSchemaStatement(t, db, statement)
 	}
 	insertMasterAPIAdmin(t, db, 1, "owner", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	insertMasterAPIAdmin(t, db, 2, "seller", "pass123", adminapp.RoleStandard, adminapp.StatusActive)
@@ -576,18 +574,14 @@ func TestServiceHostChangeKeepsSubscriptionLinkAndChangesConfigOutput(t *testing
 	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN sub_last_user_agent TEXT NULL`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN created_at DATETIME NULL`); err != nil {
-		t.Fatal(err)
-	}
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN created_at DATETIME NULL`)
 	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN flow TEXT NULL`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN expire BIGINT NULL`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN ip_limit INTEGER DEFAULT 0`); err != nil {
-		t.Fatal(err)
-	}
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN ip_limit INTEGER DEFAULT 0`)
 	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN auto_delete_in_days INTEGER NULL`); err != nil {
 		t.Fatal(err)
 	}
