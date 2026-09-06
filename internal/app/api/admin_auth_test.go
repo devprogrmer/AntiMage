@@ -24,6 +24,8 @@ import (
 	certificateapp "github.com/antimage/antimage/internal/app/certificates"
 	nodeapp "github.com/antimage/antimage/internal/app/node"
 	"github.com/antimage/antimage/internal/app/nodecontroller"
+	nordvpnapp "github.com/antimage/antimage/internal/app/nordvpn"
+	outboundsubapp "github.com/antimage/antimage/internal/app/outboundsub"
 	settingsapp "github.com/antimage/antimage/internal/app/settings"
 	telegramapp "github.com/antimage/antimage/internal/app/telegram"
 	warpapp "github.com/antimage/antimage/internal/app/warp"
@@ -132,6 +134,7 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			status TEXT NOT NULL,
 			on_hold_timeout DATETIME NULL,
 			on_hold_expire_duration BIGINT NULL,
+			ip_limit INTEGER NOT NULL DEFAULT 0,
 			last_status_change DATETIME NULL,
 			admin_disabled_at DATETIME NULL,
 			service_limit_disabled_at DATETIME NULL,
@@ -148,12 +151,18 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			id INTEGER PRIMARY KEY,
 			tag TEXT NOT NULL UNIQUE,
 			uplink INTEGER NOT NULL DEFAULT 0,
-			downlink INTEGER NOT NULL DEFAULT 0
+			downlink INTEGER NOT NULL DEFAULT 0,
+			usage_coefficient REAL NOT NULL DEFAULT 1
 		)`,
 		`CREATE TABLE hosts (
 			id INTEGER PRIMARY KEY,
 			remark TEXT NOT NULL,
 			address TEXT NOT NULL,
+			dns_primary TEXT NULL,
+			dns_secondary TEXT NULL,
+			address_options TEXT NULL,
+			address_selection_mode TEXT NOT NULL DEFAULT 'single',
+			address_ttl_seconds INTEGER NOT NULL DEFAULT 0,
 			port INTEGER NULL,
 			path TEXT NULL,
 			sni TEXT NULL,
@@ -254,6 +263,34 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			uplink BIGINT DEFAULT 0,
 			downlink BIGINT DEFAULT 0
 		)`,
+		`CREATE TABLE nordvpn_settings (
+			id INTEGER PRIMARY KEY,
+			token TEXT NULL,
+			private_key TEXT NULL,
+			created_at DATETIME NULL,
+			updated_at DATETIME NULL
+		)`,
+		`CREATE TABLE outbound_subscriptions (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			url TEXT NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			refresh_interval_minutes INTEGER NOT NULL DEFAULT 360,
+			last_fetched_at DATETIME NULL,
+			last_error TEXT NULL,
+			sort INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NULL,
+			updated_at DATETIME NULL
+		)`,
+		`CREATE TABLE outbound_subscription_outbounds (
+			id INTEGER PRIMARY KEY,
+			subscription_id INTEGER NOT NULL,
+			outbound_id TEXT NOT NULL,
+			tag TEXT NOT NULL,
+			protocol TEXT NULL,
+			raw TEXT NOT NULL,
+			sort INTEGER NOT NULL DEFAULT 0
+		)`,
 		`CREATE TABLE warp_accounts (
 			id INTEGER PRIMARY KEY,
 			device_id TEXT NOT NULL UNIQUE,
@@ -291,6 +328,7 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 
 	repo := adminapp.NewRepository(db, "sqlite")
 	warpRepo := warpapp.NewRepository(db, "sqlite")
+	nordRepo := nordvpnapp.NewRepository(db, "sqlite")
 	server := &Server{
 		cfg: Config{
 			Database:                    "sqlite:///" + filepath.ToSlash(path),
@@ -303,6 +341,8 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 		nodeController: nodecontroller.NewController(nodecontroller.NewRepository(db, "sqlite")),
 		nodeMutations:  nodeapp.NewRepository(db, "sqlite"),
 		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient("")),
+		nordService:    nordvpnapp.NewService(nordRepo, nordvpnapp.NewClient("")),
+		outboundSubs:   outboundsubapp.NewService(db, "sqlite"),
 		configRepo:     xrayconfig.NewRepository(db, "sqlite", xrayconfig.Options{}),
 		settingsRepo:   settingsapp.NewRepository(db, "sqlite"),
 		backupService:  backupapp.NewService(db, "sqlite", "sqlite:///"+filepath.ToSlash(path)),
