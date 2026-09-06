@@ -1,0 +1,8 @@
+services:
+  antimage:
+    image:  antimagepanel/antimage:latest
+    restart: always
+    env_file: .env
+    network_mode: host
+    volumes:
+      - /var/lib/antimage:/var/lib/antimage

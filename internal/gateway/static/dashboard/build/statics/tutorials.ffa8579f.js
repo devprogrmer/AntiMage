@@ -1,0 +1,1 @@
+const a=t=>(t||"en").toLowerCase().startsWith("fa")?"fa":"en",e=t=>{const o=t.replace(/\/+$/,"");return o==="/"?"":o},n="tutorial-content",c=(t,o,r="")=>{const s=e(t),l=a(o)==="fa"?"fa/":"";return`${s}/${n}/${l}docs/${r.replace(/^\/+/,"")}`},i=t=>`${e(t)}/${n}/manifest.json`,u=t=>`rb-tutorials-seen-${a(t)}`;export{u as a,c as b,i as g,a as n};

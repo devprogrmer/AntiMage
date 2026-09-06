@@ -1,0 +1,1 @@
+function i(t,n=2,e=!1){if(!+t){const r=[0,"B"];return e?r:`${r[0]} ${r[1]}`}const s=1024,a=n<0?0:n,u=["B","KB","MB","GB","TB","PB","EB","ZB","YB"],o=Math.floor(Math.log(t)/Math.log(s)),B=parseFloat((t/s**o).toFixed(a));return e?[B,u[o]]:`${B} ${u[o]}`}const l=t=>t==null||Number.isNaN(Number(t))?"0":Number(t).toString().replace(/\B(?=(\d{3})+(?!\d))/g,",");export{i as f,l as n};
