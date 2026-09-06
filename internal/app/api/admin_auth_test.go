@@ -176,6 +176,8 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			security TEXT NOT NULL DEFAULT 'inbound_default',
 			alpn TEXT NOT NULL DEFAULT 'none',
 			fingerprint TEXT NOT NULL DEFAULT 'none',
+			verify_peer_cert_by_name TEXT NULL,
+			pinned_peer_cert_sha256 TEXT NULL,
 			inbound_tag TEXT NOT NULL,
 			allowinsecure INTEGER NULL,
 			is_disabled INTEGER NULL DEFAULT 0,

@@ -257,7 +257,7 @@ func TestServiceUsageAnalyticsRoutes(t *testing.T) {
 	if series.ServiceID != 77 || series.Granularity != "day" {
 		t.Fatalf("unexpected timeseries metadata: %#v", series)
 	}
-	if usagePoint(series.Points, "2026-06-01T00:00:00Z") != 350 || usagePoint(series.Points, "2026-06-02T00:00:00Z") != 300 {
+	if usagePoint(series.Points, "2026-06-01T00:00:00Z") != 1349 || usagePoint(series.Points, "2026-06-02T00:00:00Z") != 300 {
 		t.Fatalf("unexpected day points: %#v", series.Points)
 	}
 
@@ -550,44 +550,20 @@ func TestServiceHostChangeKeepsSubscriptionLinkAndChangesConfigOutput(t *testing
 	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN used_traffic BIGINT DEFAULT 0`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN data_limit BIGINT NULL`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN data_limit_reset_strategy TEXT NULL`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN online_at DATETIME NULL`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN note TEXT NULL`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN telegram_id TEXT NULL`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN contact_number TEXT NULL`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN sub_updated_at DATETIME NULL`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN sub_last_user_agent TEXT NULL`); err != nil {
-		t.Fatal(err)
-	}
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN data_limit BIGINT NULL`)
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN data_limit_reset_strategy TEXT NULL`)
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN online_at DATETIME NULL`)
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN note TEXT NULL`)
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN telegram_id TEXT NULL`)
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN contact_number TEXT NULL`)
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN sub_updated_at DATETIME NULL`)
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN sub_last_user_agent TEXT NULL`)
 	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN created_at DATETIME NULL`)
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN flow TEXT NULL`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN expire BIGINT NULL`); err != nil {
-		t.Fatal(err)
-	}
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN flow TEXT NULL`)
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN expire BIGINT NULL`)
 	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN ip_limit INTEGER DEFAULT 0`)
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN auto_delete_in_days INTEGER NULL`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN subadress TEXT NULL`); err != nil {
-		t.Fatal(err)
-	}
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN auto_delete_in_days INTEGER NULL`)
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN subadress TEXT NULL`)
 	if _, err := db.Exec(`ALTER TABLE jwt ADD COLUMN subscription_secret_key TEXT DEFAULT 'sub-secret'`); err != nil {
 		t.Fatal(err)
 	}

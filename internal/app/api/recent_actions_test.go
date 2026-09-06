@@ -175,6 +175,9 @@ func TestListRecentActionsGroupsNodeBatches(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(`UPDATE recent_actions SET created_at = ? WHERE resource_key IN ('de-1', 'de-2', 'de-3')`, "2026-08-02 11:59:00.000000"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec(`UPDATE recent_actions SET created_at = ? WHERE resource_key = 'fr-1'`, "2026-08-02 12:01:00.000000"); err != nil {
 		t.Fatal(err)
 	}

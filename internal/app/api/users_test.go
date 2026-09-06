@@ -44,6 +44,7 @@ func testUserReadServer(t *testing.T) (*Server, *sql.DB) {
 		`CREATE TABLE user_usage_logs (id INTEGER PRIMARY KEY, user_id INTEGER, used_traffic_at_reset BIGINT DEFAULT 0)`,
 		`CREATE TABLE user_online_ips (node_id INTEGER, user_id INTEGER, protocol TEXT, ip TEXT, last_seen_at DATETIME)`,
 		`CREATE TABLE vpn_user_sessions (node_id INTEGER, user_id INTEGER, last_seen_at DATETIME, ended_at DATETIME)`,
+		`CREATE TABLE user_subscription_access (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, token TEXT, credential_key TEXT, username TEXT, created_at DATETIME NULL, updated_at DATETIME NULL)`,
 		`CREATE TABLE proxies (id INTEGER PRIMARY KEY, user_id INTEGER, type TEXT, settings TEXT)`,
 		`CREATE TABLE next_plans (
 			id INTEGER PRIMARY KEY,

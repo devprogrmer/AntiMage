@@ -28,7 +28,7 @@ func testUserMutationServer(t *testing.T) (*Server, *sql.DB, string) {
 		`INSERT INTO hosts (id, inbound_tag, remark, address, is_disabled) VALUES (1, 'vless-in', 'main', 'example.com', 0)`,
 		`INSERT INTO service_hosts (service_id, host_id, sort) VALUES (1, 1, 0)`,
 		`INSERT INTO inbounds (id, tag) VALUES (1, 'vless-in')`,
-		`INSERT INTO nodes (id, name, status) VALUES (1, 'node-1', 'connected')`,
+		`INSERT INTO nodes (id, name, status) VALUES (1, 'node-1', 'disconnected')`,
 	}
 	for _, statement := range extra {
 		if _, err := db.Exec(statement); err != nil {
