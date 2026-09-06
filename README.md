@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/devprogrmer/AntiMage/actions"><img src="https://img.shields.io/github/actions/workflow/status/devprogrmer/AntiMage/build.yml?branch=main&style=flat-square&label=build" alt="Build status"></a>
+  <a href="https://github.com/devprogrmer/AntiMage/actions"><img src="https://img.shields.io/github/actions/workflow/status/devprogrmer/AntiMage/binary-build.yml?branch=main&style=flat-square&label=build" alt="Build status"></a>
   <a href="https://github.com/devprogrmer/AntiMage/releases"><img src="https://img.shields.io/github/v/release/devprogrmer/AntiMage?style=flat-square&label=release" alt="Latest release"></a>
   <a href="https://github.com/devprogrmer/AntiMage/blob/main/LICENSE"><img src="https://img.shields.io/github/license/devprogrmer/AntiMage?style=flat-square" alt="License"></a>
   <a href="https://github.com/devprogrmer/AntiMage/stargazers"><img src="https://img.shields.io/github/stars/devprogrmer/AntiMage?style=flat-square" alt="GitHub stars"></a>

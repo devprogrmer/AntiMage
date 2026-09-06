@@ -10,6 +10,7 @@ on:
         default: false
   push:
     branches:
+      - main
       - dev
       - go-usage-bridge
     tags:

@@ -68,5 +68,5 @@ jobs:
           platforms: linux/amd64
           push: false
           tags: |
-            antimagepanel/antimage:pr-${{ github.event.pull_request.number }}
-            ghcr.io/antimagepanel/antimage:pr-${{ github.event.pull_request.number }}
+            devprogrmer/antimage:pr-${{ github.event.pull_request.number }}
+            ghcr.io/devprogrmer/antimage:pr-${{ github.event.pull_request.number }}
