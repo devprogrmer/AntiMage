@@ -141,7 +141,7 @@ func TestServiceMutationRoutesGoNative(t *testing.T) {
 		t.Fatalf("update status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user'`, 0)
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 0)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
 	assertDBInt64(t, db, `SELECT data_limit FROM admins_services WHERE service_id = ? AND admin_id = 2`, 1000, created.ID)
 
 	if _, err := db.Exec(`UPDATE services SET used_traffic = 500, users_usage = 700, lifetime_used_traffic = 900 WHERE id = ?`, created.ID); err != nil {

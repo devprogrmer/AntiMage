@@ -184,6 +184,7 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			mux_enable INTEGER NOT NULL DEFAULT 0,
 			fragment_setting TEXT NULL,
 			noise_setting TEXT NULL,
+			finalmask TEXT NULL,
 			random_user_agent INTEGER NOT NULL DEFAULT 0,
 			use_sni_as_host INTEGER NOT NULL DEFAULT 0
 		)`,
@@ -341,6 +342,7 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 		cfg: Config{
 			Database:                    "sqlite:///" + filepath.ToSlash(path),
 			JWTAccessTokenExpireMinutes: 1440,
+			NodeOperationsPollInterval:   "0",
 		},
 		db:             db,
 		dialect:        "sqlite",

@@ -89,6 +89,9 @@ func (s *Server) processNodeOperationsWithContext(ctx context.Context, limit int
 }
 
 func (s *Server) kickUserNodeOperationsSoon(userIDs ...int64) {
+	if parseNodeOperationsPollInterval(s.cfg.NodeOperationsPollInterval) <= 0 {
+		return
+	}
 	if len(userIDs) > 32 {
 		s.kickNodeOperationsSoon()
 		return
