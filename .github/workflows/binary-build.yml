@@ -128,7 +128,7 @@ jobs:
         run: bash -n scripts/antimage/antimage-binary.sh scripts/antimage/antimage.sh scripts/antimage/antimage-node-binary.sh scripts/antimage/antimage-node.sh
 
       - name: Download dashboard
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dashboard-build
           path: dashboard/build
@@ -228,7 +228,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download dashboard
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dashboard-build
           path: dashboard/build
@@ -301,7 +301,7 @@ jobs:
           echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
 
       - name: Download package artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: antimage-*
           path: release-assets
@@ -352,7 +352,7 @@ jobs:
           ref: ${{ github.sha }}
 
       - name: Download package artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: antimage-*
           path: dev-release-assets
