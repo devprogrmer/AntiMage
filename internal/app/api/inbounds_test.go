@@ -247,7 +247,7 @@ func TestInboundDeleteRemovesHostsAndRefreshesUsers(t *testing.T) {
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM hosts WHERE inbound_tag = 'delete-me'`, 0)
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM service_hosts WHERE service_id = 4`, 0)
 	assertMasterAPICountOneOf(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id IS NULL`, 1, 2)
-	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 20`, 1)
+	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id IS NULL AND payload LIKE '%"source":"inbounds"%' AND payload LIKE '%"service_ids":[4]%'`, 1)
 
 	rec = adminJSONRequest(t, server, http.MethodGet, "/api/inbounds/delete-me", token, "")
 	if rec.Code != http.StatusNotFound {
