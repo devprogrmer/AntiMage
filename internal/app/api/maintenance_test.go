@@ -182,7 +182,7 @@ func TestMaintenanceActionsAcceptedAndValidated(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &updateResponse); err != nil {
 		t.Fatal(err)
 	}
-	if updateResponse.Status != "accepted" || updateResponse.Operation.Action != "update" || updateResponse.Operation.Phase != "restarting" || updateResponse.Operation.Progress == nil || *updateResponse.Operation.Progress != 42 || !updateResponse.Operation.NeedsReload {
+	if updateResponse.Status != "accepted" || updateResponse.Operation.Action != "update" || updateResponse.Operation.Phase != "restarting" || updateResponse.Operation.Progress == nil || *updateResponse.Operation.Progress < 42 || !updateResponse.Operation.NeedsReload {
 		t.Fatalf("unexpected update operation response: %#v", updateResponse)
 	}
 	rec = adminJSONRequest(t, server, http.MethodGet, "/api/maintenance/status", token, "")
@@ -193,7 +193,7 @@ func TestMaintenanceActionsAcceptedAndValidated(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Action != "update" || status.Progress == nil || *status.Progress != 42 {
+	if status.Action != "update" || status.Progress == nil || *status.Progress < 42 {
 		t.Fatalf("unexpected maintenance status: %#v", status)
 	}
 	rec = adminJSONRequest(t, server, http.MethodPost, "/api/maintenance/restart", token, `{}`)

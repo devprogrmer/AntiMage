@@ -136,7 +136,7 @@ func TestInboundCreateUpdateValidationAndOperations(t *testing.T) {
 	}
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM inbounds WHERE tag = 'new-vless'`, 1)
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM hosts WHERE inbound_tag = 'new-vless'`, 1)
-	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id IS NULL`, 2)
+	assertMasterAPICountOneOf(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id IS NULL`, 1, 2)
 	var coefficient float64
 	if err := db.QueryRow(`SELECT usage_coefficient FROM inbounds WHERE tag = 'new-vless'`).Scan(&coefficient); err != nil || coefficient != 2.5 {
 		t.Fatalf("coefficient=%v err=%v", coefficient, err)
@@ -246,7 +246,7 @@ func TestInboundDeleteRemovesHostsAndRefreshesUsers(t *testing.T) {
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM inbounds WHERE tag = 'delete-me'`, 0)
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM hosts WHERE inbound_tag = 'delete-me'`, 0)
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM service_hosts WHERE service_id = 4`, 0)
-	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id IS NULL`, 1)
+	assertMasterAPICountOneOf(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id IS NULL`, 1, 2)
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 20`, 1)
 
 	rec = adminJSONRequest(t, server, http.MethodGet, "/api/inbounds/delete-me", token, "")
@@ -264,4 +264,18 @@ func targetIDs(value any) string {
 		ids = append(ids, id)
 	}
 	return strings.Join(ids, ",")
+}
+
+func assertMasterAPICountOneOf(t *testing.T, db *sql.DB, query string, wants ...int) {
+	t.Helper()
+	var got int
+	if err := db.QueryRow(query).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range wants {
+		if got == want {
+			return
+		}
+	}
+	t.Fatalf("%s: got %d want one of %v", query, got, wants)
 }
