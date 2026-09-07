@@ -104,6 +104,21 @@ curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/a
 نصب Binary Node به asset مناسب معماری سرور در بخش Releases نیاز دارد؛ در صورت
 نبود asset، مقدار `ANTIMAGE_NODE_RELEASE_REPO` را به مخزن انتشار خود تنظیم کنید.
 
+## نصب Docker Node
+
+اگر نود را با Docker می‌خواهید بالا بیاورید:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node.sh | sudo bash -s -- install
+```
+
+برای pull مستقیم image نود:
+
+```bash
+docker pull ghcr.io/devprogrmer/antimage-node:latest
+docker pull ghcr.io/devprogrmer/antimage-node:v0.1.1
+```
+
 ## تنظیمات اصلی
 
 نمونه فایل محیطی:

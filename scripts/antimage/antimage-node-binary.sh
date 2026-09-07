@@ -467,7 +467,7 @@ discover_node_instances() {
     DISCOVERED_NODE_PATHS=()
     DISCOVERED_NODE_NAMES=()
     while IFS= read -r -d '' compose; do
-        if ! grep -qi "antimagepanel/antimage-node" "$compose"; then
+        if ! grep -Eqi "(ghcr.io/devprogrmer|antimagepanel)/antimage-node" "$compose"; then
             continue
         fi
         local dir name
@@ -534,12 +534,12 @@ set_branch_variables() {
         dev|development)
             BRANCH="dev"
             IMAGE_TAG="dev"
-            DOCKER_IMAGE="antimagepanel/antimage-node:dev"
+            DOCKER_IMAGE="ghcr.io/devprogrmer/antimage-node:dev"
         ;;
         *)
             BRANCH="master"
             IMAGE_TAG="latest"
-            DOCKER_IMAGE="antimagepanel/antimage-node:latest"
+            DOCKER_IMAGE="ghcr.io/devprogrmer/antimage-node:latest"
         ;;
     esac
     SCRIPT_BRANCH="$BRANCH"
@@ -746,7 +746,7 @@ select_node_version() {
 BRANCH="master"
 IMAGE_TAG="latest"
 SCRIPT_BRANCH="master"
-DOCKER_IMAGE="antimagepanel/antimage-node:latest"
+DOCKER_IMAGE="ghcr.io/devprogrmer/antimage-node:latest"
 SCRIPT_URL="$ANTIMAGE_SCRIPT_BASE_URL/$ANTIMAGE_NODE_SCRIPT_SOURCE_FILE"
 if [ -f "$BRANCH_FILE" ]; then
     saved_branch=$(tr -d '[:space:]' < "$BRANCH_FILE")
@@ -1622,12 +1622,12 @@ update_antimage_node() {
             ;;
             *)
                 set_branch_variables master
-                DOCKER_IMAGE="antimagepanel/antimage-node:${requested_version}"
+                DOCKER_IMAGE="ghcr.io/devprogrmer/antimage-node:${requested_version}"
             ;;
         esac
         echo "$BRANCH" > "$BRANCH_FILE"
         if [ -f "$COMPOSE_FILE" ]; then
-            sed -i "s|^[[:space:]]*image:.*antimagepanel/antimage-node.*|    image: $DOCKER_IMAGE|" "$COMPOSE_FILE"
+            sed -i -E "s|^[[:space:]]*image:.*(ghcr.io/devprogrmer|antimagepanel)/antimage-node.*|    image: $DOCKER_IMAGE|" "$COMPOSE_FILE"
         fi
     fi
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" pull
@@ -1997,7 +1997,7 @@ update_command() {
             ;;
             *)
                 set_branch_variables master
-                DOCKER_IMAGE="antimagepanel/antimage-node:${node_version}"
+                DOCKER_IMAGE="ghcr.io/devprogrmer/antimage-node:${node_version}"
             ;;
         esac
         echo "$BRANCH" > "$BRANCH_FILE"

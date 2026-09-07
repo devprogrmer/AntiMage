@@ -89,6 +89,21 @@ curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/a
 
 این نصب‌کننده asset مناسب معماری سرور را از Releases دریافت می‌کند. اگر نسخه‌ای در Releases موجود نیست، ابتدا همان نسخه را در پروژه منتشر کنید یا مقدار `ANTIMAGE_NODE_RELEASE_REPO` را به مخزن انتشار خود تغییر دهید.
 
+## نصب Node با Docker
+
+روی سرور Node اجرا کنید:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node.sh | sudo bash -s -- install
+```
+
+برای pull مستقیم image نود:
+
+```bash
+docker pull ghcr.io/devprogrmer/antimage-node:latest
+docker pull ghcr.io/devprogrmer/antimage-node:v0.1.1
+```
+
 مسیرهای معمول Node:
 
 | مورد | مسیر پیش‌فرض |

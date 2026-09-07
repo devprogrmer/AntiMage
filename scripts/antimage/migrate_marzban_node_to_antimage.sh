@@ -2,9 +2,9 @@
 set -euo pipefail
 
 NODE_SEARCH_BASE="/opt"
-NODE_IMAGE_REPO="antimagepanel/antimage-node"
+NODE_IMAGE_REPO="ghcr.io/devprogrmer/antimage-node"
 DEFAULT_IMAGE_TAG="latest"
-NODE_SCRIPT_URL="https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-node.sh"
+NODE_SCRIPT_URL="https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node.sh"
 
 declare -a NODE_PATHS=()
 declare -a NODE_NAMES=()
@@ -178,13 +178,13 @@ select_node() {
 
 choose_image_tag() {
     log "Default image tag is 'latest' for $NODE_IMAGE_REPO."
-    read -rp "Do you want to use the 'dev' tag instead (antimagepanel/antimage-node:dev)? [y/N]: " answer || answer=""
+    read -rp "Do you want to use the 'dev' tag instead (ghcr.io/devprogrmer/antimage-node:dev)? [y/N]: " answer || answer=""
     if [[ "$answer" =~ ^[Yy]$ ]]; then
         DEFAULT_IMAGE_TAG="dev"
-        log "Using image tag 'dev' (antimagepanel/antimage-node:dev)."
+        log "Using image tag 'dev' (ghcr.io/devprogrmer/antimage-node:dev)."
     else
         DEFAULT_IMAGE_TAG="latest"
-        log "Using image tag 'latest' (antimagepanel/antimage-node:latest)."
+        log "Using image tag 'latest' (ghcr.io/devprogrmer/antimage-node:latest)."
     fi
 }
 

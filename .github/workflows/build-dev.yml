@@ -101,12 +101,17 @@ jobs:
         run: |
           set -euo pipefail
           tags="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/antimage:${GITHUB_REF_NAME}"
+          node_tags="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/antimage-node:${GITHUB_REF_NAME}"
           if [[ "${{ steps.dockerhub_login.outcome }}" == "success" ]]; then
             tags="${tags}"$'\n'"${DOCKERHUB_USERNAME}/antimage:${GITHUB_REF_NAME}"
+            node_tags="${node_tags}"$'\n'"${DOCKERHUB_USERNAME}/antimage-node:${GITHUB_REF_NAME}"
           fi
           {
             echo "tags<<EOF"
             echo "${tags}"
+            echo "EOF"
+            echo "node_tags<<EOF"
+            echo "${node_tags}"
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
 
@@ -124,3 +129,12 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ steps.final_image_tags.outputs.tags }}
+
+      - name: Build and push node
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.node
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.final_image_tags.outputs.node_tags }}

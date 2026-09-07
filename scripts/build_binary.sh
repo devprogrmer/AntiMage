@@ -26,6 +26,7 @@ prepare_go_dashboard_embed() {
 }
 
 gateway_output="$ROOT_DIR/dist/antimage-server"
+node_output="$ROOT_DIR/dist/antimage-node"
 mkdir -p "$ROOT_DIR/dist"
 rm -rf "$ROOT_DIR/dist/templates"
 if [[ -d "$ROOT_DIR/templates" ]]; then
@@ -33,14 +34,17 @@ if [[ -d "$ROOT_DIR/templates" ]]; then
 fi
 if [[ "${OS:-}" == "Windows_NT" ]]; then
     gateway_output="$ROOT_DIR/dist/antimage-server.exe"
+    node_output="$ROOT_DIR/dist/antimage-node.exe"
 fi
 
 (
     prepare_go_dashboard_embed
     cd "$ROOT_DIR"
     CGO_ENABLED=0 go build -trimpath -buildvcs=false -o "$gateway_output" ./cmd/antimage_gateway
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -o "$node_output" ./cmd/antimage_node
 )
 
 echo "AntiMage Go gateway built at $gateway_output"
+echo "AntiMage node agent built at $node_output"
 
 bash scripts/build_go_cli.sh

@@ -166,7 +166,9 @@ jobs:
             bash scripts/build_binary.sh
             cp LICENSE dist/LICENSE
             tar -C dist -czf "dist/${ASSET_NAME}" antimage-server antimage-cli templates LICENSE
+            cp dist/antimage-node "dist/antimage-node-linux-${ASSET_ARCH}"
             sha256sum "dist/${ASSET_NAME}"
+            sha256sum "dist/antimage-node-linux-${ASSET_ARCH}"
             exit 0
           fi
 
@@ -194,7 +196,9 @@ jobs:
               bash scripts/build_binary.sh
               cp LICENSE dist/LICENSE
               tar -C dist -czf "dist/${ASSET_NAME}" antimage-server antimage-cli templates LICENSE
+              cp dist/antimage-node "dist/antimage-node-linux-${ASSET_ARCH}"
               sha256sum "dist/${ASSET_NAME}"
+              sha256sum "dist/antimage-node-linux-${ASSET_ARCH}"
             ' 2>&1 | tee "build-${ASSET_ARCH}.log"
           status="${PIPESTATUS[0]}"
           set -e
@@ -218,6 +222,13 @@ jobs:
         with:
           name: antimage-linux-${{ matrix.asset_arch }}
           path: dist/antimage-linux-${{ matrix.asset_arch }}.tar.gz
+
+      - name: Upload Linux node artifact
+        if: matrix.asset_arch == 'amd64' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix == true)
+        uses: actions/upload-artifact@v4
+        with:
+          name: antimage-node-binaries-linux-${{ matrix.asset_arch }}
+          path: dist/antimage-node-linux-${{ matrix.asset_arch }}
 
   build-windows-amd64:
     needs: dashboard
@@ -265,7 +276,7 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive `
-            -Path dist/antimage-server.exe, dist/antimage-cli.exe, dist/templates, LICENSE `
+            -Path dist/antimage-server.exe, dist/antimage-cli.exe, dist/antimage-node.exe, dist/templates, LICENSE `
             -DestinationPath dist/antimage-windows-amd64.zip `
             -Force
 
@@ -313,6 +324,11 @@ jobs:
         run: |
           set -euo pipefail
           cd release-assets
+          shopt -s nullglob
+          for node_asset in antimage-node-linux-*; do
+            arch="${node_asset#antimage-node-linux-}"
+            mv "$node_asset" "antimage-node-${{ steps.meta.outputs.release_tag }}-linux-${arch}"
+          done
           sha256sum antimage-* > checksums.txt
 
       - name: Upload release assets
@@ -377,6 +393,10 @@ jobs:
               antimage-windows-*.zip)
                 base="${name%.zip}"
                 cp "$asset" "dev-upload-assets/${base}-${build_tag}.zip"
+                ;;
+              antimage-node-linux-*)
+                arch="${name#antimage-node-linux-}"
+                cp "$asset" "dev-upload-assets/antimage-node-dev-linux-${arch}"
                 ;;
             esac
           done
