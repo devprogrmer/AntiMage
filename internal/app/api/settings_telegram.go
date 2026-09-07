@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	telegramapp "github.com/antimage/antimage/internal/app/telegram"
+	telegramapp "github.com/devprogrmer/AntiMage/internal/app/telegram"
 )
 
 func (s *Server) handleTelegramSettings(w http.ResponseWriter, r *http.Request) {

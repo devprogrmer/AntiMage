@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/logging"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
 )
 
 var antimageScriptPath = "/usr/local/bin/antimage"

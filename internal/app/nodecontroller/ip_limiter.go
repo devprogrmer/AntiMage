@@ -9,12 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/nodeclient"
-	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"github.com/devprogrmer/AntiMage/internal/app/nodeclient"
+	nodev1 "github.com/devprogrmer/AntiMage/internal/proto/node/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/antimage/antimage/internal/app/online"
+	"github.com/devprogrmer/AntiMage/internal/app/online"
 )
 
 const (

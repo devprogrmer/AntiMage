@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	nodeapp "github.com/antimage/antimage/internal/app/node"
-	telegramapp "github.com/antimage/antimage/internal/app/telegram"
+	nodeapp "github.com/devprogrmer/AntiMage/internal/app/node"
+	telegramapp "github.com/devprogrmer/AntiMage/internal/app/telegram"
 )
 
 func (s *Server) handleNodeRoot(w http.ResponseWriter, r *http.Request) {

@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	telegramapp "github.com/antimage/antimage/internal/app/telegram"
-	"github.com/antimage/antimage/internal/app/usage"
-	userapp "github.com/antimage/antimage/internal/app/user"
-	webhookapp "github.com/antimage/antimage/internal/app/webhook"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	telegramapp "github.com/devprogrmer/AntiMage/internal/app/telegram"
+	"github.com/devprogrmer/AntiMage/internal/app/usage"
+	userapp "github.com/devprogrmer/AntiMage/internal/app/user"
+	webhookapp "github.com/devprogrmer/AntiMage/internal/app/webhook"
 )
 
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {

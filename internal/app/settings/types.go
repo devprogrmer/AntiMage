@@ -1,6 +1,6 @@
 package settings
 
-import certificateapp "github.com/antimage/antimage/internal/app/certificates"
+import certificateapp "github.com/devprogrmer/AntiMage/internal/app/certificates"
 
 type PanelSettings struct {
 	DefaultSubscriptionType string `json:"default_subscription_type"`

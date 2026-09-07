@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	"github.com/antimage/antimage/internal/app/logging"
-	telegramapp "github.com/antimage/antimage/internal/app/telegram"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
+	telegramapp "github.com/devprogrmer/AntiMage/internal/app/telegram"
 )
 
 const (

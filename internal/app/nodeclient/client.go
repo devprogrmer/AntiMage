@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	nodev1 "github.com/devprogrmer/AntiMage/internal/proto/node/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"

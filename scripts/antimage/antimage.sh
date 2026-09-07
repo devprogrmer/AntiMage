@@ -21,7 +21,7 @@ ENV_FILE="$APP_DIR/.env"
 LAST_XRAY_CORES=10
 CERTS_BASE="/var/lib/$APP_NAME/certs"
 ANTIMAGE_REPO="${ANTIMAGE_REPO:-devprogrmer/AntiMage}"
-ANTIMAGE_REF="${ANTIMAGE_REF:-master}"
+ANTIMAGE_REF="${ANTIMAGE_REF:-main}"
 ANTIMAGE_RAW_BASE="${ANTIMAGE_RAW_BASE:-https://raw.githubusercontent.com/${ANTIMAGE_REPO}/${ANTIMAGE_REF}}"
 ANTIMAGE_SCRIPT_BASE_URL_EXPLICIT=0
 if [ -n "${ANTIMAGE_SCRIPT_BASE_URL+x}" ]; then
@@ -107,7 +107,7 @@ ui_color() {
 }
 
 ui_line() {
-    ui_color "38;5;39" "────────────────────────────────────────────────────────────"
+    ui_color "38;5;39" "â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€"
     printf "\n"
 }
 
@@ -115,7 +115,7 @@ ui_header() {
     local title="$1"
     local subtitle="${2:-}"
     printf "\n"
-    ui_color "38;5;45;1" "╭──────────────────────────────────────────────────────────╮"
+    ui_color "38;5;45;1" "â•­â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â•®"
     printf "\n  "
     ui_color "38;5;231;1" "$title"
     printf "\n"
@@ -124,13 +124,13 @@ ui_header() {
         ui_color "38;5;117" "$subtitle"
         printf "\n"
     fi
-    ui_color "38;5;45;1" "╰──────────────────────────────────────────────────────────╯"
+    ui_color "38;5;45;1" "â•°â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â•¯"
     printf "\n"
 }
 
 ui_section() {
     printf "\n"
-    ui_color "38;5;45;1" "◆ $1"
+    ui_color "38;5;45;1" "â—† $1"
     printf "\n"
     ui_line
 }
@@ -288,7 +288,7 @@ ui_spinner_run() {
     log_file=$(mktemp)
     "$@" >"$log_file" 2>&1 &
     local pid=$!
-    local frames=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+    local frames=("â ‹" "â ™" "â ¹" "â ¸" "â ¼" "â ´" "â ¦" "â §" "â ‡" "â ")
     local i=0
     while kill -0 "$pid" >/dev/null 2>&1; do
         printf "\r"
@@ -302,13 +302,13 @@ ui_spinner_run() {
     wait "$pid" || status=$?
     printf "\r\033[K"
     if [ "$status" -eq 0 ]; then
-        ui_color "38;5;82;1" "✓"
+        ui_color "38;5;82;1" "âœ“"
         printf " %s\n" "$message"
         rm -f "$log_file"
         return 0
     fi
 
-    ui_color "38;5;196;1" "✗"
+    ui_color "38;5;196;1" "âœ—"
     printf " %s\n" "$message"
     tail -n 80 "$log_file" >&2 || true
     rm -f "$log_file"
@@ -497,7 +497,7 @@ set_antimage_source_for_version() {
             set_antimage_source_ref "$1"
             ;;
         *)
-            set_antimage_source_ref "master"
+            set_antimage_source_ref "main"
             ;;
     esac
 }
@@ -1318,7 +1318,7 @@ print_database_menu() {
     for idx in 1 2 3; do
         printf "  "
         if [ "$idx" -eq "$selected" ]; then
-            ui_color "38;5;16;48;5;45;1" " ▶ "
+            ui_color "38;5;16;48;5;45;1" " â–¶ "
         else
             printf "   "
         fi
@@ -1333,7 +1333,7 @@ print_database_menu() {
         printf "\n"
     done
     printf "\n"
-    ui_color "38;5;245" "Use ↑/↓ and Enter, type 1-3, or press Enter for MySQL."
+    ui_color "38;5;245" "Use â†‘/â†“ and Enter, type 1-3, or press Enter for MySQL."
     printf "\n"
 }
 
@@ -2273,7 +2273,7 @@ send_backup_to_telegram() {
     for part in "$split_dir"/*; do
         local part_name=$(basename "$part")
         local custom_filename="backup_${part_name}.tar.gz"
-        local caption="📦 *Backup Information*\n🌐 *Server IP*: \`${server_ip}\`\n📁 *Backup File*: \`${custom_filename}\`\n⏰ *Backup Time*: \`${backup_time}\`"
+        local caption="ðŸ“¦ *Backup Information*\nðŸŒ *Server IP*: \`${server_ip}\`\nðŸ“ *Backup File*: \`${custom_filename}\`\nâ° *Backup Time*: \`${backup_time}\`"
         curl -s -F chat_id="$BACKUP_TELEGRAM_CHAT_ID" \
             -F document=@"$part;filename=$custom_filename" \
             -F caption="$(echo -e "$caption" | sed 's/-/\\-/g;s/\./\\./g;s/_/\\_/g')" \
@@ -2291,10 +2291,10 @@ send_backup_error_to_telegram() {
     local log_file=$2
     local server_ip=$(curl -s ifconfig.me || echo "Unknown IP")
     local error_time=$(date "+%Y-%m-%d %H:%M:%S %Z")
-    local message="⚠️ *Backup Error Notification*\n"
-    message+="🌐 *Server IP*: \`${server_ip}\`\n"
-    message+="❌ *Errors*:\n\`${error_messages//_/\\_}\`\n"
-    message+="⏰ *Time*: \`${error_time}\`"
+    local message="âš ï¸ *Backup Error Notification*\n"
+    message+="ðŸŒ *Server IP*: \`${server_ip}\`\n"
+    message+="âŒ *Errors*:\n\`${error_messages//_/\\_}\`\n"
+    message+="â° *Time*: \`${error_time}\`"
 
 
     message=$(echo -e "$message" | sed 's/-/\\-/g;s/\./\\./g;s/_/\\_/g;s/(/\\(/g;s/)/\\)/g')
@@ -2317,7 +2317,7 @@ send_backup_error_to_telegram() {
         response=$(curl -s -w "%{http_code}" -o /tmp/tg_response.json \
             -F chat_id="$BACKUP_TELEGRAM_CHAT_ID" \
             -F document=@"$log_file;filename=backup_error.log" \
-            -F caption="📜 *Backup Error Log* - ${error_time}" \
+            -F caption="ðŸ“œ *Backup Error Log* - ${error_time}" \
             "https://api.telegram.org/bot$BACKUP_TELEGRAM_BOT_KEY/sendDocument")
 
         http_code="${response:(-3)}"
@@ -2873,7 +2873,7 @@ get_current_xray_core_version() {
 
 # Function kept for legacy CLI compatibility. Xray core is managed by nodes now.
 update_core_command() {
-    colorized_echo yellow "Master no longer runs a local Xray core. Update Xray from the Nodes page or the antimage-node installer."
+    colorized_echo yellow "The AntiMage panel no longer runs a local Xray core. Update Xray from the Nodes page or the antimage-node installer."
 }
 
 install_antimage() {
@@ -4966,10 +4966,10 @@ usage() {
     echo
 
     colorized_echo cyan "Commands:"
-    colorized_echo yellow "  up              – Start services"
-    colorized_echo yellow "  down            – Stop services"
-    colorized_echo yellow "  restart         – Restart services"
-    colorized_echo yellow "  status          – Show status"
+    colorized_echo yellow "  up              â€“ Start services"
+    colorized_echo yellow "  down            â€“ Stop services"
+    colorized_echo yellow "  restart         â€“ Restart services"
+    colorized_echo yellow "  status          â€“ Show status"
     colorized_echo yellow "  logs            - Show logs"
     colorized_echo yellow "  cli             - AntiMage CLI"
     colorized_echo yellow "  migrate         - Run database migrations"

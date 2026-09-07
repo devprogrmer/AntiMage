@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	platformdb "github.com/antimage/antimage/internal/platform/db"
+	platformdb "github.com/devprogrmer/AntiMage/internal/platform/db"
 
 	_ "modernc.org/sqlite"
 )

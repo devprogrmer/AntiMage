@@ -11,7 +11,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/antimage/antimage/internal/app/xrayconfig"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
 	"golang.org/x/crypto/curve25519"
 )
 

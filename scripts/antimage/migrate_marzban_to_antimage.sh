@@ -7,9 +7,9 @@ OLD_DATA_DIR="/var/lib/marzban"
 NEW_DATA_DIR="/var/lib/antimage"
 OLD_SERVICE_NAME="marzban"
 NEW_SERVICE_NAME="antimage"
-SCRIPT_URL="https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage.sh"
 
-PANEL_IMAGE_REPO="antimagepanel/antimage"
+PANEL_IMAGE_REPO="ghcr.io/devprogrmer/antimage"
 DEFAULT_IMAGE_TAG="latest"
 PYTHON_BIN=""
 

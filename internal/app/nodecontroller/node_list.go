@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	nodeapp "github.com/antimage/antimage/internal/app/node"
+	nodeapp "github.com/devprogrmer/AntiMage/internal/app/node"
 )
 
 func (c Controller) List(ctx context.Context, req Request) (NodeListResult, error) {

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/antimage/antimage/internal/app/nodecontroller"
+	"github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
 )
 
 func TestHandleCoreXrayReleasesUsesGitHubShape(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	nodev1 "github.com/devprogrmer/AntiMage/internal/proto/node/v1"
 )
 
 func (c Controller) PublicIPs(ctx context.Context, req Request) (PublicIPsResult, error) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/online"
+	"github.com/devprogrmer/AntiMage/internal/app/online"
 )
 
 type Repository struct {

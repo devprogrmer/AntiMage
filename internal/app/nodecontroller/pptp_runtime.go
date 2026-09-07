@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	userapp "github.com/antimage/antimage/internal/app/user"
-	"github.com/antimage/antimage/internal/app/xrayconfig"
+	userapp "github.com/devprogrmer/AntiMage/internal/app/user"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
 )
 
 type PPTPRuntime struct {

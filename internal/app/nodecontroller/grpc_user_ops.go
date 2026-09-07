@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/antimage/antimage/internal/app/nodeclient"
-	userread "github.com/antimage/antimage/internal/app/user"
-	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"github.com/devprogrmer/AntiMage/internal/app/nodeclient"
+	userread "github.com/devprogrmer/AntiMage/internal/app/user"
+	nodev1 "github.com/devprogrmer/AntiMage/internal/proto/node/v1"
 )
 
 func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclient.Client, node NodeRow, operation OperationRow, prepared *preparedRuntimeConfig) error {

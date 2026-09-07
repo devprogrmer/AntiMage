@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	settingsapp "github.com/antimage/antimage/internal/app/settings"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	settingsapp "github.com/devprogrmer/AntiMage/internal/app/settings"
 )
 
 type SubscriptionTemplateReader interface {

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/logging"
-	"github.com/antimage/antimage/internal/app/nodecontroller"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
+	"github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
 )
 
 const defaultNodeOperationsPollInterval = 15 * time.Second

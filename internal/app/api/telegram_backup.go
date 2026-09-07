@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	backupapp "github.com/antimage/antimage/internal/app/backup"
-	"github.com/antimage/antimage/internal/app/logging"
-	telegramapp "github.com/antimage/antimage/internal/app/telegram"
+	backupapp "github.com/devprogrmer/AntiMage/internal/app/backup"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
+	telegramapp "github.com/devprogrmer/AntiMage/internal/app/telegram"
 )
 
 const defaultTelegramBackupCheckInterval = time.Minute

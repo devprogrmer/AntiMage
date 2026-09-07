@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	certificateapp "github.com/antimage/antimage/internal/app/certificates"
-	"github.com/antimage/antimage/internal/app/logging"
+	certificateapp "github.com/devprogrmer/AntiMage/internal/app/certificates"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
 )
 
 const certificateRequestLimit = 256 << 10

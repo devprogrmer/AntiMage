@@ -9,7 +9,7 @@ adminOnly: true
 
 هر نود یک رکورد جدا در پنل و یک بسته گواهی mTLS اختصاصی دارد. ابتدا رکورد را در AntiMage بسازید؛ پنل بعد از ساخت، بسته‌ای را تولید می‌کند که installer نود به آن نیاز دارد.
 
-<p class="am-panel-actions"><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/node-settings">باز کردن تنظیمات نود</a><a class="am-panel-button" href="https://github.com/antimagepanel/AntiMage#antimage-node" target="_blank" rel="noopener noreferrer">مشاهده مستندات نود</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/node-settings">باز کردن تنظیمات نود</a><a class="am-panel-button" href="https://github.com/devprogrmer/AntiMage#antimage-node" target="_blank" rel="noopener noreferrer">مشاهده مستندات نود</a></p>
 
 ## پیش‌نیازها {#section-nodes-admin-intro}
 
@@ -37,7 +37,7 @@ adminOnly: true
 دستور نصب باینری را روی سرور نود اجرا کنید:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install
+curl -sL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install
 ```
 
 1. وقتی installer مقدار **Node install bundle** را خواست، کل بلوکی را که از پنل گرفته‌اید Paste کنید. installer گواهی و private key را خودکار جدا می‌کند.

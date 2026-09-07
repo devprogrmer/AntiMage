@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/antimage/antimage/internal/app/externalapps"
+	"github.com/devprogrmer/AntiMage/internal/app/externalapps"
 )
 
 func TestAPIRequestBodyLimitRejectsLargeDeclaredBody(t *testing.T) {

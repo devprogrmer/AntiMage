@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	dashboardapp "github.com/antimage/antimage/internal/app/dashboard"
-	systemapp "github.com/antimage/antimage/internal/app/system"
+	dashboardapp "github.com/devprogrmer/AntiMage/internal/app/dashboard"
+	systemapp "github.com/devprogrmer/AntiMage/internal/app/system"
 )
 
 func (s *Server) handleSystemStats(w http.ResponseWriter, r *http.Request) {

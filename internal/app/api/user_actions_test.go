@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	userapp "github.com/antimage/antimage/internal/app/user"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	userapp "github.com/devprogrmer/AntiMage/internal/app/user"
 )
 
 func testUserMutationServer(t *testing.T) (*Server, *sql.DB, string) {

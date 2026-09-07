@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/logging"
-	userapp "github.com/antimage/antimage/internal/app/user"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
+	userapp "github.com/devprogrmer/AntiMage/internal/app/user"
 )
 
 const (

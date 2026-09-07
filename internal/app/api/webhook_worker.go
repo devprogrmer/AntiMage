@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/logging"
-	webhookapp "github.com/antimage/antimage/internal/app/webhook"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
+	webhookapp "github.com/devprogrmer/AntiMage/internal/app/webhook"
 )
 
 const defaultWebhookSendInterval = 30 * time.Second

@@ -9,7 +9,7 @@ adminOnly: true
 
 Every node has its own panel record and mTLS certificate bundle. Create the record in AntiMage first; the panel generates the bundle that the node installer needs.
 
-<p class="am-panel-actions"><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/node-settings">Open Node settings</a><a class="am-panel-button" href="https://github.com/antimagepanel/AntiMage#antimage-node" target="_blank" rel="noopener noreferrer">View node documentation</a></p>
+<p class="am-panel-actions"><a class="am-panel-button" data-primary="true" href="#" data-panel-route="/node-settings">Open Node settings</a><a class="am-panel-button" href="https://github.com/devprogrmer/AntiMage#antimage-node" target="_blank" rel="noopener noreferrer">View node documentation</a></p>
 
 ## Before you start {#section-nodes-admin-intro}
 
@@ -37,7 +37,7 @@ Copy or download the complete **Node install bundle** immediately. It contains b
 Run the binary installer on the node host:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install
+curl -sL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install
 ```
 
 1. When the installer asks for the **Node install bundle**, paste the full block copied from the panel. The installer separates the certificate and private key automatically.

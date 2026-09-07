@@ -10,7 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/antimage/antimage/internal/app/xrayconfig"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
 	_ "modernc.org/sqlite"
 )
 

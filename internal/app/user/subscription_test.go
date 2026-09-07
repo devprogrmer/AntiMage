@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/antimage/antimage/internal/app/outboundsub"
+	"github.com/devprogrmer/AntiMage/internal/app/outboundsub"
 )
 
 func readTestTemplateFile(t *testing.T, relativePath string) string {

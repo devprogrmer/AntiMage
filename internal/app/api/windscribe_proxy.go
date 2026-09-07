@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/nodecontroller"
+	"github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
 )
 
 var windscribeTagPattern = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)

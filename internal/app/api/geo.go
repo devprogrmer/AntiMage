@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/nodecontroller"
+	"github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
 )
 
 const geoTemplatesIndexDefault = "https://raw.githubusercontent.com/ppouria/geo-templates/main/index.json"

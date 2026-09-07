@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/antimage/antimage/internal/app/nodecontroller"
+	"github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
 )
 
 func TestNodeSessionEventTracksSessionsWithoutRuntimeUserOps(t *testing.T) {

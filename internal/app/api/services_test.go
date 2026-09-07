@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	"github.com/antimage/antimage/internal/app/usage"
-	userapp "github.com/antimage/antimage/internal/app/user"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	"github.com/devprogrmer/AntiMage/internal/app/usage"
+	userapp "github.com/devprogrmer/AntiMage/internal/app/user"
 )
 
 type serviceUsageTestPoint struct {

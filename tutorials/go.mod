@@ -1,4 +1,4 @@
-module github.com/antimage/antimage/tutorials
+module github.com/devprogrmer/AntiMage/tutorials
 
 go 1.21
 

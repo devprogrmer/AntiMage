@@ -1,4 +1,4 @@
-module github.com/antimage/antimage
+module github.com/devprogrmer/AntiMage
 
 go 1.25.0
 

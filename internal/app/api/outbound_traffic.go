@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/xrayconfig"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
 )
 
 type outboundTrafficTarget struct {

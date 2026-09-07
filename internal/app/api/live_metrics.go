@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/nodecontroller"
+	"github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
 	"golang.org/x/net/websocket"
 )
 

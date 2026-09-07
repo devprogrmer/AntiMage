@@ -19,8 +19,7 @@ AntiMage panel to create, manage, and troubleshoot users, admins, and nodes. Mai
 - My Account: API keys, password change, daily and per-node usage charts.
 - Open source—if it helps you, please star the GitHub repo.
 
-- [GitHub](https://github.com/antimage/antimage)
-- [Telegram](https://t.me/antimagepanel)
+- [GitHub](https://github.com/devprogrmer/AntiMage)
 
 ## Start with a task
 

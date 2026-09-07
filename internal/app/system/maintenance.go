@@ -119,11 +119,11 @@ func NewMaintenanceServiceWithDeps(runtimeDetector RuntimeDetector, updateChecke
 
 func (s *MaintenanceService) Info(ctx context.Context) (MaintenanceInfo, error) {
 	panel := s.Runtime.Info()
-	panel.Update = ptr(s.Updates.Status(ctx, "antimagepanel/AntiMage", panel.Tag, panel.Channel))
+	panel.Update = ptr(s.Updates.Status(ctx, "devprogrmer/AntiMage", panel.Tag, panel.Channel))
 	return MaintenanceInfo{
 		Panel:      panel,
 		Node:       nil,
-		NodeUpdate: s.Updates.Status(ctx, "antimagepanel/AntiMage-node", nil, ""),
+		NodeUpdate: s.Updates.Status(ctx, "devprogrmer/AntiMage", nil, ""),
 	}, nil
 }
 
@@ -262,7 +262,7 @@ func (DefaultRuntimeDetector) Info() RuntimeInfo {
 		if mode == "binary" {
 			image = "antimage-server (binary)"
 		} else {
-			image = "antimagepanel/antimage"
+			image = "ghcr.io/devprogrmer/antimage"
 		}
 	}
 	return RuntimeInfo{

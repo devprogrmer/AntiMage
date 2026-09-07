@@ -25,7 +25,7 @@ import (
 	"sync"
 	"time"
 
-	certificateapp "github.com/antimage/antimage/internal/app/certificates"
+	certificateapp "github.com/devprogrmer/AntiMage/internal/app/certificates"
 )
 
 const (

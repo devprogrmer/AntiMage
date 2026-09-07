@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"time"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	"github.com/antimage/antimage/internal/app/logging"
-	userapp "github.com/antimage/antimage/internal/app/user"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
+	userapp "github.com/devprogrmer/AntiMage/internal/app/user"
 )
 
 const defaultAdminLifecycleInterval = 30 * time.Second

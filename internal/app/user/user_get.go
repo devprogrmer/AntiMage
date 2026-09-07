@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/antimage/antimage/internal/app/online"
+	"github.com/devprogrmer/AntiMage/internal/app/online"
 )
 
 func (r Repository) UserGet(ctx context.Context, req UserGetRequest) (UserDetail, error) {

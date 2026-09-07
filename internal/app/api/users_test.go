@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	"github.com/antimage/antimage/internal/app/nodecontroller"
-	userapp "github.com/antimage/antimage/internal/app/user"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	"github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
+	userapp "github.com/devprogrmer/AntiMage/internal/app/user"
 )
 
 func testUserReadServer(t *testing.T) (*Server, *sql.DB) {

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	nodeapp "github.com/antimage/antimage/internal/app/node"
+	nodeapp "github.com/devprogrmer/AntiMage/internal/app/node"
 )
 
 func (r Repository) ListNodeItems(ctx context.Context, nodeID int64) ([]NodeListItem, string, string, error) {

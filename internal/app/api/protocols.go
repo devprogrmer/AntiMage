@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/antimage/antimage/internal/protocols"
+	"github.com/devprogrmer/AntiMage/internal/protocols"
 )
 
 // handleProtocols exposes the single AntiMage capability contract to the

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	systemapp "github.com/antimage/antimage/internal/app/system"
+	systemapp "github.com/devprogrmer/AntiMage/internal/app/system"
 	"golang.org/x/net/websocket"
 )
 

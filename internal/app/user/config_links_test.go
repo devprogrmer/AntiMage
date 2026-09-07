@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	outboundsubapp "github.com/antimage/antimage/internal/app/outboundsub"
+	outboundsubapp "github.com/devprogrmer/AntiMage/internal/app/outboundsub"
 )
 
 func assertSIP002UserInfo(t *testing.T, link, want string) {

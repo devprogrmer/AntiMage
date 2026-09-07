@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	externalapps "github.com/antimage/antimage/internal/app/externalapps"
+	externalapps "github.com/devprogrmer/AntiMage/internal/app/externalapps"
 )
 
 const maxExternalAppResponseBytes = 64 << 20

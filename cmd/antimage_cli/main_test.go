@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/antimage/antimage/internal/app/migrations"
+	"github.com/devprogrmer/AntiMage/internal/app/migrations"
 	_ "modernc.org/sqlite"
 )
 

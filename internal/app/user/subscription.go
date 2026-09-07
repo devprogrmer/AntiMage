@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	outboundsubapp "github.com/antimage/antimage/internal/app/outboundsub"
-	"github.com/antimage/antimage/internal/app/usage"
+	outboundsubapp "github.com/devprogrmer/AntiMage/internal/app/outboundsub"
+	"github.com/devprogrmer/AntiMage/internal/app/usage"
 	"github.com/flosch/pongo2/v6"
 )
 

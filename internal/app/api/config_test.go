@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"testing"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	"github.com/antimage/antimage/internal/app/xrayconfig"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
 )
 
 func coreConfigPayload(tag string) string {

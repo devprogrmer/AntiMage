@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/logging"
-	outboundsubapp "github.com/antimage/antimage/internal/app/outboundsub"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
+	outboundsubapp "github.com/devprogrmer/AntiMage/internal/app/outboundsub"
 )
 
 func (s *Server) handleOutboundSubscriptions(w http.ResponseWriter, r *http.Request) {

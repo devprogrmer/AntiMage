@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/antimage/antimage/internal/app/nodecontroller"
+	"github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
 )
 
 func TestFlattenNodeStaticItemOmitsRuntimeFields(t *testing.T) {

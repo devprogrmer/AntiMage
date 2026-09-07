@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	nodev1 "github.com/devprogrmer/AntiMage/internal/proto/node/v1"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/mem"

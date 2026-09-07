@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	outboundsubapp "github.com/antimage/antimage/internal/app/outboundsub"
-	"github.com/antimage/antimage/internal/app/xrayconfig"
+	outboundsubapp "github.com/devprogrmer/AntiMage/internal/app/outboundsub"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
 )
 
 const defaultShadowsocksMethod = "chacha20-ietf-poly1305"

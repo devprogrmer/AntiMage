@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/nodecontroller"
-	"github.com/antimage/antimage/internal/app/xrayconfig"
+	"github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
 	"golang.org/x/net/websocket"
 )
 

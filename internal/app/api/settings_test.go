@@ -9,8 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	telegramapp "github.com/antimage/antimage/internal/app/telegram"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	telegramapp "github.com/devprogrmer/AntiMage/internal/app/telegram"
 )
 
 func createSettingsTables(t *testing.T, db *sql.DB) {

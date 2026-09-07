@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
 )
 
 func (s *Server) handleAdminAPIKeyPath(w http.ResponseWriter, r *http.Request, username, suffix string) bool {

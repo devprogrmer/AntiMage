@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/antimage/antimage/internal/app/logging"
-	"github.com/antimage/antimage/internal/app/nodeagent"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
+	"github.com/devprogrmer/AntiMage/internal/app/nodeagent"
 )
 
 func main() {

@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/antimage/antimage/internal/app/xrayconfig"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
 )
 
 func (s *Server) handleInboundsRootEntry(w http.ResponseWriter, r *http.Request) {

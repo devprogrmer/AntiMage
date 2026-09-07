@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/antimage/antimage/internal/app/node"
+	"github.com/devprogrmer/AntiMage/internal/app/node"
 	"github.com/pressly/goose/v3"
 )
 

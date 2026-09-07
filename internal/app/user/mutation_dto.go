@@ -1,6 +1,6 @@
 package user
 
-import adminapp "github.com/antimage/antimage/internal/app/admin"
+import adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
 
 type UserStatus string
 

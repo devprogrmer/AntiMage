@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	telegramapp "github.com/antimage/antimage/internal/app/telegram"
-	userapp "github.com/antimage/antimage/internal/app/user"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	telegramapp "github.com/devprogrmer/AntiMage/internal/app/telegram"
+	userapp "github.com/devprogrmer/AntiMage/internal/app/user"
 )
 
 func telegramActor(r *http.Request) string {

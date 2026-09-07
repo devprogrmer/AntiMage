@@ -3,8 +3,8 @@ package api
 import (
 	"strings"
 
-	telegramapp "github.com/antimage/antimage/internal/app/telegram"
-	webhookapp "github.com/antimage/antimage/internal/app/webhook"
+	telegramapp "github.com/devprogrmer/AntiMage/internal/app/telegram"
+	webhookapp "github.com/devprogrmer/AntiMage/internal/app/webhook"
 )
 
 // webhookUserEvent maps an already-assembled Telegram user report into a webhook

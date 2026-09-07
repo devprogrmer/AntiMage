@@ -22,9 +22,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	admincore "github.com/antimage/antimage/internal/app/admin"
-	"github.com/antimage/antimage/internal/app/migrations"
-	"github.com/antimage/antimage/internal/platform/db"
+	admincore "github.com/devprogrmer/AntiMage/internal/app/admin"
+	"github.com/devprogrmer/AntiMage/internal/app/migrations"
+	"github.com/devprogrmer/AntiMage/internal/platform/db"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/curve25519"
 	"golang.org/x/term"

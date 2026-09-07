@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://github.com/antimagepanel/AntiMage" target="_blank" rel="noopener noreferrer">
+  <a href="https://github.com/devprogrmer/AntiMage" target="_blank" rel="noopener noreferrer">
     <img width="160" height="160" src="../dashboard/src/assets/logo.svg" alt="AntiMage logo">
   </a>
 </p>
@@ -13,19 +13,13 @@
 <br/>
 <p align="center">
     <a href="#">
-        <img src="https://img.shields.io/github/actions/workflow/status/antimagepanel/AntiMage/build.yml?style=flat-square" />
+        <img src="https://img.shields.io/github/actions/workflow/status/devprogrmer/AntiMage/build.yml?style=flat-square" />
     </a>
-    <a href="https://hub.docker.com/r/antimagepanel/antimage" target="_blank">
-        <img src="https://img.shields.io/docker/pulls/antimagepanel/antimage?style=flat-square&logo=docker" />
+<a href="#">
+        <img src="https://img.shields.io/github/license/devprogrmer/AntiMage?style=flat-square" />
     </a>
-    <a href="#">
-        <img src="https://img.shields.io/github/license/antimagepanel/AntiMage?style=flat-square" />
-    </a>
-    <a href="https://t.me/antimagepanel_antimage" target="_blank">
-        <img src="https://img.shields.io/badge/telegram-channel-blue?style=flat-square&logo=telegram" />
-    </a>
-    <a href="#">
-        <img src="https://img.shields.io/github/stars/antimagepanel/AntiMage?style=social" />
+<a href="#">
+        <img src="https://img.shields.io/github/stars/devprogrmer/AntiMage?style=social" />
     </a>
 </p>
 
@@ -92,13 +86,13 @@ AntiMage 是一个用户友好、功能丰富且可靠的工具。它让您可�
 使用二进制安装脚本安装 AntiMage master：
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-binary.sh | sudo bash -s -- install
+curl -sL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install
 ```
 
 在每台 node 服务器上使用二进制 node 安装脚本安装 AntiMage-node：
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install
+curl -sL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install
 ```
 
 二进制安装脚本会创建 native systemd 服务，并自动下载适合服务器架构的 Linux binary。Master 通过安装参数支持 SQLite、MySQL 和 MariaDB；node 安装脚本只安装 node runtime，并通过面板中的 certificate/token flow 连接到 Master。
@@ -109,7 +103,7 @@ Once the installation is complete:
 - The AntiMage files will be located at `/opt/antimage`
 - The configuration file can be found at `/opt/antimage/.env` (refer to [configurations](#configuration) section to see variables)
 - The data files will be placed at `/usr/lib/antimage`
-- For security reasons, the AntiMage dashboard is not accessible via IP address. Therefore, you must [obtain SSL certificate](https://antimagepanel.github.io/antimage/en/examples/issue-ssl-certificate) and access your AntiMage dashboard by opening a web browser and navigating to `https://YOUR_DOMAIN:8000/dashboard/` (replace YOUR_DOMAIN with your actual domain)
+- For security reasons, the AntiMage dashboard is not accessible via IP address. Therefore, you must obtain SSL certificate and access your AntiMage dashboard by opening a web browser and navigating to `https://YOUR_DOMAIN:8000/dashboard/` (replace YOUR_DOMAIN with your actual domain)
 - You can also use SSH port forwarding to access the AntiMage dashboard locally without a domain. Replace `user@serverip` with your actual SSH username and server IP and Run the command below:
 
 ```bash
@@ -151,7 +145,7 @@ curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh | bash 
 克隆项目并构建 dashboard 和 Go 二进制文件：
 
 ```bash
-git clone https://github.com/antimagepanel/AntiMage.git
+git clone https://github.com/devprogrmer/AntiMage.git
 cd AntiMage
 cd dashboard
 npm ci
@@ -321,9 +315,9 @@ AntiMage 配备了一个集成的 Telegram bot，可以处理服务器管理、�
 
 # 贡献者
 
-我们热爱贡献者！如果您想做出贡献，请查看我们的[贡献指南](CONTRIBUTING.md)并随时提交拉取请求或打开问题。我们也欢迎您加入我们的 [Telegram](https://t.me/antimagepanel_antimage) 群组，以获得支持或贡献指导。
+我们热爱贡献者！如果您想做出贡献，请查看我们的[贡献指南](CONTRIBUTING.md)并随时提交拉取请求或打开问题。
 
-查看 [issues](https://github.com/antimagepanel/AntiMage/issues) 以帮助改进这个项目。
+查看 [issues](https://github.com/devprogrmer/AntiMage/issues) 以帮助改进这个项目。
 
 
 
@@ -331,8 +325,8 @@ AntiMage 配备了一个集成的 Telegram bot，可以处理服务器管理、�
 感谢所有为改善 AntiMage 做出贡献的贡献者们：
 </p>
 <p align="center">
-<a href="https://github.com/antimagepanel/AntiMage/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=antimagepanel/AntiMage" />
+<a href="https://github.com/devprogrmer/AntiMage/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=devprogrmer/AntiMage" />
 </a>
 </p>
 <p align="center">

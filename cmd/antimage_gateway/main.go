@@ -7,9 +7,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/api"
-	"github.com/antimage/antimage/internal/app/logging"
-	"github.com/antimage/antimage/internal/gateway"
+	"github.com/devprogrmer/AntiMage/internal/app/api"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
+	"github.com/devprogrmer/AntiMage/internal/gateway"
 )
 
 func main() {

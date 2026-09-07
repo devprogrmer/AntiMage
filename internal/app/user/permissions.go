@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
 )
 
 const (

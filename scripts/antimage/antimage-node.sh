@@ -148,7 +148,7 @@ ensure_valid_app_name
 LAST_XRAY_CORES=5
 
 ANTIMAGE_REPO="${ANTIMAGE_REPO:-devprogrmer/AntiMage}"
-ANTIMAGE_REF="${ANTIMAGE_REF:-master}"
+ANTIMAGE_REF="${ANTIMAGE_REF:-main}"
 ANTIMAGE_SCRIPT_BASE_URL_EXPLICIT=0
 if [ -n "${ANTIMAGE_SCRIPT_BASE_URL+x}" ]; then
     ANTIMAGE_SCRIPT_BASE_URL_EXPLICIT=1
@@ -162,7 +162,7 @@ ANTIMAGE_NODE_BINARY_ARTIFACT_PREFIX="${ANTIMAGE_NODE_BINARY_ARTIFACT_PREFIX:-an
 DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-v26.7.11}"
 
 # Default node channel values
-BRANCH="master"
+BRANCH="main"
 SCRIPT_URL="$ANTIMAGE_SCRIPT_BASE_URL/$ANTIMAGE_NODE_SCRIPT_SOURCE_FILE"
 
 colorized_echo() {
@@ -228,7 +228,7 @@ ui_color() {
 }
 
 ui_line() {
-    ui_color "38;5;39" "────────────────────────────────────────────────────────────"
+    ui_color "38;5;39" "â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€"
     printf "\n"
 }
 
@@ -236,7 +236,7 @@ ui_header() {
     local title="$1"
     local subtitle="${2:-}"
     printf "\n"
-    ui_color "38;5;45;1" "╭──────────────────────────────────────────────────────────╮"
+    ui_color "38;5;45;1" "â•­â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â•®"
     printf "\n  "
     ui_color "38;5;231;1" "$title"
     printf "\n"
@@ -245,13 +245,13 @@ ui_header() {
         ui_color "38;5;117" "$subtitle"
         printf "\n"
     fi
-    ui_color "38;5;45;1" "╰──────────────────────────────────────────────────────────╯"
+    ui_color "38;5;45;1" "â•°â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â•¯"
     printf "\n"
 }
 
 ui_section() {
     printf "\n"
-    ui_color "38;5;45;1" "◆ $1"
+    ui_color "38;5;45;1" "â—† $1"
     printf "\n"
     ui_line
 }
@@ -385,7 +385,7 @@ ui_spinner_run() {
     log_file=$(mktemp)
     "$@" >"$log_file" 2>&1 &
     local pid=$!
-    local frames=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+    local frames=("â ‹" "â ™" "â ¹" "â ¸" "â ¼" "â ´" "â ¦" "â §" "â ‡" "â ")
     local i=0
     while kill -0 "$pid" >/dev/null 2>&1; do
         printf "\r"
@@ -399,13 +399,13 @@ ui_spinner_run() {
     wait "$pid" || status=$?
     printf "\r\033[K"
     if [ "$status" -eq 0 ]; then
-        ui_color "38;5;82;1" "✓"
+        ui_color "38;5;82;1" "âœ“"
         printf " %s\n" "$message"
         rm -f "$log_file"
         return 0
     fi
 
-    ui_color "38;5;196;1" "✗"
+    ui_color "38;5;196;1" "âœ—"
     printf " %s\n" "$message"
     tail -n 80 "$log_file" >&2 || true
     rm -f "$log_file"
@@ -536,7 +536,7 @@ prompt_node_selection() {
 set_app_context
 
 set_branch_variables() {
-    local selected_branch="${1:-master}"
+    local selected_branch="${1:-main}"
     case "$selected_branch" in
         dev|development)
             BRANCH="dev"
@@ -544,7 +544,7 @@ set_branch_variables() {
             DOCKER_IMAGE="ghcr.io/devprogrmer/antimage-node:dev"
         ;;
         *)
-            BRANCH="master"
+            BRANCH="main"
             IMAGE_TAG="latest"
             DOCKER_IMAGE="ghcr.io/devprogrmer/antimage-node:latest"
         ;;
@@ -553,7 +553,7 @@ set_branch_variables() {
     if [ "$BRANCH" = "dev" ]; then
         ANTIMAGE_REF="dev"
     else
-        ANTIMAGE_REF="${ANTIMAGE_SCRIPT_REF:-master}"
+        ANTIMAGE_REF="${ANTIMAGE_SCRIPT_REF:-main}"
     fi
     if [ "${ANTIMAGE_SCRIPT_BASE_URL_EXPLICIT:-0}" != "1" ]; then
         ANTIMAGE_SCRIPT_BASE_URL="https://raw.githubusercontent.com/${ANTIMAGE_REPO}/${ANTIMAGE_REF}/scripts/antimage"
@@ -573,13 +573,13 @@ prompt_branch_selection() {
         if [[ -z "$branch_answer" || "$branch_answer" =~ ^[Yy]$ ]]; then
             set_branch_variables dev
         else
-            set_branch_variables master
+            set_branch_variables main
         fi
     else
         if [[ "$branch_answer" =~ ^[Yy]$ ]]; then
             set_branch_variables dev
         else
-            set_branch_variables master
+            set_branch_variables main
         fi
     fi
     colorized_echo blue "Selected branch: $BRANCH (image tag: $IMAGE_TAG)"
@@ -750,9 +750,9 @@ select_node_version() {
     esac
 }
 
-BRANCH="master"
+BRANCH="main"
 IMAGE_TAG="latest"
-SCRIPT_BRANCH="master"
+SCRIPT_BRANCH="main"
 DOCKER_IMAGE="ghcr.io/devprogrmer/antimage-node:latest"
 SCRIPT_URL="$ANTIMAGE_SCRIPT_BASE_URL/$ANTIMAGE_NODE_SCRIPT_SOURCE_FILE"
 if [ -f "$BRANCH_FILE" ]; then
@@ -1592,10 +1592,10 @@ update_antimage_node() {
                 set_branch_variables dev
             ;;
             latest|"")
-                set_branch_variables master
+                set_branch_variables main
             ;;
             *)
-                set_branch_variables master
+                set_branch_variables main
                 DOCKER_IMAGE="ghcr.io/devprogrmer/antimage-node:${requested_version}"
             ;;
         esac
@@ -1656,11 +1656,11 @@ install_command() {
             set_branch_variables dev
         ;;
         latest|"")
-            set_branch_variables master
+            set_branch_variables main
             node_version="latest"
         ;;
         *)
-            set_branch_variables master
+            set_branch_variables main
         ;;
     esac
     colorized_echo blue "Selected install mode: $install_mode"
@@ -1966,11 +1966,11 @@ update_command() {
                 set_branch_variables dev
             ;;
             latest|"")
-                set_branch_variables master
+                set_branch_variables main
                 node_version="latest"
             ;;
             *)
-                set_branch_variables master
+                set_branch_variables main
                 DOCKER_IMAGE="ghcr.io/devprogrmer/antimage-node:${node_version}"
             ;;
         esac
@@ -2372,11 +2372,11 @@ usage() {
     echo
 
     colorized_echo cyan "Commands:"
-    colorized_echo yellow "  up              – Start services"
-    colorized_echo yellow "  down            – Stop services"
-    colorized_echo yellow "  restart         – Restart services"
-    colorized_echo yellow "  status          – Show status"
-    colorized_echo yellow "  logs            – Show logs"
+    colorized_echo yellow "  up              â€“ Start services"
+    colorized_echo yellow "  down            â€“ Stop services"
+    colorized_echo yellow "  restart         â€“ Restart services"
+    colorized_echo yellow "  status          â€“ Show status"
+    colorized_echo yellow "  logs            â€“ Show logs"
     colorized_echo yellow "  install         - Install/reinstall AntiMage-node"
     colorized_echo yellow "  update          - Update to latest/dev or a specific version"
     colorized_echo yellow "  uninstall       - Uninstall AntiMage-node"
@@ -2384,7 +2384,7 @@ usage() {
     colorized_echo blue "  script-update   - Update AntiMage-node CLI script"
     colorized_echo blue "  script-uninstall  - Uninstall AntiMage-node script"
     colorized_echo yellow "  edit            - Edit docker-compose.yml or binary .env (via nano or vi)"
-    colorized_echo yellow "  core-update     – Update/Change Xray core"
+    colorized_echo yellow "  core-update     â€“ Update/Change Xray core"
     
     echo
     colorized_echo cyan "Node Information:"

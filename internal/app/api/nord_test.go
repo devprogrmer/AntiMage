@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	nordvpnapp "github.com/antimage/antimage/internal/app/nordvpn"
+	nordvpnapp "github.com/devprogrmer/AntiMage/internal/app/nordvpn"
 )
 
 func TestNordSettingsAndAPIRoutes(t *testing.T) {

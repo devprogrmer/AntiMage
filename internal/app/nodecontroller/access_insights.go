@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/online"
-	"github.com/antimage/antimage/internal/app/searchmatch"
+	"github.com/devprogrmer/AntiMage/internal/app/online"
+	"github.com/devprogrmer/AntiMage/internal/app/searchmatch"
 )
 
 const maxAccessInsightRecords = 5000

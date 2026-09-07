@@ -6,7 +6,6 @@ Thanks for considering a contribution to AntiMage.
 
 Please avoid opening issues for support questions. Use one of these channels instead:
 
-- Telegram channel: [@antimagepanel_antimage](https://t.me/antimagepanel_antimage)
 - GitHub Discussions for longer-term design or operational questions.
 
 ## Reporting Issues

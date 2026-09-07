@@ -11,7 +11,7 @@ Use Node.js 20 LTS, which is also used in CI.
 
 ## Install
 
-    git clone https://github.com/antimagepanel/AntiMage.git
+    git clone https://github.com/devprogrmer/AntiMage.git
     cd AntiMage/dashboard
     npm ci
 
@@ -25,7 +25,7 @@ Copy `example.env` to `.env` then set the backend api address:
 
 | Name          | Description                                                                          |
 | ------------- | ------------------------------------------------------------------------------------ |
-| VITE_BASE_API | The api url of the deployed backend ([AntiMage](https://github.com/antimagepanel/AntiMage)) |
+| VITE_BASE_API | The api url of the deployed backend ([AntiMage](https://github.com/devprogrmer/AntiMage)) |
 
 ## Start development server
 

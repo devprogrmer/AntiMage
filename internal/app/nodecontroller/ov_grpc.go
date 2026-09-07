@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/antimage/antimage/internal/app/xrayconfig"
-	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
+	nodev1 "github.com/devprogrmer/AntiMage/internal/proto/node/v1"
 )
 
 func (c Controller) runtimeConfigRequest(ctx context.Context, node NodeRow, operationID string, configJSON string) (*nodev1.RuntimeConfigRequest, error) {

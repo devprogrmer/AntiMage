@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	warpapp "github.com/antimage/antimage/internal/app/warp"
+	warpapp "github.com/devprogrmer/AntiMage/internal/app/warp"
 )
 
 func (s *Server) handleWarpAccount(w http.ResponseWriter, r *http.Request) {

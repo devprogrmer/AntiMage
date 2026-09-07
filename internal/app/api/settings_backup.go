@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	backupapp "github.com/antimage/antimage/internal/app/backup"
-	systemapp "github.com/antimage/antimage/internal/app/system"
+	backupapp "github.com/devprogrmer/AntiMage/internal/app/backup"
+	systemapp "github.com/devprogrmer/AntiMage/internal/app/system"
 )
 
 const maxBackupUploadBytes int64 = 128 << 20

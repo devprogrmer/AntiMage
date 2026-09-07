@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	"github.com/antimage/antimage/internal/app/xrayconfig"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
 )
 
 func inboundConfig(entries ...string) string {

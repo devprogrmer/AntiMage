@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/antimage/antimage/internal/app/nodecontroller"
+	"github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
 )
 
 const psiphonProxyBatchLimit = 20

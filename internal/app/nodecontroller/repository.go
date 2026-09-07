@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	nodev1 "github.com/devprogrmer/AntiMage/internal/proto/node/v1"
 )
 
 type Repository struct {

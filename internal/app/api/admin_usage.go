@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	"github.com/antimage/antimage/internal/app/online"
-	"github.com/antimage/antimage/internal/app/searchmatch"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	"github.com/devprogrmer/AntiMage/internal/app/online"
+	"github.com/devprogrmer/AntiMage/internal/app/searchmatch"
 )
 
 func (s *Server) handleAdminsList(w http.ResponseWriter, r *http.Request) {

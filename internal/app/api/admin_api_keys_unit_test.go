@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	"github.com/antimage/antimage/internal/app/migrations"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	"github.com/devprogrmer/AntiMage/internal/app/migrations"
 	_ "modernc.org/sqlite"
 )
 

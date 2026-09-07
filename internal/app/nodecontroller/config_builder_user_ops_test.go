@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	nodev1 "github.com/devprogrmer/AntiMage/internal/proto/node/v1"
 )
 
 func TestAddUserWithoutMatchingServiceInboundIsNoOp(t *testing.T) {

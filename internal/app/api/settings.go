@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	settingsapp "github.com/antimage/antimage/internal/app/settings"
-	telegramapp "github.com/antimage/antimage/internal/app/telegram"
+	settingsapp "github.com/devprogrmer/AntiMage/internal/app/settings"
+	telegramapp "github.com/devprogrmer/AntiMage/internal/app/telegram"
 )
 
 type allSettingsRequest struct {

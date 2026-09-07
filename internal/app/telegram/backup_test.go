@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	backupapp "github.com/antimage/antimage/internal/app/backup"
+	backupapp "github.com/devprogrmer/AntiMage/internal/app/backup"
 )
 
 type fakeBackupExporter struct {

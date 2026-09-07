@@ -14,10 +14,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/logging"
-	"github.com/antimage/antimage/internal/app/nodeclient"
-	outboundsubapp "github.com/antimage/antimage/internal/app/outboundsub"
-	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
+	"github.com/devprogrmer/AntiMage/internal/app/nodeclient"
+	outboundsubapp "github.com/devprogrmer/AntiMage/internal/app/outboundsub"
+	nodev1 "github.com/devprogrmer/AntiMage/internal/proto/node/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 )

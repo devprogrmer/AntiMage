@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/antimage/antimage/internal/app/nodecontroller"
-	userapp "github.com/antimage/antimage/internal/app/user"
+	"github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
+	userapp "github.com/devprogrmer/AntiMage/internal/app/user"
 )
 
 type liveUserSpeed struct {

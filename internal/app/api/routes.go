@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	externalapps "github.com/antimage/antimage/internal/app/externalapps"
+	externalapps "github.com/devprogrmer/AntiMage/internal/app/externalapps"
 	"github.com/go-chi/chi/v5"
 )
 

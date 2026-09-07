@@ -2,7 +2,7 @@
 set -e
 
 ANTIMAGE_REPO="${ANTIMAGE_REPO:-devprogrmer/AntiMage}"
-ANTIMAGE_REF="${ANTIMAGE_REF:-master}"
+ANTIMAGE_REF="${ANTIMAGE_REF:-main}"
 SCRIPT_URL="${ANTIMAGE_SCRIPT_URL:-https://raw.githubusercontent.com/${ANTIMAGE_REPO}/${ANTIMAGE_REF}/scripts/antimage/antimage.sh}"
 
 if [ "$(id -u)" != "0" ]; then

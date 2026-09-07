@@ -1,6 +1,6 @@
 package api
 
-import "github.com/antimage/antimage/internal/app/nodecontroller"
+import "github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
 
 func flattenNodeItem(node nodecontroller.NodeListItem) map[string]any {
 	return map[string]any{

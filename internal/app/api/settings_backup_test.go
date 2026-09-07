@@ -16,9 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	backupapp "github.com/antimage/antimage/internal/app/backup"
-	telegramapp "github.com/antimage/antimage/internal/app/telegram"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	backupapp "github.com/devprogrmer/AntiMage/internal/app/backup"
+	telegramapp "github.com/devprogrmer/AntiMage/internal/app/telegram"
 )
 
 func TestBackupExportRequiresBinaryRuntime(t *testing.T) {

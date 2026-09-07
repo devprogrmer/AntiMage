@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://github.com/antimagepanel/AntiMage" target="_blank" rel="noopener noreferrer">
+  <a href="https://github.com/devprogrmer/AntiMage" target="_blank" rel="noopener noreferrer">
     <img width="160" height="160" src="../dashboard/src/assets/logo.svg" alt="AntiMage logo">
   </a>
 </p>
@@ -13,19 +13,13 @@
 <br/>
 <p align="center">
     <a href="#">
-        <img src="https://img.shields.io/github/actions/workflow/status/antimagepanel/AntiMage/build.yml?style=flat-square" />
+        <img src="https://img.shields.io/github/actions/workflow/status/devprogrmer/AntiMage/build.yml?style=flat-square" />
     </a>
-    <a href="https://hub.docker.com/r/antimagepanel/antimage" target="_blank">
-        <img src="https://img.shields.io/docker/pulls/antimagepanel/antimage?style=flat-square&logo=docker" />
+<a href="#">
+        <img src="https://img.shields.io/github/license/devprogrmer/AntiMage?style=flat-square" />
     </a>
-    <a href="#">
-        <img src="https://img.shields.io/github/license/antimagepanel/AntiMage?style=flat-square" />
-    </a>
-    <a href="https://t.me/antimagepanel_antimage" target="_blank">
-        <img src="https://img.shields.io/badge/telegram-channel-blue?style=flat-square&logo=telegram" />
-    </a>
-    <a href="#">
-        <img src="https://img.shields.io/github/stars/antimagepanel/AntiMage?style=social" />
+<a href="#">
+        <img src="https://img.shields.io/github/stars/devprogrmer/AntiMage?style=social" />
     </a>
 </p>
 
@@ -94,13 +88,13 @@ AntiMage удобен в использовании, многофункцион�
 Установите AntiMage master через бинарный установщик:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-binary.sh | sudo bash -s -- install
+curl -sL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install
 ```
 
 Установите AntiMage-node на каждом node-сервере через бинарный установщик node:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install
+curl -sL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install
 ```
 
 Бинарные установщики создают native systemd-сервисы и автоматически скачивают подходящий Linux binary для архитектуры сервера. Master поддерживает SQLite, MySQL и MariaDB через параметры установки; node-установщик устанавливает только runtime ноды и подключается к Master через certificate/token flow из панели.
@@ -110,7 +104,7 @@ curl -sL https://raw.githubusercontent.com/antimagepanel/AntiMage/master/scripts
 - Файлы AntiMage будут размещены по адресу `/opt/antimage`.
 - Файл конфигурации будет размещен по адресу `/opt/antimage/.env` (см. [Конфигурация](#конфигурация)).
 - Файлы с данными будут размещены по адресу `/var/lib/antimage`.
-- По соображениям безопасности, панель управления AntiMage недоступна через IP-адрес. Поэтому вам необходимо [получить SSL-сертификат](https://antimagepanel.github.io/antimage/ru/examples/issue-ssl-certificate) и получить доступ к панели управления AntiMage, открыв веб-браузер и перейдя по адресу `https://YOUR_DOMAIN:8000/dashboard/` (замените YOUR_DOMAIN на ваш фактический домен).
+- По соображениям безопасности, панель управления AntiMage недоступна через IP-адрес. Поэтому вам необходимо получить SSL-сертификат и получить доступ к панели управления AntiMage, открыв веб-браузер и перейдя по адресу `https://YOUR_DOMAIN:8000/dashboard/` (замените YOUR_DOMAIN на ваш фактический домен).
 - Вы также можете использовать перенаправление портов SSH для локального доступа к панели управления AntiMage без домена. Замените `user@serverip` на ваше фактическое имя пользователя SSH и IP-адрес сервера и выполните следующую команду:
 
 ```bash
@@ -152,7 +146,7 @@ curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh | bash 
 Клонируйте проект и соберите dashboard и Go-бинарники:
 
 ```bash
-git clone https://github.com/antimagepanel/AntiMage.git
+git clone https://github.com/devprogrmer/AntiMage.git
 cd AntiMage
 cd dashboard
 npm ci
@@ -359,16 +353,16 @@ Body:
 
 # Участники
 
-Мы ❤️‍🔥 участников проекта! Если вы хотите внести свой вклад, пожалуйста, ознакомьтесь с нашим [Contributing Guidelines](CONTRIBUTING.md) и не стесняйтесь отправлять запросы на исправление ошибок или сообщить о проблеме. Мы также приглашаем вас присоединиться к нашей группе [Telegram](https://t.me/antimagepanel_antimage) для получения поддержки.
+Мы ❤️‍🔥 участников проекта! Если вы хотите внести свой вклад, пожалуйста, ознакомьтесь с нашим [Contributing Guidelines](CONTRIBUTING.md) и не стесняйтесь отправлять запросы на исправление ошибок или сообщить о проблеме.
 
-Проверьте [open issues](https://github.com/antimagepanel/AntiMage/issues), чтобы помочь развитию этого проекта.
+Проверьте [open issues](https://github.com/devprogrmer/AntiMage/issues), чтобы помочь развитию этого проекта.
 
 <p align="center">
 Спасибо всем участникам, благодаря которым AntiMage становится лучше:
 </p>
 <p align="center">
-<a href="https://github.com/antimagepanel/AntiMage/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=antimagepanel/AntiMage" />
+<a href="https://github.com/devprogrmer/AntiMage/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=devprogrmer/AntiMage" />
 </a>
 </p>
 <p align="center">

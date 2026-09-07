@@ -1,6 +1,6 @@
 package system
 
-import dashboardapp "github.com/antimage/antimage/internal/app/dashboard"
+import dashboardapp "github.com/devprogrmer/AntiMage/internal/app/dashboard"
 
 const DefaultVersion = "0.1.3"
 

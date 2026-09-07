@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	externalapps "github.com/antimage/antimage/internal/app/externalapps"
+	externalapps "github.com/devprogrmer/AntiMage/internal/app/externalapps"
 )
 
 func TestExternalAppAwareHandlerServesOnlyMatchingSafeHost(t *testing.T) {

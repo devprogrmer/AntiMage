@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	dashboardapp "github.com/antimage/antimage/internal/app/dashboard"
-	telegrambot "github.com/antimage/antimage/internal/app/telegram/bot"
-	userapp "github.com/antimage/antimage/internal/app/user"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	dashboardapp "github.com/devprogrmer/AntiMage/internal/app/dashboard"
+	telegrambot "github.com/devprogrmer/AntiMage/internal/app/telegram/bot"
+	userapp "github.com/devprogrmer/AntiMage/internal/app/user"
 )
 
 // botSettingsSource adapts the Telegram repository to the bot's SettingsSource.

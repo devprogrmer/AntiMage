@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	"github.com/antimage/antimage/internal/app/nodecontroller"
-	systemapp "github.com/antimage/antimage/internal/app/system"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	"github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
+	systemapp "github.com/devprogrmer/AntiMage/internal/app/system"
 )
 
 type fakeSystemMetricsProvider struct {

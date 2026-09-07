@@ -19,8 +19,7 @@ cascade:
 - حساب من: کلید API، تغییر رمز، گزارش مصرف روزانه و مصرف هر نود.
 - کد منبع باز است؛ اگر مفید بود در گیت‌هاب ستاره بدهید.
 
-- [گیت‌هاب](https://github.com/antimage/antimage)
-- [تلگرام](https://t.me/antimagepanel)
+- [گیت‌هاب](https://github.com/devprogrmer/AntiMage)
 
 ## شروع از یک کار مشخص
 

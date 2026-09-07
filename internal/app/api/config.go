@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/antimage/antimage/internal/app/xrayconfig"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
 )
 
 func (s *Server) handleCoreConfig(w http.ResponseWriter, r *http.Request) {

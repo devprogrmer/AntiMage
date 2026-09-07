@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	telegramapp "github.com/antimage/antimage/internal/app/telegram"
-	webhookapp "github.com/antimage/antimage/internal/app/webhook"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	telegramapp "github.com/devprogrmer/AntiMage/internal/app/telegram"
+	webhookapp "github.com/devprogrmer/AntiMage/internal/app/webhook"
 )
 
 const (

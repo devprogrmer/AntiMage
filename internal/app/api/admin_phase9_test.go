@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
 )
 
 func TestPhase9AdminLoginRolesAndStandardPermissionEnforcement(t *testing.T) {

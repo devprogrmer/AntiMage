@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/searchmatch"
-	"github.com/antimage/antimage/internal/app/xrayconfig"
+	"github.com/devprogrmer/AntiMage/internal/app/searchmatch"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
 )
 
 const (

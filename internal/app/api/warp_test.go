@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	warpapp "github.com/antimage/antimage/internal/app/warp"
+	warpapp "github.com/devprogrmer/AntiMage/internal/app/warp"
 )
 
 func TestWarpGetEmptyAccount(t *testing.T) {

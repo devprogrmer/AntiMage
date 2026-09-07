@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	"github.com/antimage/antimage/internal/app/usage"
-	userapp "github.com/antimage/antimage/internal/app/user"
-	"github.com/antimage/antimage/internal/app/xrayconfig"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	"github.com/devprogrmer/AntiMage/internal/app/usage"
+	userapp "github.com/devprogrmer/AntiMage/internal/app/user"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
 )
 
 type serviceHostAssignment struct {

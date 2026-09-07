@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	userapp "github.com/antimage/antimage/internal/app/user"
+	userapp "github.com/devprogrmer/AntiMage/internal/app/user"
 )
 
 func (s *Server) handleSubscriptionPath(w http.ResponseWriter, r *http.Request) {

@@ -9,9 +9,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/antimage/antimage/internal/app/logging"
-	userread "github.com/antimage/antimage/internal/app/user"
-	"github.com/antimage/antimage/internal/app/xrayconfig"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
+	userread "github.com/devprogrmer/AntiMage/internal/app/user"
+	"github.com/devprogrmer/AntiMage/internal/app/xrayconfig"
 )
 
 var proxyProtocols = map[string]struct{}{

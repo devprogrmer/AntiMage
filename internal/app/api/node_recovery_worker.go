@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/antimage/antimage/internal/app/logging"
-	"github.com/antimage/antimage/internal/app/nodecontroller"
+	"github.com/devprogrmer/AntiMage/internal/app/logging"
+	"github.com/devprogrmer/AntiMage/internal/app/nodecontroller"
 )
 
 const defaultNodeRecoveryPollInterval = 45 * time.Second

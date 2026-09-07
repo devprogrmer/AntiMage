@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	adminapp "github.com/antimage/antimage/internal/app/admin"
-	systemapp "github.com/antimage/antimage/internal/app/system"
+	adminapp "github.com/devprogrmer/AntiMage/internal/app/admin"
+	systemapp "github.com/devprogrmer/AntiMage/internal/app/system"
 )
 
 type fakeRuntimeDetector struct {
@@ -127,7 +127,7 @@ func TestMaintenanceInfoBinaryAndDockerMock(t *testing.T) {
 		info.Panel.Update.Target == nil ||
 		*info.Panel.Update.Target != "dev-abcdef0" ||
 		info.Node != nil ||
-		info.NodeUpdate.Repo != "antimagepanel/AntiMage-node" {
+		info.NodeUpdate.Repo != "devprogrmer/AntiMage" {
 		t.Fatalf("unexpected maintenance info: %#v", info)
 	}
 
@@ -136,7 +136,7 @@ func TestMaintenanceInfoBinaryAndDockerMock(t *testing.T) {
 			Mode:        "docker",
 			InstallMode: "docker",
 			Service:     "antimage",
-			Image:       "antimagepanel/antimage",
+			Image:       "ghcr.io/devprogrmer/antimage",
 			Channel:     "unknown",
 			Binary:      map[string]any{},
 		}},
