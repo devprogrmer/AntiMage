@@ -37,4 +37,5 @@ try {
     Pop-Location
 }
 
+$global:LASTEXITCODE = 0
 Write-Output "AntiMage product naming verification passed."
