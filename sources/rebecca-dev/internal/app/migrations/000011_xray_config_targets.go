@@ -112,7 +112,7 @@ func legacyXrayConfigPath() string {
 	if value := strings.TrimSpace(os.Getenv("XRAY_JSON")); value != "" {
 		return value
 	}
-	return "/var/lib/rebecca/xray_config.json"
+	return "/var/lib/antimage/xray_config.json"
 }
 
 func normalizeLegacyXrayJSON(raw []byte) (string, bool) {

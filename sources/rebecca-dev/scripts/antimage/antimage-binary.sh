@@ -20,21 +20,21 @@ COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 ENV_FILE="$APP_DIR/.env"
 LAST_XRAY_CORES=10
 CERTS_BASE="/var/lib/$APP_NAME/certs"
-REBECCA_REPO="${REBECCA_REPO:-rebeccapanel/Rebecca}"
-REBECCA_REF="${REBECCA_REF:-master}"
-REBECCA_RAW_BASE="${REBECCA_RAW_BASE:-https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}}"
-REBECCA_SCRIPT_BASE_URL_EXPLICIT=0
-if [ -n "${REBECCA_SCRIPT_BASE_URL+x}" ]; then
-    REBECCA_SCRIPT_BASE_URL_EXPLICIT=1
+ANTIMAGE_REPO="${ANTIMAGE_REPO:-rebeccapanel/Rebecca}"
+ANTIMAGE_REF="${ANTIMAGE_REF:-master}"
+ANTIMAGE_RAW_BASE="${ANTIMAGE_RAW_BASE:-https://raw.githubusercontent.com/${ANTIMAGE_REPO}/${ANTIMAGE_REF}}"
+ANTIMAGE_SCRIPT_BASE_URL_EXPLICIT=0
+if [ -n "${ANTIMAGE_SCRIPT_BASE_URL+x}" ]; then
+    ANTIMAGE_SCRIPT_BASE_URL_EXPLICIT=1
 fi
-REBECCA_SCRIPT_BASE_URL="${REBECCA_SCRIPT_BASE_URL:-${REBECCA_RAW_BASE}/scripts/rebecca}"
-REBECCA_RELEASE_REPO="${REBECCA_RELEASE_REPO:-rebeccapanel/Rebecca}"
-REBECCA_BINARY_DEV_BRANCH="${REBECCA_BINARY_DEV_BRANCH:-dev}"
-REBECCA_BINARY_WORKFLOW_NAME="${REBECCA_BINARY_WORKFLOW_NAME:-binary-build}"
-REBECCA_BINARY_DEV_MANIFEST_BRANCH="${REBECCA_BINARY_DEV_MANIFEST_BRANCH:-dev-build-manifest}"
-REBECCA_BINARY_DEV_MANIFEST_PATH="${REBECCA_BINARY_DEV_MANIFEST_PATH:-dev-builds.json}"
-REBECCA_BINARY_DEV_MANIFEST_URL="${REBECCA_BINARY_DEV_MANIFEST_URL:-}"
-REBECCA_BINARY_DEV_RELEASE_TAG="${REBECCA_BINARY_DEV_RELEASE_TAG:-dev-builds}"
+ANTIMAGE_SCRIPT_BASE_URL="${ANTIMAGE_SCRIPT_BASE_URL:-${ANTIMAGE_RAW_BASE}/scripts/antimage}"
+ANTIMAGE_RELEASE_REPO="${ANTIMAGE_RELEASE_REPO:-rebeccapanel/Rebecca}"
+ANTIMAGE_BINARY_DEV_BRANCH="${ANTIMAGE_BINARY_DEV_BRANCH:-dev}"
+ANTIMAGE_BINARY_WORKFLOW_NAME="${ANTIMAGE_BINARY_WORKFLOW_NAME:-binary-build}"
+ANTIMAGE_BINARY_DEV_MANIFEST_BRANCH="${ANTIMAGE_BINARY_DEV_MANIFEST_BRANCH:-dev-build-manifest}"
+ANTIMAGE_BINARY_DEV_MANIFEST_PATH="${ANTIMAGE_BINARY_DEV_MANIFEST_PATH:-dev-builds.json}"
+ANTIMAGE_BINARY_DEV_MANIFEST_URL="${ANTIMAGE_BINARY_DEV_MANIFEST_URL:-}"
+ANTIMAGE_BINARY_DEV_RELEASE_TAG="${ANTIMAGE_BINARY_DEV_RELEASE_TAG:-dev-builds}"
 INSTALL_MODE_FILE="$APP_DIR/.install-mode"
 CHANNEL_FILE="$APP_DIR/.channel"
 BINARY_BIN_DIR="$APP_DIR/bin"
@@ -47,10 +47,10 @@ BINARY_SERVICE_UNIT="/etc/systemd/system/$APP_NAME.service"
 CERTBOT_VENV_DIR="$APP_DIR/certbot-venv"
 CERTBOT_BIN=""
 PARSED_DOMAINS=()
-REBECCA_SCRIPT_FLAVOR="${REBECCA_SCRIPT_FLAVOR:-binary}"
-REBECCA_SCRIPT_SOURCE_FILE="${REBECCA_SCRIPT_SOURCE_FILE:-rebecca-binary.sh}"
-REBECCA_SCRIPT_INSTALL_PATH="${REBECCA_SCRIPT_INSTALL_PATH:-/usr/local/bin/rebecca}"
-REBECCA_MYSQL_CONFIG_ROOT="${REBECCA_MYSQL_CONFIG_ROOT:-/etc/mysql}"
+ANTIMAGE_SCRIPT_FLAVOR="${ANTIMAGE_SCRIPT_FLAVOR:-binary}"
+ANTIMAGE_SCRIPT_SOURCE_FILE="${ANTIMAGE_SCRIPT_SOURCE_FILE:-rebecca-binary.sh}"
+ANTIMAGE_SCRIPT_INSTALL_PATH="${ANTIMAGE_SCRIPT_INSTALL_PATH:-/usr/local/bin/rebecca}"
+ANTIMAGE_MYSQL_CONFIG_ROOT="${ANTIMAGE_MYSQL_CONFIG_ROOT:-/etc/mysql}"
 
 colorized_echo() {
     local color=$1
@@ -316,7 +316,7 @@ ui_spinner_run() {
     return "$status"
 }
 
-format_rebecca_journal_logs() {
+format_ANTIMAGE_journal_logs() {
     while IFS= read -r line; do
         local log_time=""
         local message="$line"
@@ -412,7 +412,7 @@ get_summary_compose() {
     fi
 }
 
-get_current_rebecca_version() {
+get_current_ANTIMAGE_version() {
     local version=""
     if [ -f "$CHANNEL_FILE" ]; then
         version=$(tr -d '[:space:]' < "$CHANNEL_FILE")
@@ -467,7 +467,7 @@ print_menu_status_summary() {
     if [ -n "$container_id" ] && [ "$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null)" = "true" ]; then
         service_status="running"
     fi
-    version=$(get_current_rebecca_version)
+    version=$(get_current_ANTIMAGE_version)
     uptime=$(get_docker_uptime)
     xray_status=$(get_xray_runtime_status)
     ui_status_row "Version" "${version}"
@@ -477,28 +477,28 @@ print_menu_status_summary() {
     ui_status_row "Uptime" "${uptime}"
 }
 
-set_rebecca_source_ref() {
+set_ANTIMAGE_source_ref() {
     local ref="${1:-dev}"
-    REBECCA_REF="$ref"
-    REBECCA_RAW_BASE="https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}"
-    if [ "${REBECCA_SCRIPT_BASE_URL_EXPLICIT:-0}" != "1" ]; then
-        REBECCA_SCRIPT_BASE_URL="${REBECCA_RAW_BASE}/scripts/rebecca"
+    ANTIMAGE_REF="$ref"
+    ANTIMAGE_RAW_BASE="https://raw.githubusercontent.com/${ANTIMAGE_REPO}/${ANTIMAGE_REF}"
+    if [ "${ANTIMAGE_SCRIPT_BASE_URL_EXPLICIT:-0}" != "1" ]; then
+        ANTIMAGE_SCRIPT_BASE_URL="${ANTIMAGE_RAW_BASE}/scripts/antimage"
     fi
 }
 
-set_rebecca_source_for_version() {
+set_ANTIMAGE_source_for_version() {
     case "${1:-latest}" in
         dev)
-            set_rebecca_source_ref "$REBECCA_BINARY_DEV_BRANCH"
+            set_ANTIMAGE_source_ref "$ANTIMAGE_BINARY_DEV_BRANCH"
             ;;
         dev-*)
-            set_rebecca_source_ref "$REBECCA_BINARY_DEV_BRANCH"
+            set_ANTIMAGE_source_ref "$ANTIMAGE_BINARY_DEV_BRANCH"
             ;;
         v[0-9]*)
-            set_rebecca_source_ref "$1"
+            set_ANTIMAGE_source_ref "$1"
             ;;
         *)
-            set_rebecca_source_ref "master"
+            set_ANTIMAGE_source_ref "master"
             ;;
     esac
 }
@@ -672,7 +672,7 @@ normalize_install_mode() {
 }
 
 script_install_mode() {
-    case "${REBECCA_SCRIPT_FLAVOR:-docker}" in
+    case "${ANTIMAGE_SCRIPT_FLAVOR:-docker}" in
         docker|dockerized|compose)
             echo "docker"
             ;;
@@ -683,7 +683,7 @@ script_install_mode() {
             echo ""
             ;;
         *)
-            colorized_echo red "Invalid script flavor: $REBECCA_SCRIPT_FLAVOR" >&2
+            colorized_echo red "Invalid script flavor: $ANTIMAGE_SCRIPT_FLAVOR" >&2
             exit 1
             ;;
     esac
@@ -724,7 +724,7 @@ select_install_mode() {
     local requested_mode
     local forced_mode
     forced_mode=$(script_install_mode)
-    requested_mode=$(normalize_install_mode "${1:-${REBECCA_INSTALL_MODE:-}}")
+    requested_mode=$(normalize_install_mode "${1:-${ANTIMAGE_INSTALL_MODE:-}}")
 
     if [ -n "$forced_mode" ]; then
         if [ -n "$requested_mode" ] && [ "$requested_mode" != "$forced_mode" ]; then
@@ -764,7 +764,7 @@ select_install_mode() {
     esac
 }
 
-select_rebecca_version() {
+select_ANTIMAGE_version() {
     local requested_version="${1:-}"
     local install_mode="${2:-docker}"
 
@@ -781,13 +781,13 @@ select_rebecca_version() {
     colorized_echo cyan "Select Rebecca release channel for ${install_mode} mode:" >&2
     colorized_echo yellow "  1) latest (stable release)" >&2
     if [ "$install_mode" = "binary" ]; then
-        colorized_echo yellow "  2) dev (latest successful binary build from branch ${REBECCA_BINARY_DEV_BRANCH})" >&2
+        colorized_echo yellow "  2) dev (latest successful binary build from branch ${ANTIMAGE_BINARY_DEV_BRANCH})" >&2
     else
-        colorized_echo yellow "  2) dev (latest Docker image from branch ${REBECCA_BINARY_DEV_BRANCH})" >&2
+        colorized_echo yellow "  2) dev (latest Docker image from branch ${ANTIMAGE_BINARY_DEV_BRANCH})" >&2
     fi
-    read -r -p "Release channel [1]: " rebecca_version_answer
+    read -r -p "Release channel [1]: " ANTIMAGE_version_answer
 
-    case "$rebecca_version_answer" in
+    case "$ANTIMAGE_version_answer" in
         2|dev|Dev)
             echo "dev"
             ;;
@@ -801,13 +801,13 @@ select_rebecca_version() {
     esac
 }
 
-write_rebecca_channel() {
+write_ANTIMAGE_channel() {
     local channel="${1:-latest}"
     mkdir -p "$APP_DIR"
     echo "$channel" > "$CHANNEL_FILE"
 }
 
-get_installed_rebecca_channel() {
+get_installed_ANTIMAGE_channel() {
     local channel
     local image_tag
     local metadata_tag
@@ -842,15 +842,15 @@ get_installed_rebecca_channel() {
     echo "latest"
 }
 
-install_rebecca_script() {
+install_ANTIMAGE_script() {
     local source_version="${1:-}"
     local temp_script
     if [ -n "$source_version" ]; then
-        set_rebecca_source_for_version "$source_version"
-    elif is_rebecca_installed; then
-        set_rebecca_source_for_version "$(get_installed_rebecca_channel)"
+        set_ANTIMAGE_source_for_version "$source_version"
+    elif is_ANTIMAGE_installed; then
+        set_ANTIMAGE_source_for_version "$(get_installed_ANTIMAGE_channel)"
     fi
-    SCRIPT_URL="$REBECCA_SCRIPT_BASE_URL/$REBECCA_SCRIPT_SOURCE_FILE"
+    SCRIPT_URL="$ANTIMAGE_SCRIPT_BASE_URL/$ANTIMAGE_SCRIPT_SOURCE_FILE"
     temp_script=$(mktemp)
     ui_spinner_run "Downloading Rebecca command script" curl -fsSL "$SCRIPT_URL" -o "$temp_script"
     if head -n 1 "$temp_script" | grep -qi "<!DOCTYPE"; then
@@ -858,7 +858,7 @@ install_rebecca_script() {
         colorized_echo red "Unexpected HTML response while downloading script"
         exit 1
     fi
-    ui_spinner_run "Installing Rebecca command script" install -m 755 "$temp_script" "$REBECCA_SCRIPT_INSTALL_PATH"
+    ui_spinner_run "Installing Rebecca command script" install -m 755 "$temp_script" "$ANTIMAGE_SCRIPT_INSTALL_PATH"
     rm -f "$temp_script"
     colorized_echo green "rebecca script installed successfully"
 }
@@ -1471,8 +1471,8 @@ create_initial_admin_if_requested() {
     if [ "${INITIAL_ADMIN_CREATE:-0}" != "1" ]; then
         return
     fi
-    ui_spinner_run "Running database migrations" rebecca_cli migrate up
-    ui_spinner_run "Creating full-access admin ${INITIAL_ADMIN_USERNAME}" rebecca_cli admin create "$INITIAL_ADMIN_USERNAME" --role full_access --password "$INITIAL_ADMIN_PASSWORD"
+    ui_spinner_run "Running database migrations" ANTIMAGE_cli migrate up
+    ui_spinner_run "Creating full-access admin ${INITIAL_ADMIN_USERNAME}" ANTIMAGE_cli admin create "$INITIAL_ADMIN_USERNAME" --role full_access --password "$INITIAL_ADMIN_PASSWORD"
 }
 
 prompt_phpmyadmin_settings() {
@@ -1739,7 +1739,7 @@ enable_phpmyadmin() {
         esac
     done
 
-    if ! is_rebecca_installed; then
+    if ! is_ANTIMAGE_installed; then
         colorized_echo red "Rebecca is not installed. Please install Rebecca first."
         exit 1
     fi
@@ -1833,9 +1833,9 @@ perform_ssl_issue() {
                 ;;
         esac
         
-        if is_rebecca_installed; then
+        if is_ANTIMAGE_installed; then
             detect_compose
-            if is_rebecca_up; then
+            if is_ANTIMAGE_up; then
                 colorized_echo blue "Restarting Rebecca to apply SSL configuration..."
                 down_rebecca
                 up_rebecca
@@ -1871,9 +1871,9 @@ perform_ssl_issue() {
     colorized_echo green "SSL certificate installed at $SSL_CERT_DIR using $provider_used"
     
     # Check if Rebecca is installed and running, then restart to apply SSL changes
-    if is_rebecca_installed; then
+    if is_ANTIMAGE_installed; then
         detect_compose
-        if is_rebecca_up; then
+        if is_ANTIMAGE_up; then
             colorized_echo blue "Restarting Rebecca to apply SSL configuration..."
             down_rebecca
             up_rebecca
@@ -2153,7 +2153,7 @@ ensure_script_matches_installed_mode() {
     fi
 }
 
-is_rebecca_installed() {
+is_ANTIMAGE_installed() {
     if [ -d $APP_DIR ]; then
         return 0
     else
@@ -2254,7 +2254,7 @@ send_backup_to_telegram() {
     fi
 
     local backup_size=$(du -m "$backup_path" | cut -f1)
-    local split_dir="/tmp/rebecca_backup_split"
+    local split_dir="/tmp/ANTIMAGE_backup_split"
     local is_single_file=true
 
     mkdir -p "$split_dir"
@@ -2511,7 +2511,7 @@ remove_backup_service() {
 }
 
 backup_cron_command() {
-    local script_path="${REBECCA_SCRIPT_INSTALL_PATH:-}"
+    local script_path="${ANTIMAGE_SCRIPT_INSTALL_PATH:-}"
     if [ -z "$script_path" ] || [ ! -x "$script_path" ]; then
         script_path="$(command -v "$APP_NAME" 2>/dev/null || true)"
     fi
@@ -2622,11 +2622,11 @@ write_mysql_backup_defaults() {
 
 backup_command() {
     local backup_dir="$APP_DIR/backup"
-    local temp_dir="/tmp/rebecca_backup"
+    local temp_dir="/tmp/ANTIMAGE_backup"
     local timestamp=$(date +"%Y%m%d%H%M%S")
     local backup_file="$backup_dir/backup_$timestamp.tar.gz"
     local error_messages=()
-    local log_file="/var/log/rebecca_backup_error.log"
+    local log_file="/var/log/ANTIMAGE_backup_error.log"
     > "$log_file"
     echo "Backup Log - $(date)" > "$log_file"
 
@@ -2738,7 +2738,7 @@ backup_command() {
 
     cp "$APP_DIR/.env" "$temp_dir/" 2>>"$log_file" || true
     cp "$APP_DIR/docker-compose.yml" "$temp_dir/" 2>>"$log_file" || true
-    if ! rsync -a --delete --exclude 'xray-core' --exclude 'mysql' --exclude 'logs' "$DATA_DIR/" "$temp_dir/rebecca_data/" >>"$log_file" 2>&1; then
+    if ! rsync -a --delete --exclude 'xray-core' --exclude 'mysql' --exclude 'logs' "$DATA_DIR/" "$temp_dir/ANTIMAGE_data/" >>"$log_file" 2>&1; then
         error_messages+=("Failed to copy Rebecca data files.")
     fi
 
@@ -2878,11 +2878,11 @@ update_core_command() {
 }
 
 install_rebecca() {
-    local rebecca_version=$1
+    local ANTIMAGE_version=$1
     local database_type=$2
-    set_rebecca_source_for_version "$rebecca_version"
+    set_ANTIMAGE_source_for_version "$ANTIMAGE_version"
     # Fetch releases
-    FILES_URL_PREFIX="$REBECCA_RAW_BASE"
+    FILES_URL_PREFIX="$ANTIMAGE_RAW_BASE"
     
     mkdir -p "$DATA_DIR"
     mkdir -p "$APP_DIR"
@@ -2911,13 +2911,13 @@ install_rebecca() {
         cat > "$docker_file_path" <<EOF
 services:
   rebecca:
-    image: rebeccapanel/rebecca:${rebecca_version}
+    image: rebeccapanel/rebecca:${ANTIMAGE_version}
     restart: always
     env_file: .env
     network_mode: host
     volumes:
-      - /var/lib/rebecca:/var/lib/rebecca
-      - /var/lib/rebecca/logs:/var/lib/rebecca-node
+      - /var/lib/antimage:/var/lib/antimage
+      - /var/lib/antimage/logs:/var/lib/antimage-node
     depends_on:
       mariadb:
         condition: service_started
@@ -2949,7 +2949,7 @@ services:
       - --slow_query_log_file=/var/lib/mysql/slow.log # Logs slow queries for troubleshooting
       - --long_query_time=2                       # Defines slow query threshold as 2 seconds
     volumes:
-      - /var/lib/rebecca/mysql:/var/lib/mysql
+      - /var/lib/antimage/mysql:/var/lib/mysql
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 --protocol=tcp --silent || mysqladmin ping -h 127.0.0.1 --protocol=tcp --silent || exit 1"]
       start_period: 30s
@@ -2969,14 +2969,14 @@ EOF
         fi
 
         # Comment out the SQLite line
-        sed -i 's~^\(SQLALCHEMY_DATABASE_URL = "sqlite:////var/lib/rebecca/db.sqlite3"\)~#\1~' "$APP_DIR/.env"
+        sed -i 's~^\(SQLALCHEMY_DATABASE_URL = "sqlite:////var/lib/antimage/db.sqlite3"\)~#\1~' "$APP_DIR/.env"
 
 
         # Add the MySQL connection string
         #echo -e '\nSQLALCHEMY_DATABASE_URL = "mysql+pymysql://rebecca:password@127.0.0.1:3306/rebecca"' >> "$APP_DIR/.env"
 
         sed -i 's/^# \(XRAY_JSON = .*\)$/\1/' "$APP_DIR/.env"
-        sed -i 's~\(XRAY_JSON = \).*~\1"/var/lib/rebecca/xray_config.json"~' "$APP_DIR/.env"
+        sed -i 's~\(XRAY_JSON = \).*~\1"/var/lib/antimage/xray_config.json"~' "$APP_DIR/.env"
 
 
         ensure_docker_mysql_credentials
@@ -3010,13 +3010,13 @@ EOF
         cat > "$docker_file_path" <<EOF
 services:
   rebecca:
-    image: rebeccapanel/rebecca:${rebecca_version}
+    image: rebeccapanel/rebecca:${ANTIMAGE_version}
     restart: always
     env_file: .env
     network_mode: host
     volumes:
-      - /var/lib/rebecca:/var/lib/rebecca
-      - /var/lib/rebecca/logs:/var/lib/rebecca-node
+      - /var/lib/antimage:/var/lib/antimage
+      - /var/lib/antimage/logs:/var/lib/antimage-node
     depends_on:
       mysql:
         condition: service_started
@@ -3048,7 +3048,7 @@ services:
       - --slow_query_log_file=/var/lib/mysql/slow.log # Logs slow queries for troubleshooting
       - --long_query_time=2                       # Defines slow query threshold as 2 seconds
     volumes:
-      - /var/lib/rebecca/mysql:/var/lib/mysql
+      - /var/lib/antimage/mysql:/var/lib/mysql
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --protocol=tcp --silent || exit 1"]
       start_period: 30s
@@ -3069,14 +3069,14 @@ EOF
         fi
 
         # Comment out the SQLite line
-        sed -i 's~^\(SQLALCHEMY_DATABASE_URL = "sqlite:////var/lib/rebecca/db.sqlite3"\)~#\1~' "$APP_DIR/.env"
+        sed -i 's~^\(SQLALCHEMY_DATABASE_URL = "sqlite:////var/lib/antimage/db.sqlite3"\)~#\1~' "$APP_DIR/.env"
 
 
         # Add the MySQL connection string
         #echo -e '\nSQLALCHEMY_DATABASE_URL = "mysql+pymysql://rebecca:password@127.0.0.1:3306/rebecca"' >> "$APP_DIR/.env"
 
         sed -i 's/^# \(XRAY_JSON = .*\)$/\1/' "$APP_DIR/.env"
-        sed -i 's~\(XRAY_JSON = \).*~\1"/var/lib/rebecca/xray_config.json"~' "$APP_DIR/.env"
+        sed -i 's~\(XRAY_JSON = \).*~\1"/var/lib/antimage/xray_config.json"~' "$APP_DIR/.env"
 
 
         ensure_docker_mysql_credentials
@@ -3113,12 +3113,12 @@ EOF
         curl -sL "$FILES_URL_PREFIX/docker-compose.yml" -o "$docker_file_path"
 
         # Install requested version
-        if [ "$rebecca_version" == "latest" ]; then
+        if [ "$ANTIMAGE_version" == "latest" ]; then
             yq -i '.services.rebecca.image = "rebeccapanel/rebecca:latest"' "$docker_file_path"
         else
-            yq -i ".services.rebecca.image = \"rebeccapanel/rebecca:${rebecca_version}\"" "$docker_file_path"
+            yq -i ".services.rebecca.image = \"rebeccapanel/rebecca:${ANTIMAGE_version}\"" "$docker_file_path"
         fi
-        echo "Installing $rebecca_version version"
+        echo "Installing $ANTIMAGE_version version"
         colorized_echo green "File saved in $APP_DIR/docker-compose.yml"
 
 
@@ -3127,8 +3127,8 @@ EOF
 
         sed -i 's/^# \(XRAY_JSON = .*\)$/\1/' "$APP_DIR/.env"
         sed -i 's/^# \(SQLALCHEMY_DATABASE_URL = .*\)$/\1/' "$APP_DIR/.env"
-        sed -i 's~\(XRAY_JSON = \).*~\1"/var/lib/rebecca/xray_config.json"~' "$APP_DIR/.env"
-        sed -i 's~\(SQLALCHEMY_DATABASE_URL = \).*~\1"sqlite:////var/lib/rebecca/db.sqlite3"~' "$APP_DIR/.env"
+        sed -i 's~\(XRAY_JSON = \).*~\1"/var/lib/antimage/xray_config.json"~' "$APP_DIR/.env"
+        sed -i 's~\(SQLALCHEMY_DATABASE_URL = \).*~\1"sqlite:////var/lib/antimage/db.sqlite3"~' "$APP_DIR/.env"
 
 
 
@@ -3182,7 +3182,7 @@ detect_binary_arch() {
 }
 
 get_binary_release_asset_metadata() {
-    local rebecca_version="$1"
+    local ANTIMAGE_version="$1"
     local binary_arch="$2"
     local release_api
     local release_payload
@@ -3194,10 +3194,10 @@ get_binary_release_asset_metadata() {
     local server_asset_name
     local cli_asset_name
 
-    if [ "$rebecca_version" = "latest" ]; then
-        release_api="https://api.github.com/repos/${REBECCA_RELEASE_REPO}/releases/latest"
+    if [ "$ANTIMAGE_version" = "latest" ]; then
+        release_api="https://api.github.com/repos/${ANTIMAGE_RELEASE_REPO}/releases/latest"
     else
-        release_api="https://api.github.com/repos/${REBECCA_RELEASE_REPO}/releases/tags/${rebecca_version}"
+        release_api="https://api.github.com/repos/${ANTIMAGE_RELEASE_REPO}/releases/tags/${ANTIMAGE_version}"
     fi
 
     release_payload=$(curl -fsSL "$release_api") || {
@@ -3217,7 +3217,7 @@ get_binary_release_asset_metadata() {
     ' | head -n 1)
 
     if [ -n "$package_asset_url" ] && [ "$package_asset_url" != "null" ]; then
-        printf 'archive|%s|%s|\n' "${resolved_tag:-$rebecca_version}" "$package_asset_url"
+        printf 'archive|%s|%s|\n' "${resolved_tag:-$ANTIMAGE_version}" "$package_asset_url"
         return
     fi
 
@@ -3234,7 +3234,7 @@ get_binary_release_asset_metadata() {
     ' | head -n 1)
 
     if [ -n "$server_asset_url" ] && [ "$server_asset_url" != "null" ] && [ -n "$cli_asset_url" ] && [ "$cli_asset_url" != "null" ]; then
-        printf 'split|%s|%s|%s\n' "${resolved_tag:-$rebecca_version}" "$server_asset_url" "$cli_asset_url"
+        printf 'split|%s|%s|%s\n' "${resolved_tag:-$ANTIMAGE_version}" "$server_asset_url" "$cli_asset_url"
         return
     fi
 
@@ -3244,14 +3244,14 @@ get_binary_release_asset_metadata() {
 }
 
 get_binary_dev_manifest_url() {
-    if [ -n "$REBECCA_BINARY_DEV_MANIFEST_URL" ]; then
-        printf '%s\n' "$REBECCA_BINARY_DEV_MANIFEST_URL"
+    if [ -n "$ANTIMAGE_BINARY_DEV_MANIFEST_URL" ]; then
+        printf '%s\n' "$ANTIMAGE_BINARY_DEV_MANIFEST_URL"
         return
     fi
     printf 'https://raw.githubusercontent.com/%s/%s/%s\n' \
-        "$REBECCA_RELEASE_REPO" \
-        "$REBECCA_BINARY_DEV_MANIFEST_BRANCH" \
-        "$REBECCA_BINARY_DEV_MANIFEST_PATH"
+        "$ANTIMAGE_RELEASE_REPO" \
+        "$ANTIMAGE_BINARY_DEV_MANIFEST_BRANCH" \
+        "$ANTIMAGE_BINARY_DEV_MANIFEST_PATH"
 }
 
 get_binary_dev_manifest_metadata() {
@@ -3267,8 +3267,8 @@ get_binary_dev_manifest_metadata() {
     selected=$(echo "$manifest_payload" | jq -r \
         --arg arch "linux-${binary_arch}" \
         --arg requested "$requested_version" \
-        --arg repo "$REBECCA_RELEASE_REPO" \
-        --arg release_tag "$REBECCA_BINARY_DEV_RELEASE_TAG" '
+        --arg repo "$ANTIMAGE_RELEASE_REPO" \
+        --arg release_tag "$ANTIMAGE_BINARY_DEV_RELEASE_TAG" '
         def legacy_build:
             .latest? as $latest
             | if ($latest | type) == "object" then
@@ -3337,14 +3337,14 @@ get_binary_dev_artifact_metadata() {
         exit 1
     fi
 
-    nightly_workflow="$REBECCA_BINARY_WORKFLOW_NAME"
+    nightly_workflow="$ANTIMAGE_BINARY_WORKFLOW_NAME"
     case "$nightly_workflow" in
         *.yml|*.yaml) ;;
         *) nightly_workflow="${nightly_workflow}.yml" ;;
     esac
-    workflow_runs_api="https://api.github.com/repos/${REBECCA_RELEASE_REPO}/actions/workflows/${nightly_workflow}/runs"
+    workflow_runs_api="https://api.github.com/repos/${ANTIMAGE_RELEASE_REPO}/actions/workflows/${nightly_workflow}/runs"
     workflow_runs_payload=$(curl -fsSLG "$workflow_runs_api" \
-        --data-urlencode "branch=${REBECCA_BINARY_DEV_BRANCH}" \
+        --data-urlencode "branch=${ANTIMAGE_BINARY_DEV_BRANCH}" \
         --data-urlencode "event=push" \
         --data-urlencode "status=success" \
         --data-urlencode "per_page=100") || {
@@ -3352,19 +3352,19 @@ get_binary_dev_artifact_metadata() {
         exit 1
     }
 
-    latest_run_json=$(echo "$workflow_runs_payload" | jq -c --arg branch "$REBECCA_BINARY_DEV_BRANCH" '
+    latest_run_json=$(echo "$workflow_runs_payload" | jq -c --arg branch "$ANTIMAGE_BINARY_DEV_BRANCH" '
         .workflow_runs[]?
         | select(.head_branch == $branch and .event == "push" and .conclusion == "success")
     ' | head -n 1)
 
     if [ -z "$latest_run_json" ]; then
-        colorized_echo red "No successful binary dev workflow run was found on branch ${REBECCA_BINARY_DEV_BRANCH}." >&2
+        colorized_echo red "No successful binary dev workflow run was found on branch ${ANTIMAGE_BINARY_DEV_BRANCH}." >&2
         exit 1
     fi
 
     run_id=$(echo "$latest_run_json" | jq -r '.id // empty')
     head_sha=$(echo "$latest_run_json" | jq -r '.head_sha // empty')
-    artifacts_api="https://api.github.com/repos/${REBECCA_RELEASE_REPO}/actions/runs/${run_id}/artifacts"
+    artifacts_api="https://api.github.com/repos/${ANTIMAGE_RELEASE_REPO}/actions/runs/${run_id}/artifacts"
     artifacts_payload=$(curl -fsSL "$artifacts_api") || {
         colorized_echo red "Unable to read binary dev workflow artifacts: $artifacts_api" >&2
         exit 1
@@ -3384,7 +3384,7 @@ get_binary_dev_artifact_metadata() {
         exit 1
     fi
 
-    artifact_url="https://nightly.link/${REBECCA_RELEASE_REPO}/workflows/${nightly_workflow}/${REBECCA_BINARY_DEV_BRANCH}/${artifact_name}.zip"
+    artifact_url="https://nightly.link/${ANTIMAGE_RELEASE_REPO}/workflows/${nightly_workflow}/${ANTIMAGE_BINARY_DEV_BRANCH}/${artifact_name}.zip"
     printf '%s|%s|%s.zip\n' "dev-${head_sha:0:7}" "$artifact_url" "$artifact_name"
 }
 
@@ -3392,9 +3392,9 @@ install_binary_cli_launcher() {
     cat > "$BINARY_CLI_LAUNCHER" <<EOF
 #!/usr/bin/env bash
 set -e
-export REBECCA_ENV_FILE="$ENV_FILE"
-export REBECCA_APP_DIR="$APP_DIR"
-export REBECCA_DATA_DIR="$DATA_DIR"
+export ANTIMAGE_ENV_FILE="$ENV_FILE"
+export ANTIMAGE_APP_DIR="$APP_DIR"
+export ANTIMAGE_DATA_DIR="$DATA_DIR"
 exec "$BINARY_CLI" "\$@"
 EOF
 
@@ -3437,11 +3437,11 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=$APP_DIR
-Environment=REBECCA_APP_DIR=$APP_DIR
-Environment=REBECCA_ENV_FILE=$ENV_FILE
-Environment=REBECCA_INSTALL_MODE=binary
-Environment=REBECCA_BINARY_METADATA_FILE=$BINARY_METADATA_FILE
-Environment=REBECCA_DATA_DIR=$DATA_DIR
+Environment=ANTIMAGE_APP_DIR=$APP_DIR
+Environment=ANTIMAGE_ENV_FILE=$ENV_FILE
+Environment=ANTIMAGE_INSTALL_MODE=binary
+Environment=ANTIMAGE_BINARY_METADATA_FILE=$BINARY_METADATA_FILE
+Environment=ANTIMAGE_DATA_DIR=$DATA_DIR
 ExecStart=$BINARY_SERVER
 Restart=always
 RestartSec=5
@@ -3454,7 +3454,7 @@ EOF
 }
 
 install_binary_rebecca() {
-    local rebecca_version="$1"
+    local ANTIMAGE_version="$1"
     local database_type="$2"
     local configure_database="${3:-1}"
     local binary_arch
@@ -3468,7 +3468,7 @@ install_binary_rebecca() {
     local package_path=""
     local dev_package_path=""
 
-    set_rebecca_source_for_version "$rebecca_version"
+    set_ANTIMAGE_source_for_version "$ANTIMAGE_version"
 
     detect_os
     for package in curl jq tar gzip unzip certbot; do
@@ -3480,18 +3480,18 @@ install_binary_rebecca() {
     binary_arch=$(detect_binary_arch)
     tmp_dir=$(mktemp -d)
 
-    if [ -n "${REBECCA_BINARY_SERVER_OVERRIDE:-}" ] || [ -n "${REBECCA_BINARY_CLI_OVERRIDE:-}" ]; then
-        if [ ! -f "${REBECCA_BINARY_SERVER_OVERRIDE:-}" ] || [ ! -f "${REBECCA_BINARY_CLI_OVERRIDE:-}" ]; then
-            colorized_echo red "Both REBECCA_BINARY_SERVER_OVERRIDE and REBECCA_BINARY_CLI_OVERRIDE must point to existing files." >&2
+    if [ -n "${ANTIMAGE_BINARY_SERVER_OVERRIDE:-}" ] || [ -n "${ANTIMAGE_BINARY_CLI_OVERRIDE:-}" ]; then
+        if [ ! -f "${ANTIMAGE_BINARY_SERVER_OVERRIDE:-}" ] || [ ! -f "${ANTIMAGE_BINARY_CLI_OVERRIDE:-}" ]; then
+            colorized_echo red "Both ANTIMAGE_BINARY_SERVER_OVERRIDE and ANTIMAGE_BINARY_CLI_OVERRIDE must point to existing files." >&2
             rm -rf "$tmp_dir"
             exit 1
         fi
-        ui_spinner_run "Installing Rebecca custom server binary" install -m 755 "$REBECCA_BINARY_SERVER_OVERRIDE" "$tmp_dir/rebecca-server"
-        ui_spinner_run "Installing Rebecca custom CLI binary" install -m 755 "$REBECCA_BINARY_CLI_OVERRIDE" "$tmp_dir/rebecca-cli"
-        resolved_version="${REBECCA_BINARY_OVERRIDE_VERSION:-custom}"
+        ui_spinner_run "Installing Rebecca custom server binary" install -m 755 "$ANTIMAGE_BINARY_SERVER_OVERRIDE" "$tmp_dir/rebecca-server"
+        ui_spinner_run "Installing Rebecca custom CLI binary" install -m 755 "$ANTIMAGE_BINARY_CLI_OVERRIDE" "$tmp_dir/rebecca-cli"
+        resolved_version="${ANTIMAGE_BINARY_OVERRIDE_VERSION:-custom}"
         artifact_url="local-override"
-    elif [[ "$rebecca_version" = "dev" || "$rebecca_version" == dev-* ]]; then
-        IFS='|' read -r resolved_version artifact_url artifact_name < <(get_binary_dev_artifact_metadata "$binary_arch" "$rebecca_version")
+    elif [[ "$ANTIMAGE_version" = "dev" || "$ANTIMAGE_version" == dev-* ]]; then
+        IFS='|' read -r resolved_version artifact_url artifact_name < <(get_binary_dev_artifact_metadata "$binary_arch" "$ANTIMAGE_version")
         artifact_name="${artifact_name:-rebecca-binaries.zip}"
         package_path="$tmp_dir/$artifact_name"
         ui_spinner_run "Downloading Rebecca dev binary artifact" curl -fL "$artifact_url" -o "$package_path"
@@ -3511,7 +3511,7 @@ install_binary_rebecca() {
             exit 1
         fi
     else
-        IFS='|' read -r binary_source_type resolved_version server_asset_url cli_asset_url < <(get_binary_release_asset_metadata "$rebecca_version" "$binary_arch")
+        IFS='|' read -r binary_source_type resolved_version server_asset_url cli_asset_url < <(get_binary_release_asset_metadata "$ANTIMAGE_version" "$binary_arch")
         if [ "$binary_source_type" = "split" ]; then
             ui_spinner_run "Downloading Rebecca server binary" curl -fL "$server_asset_url" -o "$tmp_dir/rebecca-server"
             ui_spinner_run "Downloading Rebecca CLI binary" curl -fL "$cli_asset_url" -o "$tmp_dir/rebecca-cli"
@@ -3534,23 +3534,23 @@ install_binary_rebecca() {
     install_binary_cli_launcher
 
     if [ ! -f "$ENV_FILE" ]; then
-        ui_spinner_run "Fetching default .env file" curl -fsSL "$REBECCA_RAW_BASE/.env.example" -o "$ENV_FILE"
+        ui_spinner_run "Fetching default .env file" curl -fsSL "$ANTIMAGE_RAW_BASE/.env.example" -o "$ENV_FILE"
     fi
 
-    upsert_env_assignment "REBECCA_DATA_DIR" "$DATA_DIR"
+    upsert_env_assignment "ANTIMAGE_DATA_DIR" "$DATA_DIR"
     upsert_env_assignment "XRAY_JSON" "$DATA_DIR/xray_config.json"
     if [ "$configure_database" = "1" ]; then
         configure_binary_database "$database_type"
     fi
 
     if [ ! -f "$DATA_DIR/xray_config.json" ]; then
-        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REBECCA_RAW_BASE/xray_config.json" -o "$DATA_DIR/xray_config.json" 2>/dev/null || {
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$ANTIMAGE_RAW_BASE/xray_config.json" -o "$DATA_DIR/xray_config.json" 2>/dev/null || {
             rm -f "$DATA_DIR/xray_config.json"
             colorized_echo yellow "No bundled xray_config.json found; Rebecca will use its built-in default."
         }
     fi
 
-    write_binary_release_metadata "${resolved_version:-$rebecca_version}" "$binary_arch" "${artifact_url:-${server_asset_url:-}}"
+    write_binary_release_metadata "${resolved_version:-$ANTIMAGE_version}" "$binary_arch" "${artifact_url:-${server_asset_url:-}}"
     echo "binary" > "$INSTALL_MODE_FILE"
     create_binary_service
     rm -rf "$tmp_dir"
@@ -3598,9 +3598,9 @@ repair_docker_compose_startup_gates() {
     fi
 }
 
-follow_rebecca_logs() {
+follow_ANTIMAGE_logs() {
     if is_binary_install; then
-        journalctl -u "$APP_NAME.service" -f -o "$(journal_output_format)" --no-pager | format_rebecca_journal_logs
+        journalctl -u "$APP_NAME.service" -f -o "$(journal_output_format)" --no-pager | format_ANTIMAGE_journal_logs
         return
     fi
 
@@ -3610,7 +3610,7 @@ follow_rebecca_logs() {
 status_command() {
     
     # Check if rebecca is installed
-    if ! is_rebecca_installed; then
+    if ! is_ANTIMAGE_installed; then
         echo -n "Status: "
         colorized_echo red "Not Installed"
         exit 1
@@ -3620,7 +3620,7 @@ status_command() {
         detect_compose
     fi
     
-    if ! is_rebecca_up; then
+    if ! is_ANTIMAGE_up; then
         echo -n "Status: "
         colorized_echo blue "Down"
         exit 1
@@ -3651,7 +3651,7 @@ status_command() {
 }
 
 
-prompt_for_rebecca_password() {
+prompt_for_ANTIMAGE_password() {
     if [ -n "${MYSQL_PASSWORD:-}" ]; then
         if ! mysql_password_is_strong "$MYSQL_PASSWORD"; then
             colorized_echo red "MYSQL_PASSWORD is not strong enough. Use at least 12 chars with uppercase, lowercase, digit, and symbol."
@@ -3698,7 +3698,7 @@ prompt_for_rebecca_password() {
 ensure_docker_mysql_credentials() {
     local existing_root_password
 
-    prompt_for_rebecca_password
+    prompt_for_ANTIMAGE_password
 
     existing_root_password=$(get_env_value "MYSQL_ROOT_PASSWORD")
     if [ -n "${MYSQL_ROOT_PASSWORD:-}" ]; then
@@ -3718,7 +3718,7 @@ sql_escape_literal() {
 get_configured_database_type() {
     local flavor
     local db_url
-    flavor=$(get_env_value "REBECCA_DATABASE_FLAVOR")
+    flavor=$(get_env_value "ANTIMAGE_DATABASE_FLAVOR")
     case "$flavor" in
         mysql|mariadb|sqlite)
             echo "$flavor"
@@ -3765,7 +3765,7 @@ managed_database_url_is_local() {
 
 managed_database_has_replication() {
     local status gtid
-    if grep -RhsEi '^[[:space:]]*(log[-_]bin|server[-_]id|gtid[-_]mode|relay[-_]log|replicate[-_]|binlog[-_](do|ignore)[-_]db)[[:space:]]*=' "$REBECCA_MYSQL_CONFIG_ROOT" 2>/dev/null | grep -q .; then
+    if grep -RhsEi '^[[:space:]]*(log[-_]bin|server[-_]id|gtid[-_]mode|relay[-_]log|replicate[-_]|binlog[-_](do|ignore)[-_]db)[[:space:]]*=' "$ANTIMAGE_MYSQL_CONFIG_ROOT" 2>/dev/null | grep -q .; then
         return 0
     fi
 
@@ -3828,11 +3828,11 @@ disable_managed_database_binary_log() {
     database_type=$(get_configured_database_type)
     case "$database_type" in
         mysql)
-            config_file="$REBECCA_MYSQL_CONFIG_ROOT/mysql.conf.d/rebecca.cnf"
+            config_file="$ANTIMAGE_MYSQL_CONFIG_ROOT/mysql.conf.d/rebecca.cnf"
             service_name="mysql"
         ;;
         mariadb)
-            config_file="$REBECCA_MYSQL_CONFIG_ROOT/mariadb.conf.d/60-rebecca.cnf"
+            config_file="$ANTIMAGE_MYSQL_CONFIG_ROOT/mariadb.conf.d/60-rebecca.cnf"
             service_name="mariadb"
         ;;
         *) return 0 ;;
@@ -3908,12 +3908,12 @@ install_host_database() {
         mysql)
             package_name="mysql-server"
             service_name="mysql"
-            config_file="$REBECCA_MYSQL_CONFIG_ROOT/mysql.conf.d/rebecca.cnf"
+            config_file="$ANTIMAGE_MYSQL_CONFIG_ROOT/mysql.conf.d/rebecca.cnf"
         ;;
         mariadb)
             package_name="mariadb-server"
             service_name="mariadb"
-            config_file="$REBECCA_MYSQL_CONFIG_ROOT/mariadb.conf.d/60-rebecca.cnf"
+            config_file="$ANTIMAGE_MYSQL_CONFIG_ROOT/mariadb.conf.d/60-rebecca.cnf"
         ;;
         *)
             return 0
@@ -3947,7 +3947,7 @@ EOF
     systemctl restart "$service_name" >/dev/null 2>&1 || systemctl restart mysql >/dev/null 2>&1 || true
 
     if [ -z "${MYSQL_PASSWORD:-}" ]; then
-        prompt_for_rebecca_password
+        prompt_for_ANTIMAGE_password
     fi
     MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-$(generate_secure_mysql_password)}"
     MYSQL_PASSWORD="${MYSQL_PASSWORD:-$(generate_secure_mysql_password)}"
@@ -3977,7 +3977,7 @@ EOF
 
     local mysql_password_url_encoded
     mysql_password_url_encoded=$(urlencode_value "$MYSQL_PASSWORD")
-    upsert_env_assignment "REBECCA_DATABASE_FLAVOR" "$database_type"
+    upsert_env_assignment "ANTIMAGE_DATABASE_FLAVOR" "$database_type"
     upsert_env_assignment "MYSQL_DATABASE" "rebecca"
     upsert_env_assignment "MYSQL_USER" "rebecca"
     upsert_env_assignment "MYSQL_PASSWORD" "$MYSQL_PASSWORD"
@@ -3990,7 +3990,7 @@ configure_binary_database() {
     local database_type="${1:-mysql}"
     case "$database_type" in
         sqlite|"")
-            upsert_env_assignment "REBECCA_DATABASE_FLAVOR" "sqlite"
+            upsert_env_assignment "ANTIMAGE_DATABASE_FLAVOR" "sqlite"
             upsert_env_assignment "SQLALCHEMY_DATABASE_URL" "sqlite:///${DATA_DIR}/db.sqlite3"
         ;;
         mysql|mariadb)
@@ -4009,8 +4009,8 @@ install_command() {
     # Default values
     database_type=""
     database_type_set="false"
-    rebecca_version="latest"
-    rebecca_version_set="false"
+    ANTIMAGE_version="latest"
+    ANTIMAGE_version_set="false"
     install_mode=""
     install_phpmyadmin="false"
 
@@ -4024,16 +4024,16 @@ install_command() {
                 shift 2
             ;;
             --dev)
-                if [[ "$rebecca_version_set" == "true" ]]; then
+                if [[ "$ANTIMAGE_version_set" == "true" ]]; then
                     colorized_echo red "Error: Cannot use --dev and --version options simultaneously."
                     exit 1
                 fi
-                rebecca_version="dev"
-                rebecca_version_set="true"
+                ANTIMAGE_version="dev"
+                ANTIMAGE_version_set="true"
                 shift
             ;;
             --version)
-                if [[ "$rebecca_version_set" == "true" ]]; then
+                if [[ "$ANTIMAGE_version_set" == "true" ]]; then
                     colorized_echo red "Error: Cannot use --dev and --version options simultaneously."
                     exit 1
                 fi
@@ -4041,8 +4041,8 @@ install_command() {
                     colorized_echo red "Error: --version requires a value."
                     exit 1
                 fi
-                rebecca_version="$2"
-                rebecca_version_set="true"
+                ANTIMAGE_version="$2"
+                ANTIMAGE_version_set="true"
                 shift 2
             ;;
             --mode)
@@ -4069,7 +4069,7 @@ install_command() {
     done
 
     # Check if rebecca is already installed
-    if is_rebecca_installed; then
+    if is_ANTIMAGE_installed; then
         colorized_echo red "Rebecca is already installed at $APP_DIR"
         read -p "Do you want to override the previous installation? (y/n) "
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -4093,10 +4093,10 @@ install_command() {
     else
         database_type="${database_type:-sqlite}"
     fi
-    if [[ "$rebecca_version_set" != "true" ]]; then
-        rebecca_version=$(select_rebecca_version "" "$install_mode")
+    if [[ "$ANTIMAGE_version_set" != "true" ]]; then
+        ANTIMAGE_version=$(select_ANTIMAGE_version "" "$install_mode")
     fi
-    set_rebecca_source_for_version "$rebecca_version"
+    set_ANTIMAGE_source_for_version "$ANTIMAGE_version"
     detect_os
     if ! command -v jq >/dev/null 2>&1; then
         install_package jq
@@ -4104,7 +4104,7 @@ install_command() {
     if ! command -v curl >/dev/null 2>&1; then
         install_package curl
     fi
-    install_rebecca_script "$rebecca_version"
+    install_ANTIMAGE_script "$ANTIMAGE_version"
 
     if [ "$install_mode" = "docker" ]; then
         if ! command -v docker >/dev/null 2>&1; then
@@ -4119,7 +4119,7 @@ install_command() {
     # Function to check if a version exists in the GitHub releases
     check_version_exists() {
         local version=$1
-        repo_url="https://api.github.com/repos/${REBECCA_RELEASE_REPO}/releases"
+        repo_url="https://api.github.com/repos/${ANTIMAGE_RELEASE_REPO}/releases"
         if [ "$version" == "latest" ] || [ "$version" == "dev" ]; then
             return 0
         fi
@@ -4139,10 +4139,10 @@ install_command() {
         fi
     }
     # Check if the version is valid and exists
-    if [[ "$rebecca_version" == "latest" || "$rebecca_version" == "dev" || "$rebecca_version" =~ ^dev-[0-9a-fA-F]{7,40}$ || "$rebecca_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        if check_version_exists "$rebecca_version"; then
+    if [[ "$ANTIMAGE_version" == "latest" || "$ANTIMAGE_version" == "dev" || "$ANTIMAGE_version" =~ ^dev-[0-9a-fA-F]{7,40}$ || "$ANTIMAGE_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        if check_version_exists "$ANTIMAGE_version"; then
             if [ "$install_mode" = "binary" ]; then
-                install_binary_rebecca "$rebecca_version" "$database_type"
+                install_binary_rebecca "$ANTIMAGE_version" "$database_type"
                 prompt_dashboard_bind_settings
                 prompt_initial_admin
                 if [ "$install_phpmyadmin" = "true" ]; then
@@ -4151,13 +4151,13 @@ install_command() {
                     enable_host_phpmyadmin "$PHPMYADMIN_PATH"
                 fi
             else
-                install_rebecca "$rebecca_version" "$database_type"
+                install_rebecca "$ANTIMAGE_version" "$database_type"
                 echo "docker" > "$INSTALL_MODE_FILE"
             fi
-            write_rebecca_channel "$rebecca_version"
-            echo "Installing $rebecca_version version"
+            write_ANTIMAGE_channel "$ANTIMAGE_version"
+            echo "Installing $ANTIMAGE_version version"
         else
-            echo "Version $rebecca_version does not exist. Please enter a valid version (e.g. v0.5.2)"
+            echo "Version $ANTIMAGE_version does not exist. Please enter a valid version (e.g. v0.5.2)"
             exit 1
         fi
     else
@@ -4169,7 +4169,7 @@ install_command() {
         create_initial_admin_if_requested
     fi
     up_rebecca
-    follow_rebecca_logs
+    follow_ANTIMAGE_logs
 }
 
 install_yq() {
@@ -4264,18 +4264,18 @@ down_rebecca() {
 
 
 
-show_rebecca_logs() {
+show_ANTIMAGE_logs() {
     if is_binary_install; then
-        journalctl -u "$APP_NAME.service" -o "$(journal_output_format)" --no-pager | format_rebecca_journal_logs
+        journalctl -u "$APP_NAME.service" -o "$(journal_output_format)" --no-pager | format_ANTIMAGE_journal_logs
         return
     fi
 
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" logs
 }
 
-rebecca_cli() {
+ANTIMAGE_cli() {
     if is_binary_install; then
-        REBECCA_ENV_FILE="$ENV_FILE" REBECCA_APP_DIR="$APP_DIR" REBECCA_DATA_DIR="$DATA_DIR" CLI_PROG_NAME="rebecca cli" "$BINARY_CLI" "$@"
+        ANTIMAGE_ENV_FILE="$ENV_FILE" ANTIMAGE_APP_DIR="$APP_DIR" ANTIMAGE_DATA_DIR="$DATA_DIR" CLI_PROG_NAME="rebecca cli" "$BINARY_CLI" "$@"
         return
     fi
 
@@ -4283,7 +4283,7 @@ rebecca_cli() {
 }
 
 
-is_rebecca_up() {
+is_ANTIMAGE_up() {
     if is_binary_install; then
         systemctl is-active --quiet "$APP_NAME.service"
         return
@@ -4301,7 +4301,7 @@ uninstall_command() {
     local install_mode
     install_mode=$(get_install_mode)
     local app_exists=0
-    if is_rebecca_installed; then
+    if is_ANTIMAGE_installed; then
         app_exists=1
     fi
 
@@ -4320,23 +4320,23 @@ uninstall_command() {
         if [ "$install_mode" != "binary" ]; then
             detect_compose
         fi
-        if is_rebecca_up; then
+        if is_ANTIMAGE_up; then
             down_rebecca
         fi
     fi
-    uninstall_rebecca_script
+    uninstall_ANTIMAGE_script
 
     if [ "$app_exists" -eq 1 ]; then
         uninstall_rebecca
         if [ "$install_mode" != "binary" ]; then
-            uninstall_rebecca_docker_images
+            uninstall_ANTIMAGE_docker_images
         fi
 
         read -p "Do you want to remove Rebecca's data files too ($DATA_DIR)? (y/n) "
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             colorized_echo green "Rebecca uninstalled successfully"
         else
-            uninstall_rebecca_data_files
+            uninstall_ANTIMAGE_data_files
             colorized_echo green "Rebecca uninstalled successfully"
         fi
     else
@@ -4344,7 +4344,7 @@ uninstall_command() {
     fi
 }
 
-uninstall_rebecca_script() {
+uninstall_ANTIMAGE_script() {
     if [ -f "/usr/local/bin/rebecca" ]; then
         colorized_echo yellow "Removing rebecca script"
         rm "/usr/local/bin/rebecca"
@@ -4366,7 +4366,7 @@ uninstall_rebecca() {
     fi
 }
 
-uninstall_rebecca_docker_images() {
+uninstall_ANTIMAGE_docker_images() {
     if ! command -v docker >/dev/null 2>&1; then
         return
     fi
@@ -4383,7 +4383,7 @@ uninstall_rebecca_docker_images() {
     fi
 }
 
-uninstall_rebecca_data_files() {
+uninstall_ANTIMAGE_data_files() {
     if [ -d "$DATA_DIR" ]; then
         colorized_echo yellow "Removing directory: $DATA_DIR"
         rm -r "$DATA_DIR"
@@ -4419,7 +4419,7 @@ restart_command() {
     done
     
     # Check if rebecca is installed
-    if ! is_rebecca_installed; then
+    if ! is_ANTIMAGE_installed; then
         colorized_echo red "Rebecca's not installed!"
         exit 1
     fi
@@ -4438,14 +4438,14 @@ restart_command() {
             return
         fi
         restart_binary_service_now
-        follow_rebecca_logs
+        follow_ANTIMAGE_logs
         return
     fi
 
     down_rebecca
     up_rebecca
     if [ "$no_logs" = false ]; then
-        follow_rebecca_logs
+        follow_ANTIMAGE_logs
     fi
     colorized_echo green "Rebecca successfully restarted!"
 }
@@ -4478,7 +4478,7 @@ logs_command() {
     done
     
     # Check if rebecca is installed
-    if ! is_rebecca_installed; then
+    if ! is_ANTIMAGE_installed; then
         colorized_echo red "Rebecca's not installed!"
         exit 1
     fi
@@ -4487,22 +4487,22 @@ logs_command() {
         detect_compose
     fi
     
-    if ! is_rebecca_up; then
+    if ! is_ANTIMAGE_up; then
         colorized_echo red "Rebecca is not up."
         exit 1
     fi
     
     if [ "$no_follow" = true ]; then
-        show_rebecca_logs
+        show_ANTIMAGE_logs
     else
-        follow_rebecca_logs
+        follow_ANTIMAGE_logs
     fi
 }
 
 down_command() {
     
     # Check if rebecca is installed
-    if ! is_rebecca_installed; then
+    if ! is_ANTIMAGE_installed; then
         colorized_echo red "Rebecca's not installed!"
         exit 1
     fi
@@ -4511,7 +4511,7 @@ down_command() {
         detect_compose
     fi
     
-    if ! is_rebecca_up; then
+    if ! is_ANTIMAGE_up; then
         colorized_echo red "Rebecca's already down"
         exit 1
     fi
@@ -4521,7 +4521,7 @@ down_command() {
 
 cli_command() {
     # Check if rebecca is installed
-    if ! is_rebecca_installed; then
+    if ! is_ANTIMAGE_installed; then
         colorized_echo red "Rebecca's not installed!"
         exit 1
     fi
@@ -4530,12 +4530,12 @@ cli_command() {
         detect_compose
     fi
     
-    if ! is_rebecca_up; then
+    if ! is_ANTIMAGE_up; then
         colorized_echo red "Rebecca is not up."
         exit 1
     fi
     
-    rebecca_cli "$@"
+    ANTIMAGE_cli "$@"
 }
 
 up_command() {
@@ -4567,7 +4567,7 @@ up_command() {
     done
     
     # Check if rebecca is installed
-    if ! is_rebecca_installed; then
+    if ! is_ANTIMAGE_installed; then
         colorized_echo red "Rebecca's not installed!"
         exit 1
     fi
@@ -4576,35 +4576,35 @@ up_command() {
         detect_compose
     fi
     
-    if is_rebecca_up; then
+    if is_ANTIMAGE_up; then
         colorized_echo red "Rebecca's already up"
         exit 1
     fi
     
     up_rebecca
     if [ "$no_logs" = false ]; then
-        follow_rebecca_logs
+        follow_ANTIMAGE_logs
     fi
 }
 
 update_command() {
     check_running_as_root
-    local rebecca_version=""
-    local rebecca_version_set="false"
+    local ANTIMAGE_version=""
+    local ANTIMAGE_version_set="false"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --dev)
-                if [[ "$rebecca_version_set" == "true" ]]; then
+                if [[ "$ANTIMAGE_version_set" == "true" ]]; then
                     colorized_echo red "Error: Cannot use --dev and --version options simultaneously."
                     exit 1
                 fi
-                rebecca_version="dev"
-                rebecca_version_set="true"
+                ANTIMAGE_version="dev"
+                ANTIMAGE_version_set="true"
                 shift
                 ;;
             --version)
-                if [[ "$rebecca_version_set" == "true" ]]; then
+                if [[ "$ANTIMAGE_version_set" == "true" ]]; then
                     colorized_echo red "Error: Cannot use --dev and --version options simultaneously."
                     exit 1
                 fi
@@ -4612,8 +4612,8 @@ update_command() {
                     colorized_echo red "Error: --version requires a value."
                     exit 1
                 fi
-                rebecca_version="$2"
-                rebecca_version_set="true"
+                ANTIMAGE_version="$2"
+                ANTIMAGE_version_set="true"
                 shift 2
                 ;;
             -h|--help)
@@ -4628,18 +4628,18 @@ update_command() {
     done
 
     # Check if rebecca is installed
-    if ! is_rebecca_installed; then
+    if ! is_ANTIMAGE_installed; then
         colorized_echo red "Rebecca's not installed!"
         exit 1
     fi
 
-    if [[ "$rebecca_version_set" != "true" ]]; then
-        rebecca_version=$(get_installed_rebecca_channel)
+    if [[ "$ANTIMAGE_version_set" != "true" ]]; then
+        ANTIMAGE_version=$(get_installed_ANTIMAGE_channel)
     fi
-    set_rebecca_source_for_version "$rebecca_version"
+    set_ANTIMAGE_source_for_version "$ANTIMAGE_version"
 
     if ! is_binary_install; then
-        if [[ "$rebecca_version" =~ ^dev-[0-9a-fA-F]{7,40}$ ]]; then
+        if [[ "$ANTIMAGE_version" =~ ^dev-[0-9a-fA-F]{7,40}$ ]]; then
             colorized_echo red "Specific dev binary versions are available only for binary installations."
             exit 1
         fi
@@ -4647,14 +4647,14 @@ update_command() {
     fi
     
     colorized_echo blue "Updating Rebecca CLI..."
-    update_rebecca_script "$rebecca_version"
+    update_ANTIMAGE_script "$ANTIMAGE_version"
 
-    colorized_echo blue "Updating requested version: $rebecca_version"
-    update_rebecca "$rebecca_version"
+    colorized_echo blue "Updating requested version: $ANTIMAGE_version"
+    update_rebecca "$ANTIMAGE_version"
     if is_binary_install && [ -d /usr/share/phpmyadmin ]; then
         configure_phpmyadmin_upload_limits
     fi
-    write_rebecca_channel "$rebecca_version"
+    write_ANTIMAGE_channel "$ANTIMAGE_version"
     
     colorized_echo blue "Restarting Rebecca's services"
     if is_binary_install; then
@@ -4673,15 +4673,15 @@ update_command() {
     colorized_echo blue "Rebecca updated successfully"
 }
 
-update_rebecca_script() {
+update_ANTIMAGE_script() {
     local source_version="${1:-}"
     local temp_script
     if [ -n "$source_version" ]; then
-        set_rebecca_source_for_version "$source_version"
-    elif is_rebecca_installed; then
-        set_rebecca_source_for_version "$(get_installed_rebecca_channel)"
+        set_ANTIMAGE_source_for_version "$source_version"
+    elif is_ANTIMAGE_installed; then
+        set_ANTIMAGE_source_for_version "$(get_installed_ANTIMAGE_channel)"
     fi
-    SCRIPT_URL="$REBECCA_SCRIPT_BASE_URL/$REBECCA_SCRIPT_SOURCE_FILE"
+    SCRIPT_URL="$ANTIMAGE_SCRIPT_BASE_URL/$ANTIMAGE_SCRIPT_SOURCE_FILE"
     colorized_echo blue "Updating rebecca script"
     temp_script=$(mktemp)
     curl -fsSL "$SCRIPT_URL" -o "$temp_script"
@@ -4690,34 +4690,34 @@ update_rebecca_script() {
         colorized_echo red "Unexpected HTML response while downloading script"
         exit 1
     fi
-    install -m 755 "$temp_script" "$REBECCA_SCRIPT_INSTALL_PATH"
+    install -m 755 "$temp_script" "$ANTIMAGE_SCRIPT_INSTALL_PATH"
     rm -f "$temp_script"
     colorized_echo green "rebecca script updated successfully"
 }
 
-set_compose_rebecca_image_tag() {
-    local rebecca_version="$1"
+set_compose_ANTIMAGE_image_tag() {
+    local ANTIMAGE_version="$1"
 
     if ! command -v yq >/dev/null 2>&1; then
         install_yq
     fi
 
-    if [ "$rebecca_version" = "latest" ]; then
+    if [ "$ANTIMAGE_version" = "latest" ]; then
         yq -i '.services.rebecca.image = "rebeccapanel/rebecca:latest"' "$COMPOSE_FILE"
     else
-        yq -i ".services.rebecca.image = \"rebeccapanel/rebecca:${rebecca_version}\"" "$COMPOSE_FILE"
+        yq -i ".services.rebecca.image = \"rebeccapanel/rebecca:${ANTIMAGE_version}\"" "$COMPOSE_FILE"
     fi
 }
 
 update_rebecca() {
-    local rebecca_version="${1:-latest}"
+    local ANTIMAGE_version="${1:-latest}"
 
     if is_binary_install; then
-        install_binary_rebecca "$rebecca_version" "$(get_configured_database_type)" "0"
+        install_binary_rebecca "$ANTIMAGE_version" "$(get_configured_database_type)" "0"
         return
     fi
 
-    set_compose_rebecca_image_tag "$rebecca_version"
+    set_compose_ANTIMAGE_image_tag "$ANTIMAGE_version"
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" pull
 }
 
@@ -4811,21 +4811,21 @@ import_binary_database_backup() {
 
 migrate_docker_to_binary_command() {
     check_running_as_root
-    local rebecca_version=""
-    local rebecca_version_set="false"
+    local ANTIMAGE_version=""
+    local ANTIMAGE_version_set="false"
     local yes="false"
     local database_type=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --dev)
-                rebecca_version="dev"
-                rebecca_version_set="true"
+                ANTIMAGE_version="dev"
+                ANTIMAGE_version_set="true"
                 shift
             ;;
             --version)
-                rebecca_version="$2"
-                rebecca_version_set="true"
+                ANTIMAGE_version="$2"
+                ANTIMAGE_version_set="true"
                 shift 2
             ;;
             --database)
@@ -4847,7 +4847,7 @@ migrate_docker_to_binary_command() {
         esac
     done
 
-    if ! is_rebecca_installed || [ ! -f "$COMPOSE_FILE" ]; then
+    if ! is_ANTIMAGE_installed || [ ! -f "$COMPOSE_FILE" ]; then
         colorized_echo red "Docker installation not found at $APP_DIR"
         exit 1
     fi
@@ -4855,8 +4855,8 @@ migrate_docker_to_binary_command() {
         colorized_echo yellow "Rebecca is already in binary mode."
         exit 0
     fi
-    if [ "$rebecca_version_set" != "true" ]; then
-        rebecca_version=$(get_installed_rebecca_channel)
+    if [ "$ANTIMAGE_version_set" != "true" ]; then
+        ANTIMAGE_version=$(get_installed_ANTIMAGE_channel)
     fi
     database_type="${database_type:-$(detect_docker_database_type)}"
     case "$database_type" in
@@ -4889,10 +4889,10 @@ migrate_docker_to_binary_command() {
         rm -rf "$backup_dir/rebecca-data/mysql" "$backup_dir/rebecca-data/xray-core" 2>/dev/null || true
     fi
 
-    if [ "$database_type" = "sqlite" ] && is_rebecca_up; then
+    if [ "$database_type" = "sqlite" ] && is_ANTIMAGE_up; then
         down_rebecca
     fi
-    if [ "$database_type" != "sqlite" ] && ! is_rebecca_up; then
+    if [ "$database_type" != "sqlite" ] && ! is_ANTIMAGE_up; then
         up_rebecca
         sleep 8
     fi
@@ -4900,7 +4900,7 @@ migrate_docker_to_binary_command() {
     colorized_echo blue "Dumping Docker database to $backup_dir"
     dump_docker_database "$database_type" "$backup_dir"
 
-    if is_rebecca_up; then
+    if is_ANTIMAGE_up; then
         down_rebecca
     fi
     mv "$COMPOSE_FILE" "$COMPOSE_FILE.docker-migrated" 2>/dev/null || true
@@ -4908,12 +4908,12 @@ migrate_docker_to_binary_command() {
     colorized_echo blue "Installing Rebecca binary files"
     MYSQL_PASSWORD="${MYSQL_PASSWORD:-$(get_env_value "MYSQL_PASSWORD")}"
     MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-$(get_env_value "MYSQL_ROOT_PASSWORD")}"
-    install_binary_rebecca "$rebecca_version" "$database_type"
+    install_binary_rebecca "$ANTIMAGE_version" "$database_type"
 
     colorized_echo blue "Importing database backup into binary installation"
     import_binary_database_backup "$database_type" "$backup_dir"
 
-    write_rebecca_channel "$rebecca_version"
+    write_ANTIMAGE_channel "$ANTIMAGE_version"
     echo "binary" > "$INSTALL_MODE_FILE"
     up_rebecca
     colorized_echo green "Migration to binary mode completed. Backup kept at $backup_dir"
@@ -5231,9 +5231,9 @@ dispatch_command() {
         install) install_command "$@" ;;
         update) update_command "$@" ;;
         uninstall) uninstall_command "$@" ;;
-        script-install|install-script) install_rebecca_script "$@" ;;
-        script-update|update-script) install_rebecca_script "$@" ;;
-        script-uninstall|uninstall-script) uninstall_rebecca_script "$@" ;;
+        script-install|install-script) install_ANTIMAGE_script "$@" ;;
+        script-update|update-script) install_ANTIMAGE_script "$@" ;;
+        script-uninstall|uninstall-script) uninstall_ANTIMAGE_script "$@" ;;
         core-update) update_core_command "$@" ;;
         enable-phpmyadmin) enable_phpmyadmin "$@" ;;
         disable-phpmyadmin) disable_phpmyadmin "$@" ;;
@@ -5247,7 +5247,7 @@ dispatch_command() {
     esac
 }
 
-if [ "${REBECCA_SOURCE_ONLY:-0}" != "1" ]; then
+if [ "${ANTIMAGE_SOURCE_ONLY:-0}" != "1" ]; then
     if [ $# -eq 0 ]; then
         read_menu_command || exit 0
         set -- $MENU_COMMAND

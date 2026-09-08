@@ -414,8 +414,8 @@ func rewritePHPMyAdminBody(body []byte, status phpMyAdminResponse, proxyBase str
 	upstreamBase := normalizePHPMyAdminPath(status.Path)
 	upstreamBaseNoSlash := strings.TrimRight(upstreamBase, "/")
 	proxyBaseNoSlash := strings.TrimRight(proxyBase, "/")
-	const proxyBasePlaceholder = "__REBECCA_PMA_PROXY_BASE__"
-	const proxyBaseNoSlashPlaceholder = "__REBECCA_PMA_PROXY_BASE_NO_SLASH__"
+	const proxyBasePlaceholder = "__ANTIMAGE_PMA_PROXY_BASE__"
+	const proxyBaseNoSlashPlaceholder = "__ANTIMAGE_PMA_PROXY_BASE_NO_SLASH__"
 	body = stripHTMLBlockContaining(body, "<script", "</script>", "cross_framing_protection.js")
 	body = stripHTMLBlockContaining(body, "<style", "</style>", "cfs-style")
 	body = bytes.ReplaceAll(body, []byte("http://127.0.0.1:"+strconv.Itoa(status.Port)+upstreamBase), []byte(proxyBasePlaceholder))

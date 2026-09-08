@@ -64,8 +64,8 @@ func output(level Level, component string, format string, args ...any) {
 }
 
 func configuredLevel() Level {
-	value := strings.ToLower(strings.TrimSpace(firstEnv("REBECCA_LOG_LEVEL", "REBECCA_LOG_MODE", "LOG_LEVEL")))
-	if value == "" && truthy(firstEnv("REBECCA_DEBUG", "DEBUG")) {
+	value := strings.ToLower(strings.TrimSpace(firstEnv("ANTIMAGE_LOG_LEVEL", "ANTIMAGE_LOG_MODE", "LOG_LEVEL")))
+	if value == "" && truthy(firstEnv("ANTIMAGE_DEBUG", "DEBUG")) {
 		value = "debug"
 	}
 	switch value {

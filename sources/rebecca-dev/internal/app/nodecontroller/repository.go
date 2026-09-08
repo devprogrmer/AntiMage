@@ -379,9 +379,9 @@ func (r Repository) RuntimeSessionCallback(ctx context.Context, node NodeRow) (R
 		}
 		node = full
 	}
-	base := strings.TrimSpace(os.Getenv("REBECCA_NODE_SESSION_CALLBACK_URL"))
+	base := strings.TrimSpace(os.Getenv("ANTIMAGE_NODE_SESSION_CALLBACK_URL"))
 	if base == "" {
-		base = strings.TrimSpace(os.Getenv("REBECCA_PUBLIC_URL"))
+		base = strings.TrimSpace(os.Getenv("ANTIMAGE_PUBLIC_URL"))
 	}
 	if base == "" {
 		base = strings.TrimSpace(os.Getenv("PUBLIC_URL"))

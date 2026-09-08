@@ -96,7 +96,7 @@ func TestExternalAppFileManagerRejectsEscapedRoot(t *testing.T) {
 func TestValidateExternalAppPoolConfigLocksSecurityDirectives(t *testing.T) {
 	record := Record{
 		Template: "mirzabot", Domain: "bot.example.com", Runtime: "php", PHPVersion: "8.4",
-		Root: "/var/lib/rebecca/external-apps/apps/abcdef", SystemUser: "rbphp_abcdef",
+		Root: "/var/lib/antimage/external-apps/apps/abcdef", SystemUser: "rbphp_abcdef",
 		Socket: "/run/php/rebecca-abcdef.sock",
 	}
 	config := externalAppPoolConfig(record, true)

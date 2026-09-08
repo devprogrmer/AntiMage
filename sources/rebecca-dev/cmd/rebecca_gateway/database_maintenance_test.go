@@ -14,7 +14,7 @@ func TestRunManagedDatabaseMaintenance(t *testing.T) {
 		t.Skip("shell helper is not available on Windows")
 	}
 
-	t.Setenv("REBECCA_INSTALL_MODE", "binary")
+	t.Setenv("ANTIMAGE_INSTALL_MODE", "binary")
 	dir := t.TempDir()
 	argsFile := filepath.Join(dir, "args")
 	script := filepath.Join(dir, "rebecca")
@@ -38,7 +38,7 @@ func TestRunManagedDatabaseMaintenance(t *testing.T) {
 }
 
 func TestRunManagedDatabaseMaintenanceSkipsDocker(t *testing.T) {
-	t.Setenv("REBECCA_INSTALL_MODE", "docker")
+	t.Setenv("ANTIMAGE_INSTALL_MODE", "docker")
 	previousPath := rebeccaScriptPath
 	rebeccaScriptPath = filepath.Join(t.TempDir(), "missing")
 	t.Cleanup(func() { rebeccaScriptPath = previousPath })

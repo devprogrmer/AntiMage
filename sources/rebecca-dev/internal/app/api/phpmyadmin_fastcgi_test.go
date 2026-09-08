@@ -40,7 +40,7 @@ func TestPHPMyAdminEnvValueReadsRebeccaEnvFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("MYSQL_ROOT_PASSWORD = \"root-pass\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("REBECCA_ENV_FILE", path)
+	t.Setenv("ANTIMAGE_ENV_FILE", path)
 	t.Setenv("MYSQL_ROOT_PASSWORD", "")
 
 	if got := phpMyAdminEnvValue("MYSQL_ROOT_PASSWORD"); got != "root-pass" {

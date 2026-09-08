@@ -4,10 +4,10 @@ set -euo pipefail
 OLD_APP_DIR="/opt/marzban"
 NEW_APP_DIR="/opt/rebecca"
 OLD_DATA_DIR="/var/lib/marzban"
-NEW_DATA_DIR="/var/lib/rebecca"
+NEW_DATA_DIR="/var/lib/antimage"
 OLD_SERVICE_NAME="marzban"
 NEW_SERVICE_NAME="rebecca"
-SCRIPT_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/antimage/antimage.sh"
 
 PANEL_IMAGE_REPO="rebeccapanel/rebecca"
 DEFAULT_IMAGE_TAG="latest"
@@ -123,7 +123,7 @@ update_file_references() {
     fi
 
     replace_text_in_file "$file" \
-        "/var/lib/marzban" "/var/lib/rebecca" \
+        "/var/lib/marzban" "/var/lib/antimage" \
         "/opt/marzban" "/opt/rebecca" \
         "Marzban" "Rebecca"
 }
@@ -158,7 +158,7 @@ tag = sys.argv[3]
 text = path.read_text()
 
 def replace_paths(value: str) -> str:
-    value = value.replace("/var/lib/marzban", "/var/lib/rebecca")
+    value = value.replace("/var/lib/marzban", "/var/lib/antimage")
     value = value.replace("/opt/marzban", "/opt/rebecca")
     value = value.replace("Marzban", "Rebecca")
     return value
@@ -213,7 +213,7 @@ for line in lines:
     key, value = line.split("=", 1)
 
     new_value = value
-    new_value = new_value.replace("/var/lib/marzban", "/var/lib/rebecca")
+    new_value = new_value.replace("/var/lib/marzban", "/var/lib/antimage")
     new_value = new_value.replace("/opt/marzban", "/opt/rebecca")
 
     if new_value != value:
@@ -237,7 +237,7 @@ migrate_systemd_service() {
     if [ -f "$service_path" ]; then
         systemctl stop "${OLD_SERVICE_NAME}" >/dev/null 2>&1 || true
         replace_text_in_file "$service_path" \
-            "/var/lib/marzban" "/var/lib/rebecca" \
+            "/var/lib/marzban" "/var/lib/antimage" \
             "/opt/marzban" "/opt/rebecca" \
             "Marzban" "Rebecca"
         mv "$service_path" "/etc/systemd/system/${NEW_SERVICE_NAME}.service"
@@ -283,7 +283,7 @@ update_xray_config_addresses() {
     if [ -f "$xray_config_file" ]; then
         log "Updating addresses in xray_config.json"
         replace_text_in_file "$xray_config_file" \
-            "/var/lib/marzban" "/var/lib/rebecca" \
+            "/var/lib/marzban" "/var/lib/antimage" \
             "/opt/marzban" "/opt/rebecca"
     else
         warn "xray_config.json not found at $xray_config_file. Skipping file update."
@@ -404,7 +404,7 @@ if connection:
                 config_str = json.dumps(config_data)
                 
                 # Replace addresses
-                config_str = config_str.replace("/var/lib/marzban", "/var/lib/rebecca")
+                config_str = config_str.replace("/var/lib/marzban", "/var/lib/antimage")
                 config_str = config_str.replace("/opt/marzban", "/opt/rebecca")
                 
                 # Parse back to dict

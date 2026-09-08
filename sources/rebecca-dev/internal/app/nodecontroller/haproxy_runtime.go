@@ -717,7 +717,7 @@ func (r Repository) normalizeHAProxyTarget(ctx context.Context, target *HAProxyT
 			return err
 		}
 		if callback.URL == "" || callback.Token == "" {
-			return fmt.Errorf("uploaded templates require REBECCA_PUBLIC_URL and an enrolled node certificate")
+			return fmt.Errorf("uploaded templates require ANTIMAGE_PUBLIC_URL and an enrolled node certificate")
 		}
 	}
 	return nil
@@ -941,7 +941,7 @@ func renderHAProxyConfig(settings HAProxySettings, configID int64, target HAProx
 		fmt.Fprintln(&out, "    option srvtcpka")
 	}
 	for listenerIndex, listener := range target.Listeners {
-		frontend := fmt.Sprintf("rebecca_%d", listenerIndex)
+		frontend := fmt.Sprintf("ANTIMAGE_%d", listenerIndex)
 		address := listener.ListenAddress
 		if address == "::" {
 			address = "[::]"

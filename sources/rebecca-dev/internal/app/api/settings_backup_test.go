@@ -22,7 +22,7 @@ import (
 )
 
 func TestBackupExportRequiresBinaryRuntime(t *testing.T) {
-	t.Setenv("REBECCA_INSTALL_MODE", "docker")
+	t.Setenv("ANTIMAGE_INSTALL_MODE", "docker")
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	token := adminBearerToken(t, server, "pouria", "pass123")
@@ -37,7 +37,7 @@ func TestBackupExportRequiresBinaryRuntime(t *testing.T) {
 }
 
 func TestBackupExportRoute(t *testing.T) {
-	t.Setenv("REBECCA_INSTALL_MODE", "binary")
+	t.Setenv("ANTIMAGE_INSTALL_MODE", "binary")
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	if _, err := db.Exec(`CREATE TABLE backup_items (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO backup_items (name) VALUES ('alpha')`); err != nil {
@@ -61,7 +61,7 @@ func TestBackupExportRoute(t *testing.T) {
 }
 
 func TestBackupImportRoute(t *testing.T) {
-	t.Setenv("REBECCA_INSTALL_MODE", "binary")
+	t.Setenv("ANTIMAGE_INSTALL_MODE", "binary")
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	if _, err := db.Exec(`CREATE TABLE backup_items (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO backup_items (id, name) VALUES (1, 'before')`); err != nil {
@@ -101,7 +101,7 @@ func TestBackupImportRoute(t *testing.T) {
 }
 
 func TestBackupImportRejectsOversizedUpload(t *testing.T) {
-	t.Setenv("REBECCA_INSTALL_MODE", "binary")
+	t.Setenv("ANTIMAGE_INSTALL_MODE", "binary")
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	token := adminBearerToken(t, server, "pouria", "pass123")
@@ -118,7 +118,7 @@ func TestBackupImportRejectsOversizedUpload(t *testing.T) {
 }
 
 func TestTelegramManualBackupSendRoute(t *testing.T) {
-	t.Setenv("REBECCA_INSTALL_MODE", "binary")
+	t.Setenv("ANTIMAGE_INSTALL_MODE", "binary")
 	server, db := testAdminServer(t)
 	createSettingsTables(t, db)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
@@ -154,7 +154,7 @@ func TestTelegramManualBackupSendRoute(t *testing.T) {
 }
 
 func TestTelegramManualBackupRequiresBinaryRuntime(t *testing.T) {
-	t.Setenv("REBECCA_INSTALL_MODE", "docker")
+	t.Setenv("ANTIMAGE_INSTALL_MODE", "docker")
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	token := adminBearerToken(t, server, "pouria", "pass123")

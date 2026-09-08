@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	envAdminPassword = "REBECCA_ADMIN_PASSWORD"
+	envAdminPassword = "ANTIMAGE_ADMIN_PASSWORD"
 	envDatabaseURL   = "SQLALCHEMY_DATABASE_URL"
 	envFallbackDBURL = "DATABASE_URL"
 )
@@ -3085,7 +3085,7 @@ func loadEnvFiles() {
 
 func envCandidates() []string {
 	candidates := []string{}
-	if explicit := strings.TrimSpace(os.Getenv("REBECCA_ENV_FILE")); explicit != "" {
+	if explicit := strings.TrimSpace(os.Getenv("ANTIMAGE_ENV_FILE")); explicit != "" {
 		candidates = append(candidates, explicit)
 	}
 	if exe, err := os.Executable(); err == nil {

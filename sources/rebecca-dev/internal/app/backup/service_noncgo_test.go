@@ -87,9 +87,9 @@ func TestMySQLMissingDumpTool(t *testing.T) {
 }
 
 func TestFullRestoreKeepsDestinationMySQLCredentials(t *testing.T) {
-	targetEnv := filepath.Join(t.TempDir(), "rebecca_env")
+	targetEnv := filepath.Join(t.TempDir(), "ANTIMAGE_env")
 	if err := os.WriteFile(targetEnv, []byte(strings.Join([]string{
-		`REBECCA_DATABASE_FLAVOR="mysql"`,
+		`ANTIMAGE_DATABASE_FLAVOR="mysql"`,
 		`MYSQL_DATABASE="rebecca"`,
 		`MYSQL_USER="rebecca"`,
 		`MYSQL_PASSWORD="destination-password"`,
@@ -100,7 +100,7 @@ func TestFullRestoreKeepsDestinationMySQLCredentials(t *testing.T) {
 	}
 
 	filesDir := t.TempDir()
-	sourceEnv := filepath.Join(filesDir, "rebecca_env")
+	sourceEnv := filepath.Join(filesDir, "ANTIMAGE_env")
 	if err := os.WriteFile(sourceEnv, []byte(strings.Join([]string{
 		`PANEL_DOMAIN="source.example.com"`,
 		`MYSQL_PASSWORD="source-password"`,
@@ -111,7 +111,7 @@ func TestFullRestoreKeepsDestinationMySQLCredentials(t *testing.T) {
 	}
 
 	service := NewService(nil, "mysql", "mysql+pymysql://rebecca:destination-password@127.0.0.1:3306/rebecca", WithFileRoots([]FileRoot{
-		{ArchiveName: "rebecca_env", Path: targetEnv},
+		{ArchiveName: "ANTIMAGE_env", Path: targetEnv},
 	}))
 	if err := service.preserveLocalDatabaseEnv(filesDir); err != nil {
 		t.Fatal(err)

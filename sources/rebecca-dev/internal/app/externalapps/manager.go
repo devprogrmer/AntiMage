@@ -28,9 +28,9 @@ import (
 )
 
 const (
-	defaultBaseDir              = "/var/lib/rebecca/external-apps"
-	legacyBaseDir               = "/var/lib/rebecca/php-apps"
-	externalAppFileAccessRoot   = "/var/lib/rebecca"
+	defaultBaseDir              = "/var/lib/antimage/external-apps"
+	legacyBaseDir               = "/var/lib/antimage/php-apps"
+	externalAppFileAccessRoot   = "/var/lib/antimage"
 	mirzaBotRepositoryURL       = "https://github.com/mahdiMGF2/mirzabot"
 	mirzaBotAPIBaseURL          = "https://api.github.com/repos/mahdiMGF2/mirzabot"
 	mirzaBotArchiveBaseURL      = "https://codeload.github.com/mahdiMGF2/mirzabot"

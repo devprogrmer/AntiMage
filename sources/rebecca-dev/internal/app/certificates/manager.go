@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	DefaultBaseDir          = "/var/lib/rebecca/certificates"
+	DefaultBaseDir          = "/var/lib/antimage/certificates"
 	managedDirectoryName    = ".managed"
 	zeroSSLDirectoryURL     = "https://acme.zerossl.com/v2/DV90"
 	letsEncryptDirectoryURL = "https://acme-v02.api.letsencrypt.org/directory"

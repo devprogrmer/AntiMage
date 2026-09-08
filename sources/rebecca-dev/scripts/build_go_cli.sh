@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GO_DIR="$ROOT_DIR"
 
-if [ "${REBECCA_SKIP_GO_CLI:-0}" = "1" ]; then
+if [ "${ANTIMAGE_SKIP_GO_CLI:-0}" = "1" ]; then
     echo "Skipping Rebecca Go CLI build."
     exit 2
 fi
@@ -23,7 +23,7 @@ fi
 
 (
     cd "$GO_DIR"
-    CGO_ENABLED=0 go build -trimpath -buildvcs=false -o "$output" ./cmd/rebecca_cli
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -o "$output" ./cmd/ANTIMAGE_cli
 )
 
 echo "Rebecca Go CLI built at $output"

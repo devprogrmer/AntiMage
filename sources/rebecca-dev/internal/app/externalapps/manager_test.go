@@ -234,7 +234,7 @@ func TestMirzaBotUpdatePreservesConfigurationAndRunsMigration(t *testing.T) {
 	}
 	writeCommand("id", "if [ \"$1\" = -u ]; then echo "+strconv.Itoa(os.Getuid())+"; else echo "+strconv.Itoa(os.Getgid())+"; fi")
 	writeCommand("runuser", `
-echo "$*" >> "$REBECCA_FAKE_RUNUSER_LOG"
+echo "$*" >> "$ANTIMAGE_FAKE_RUNUSER_LOG"
 for arg in "$@"; do
   case "$arg" in --working-dir=*) root="${arg#--working-dir=}";; esac
 done
@@ -245,7 +245,7 @@ exit 0`)
 	writeCommand("systemctl", "exit 0")
 	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
 	runuserLog := filepath.Join(t.TempDir(), "runuser.log")
-	t.Setenv("REBECCA_FAKE_RUNUSER_LOG", runuserLog)
+	t.Setenv("ANTIMAGE_FAKE_RUNUSER_LOG", runuserLog)
 
 	base := t.TempDir()
 	root := filepath.Join(base, "apps", "0123456789ab")
@@ -660,7 +660,7 @@ func TestCreateExternalAppDatabaseGrantsRebeccaAccess(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "mysql.log")
 	script := `#!/bin/sh
 query=$(cat)
-printf '%s\n' "$query" >> "$REBECCA_MYSQL_TEST_LOG"
+printf '%s\n' "$query" >> "$ANTIMAGE_MYSQL_TEST_LOG"
 case "$query" in
   *"SELECT EXISTS"*) printf '0\t0\n' ;;
   *"SELECT Host"*) printf '127.0.0.1\nlocalhost\n' ;;
@@ -670,7 +670,7 @@ esac
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
-	t.Setenv("REBECCA_MYSQL_TEST_LOG", logPath)
+	t.Setenv("ANTIMAGE_MYSQL_TEST_LOG", logPath)
 	manager := &Manager{databaseURL: "mysql://rebecca:secret@127.0.0.1:3306/rebecca"}
 	if err := manager.ensureExternalAppDatabaseFree(context.Background(), "project_db", "project_user"); err != nil {
 		t.Fatal(err)
@@ -784,8 +784,8 @@ func TestDownloadMirzaBotRejectsPrerelease(t *testing.T) {
 }
 
 func TestLatestMirzaBotReleaseArchive(t *testing.T) {
-	if os.Getenv("REBECCA_TEST_LATEST_MIRZABOT") != "1" {
-		t.Skip("set REBECCA_TEST_LATEST_MIRZABOT=1 to verify the current stable GitHub release")
+	if os.Getenv("ANTIMAGE_TEST_LATEST_MIRZABOT") != "1" {
+		t.Skip("set ANTIMAGE_TEST_LATEST_MIRZABOT=1 to verify the current stable GitHub release")
 	}
 	manager := New(Config{BaseDir: t.TempDir()}, nil)
 	source, err := manager.downloadMirzaBot(context.Background())

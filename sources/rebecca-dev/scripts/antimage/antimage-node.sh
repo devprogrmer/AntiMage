@@ -8,12 +8,12 @@ SKIP_SERVICE_UPDATE=0
 INSTALL_MODE_REQUESTED=""
 NODE_VERSION_REQUESTED=""
 NODE_VERSION_SET=0
-REBECCA_NODE_SCRIPT_FLAVOR="${REBECCA_NODE_SCRIPT_FLAVOR:-docker}"
-REBECCA_NODE_SCRIPT_SOURCE_FILE="${REBECCA_NODE_SCRIPT_SOURCE_FILE:-rebecca-node.sh}"
+ANTIMAGE_NODE_SCRIPT_FLAVOR="${ANTIMAGE_NODE_SCRIPT_FLAVOR:-docker}"
+ANTIMAGE_NODE_SCRIPT_SOURCE_FILE="${ANTIMAGE_NODE_SCRIPT_SOURCE_FILE:-rebecca-node.sh}"
 
 SCRIPT_NAME=$(basename "$0")
 SCRIPT_BASENAME="${SCRIPT_NAME%.*}"
-SCRIPT_DEFAULT_APP_NAME="${REBECCA_NODE_DEFAULT_APP_NAME:-$SCRIPT_BASENAME}"
+SCRIPT_DEFAULT_APP_NAME="${ANTIMAGE_NODE_DEFAULT_APP_NAME:-$SCRIPT_BASENAME}"
 case "$SCRIPT_DEFAULT_APP_NAME" in
     rebecca-node-binary|@|bash|sh)
         SCRIPT_DEFAULT_APP_NAME="rebecca-node"
@@ -135,8 +135,8 @@ if [ -z "$NODE_IP" ]; then
 fi
 
 if [ "$APP_NAME_FROM_ARG" -eq 0 ]; then
-    if [ -n "${REBECCA_NODE_APP_NAME:-}" ]; then
-        APP_NAME="$REBECCA_NODE_APP_NAME"
+    if [ -n "${ANTIMAGE_NODE_APP_NAME:-}" ]; then
+        APP_NAME="$ANTIMAGE_NODE_APP_NAME"
     elif [[ "$COMMAND" == "install" || "$COMMAND" == "install-script" || "$COMMAND" == "script-install" ]]; then
         APP_NAME="$SCRIPT_DEFAULT_APP_NAME"
     elif [ -z "${APP_NAME:-}" ]; then
@@ -147,23 +147,23 @@ ensure_valid_app_name
 
 LAST_XRAY_CORES=5
 
-REBECCA_REPO="${REBECCA_REPO:-rebeccapanel/Rebecca}"
-REBECCA_REF="${REBECCA_REF:-master}"
-REBECCA_SCRIPT_BASE_URL_EXPLICIT=0
-if [ -n "${REBECCA_SCRIPT_BASE_URL+x}" ]; then
-    REBECCA_SCRIPT_BASE_URL_EXPLICIT=1
+ANTIMAGE_REPO="${ANTIMAGE_REPO:-rebeccapanel/Rebecca}"
+ANTIMAGE_REF="${ANTIMAGE_REF:-master}"
+ANTIMAGE_SCRIPT_BASE_URL_EXPLICIT=0
+if [ -n "${ANTIMAGE_SCRIPT_BASE_URL+x}" ]; then
+    ANTIMAGE_SCRIPT_BASE_URL_EXPLICIT=1
 fi
-REBECCA_SCRIPT_BASE_URL="${REBECCA_SCRIPT_BASE_URL:-https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}/scripts/rebecca}"
-REBECCA_NODE_RELEASE_REPO="${REBECCA_NODE_RELEASE_REPO:-rebeccapanel/Rebecca-node}"
-REBECCA_NODE_BINARY_DEV_BRANCH="${REBECCA_NODE_BINARY_DEV_BRANCH:-dev}"
-REBECCA_NODE_BINARY_DEV_RELEASE_TAG="${REBECCA_NODE_BINARY_DEV_RELEASE_TAG:-dev-binaries}"
-REBECCA_NODE_BINARY_WORKFLOW_NAME="${REBECCA_NODE_BINARY_WORKFLOW_NAME:-binary-build}"
-REBECCA_NODE_BINARY_ARTIFACT_PREFIX="${REBECCA_NODE_BINARY_ARTIFACT_PREFIX:-rebecca-node-binaries}"
+ANTIMAGE_SCRIPT_BASE_URL="${ANTIMAGE_SCRIPT_BASE_URL:-https://raw.githubusercontent.com/${ANTIMAGE_REPO}/${ANTIMAGE_REF}/scripts/antimage}"
+ANTIMAGE_NODE_RELEASE_REPO="${ANTIMAGE_NODE_RELEASE_REPO:-rebeccapanel/Rebecca-node}"
+ANTIMAGE_NODE_BINARY_DEV_BRANCH="${ANTIMAGE_NODE_BINARY_DEV_BRANCH:-dev}"
+ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG="${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG:-dev-binaries}"
+ANTIMAGE_NODE_BINARY_WORKFLOW_NAME="${ANTIMAGE_NODE_BINARY_WORKFLOW_NAME:-binary-build}"
+ANTIMAGE_NODE_BINARY_ARTIFACT_PREFIX="${ANTIMAGE_NODE_BINARY_ARTIFACT_PREFIX:-rebecca-node-binaries}"
 DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-v26.7.11}"
 
 # Default node channel values
 BRANCH="master"
-SCRIPT_URL="$REBECCA_SCRIPT_BASE_URL/$REBECCA_NODE_SCRIPT_SOURCE_FILE"
+SCRIPT_URL="$ANTIMAGE_SCRIPT_BASE_URL/$ANTIMAGE_NODE_SCRIPT_SOURCE_FILE"
 
 colorized_echo() {
     local color=$1
@@ -551,14 +551,14 @@ set_branch_variables() {
     esac
     SCRIPT_BRANCH="$BRANCH"
     if [ "$BRANCH" = "dev" ]; then
-        REBECCA_REF="dev"
+        ANTIMAGE_REF="dev"
     else
-        REBECCA_REF="${REBECCA_SCRIPT_REF:-master}"
+        ANTIMAGE_REF="${ANTIMAGE_SCRIPT_REF:-master}"
     fi
-    if [ "${REBECCA_SCRIPT_BASE_URL_EXPLICIT:-0}" != "1" ]; then
-        REBECCA_SCRIPT_BASE_URL="https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}/scripts/rebecca"
+    if [ "${ANTIMAGE_SCRIPT_BASE_URL_EXPLICIT:-0}" != "1" ]; then
+        ANTIMAGE_SCRIPT_BASE_URL="https://raw.githubusercontent.com/${ANTIMAGE_REPO}/${ANTIMAGE_REF}/scripts/antimage"
     fi
-    SCRIPT_URL="$REBECCA_SCRIPT_BASE_URL/$REBECCA_NODE_SCRIPT_SOURCE_FILE"
+    SCRIPT_URL="$ANTIMAGE_SCRIPT_BASE_URL/$ANTIMAGE_NODE_SCRIPT_SOURCE_FILE"
 }
 
 prompt_branch_selection() {
@@ -607,7 +607,7 @@ normalize_install_mode() {
 }
 
 script_install_mode() {
-    case "${REBECCA_NODE_SCRIPT_FLAVOR:-docker}" in
+    case "${ANTIMAGE_NODE_SCRIPT_FLAVOR:-docker}" in
         docker|dockerized|compose)
             echo "docker"
         ;;
@@ -618,7 +618,7 @@ script_install_mode() {
             echo ""
         ;;
         *)
-            colorized_echo red "Invalid node script flavor: $REBECCA_NODE_SCRIPT_FLAVOR" >&2
+            colorized_echo red "Invalid node script flavor: $ANTIMAGE_NODE_SCRIPT_FLAVOR" >&2
             exit 1
         ;;
     esac
@@ -654,7 +654,7 @@ select_install_mode() {
     local requested_mode
     local forced_mode
     forced_mode=$(script_install_mode)
-    requested_mode=$(normalize_install_mode "${1:-${REBECCA_NODE_INSTALL_MODE:-}}")
+    requested_mode=$(normalize_install_mode "${1:-${ANTIMAGE_NODE_INSTALL_MODE:-}}")
 
     if [ -n "$forced_mode" ]; then
         if [ -n "$requested_mode" ] && [ "$requested_mode" != "$forced_mode" ]; then
@@ -730,7 +730,7 @@ select_node_version() {
     colorized_echo cyan "Select Rebecca-node release channel for ${install_mode} mode:" >&2
     colorized_echo yellow "  1) latest" >&2
     if [ "$install_mode" = "binary" ]; then
-        colorized_echo yellow "  2) dev (latest successful binary build from ${REBECCA_NODE_BINARY_DEV_BRANCH})" >&2
+        colorized_echo yellow "  2) dev (latest successful binary build from ${ANTIMAGE_NODE_BINARY_DEV_BRANCH})" >&2
     else
         colorized_echo yellow "  2) dev (Docker image tag dev)" >&2
     fi
@@ -754,7 +754,7 @@ BRANCH="master"
 IMAGE_TAG="latest"
 SCRIPT_BRANCH="master"
 DOCKER_IMAGE="rebeccapanel/rebecca-node:latest"
-SCRIPT_URL="$REBECCA_SCRIPT_BASE_URL/$REBECCA_NODE_SCRIPT_SOURCE_FILE"
+SCRIPT_URL="$ANTIMAGE_SCRIPT_BASE_URL/$ANTIMAGE_NODE_SCRIPT_SOURCE_FILE"
 if [ -f "$BRANCH_FILE" ]; then
     saved_branch=$(tr -d '[:space:]' < "$BRANCH_FILE")
     if [[ -n "$saved_branch" ]]; then
@@ -952,9 +952,9 @@ get_node_binary_release_asset_metadata() {
     local node_asset_url
 
     if [ "$node_version" = "latest" ]; then
-        release_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/releases/latest"
+        release_api="https://api.github.com/repos/${ANTIMAGE_NODE_RELEASE_REPO}/releases/latest"
     else
-        release_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/releases/tags/${node_version}"
+        release_api="https://api.github.com/repos/${ANTIMAGE_NODE_RELEASE_REPO}/releases/tags/${node_version}"
     fi
 
     release_payload=$(curl -fsSL "$release_api") || {
@@ -1001,7 +1001,7 @@ get_node_binary_dev_artifact_metadata() {
     local workflow_path
 
     release_asset_name="rebecca-node-dev-linux-${binary_arch}"
-    release_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/releases/tags/${REBECCA_NODE_BINARY_DEV_RELEASE_TAG}"
+    release_api="https://api.github.com/repos/${ANTIMAGE_NODE_RELEASE_REPO}/releases/tags/${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG}"
     if release_payload=$(curl -fsSL "$release_api" 2>/dev/null); then
         release_asset_url=$(echo "$release_payload" | jq -r --arg name "$release_asset_name" '
             .assets[]?
@@ -1013,25 +1013,25 @@ get_node_binary_dev_artifact_metadata() {
             if [[ "$release_target" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
                 printf '%s|%s\n' "dev-${release_target:0:7}" "$release_asset_url"
             else
-                printf '%s|%s\n' "dev-${REBECCA_NODE_BINARY_DEV_BRANCH}" "$release_asset_url"
+                printf '%s|%s\n' "dev-${ANTIMAGE_NODE_BINARY_DEV_BRANCH}" "$release_asset_url"
             fi
             return 0
         fi
     fi
 
-    nightly_workflow="$REBECCA_NODE_BINARY_WORKFLOW_NAME"
+    nightly_workflow="$ANTIMAGE_NODE_BINARY_WORKFLOW_NAME"
     case "$nightly_workflow" in
         *.yml|*.yaml) ;;
         *) nightly_workflow="${nightly_workflow}.yml" ;;
     esac
     workflow_path=".github/workflows/${nightly_workflow}"
-    workflow_runs_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/runs?per_page=50"
+    workflow_runs_api="https://api.github.com/repos/${ANTIMAGE_NODE_RELEASE_REPO}/actions/runs?per_page=50"
     workflow_runs_payload=$(curl -fsSL "$workflow_runs_api") || {
         colorized_echo red "Unable to read Rebecca-node binary workflow metadata: $workflow_runs_api" >&2
         exit 1
     }
 
-    matching_runs=$(echo "$workflow_runs_payload" | jq -c --arg branch "$REBECCA_NODE_BINARY_DEV_BRANCH" --arg workflow_path "$workflow_path" '
+    matching_runs=$(echo "$workflow_runs_payload" | jq -c --arg branch "$ANTIMAGE_NODE_BINARY_DEV_BRANCH" --arg workflow_path "$workflow_path" '
         .workflow_runs[]?
         | select(
             .head_branch == $branch
@@ -1042,7 +1042,7 @@ get_node_binary_dev_artifact_metadata() {
     ')
 
     if [ -z "$matching_runs" ]; then
-        colorized_echo red "No successful Rebecca-node binary workflow run was found on branch ${REBECCA_NODE_BINARY_DEV_BRANCH}." >&2
+        colorized_echo red "No successful Rebecca-node binary workflow run was found on branch ${ANTIMAGE_NODE_BINARY_DEV_BRANCH}." >&2
         exit 1
     fi
 
@@ -1051,13 +1051,13 @@ get_node_binary_dev_artifact_metadata() {
 
         run_id=$(echo "$run_json" | jq -r '.id // empty')
         head_sha=$(echo "$run_json" | jq -r '.head_sha // empty')
-        artifacts_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/runs/${run_id}/artifacts"
+        artifacts_api="https://api.github.com/repos/${ANTIMAGE_NODE_RELEASE_REPO}/actions/runs/${run_id}/artifacts"
         if ! artifacts_payload=$(curl -fsSL "$artifacts_api"); then
             colorized_echo yellow "Unable to read Rebecca-node binary artifacts for workflow run ${run_id}; checking an older successful run." >&2
             continue
         fi
 
-        artifact_name=$(echo "$artifacts_payload" | jq -r --arg preferred "${REBECCA_NODE_BINARY_ARTIFACT_PREFIX}-linux-${binary_arch}" --arg arch "linux-${binary_arch}" '
+        artifact_name=$(echo "$artifacts_payload" | jq -r --arg preferred "${ANTIMAGE_NODE_BINARY_ARTIFACT_PREFIX}-linux-${binary_arch}" --arg arch "linux-${binary_arch}" '
             [
                 .artifacts[]?
                 | select((.expired | not) and (.name == $preferred or ((.name | startswith("rebecca-node")) and (.name | contains($arch)))))
@@ -1067,7 +1067,7 @@ get_node_binary_dev_artifact_metadata() {
         ')
 
         if [ -n "$artifact_name" ]; then
-            artifact_url="https://nightly.link/${REBECCA_NODE_RELEASE_REPO}/workflows/${nightly_workflow}/${REBECCA_NODE_BINARY_DEV_BRANCH}/${artifact_name}.zip"
+            artifact_url="https://nightly.link/${ANTIMAGE_NODE_RELEASE_REPO}/workflows/${nightly_workflow}/${ANTIMAGE_NODE_BINARY_DEV_BRANCH}/${artifact_name}.zip"
             printf '%s|%s\n' "dev-${head_sha:0:7}" "$artifact_url"
             return 0
         fi
@@ -1075,8 +1075,8 @@ get_node_binary_dev_artifact_metadata() {
         colorized_echo yellow "Rebecca-node binary workflow run ${run_id} has no usable linux-${binary_arch} artifact; checking an older successful run." >&2
     done <<< "$matching_runs"
 
-    colorized_echo red "No usable Rebecca-node linux-${binary_arch} dev artifact was found on branch ${REBECCA_NODE_BINARY_DEV_BRANCH}." >&2
-    colorized_echo yellow "The dev binary workflow must publish ${REBECCA_NODE_BINARY_ARTIFACT_PREFIX}-linux-${binary_arch} before this server can install the dev binary." >&2
+    colorized_echo red "No usable Rebecca-node linux-${binary_arch} dev artifact was found on branch ${ANTIMAGE_NODE_BINARY_DEV_BRANCH}." >&2
+    colorized_echo yellow "The dev binary workflow must publish ${ANTIMAGE_NODE_BINARY_ARTIFACT_PREFIX}-linux-${binary_arch} before this server can install the dev binary." >&2
     exit 1
 }
 
@@ -1103,7 +1103,7 @@ write_node_binary_release_metadata() {
         }' > "$BINARY_METADATA_FILE"
 }
 
-create_binary_rebecca_node_service() {
+create_binary_ANTIMAGE_node_service() {
     cat > "$BINARY_SERVICE_UNIT" <<EOF
 [Unit]
 Description=Rebecca-node
@@ -1113,12 +1113,12 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=$APP_DIR
-Environment=REBECCA_NODE_APP_NAME=$APP_NAME
-Environment=REBECCA_NODE_APP_DIR=$APP_DIR
-Environment=REBECCA_NODE_DATA_DIR=$DATA_DIR
-Environment=REBECCA_DATA_DIR=$DATA_DIR
-Environment=REBECCA_NODE_INSTALL_MODE=binary
-Environment=REBECCA_NODE_BINARY_METADATA_FILE=$BINARY_METADATA_FILE
+Environment=ANTIMAGE_NODE_APP_NAME=$APP_NAME
+Environment=ANTIMAGE_NODE_APP_DIR=$APP_DIR
+Environment=ANTIMAGE_NODE_DATA_DIR=$DATA_DIR
+Environment=ANTIMAGE_DATA_DIR=$DATA_DIR
+Environment=ANTIMAGE_NODE_INSTALL_MODE=binary
+Environment=ANTIMAGE_NODE_BINARY_METADATA_FILE=$BINARY_METADATA_FILE
 ExecStart=$BINARY_NODE
 Restart=always
 RestartSec=5
@@ -1133,10 +1133,10 @@ EOF
 install_latest_xray_for_binary_node() {
     mkdir -p "$APP_DIR/scripts" "$DATA_DIR/xray-core"
     colorized_echo blue "Installing Xray core ${XRAY_CORE_VERSION:-$DEFAULT_XRAY_CORE_VERSION} for binary node"
-    curl -fsSL "$REBECCA_SCRIPT_BASE_URL/install_latest_xray.sh" -o "$APP_DIR/scripts/install_latest_xray.sh"
+    curl -fsSL "$ANTIMAGE_SCRIPT_BASE_URL/install_latest_xray.sh" -o "$APP_DIR/scripts/install_latest_xray.sh"
     sed -i 's/\r$//' "$APP_DIR/scripts/install_latest_xray.sh"
     chmod +x "$APP_DIR/scripts/install_latest_xray.sh"
-    REBECCA_DATA_DIR="$DATA_DIR" XRAY_INSTALL_DIR="$DATA_DIR/xray-core" XRAY_ASSETS_DIR="$DATA_DIR/xray-core" XRAY_CORE_VERSION="${XRAY_CORE_VERSION:-$DEFAULT_XRAY_CORE_VERSION}" bash "$APP_DIR/scripts/install_latest_xray.sh"
+    ANTIMAGE_DATA_DIR="$DATA_DIR" XRAY_INSTALL_DIR="$DATA_DIR/xray-core" XRAY_ASSETS_DIR="$DATA_DIR/xray-core" XRAY_CORE_VERSION="${XRAY_CORE_VERSION:-$DEFAULT_XRAY_CORE_VERSION}" bash "$APP_DIR/scripts/install_latest_xray.sh"
 }
 
 read_node_certificate_bundle() {
@@ -1212,7 +1212,7 @@ configure_binary_node_env() {
     set_env_value "XRAY_API_HOST" "127.0.0.1"
     set_env_value "XRAY_API_PORT" "$XRAY_API_PORT"
 
-    set_env_value "REBECCA_DATA_DIR" "$DATA_DIR"
+    set_env_value "ANTIMAGE_DATA_DIR" "$DATA_DIR"
     set_env_value "SSL_CLIENT_CERT_FILE" "$CERT_FILE"
     set_env_value "SSL_CERT_FILE" "$CERT_FILE"
     set_env_value "SSL_KEY_FILE" "$CERT_KEY_FILE"
@@ -1253,7 +1253,7 @@ normalize_node_dev_artifact() {
     fi
 }
 
-install_binary_rebecca_node() {
+install_binary_ANTIMAGE_node() {
     local node_version="$1"
     local configure="${2:-1}"
     local binary_arch
@@ -1273,14 +1273,14 @@ install_binary_rebecca_node() {
     binary_arch=$(detect_node_binary_arch)
     tmp_dir=$(mktemp -d)
 
-    if [ -n "${REBECCA_NODE_BINARY_OVERRIDE:-}" ]; then
-        if [ ! -f "$REBECCA_NODE_BINARY_OVERRIDE" ]; then
-            colorized_echo red "REBECCA_NODE_BINARY_OVERRIDE must point to an existing file." >&2
+    if [ -n "${ANTIMAGE_NODE_BINARY_OVERRIDE:-}" ]; then
+        if [ ! -f "$ANTIMAGE_NODE_BINARY_OVERRIDE" ]; then
+            colorized_echo red "ANTIMAGE_NODE_BINARY_OVERRIDE must point to an existing file." >&2
             rm -rf "$tmp_dir"
             exit 1
         fi
-        ui_spinner_run "Installing Rebecca-node custom binary" install -m 755 "$REBECCA_NODE_BINARY_OVERRIDE" "$tmp_dir/rebecca-node"
-        resolved_version="${REBECCA_NODE_BINARY_OVERRIDE_VERSION:-custom}"
+        ui_spinner_run "Installing Rebecca-node custom binary" install -m 755 "$ANTIMAGE_NODE_BINARY_OVERRIDE" "$tmp_dir/rebecca-node"
+        resolved_version="${ANTIMAGE_NODE_BINARY_OVERRIDE_VERSION:-custom}"
         artifact_url="local-override"
     elif [ "$node_version" = "dev" ]; then
         IFS='|' read -r resolved_version artifact_url < <(get_node_binary_dev_artifact_metadata "$binary_arch")
@@ -1316,12 +1316,12 @@ install_binary_rebecca_node() {
 
     write_node_binary_release_metadata "${resolved_version:-$node_version}" "$binary_arch" "${artifact_url:-${node_asset_url:-}}"
     echo "binary" > "$INSTALL_MODE_FILE"
-    create_binary_rebecca_node_service
+    create_binary_ANTIMAGE_node_service
     rm -rf "$tmp_dir"
     colorized_echo green "Rebecca-node binary files installed successfully"
 }
 
-install_rebecca_node_script() {
+install_ANTIMAGE_node_script() {
     TARGET_PATH="/usr/local/bin/$APP_NAME"
     TEMP_SCRIPT=$(mktemp)
     if ! ui_spinner_run "Downloading $APP_NAME command script" curl -fsSL "$SCRIPT_URL" -o "$TEMP_SCRIPT"; then
@@ -1395,7 +1395,7 @@ prompt_node_port_setting() {
     done
 }
 
-install_rebecca_node() {
+install_ANTIMAGE_node() {
     # Fetch releases
     mkdir -p "$DATA_DIR"
     mkdir -p "$APP_DIR"
@@ -1453,10 +1453,10 @@ services:
     restart: always
     network_mode: host
     environment:
-      REBECCA_DATA_DIR: "/var/lib/rebecca-node"
-      SSL_CLIENT_CERT_FILE: "/var/lib/rebecca-node/cert.pem"
-      SSL_CERT_FILE: "/var/lib/rebecca-node/cert.pem"
-      SSL_KEY_FILE: "/var/lib/rebecca-node/cert.key"
+      ANTIMAGE_DATA_DIR: "/var/lib/antimage-node"
+      SSL_CLIENT_CERT_FILE: "/var/lib/antimage-node/cert.pem"
+      SSL_CERT_FILE: "/var/lib/antimage-node/cert.pem"
+      SSL_KEY_FILE: "/var/lib/antimage-node/cert.key"
       SERVICE_HOST: "0.0.0.0"
       SERVICE_PORT: "$SERVICE_PORT"
       XRAY_API_HOST: "127.0.0.1"
@@ -1464,20 +1464,20 @@ services:
 
     volumes:
       - $DATA_DIR:/var/lib/marzban-node
-      - $DATA_DIR:/var/lib/rebecca-node
+      - $DATA_DIR:/var/lib/antimage-node
 EOL
     colorized_echo green "File saved in $APP_DIR/docker-compose.yml"
 }
 
 
-uninstall_rebecca_node_script() {
+uninstall_ANTIMAGE_node_script() {
     if [ -f "/usr/local/bin/$APP_NAME" ]; then
         colorized_echo yellow "Removing rebecca-node script"
         rm "/usr/local/bin/$APP_NAME"
     fi
 }
 
-uninstall_rebecca_node() {
+uninstall_ANTIMAGE_node() {
     if [ -f "$BINARY_SERVICE_UNIT" ]; then
         systemctl disable --now "$APP_NAME.service" >/dev/null 2>&1 || true
         rm -f "$BINARY_SERVICE_UNIT"
@@ -1489,7 +1489,7 @@ uninstall_rebecca_node() {
     fi
 }
 
-uninstall_rebecca_node_docker_images() {
+uninstall_ANTIMAGE_node_docker_images() {
     images=$(docker images | grep rebecca-node | awk '{print $3}')
     
     if [ -n "$images" ]; then
@@ -1502,14 +1502,14 @@ uninstall_rebecca_node_docker_images() {
     fi
 }
 
-uninstall_rebecca_node_data_files() {
+uninstall_ANTIMAGE_node_data_files() {
     if [ -d "$DATA_DIR" ]; then
         colorized_echo yellow "Removing directory: $DATA_DIR"
         rm -r "$DATA_DIR"
     fi
 }
 
-up_rebecca_node() {
+up_ANTIMAGE_node() {
     if is_binary_install; then
         systemctl enable --now "$APP_NAME.service"
         return
@@ -1517,7 +1517,7 @@ up_rebecca_node() {
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" up -d --remove-orphans
 }
 
-down_rebecca_node() {
+down_ANTIMAGE_node() {
     if is_binary_install; then
         systemctl stop "$APP_NAME.service"
         return
@@ -1525,7 +1525,7 @@ down_rebecca_node() {
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" down
 }
 
-show_rebecca_node_logs() {
+show_ANTIMAGE_node_logs() {
     if is_binary_install; then
         journalctl -u "$APP_NAME.service" --no-pager
         return
@@ -1533,7 +1533,7 @@ show_rebecca_node_logs() {
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" logs
 }
 
-follow_rebecca_node_logs() {
+follow_ANTIMAGE_node_logs() {
     if is_binary_install; then
         journalctl -u "$APP_NAME.service" -f
         return
@@ -1541,16 +1541,16 @@ follow_rebecca_node_logs() {
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" logs -f
 }
 
-update_rebecca_node_script() {
+update_ANTIMAGE_node_script() {
     colorized_echo blue "Updating $APP_NAME script from $SCRIPT_URL"
-    install_rebecca_node_script
+    install_ANTIMAGE_node_script
 }
 
 reexec_updated_node_script() {
     local target_path="/usr/local/bin/$APP_NAME"
     local args=("update")
 
-    if [ "${REBECCA_NODE_SKIP_REEXEC:-0}" = "1" ]; then
+    if [ "${ANTIMAGE_NODE_SKIP_REEXEC:-0}" = "1" ]; then
         return
     fi
     if [ ! -x "$target_path" ]; then
@@ -1572,17 +1572,17 @@ reexec_updated_node_script() {
     fi
 
     colorized_echo blue "Reloading updated $APP_NAME script"
-    REBECCA_NODE_SKIP_REEXEC=1 exec "$target_path" "${args[@]}"
+    ANTIMAGE_NODE_SKIP_REEXEC=1 exec "$target_path" "${args[@]}"
 }
 
-update_rebecca_node() {
+update_ANTIMAGE_node() {
     local requested_version="${1:-}"
     if is_binary_install; then
         local node_version="${requested_version:-latest}"
         if [ -z "$requested_version" ] && [ "$BRANCH" = "dev" ]; then
             node_version="dev"
         fi
-        install_binary_rebecca_node "$node_version" "0"
+        install_binary_ANTIMAGE_node "$node_version" "0"
         return
     fi
 
@@ -1607,7 +1607,7 @@ update_rebecca_node() {
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" pull
 }
 
-is_rebecca_node_installed() {
+is_ANTIMAGE_node_installed() {
     if [ -d "$APP_DIR" ]; then
         return 0
     else
@@ -1615,7 +1615,7 @@ is_rebecca_node_installed() {
     fi
 }
 
-is_rebecca_node_up() {
+is_ANTIMAGE_node_up() {
     if is_binary_install; then
         systemctl is-active --quiet "$APP_NAME.service"
         return
@@ -1636,7 +1636,7 @@ install_command() {
     local node_version
 
     # Check if rebecca is already installed
-    if is_rebecca_node_installed; then
+    if is_ANTIMAGE_node_installed; then
         colorized_echo red "Rebecca-node is already installed at $APP_DIR"
         read -p "Do you want to override the previous installation? (y/n) "
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -1679,14 +1679,14 @@ install_command() {
         fi
         detect_compose
     fi
-    install_rebecca_node_script
+    install_ANTIMAGE_node_script
     if [ "$install_mode" = "binary" ]; then
-        install_binary_rebecca_node "$node_version" "1"
+        install_binary_ANTIMAGE_node "$node_version" "1"
     else
-        install_rebecca_node
+        install_ANTIMAGE_node
         echo "docker" > "$INSTALL_MODE_FILE"
     fi
-    up_rebecca_node
+    up_ANTIMAGE_node
     SERVICE_PORT="${SERVICE_PORT:-$(get_env_value "SERVICE_PORT")}"
     XRAY_API_PORT="${XRAY_API_PORT:-$(get_env_value "XRAY_API_PORT")}"
     echo "Use your IP: $NODE_IP and control port: $SERVICE_PORT to setup your Rebecca Main Panel"
@@ -1698,7 +1698,7 @@ uninstall_command() {
     local install_mode
     install_mode=$(get_install_mode)
     local node_exists=0
-    if is_rebecca_node_installed; then
+    if is_ANTIMAGE_node_installed; then
         node_exists=1
     fi
 
@@ -1722,24 +1722,24 @@ uninstall_command() {
         if [ "$install_mode" != "binary" ]; then
             detect_compose
         fi
-        if is_rebecca_node_up; then
-            down_rebecca_node
+        if is_ANTIMAGE_node_up; then
+            down_ANTIMAGE_node
         fi
     fi
 
-    uninstall_rebecca_node_script
+    uninstall_ANTIMAGE_node_script
 
     if [ "$node_exists" -eq 1 ]; then
-        uninstall_rebecca_node
+        uninstall_ANTIMAGE_node
         if [ "$install_mode" != "binary" ]; then
-            uninstall_rebecca_node_docker_images
+            uninstall_ANTIMAGE_node_docker_images
         fi
 
         read -p "Do you want to remove Rebecca-node data files too ($DATA_DIR)? (y/n) "
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             colorized_echo green "Rebecca-node uninstalled successfully"
         else
-            uninstall_rebecca_node_data_files
+            uninstall_ANTIMAGE_node_data_files
             colorized_echo green "Rebecca-node uninstalled successfully"
         fi
     else
@@ -1776,7 +1776,7 @@ up_command() {
     done
     
     # Check if rebecca-node is installed
-    if ! is_rebecca_node_installed; then
+    if ! is_ANTIMAGE_node_installed; then
         colorized_echo red "Rebecca-node's not installed!"
         exit 1
     fi
@@ -1785,20 +1785,20 @@ up_command() {
         detect_compose
     fi
     
-    if is_rebecca_node_up; then
+    if is_ANTIMAGE_node_up; then
         colorized_echo red "Rebecca-node's already up"
         exit 1
     fi
     
-    up_rebecca_node
+    up_ANTIMAGE_node
     if [ "$no_logs" = false ]; then
-        follow_rebecca_node_logs
+        follow_ANTIMAGE_node_logs
     fi
 }
 
 down_command() {
     # Check if rebecca-node is installed
-    if ! is_rebecca_node_installed; then
+    if ! is_ANTIMAGE_node_installed; then
         colorized_echo red "Rebecca-node not installed!"
         exit 1
     fi
@@ -1807,12 +1807,12 @@ down_command() {
         detect_compose
     fi
     
-    if ! is_rebecca_node_up; then
+    if ! is_ANTIMAGE_node_up; then
         colorized_echo red "Rebecca-node already down"
         exit 1
     fi
     
-    down_rebecca_node
+    down_ANTIMAGE_node
 }
 
 restart_command() {
@@ -1844,7 +1844,7 @@ restart_command() {
     done
     
     # Check if rebecca-node is installed
-    if ! is_rebecca_node_installed; then
+    if ! is_ANTIMAGE_node_installed; then
         colorized_echo red "Rebecca-node not installed!"
         exit 1
     fi
@@ -1853,14 +1853,14 @@ restart_command() {
         detect_compose
     fi
     
-    down_rebecca_node
-    up_rebecca_node
+    down_ANTIMAGE_node
+    up_ANTIMAGE_node
     
 }
 
 status_command() {
     # Check if rebecca-node is installed
-    if ! is_rebecca_node_installed; then
+    if ! is_ANTIMAGE_node_installed; then
         echo -n "Status: "
         colorized_echo red "Not Installed"
         exit 1
@@ -1870,7 +1870,7 @@ status_command() {
         detect_compose
     fi
     
-    if ! is_rebecca_node_up; then
+    if ! is_ANTIMAGE_node_up; then
         echo -n "Status: "
         colorized_echo blue "Down"
         exit 1
@@ -1929,7 +1929,7 @@ logs_command() {
     done
     
     # Check if rebecca is installed
-    if ! is_rebecca_node_installed; then
+    if ! is_ANTIMAGE_node_installed; then
         colorized_echo red "Rebecca-node's not installed!"
         exit 1
     fi
@@ -1938,15 +1938,15 @@ logs_command() {
         detect_compose
     fi
     
-    if ! is_rebecca_node_up; then
+    if ! is_ANTIMAGE_node_up; then
         colorized_echo red "Rebecca-node is not up."
         exit 1
     fi
     
     if [ "$no_follow" = true ]; then
-        show_rebecca_node_logs
+        show_ANTIMAGE_node_logs
     else
-        follow_rebecca_node_logs
+        follow_ANTIMAGE_node_logs
     fi
 }
 
@@ -1954,7 +1954,7 @@ update_command() {
     check_running_as_root
     local node_version=""
 
-    if ! is_rebecca_node_installed; then
+    if ! is_ANTIMAGE_node_installed; then
         colorized_echo red "Rebecca-node not installed!"
         exit 1
     fi
@@ -1981,7 +1981,7 @@ update_command() {
         detect_compose
     fi
 
-    update_rebecca_node_script
+    update_ANTIMAGE_node_script
     reexec_updated_node_script
 
     if is_binary_install; then
@@ -1989,11 +1989,11 @@ update_command() {
     else
         colorized_echo blue "Pulling node image $DOCKER_IMAGE"
     fi
-    update_rebecca_node "$node_version"
+    update_ANTIMAGE_node "$node_version"
 
     colorized_echo blue "Restarting Rebecca-node services"
-    down_rebecca_node
-    up_rebecca_node
+    down_ANTIMAGE_node
+    up_ANTIMAGE_node
 
     colorized_echo blue "Rebecca-node updated successfully"
 }
@@ -2283,12 +2283,12 @@ update_core_command() {
         install_yq
     fi
 
-    if ! grep -q 'XRAY_EXECUTABLE_PATH: "/var/lib/rebecca-node/xray-core/xray"' "$COMPOSE_FILE"; then
-        yq eval '.services."rebecca-node".environment.XRAY_EXECUTABLE_PATH = "/var/lib/rebecca-node/xray-core/xray"' -i "$COMPOSE_FILE"
+    if ! grep -q 'XRAY_EXECUTABLE_PATH: "/var/lib/antimage-node/xray-core/xray"' "$COMPOSE_FILE"; then
+        yq eval '.services."rebecca-node".environment.XRAY_EXECUTABLE_PATH = "/var/lib/antimage-node/xray-core/xray"' -i "$COMPOSE_FILE"
     fi
 
-    if ! yq eval ".services.\"rebecca-node\".volumes[] | select(. == \"${DATA_MAIN_DIR}:/var/lib/rebecca-node\")" "$COMPOSE_FILE" &>/dev/null; then
-        yq eval ".services.\"rebecca-node\".volumes += \"${DATA_MAIN_DIR}:/var/lib/rebecca-node\"" -i "$COMPOSE_FILE"
+    if ! yq eval ".services.\"rebecca-node\".volumes[] | select(. == \"${DATA_MAIN_DIR}:/var/lib/antimage-node\")" "$COMPOSE_FILE" &>/dev/null; then
+        yq eval ".services.\"rebecca-node\".volumes += \"${DATA_MAIN_DIR}:/var/lib/antimage-node\"" -i "$COMPOSE_FILE"
     fi
     
     # Restart Rebecca-node
@@ -2341,7 +2341,7 @@ get_node_current_version() {
 }
 
 get_node_service_status() {
-    if is_rebecca_node_up; then
+    if is_ANTIMAGE_node_up; then
         echo "running"
     else
         echo "stopped"
@@ -2621,9 +2621,9 @@ dispatch_command() {
         status) status_command ;;
         logs) logs_command ;;
         core-update) update_core_command ;;
-        install-script|script-install) install_rebecca_node_script ;;
-        update-script|script-update) install_rebecca_node_script ;;
-        uninstall-script|script-uninstall) uninstall_rebecca_node_script ;;
+        install-script|script-install) install_ANTIMAGE_node_script ;;
+        update-script|script-update) install_ANTIMAGE_node_script ;;
+        uninstall-script|script-uninstall) uninstall_ANTIMAGE_node_script ;;
         edit) edit_command ;;
         help) usage ;;
         *) usage ;;

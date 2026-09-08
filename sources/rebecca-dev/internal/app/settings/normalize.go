@@ -322,11 +322,11 @@ func dbTime(value time.Time) string {
 }
 
 func certificatePath(domain string) string {
-	base := os.Getenv("REBECCA_CERT_BASE")
+	base := os.Getenv("ANTIMAGE_CERT_BASE")
 	if strings.TrimSpace(base) == "" {
-		dataDir := os.Getenv("REBECCA_DATA_DIR")
+		dataDir := os.Getenv("ANTIMAGE_DATA_DIR")
 		if strings.TrimSpace(dataDir) == "" {
-			dataDir = "/var/lib/rebecca"
+			dataDir = "/var/lib/antimage"
 		}
 		base = filepath.Join(dataDir, "certs")
 	}

@@ -15,7 +15,7 @@ import (
 )
 
 func TestRepositoryTouchesOnlineUsersExternalMySQL(t *testing.T) {
-	rawURL := strings.TrimSpace(os.Getenv("REBECCA_TEST_DATABASE_URL"))
+	rawURL := strings.TrimSpace(os.Getenv("ANTIMAGE_TEST_DATABASE_URL"))
 	if !strings.HasPrefix(rawURL, "mysql+") {
 		t.Skip("external MySQL or MariaDB is not configured")
 	}

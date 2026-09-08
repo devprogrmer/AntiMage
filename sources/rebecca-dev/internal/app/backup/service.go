@@ -587,7 +587,7 @@ func (s *Service) restoreFileRoots(filesDir string) ([]string, []string, error) 
 func (s *Service) preserveLocalDatabaseEnv(filesDir string) error {
 	var targetPath, archiveName string
 	for _, root := range s.fileRoots {
-		if root.ArchiveName == "rebecca_env" {
+		if root.ArchiveName == "ANTIMAGE_env" {
 			targetPath, archiveName = root.Path, root.ArchiveName
 			break
 		}
@@ -615,7 +615,7 @@ func (s *Service) preserveLocalDatabaseEnv(filesDir string) error {
 	if err != nil {
 		return err
 	}
-	assignments = upsertEnvAssignment(assignments, dotenvAssignment("REBECCA_DATABASE_FLAVOR", s.dialect))
+	assignments = upsertEnvAssignment(assignments, dotenvAssignment("ANTIMAGE_DATABASE_FLAVOR", s.dialect))
 	assignments = upsertEnvAssignment(assignments, dotenvAssignment("SQLALCHEMY_DATABASE_URL", s.databaseURL))
 	if parsed.User != nil {
 		if username := parsed.User.Username(); username != "" {
@@ -661,7 +661,7 @@ func envAssignmentKey(line string) string {
 }
 
 func isDatabaseEnvKey(key string) bool {
-	return key == "REBECCA_DATABASE_FLAVOR" || key == "SQLALCHEMY_DATABASE_URL" || key == "DATABASE_URL" ||
+	return key == "ANTIMAGE_DATABASE_FLAVOR" || key == "SQLALCHEMY_DATABASE_URL" || key == "DATABASE_URL" ||
 		strings.HasPrefix(key, "MYSQL_") || strings.HasPrefix(key, "MARIADB_")
 }
 
@@ -1333,27 +1333,27 @@ func copyFile(source string, destination string, mode fs.FileMode) error {
 }
 
 func defaultFileRoots() []FileRoot {
-	configDir := strings.TrimSpace(os.Getenv("REBECCA_CONFIG_DIR"))
+	configDir := strings.TrimSpace(os.Getenv("ANTIMAGE_CONFIG_DIR"))
 	if configDir == "" {
 		configDir = "/etc/rebecca"
 	}
-	dataDir := strings.TrimSpace(os.Getenv("REBECCA_DATA_DIR"))
+	dataDir := strings.TrimSpace(os.Getenv("ANTIMAGE_DATA_DIR"))
 	if dataDir == "" {
-		dataDir = "/var/lib/rebecca"
+		dataDir = "/var/lib/antimage"
 	}
 	roots := []FileRoot{
 		{ArchiveName: "etc_rebecca", Path: configDir},
 		{ArchiveName: "var_lib_rebecca", Path: dataDir},
 	}
 	if envFile := defaultEnvFileRoot(); envFile != "" {
-		roots = append(roots, FileRoot{ArchiveName: "rebecca_env", Path: envFile})
+		roots = append(roots, FileRoot{ArchiveName: "ANTIMAGE_env", Path: envFile})
 	}
 	return roots
 }
 
 func defaultEnvFileRoot() string {
 	for _, candidate := range []string{
-		strings.TrimSpace(os.Getenv("REBECCA_ENV_FILE")),
+		strings.TrimSpace(os.Getenv("ANTIMAGE_ENV_FILE")),
 		"/opt/rebecca/.env",
 	} {
 		if candidate == "" {
@@ -1469,7 +1469,7 @@ func decodeLegacyValue(value any) any {
 	if !ok || len(object) != 2 {
 		return value
 	}
-	marker, _ := object["__rebecca_type__"].(string)
+	marker, _ := object["__ANTIMAGE_type__"].(string)
 	raw := object["value"]
 	switch marker {
 	case "bytes":

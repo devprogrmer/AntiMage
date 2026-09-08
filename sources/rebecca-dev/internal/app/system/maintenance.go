@@ -244,7 +244,7 @@ type DefaultRuntimeDetector struct{}
 
 func (DefaultRuntimeDetector) Info() RuntimeInfo {
 	metadata := readRuntimeMetadata()
-	mode := strings.ToLower(strings.TrimSpace(os.Getenv("REBECCA_INSTALL_MODE")))
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("ANTIMAGE_INSTALL_MODE")))
 	if mode == "" {
 		mode = strings.ToLower(strings.TrimSpace(readTextFile(installModePath())))
 	}
@@ -279,28 +279,28 @@ func (DefaultRuntimeDetector) Info() RuntimeInfo {
 }
 
 func serviceName() string {
-	if value := strings.TrimSpace(os.Getenv("REBECCA_SERVICE_NAME")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("ANTIMAGE_SERVICE_NAME")); value != "" {
 		return value
 	}
 	return "rebecca"
 }
 
 func runtimeMetadataPath() string {
-	if value := strings.TrimSpace(os.Getenv("REBECCA_BINARY_METADATA_FILE")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("ANTIMAGE_BINARY_METADATA_FILE")); value != "" {
 		return value
 	}
 	return filepath.Join(appDir(), ".binary-release.json")
 }
 
 func installModePath() string {
-	if value := strings.TrimSpace(os.Getenv("REBECCA_INSTALL_MODE_FILE")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("ANTIMAGE_INSTALL_MODE_FILE")); value != "" {
 		return value
 	}
 	return filepath.Join(appDir(), ".install-mode")
 }
 
 func appDir() string {
-	if value := strings.TrimSpace(os.Getenv("REBECCA_APP_DIR")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("ANTIMAGE_APP_DIR")); value != "" {
 		return value
 	}
 	return "/opt/rebecca"
@@ -410,7 +410,7 @@ func splitMaintenanceOutput(data []byte, atEOF bool) (advance int, token []byte,
 }
 
 func resolveRebeccaCLI() (string, error) {
-	candidates := []string{strings.TrimSpace(os.Getenv("REBECCA_SCRIPT_BIN"))}
+	candidates := []string{strings.TrimSpace(os.Getenv("ANTIMAGE_SCRIPT_BIN"))}
 	if path, err := exec.LookPath("rebecca"); err == nil {
 		candidates = append(candidates, path)
 	}
@@ -456,7 +456,7 @@ func NewGitHubUpdateChecker() *GitHubUpdateChecker {
 		APIBase:        "https://api.github.com",
 		RawBase:        "https://raw.githubusercontent.com",
 		HTTPClient:     &http.Client{Timeout: 8 * time.Second},
-		ManifestBranch: firstEnv("REBECCA_BINARY_DEV_MANIFEST_BRANCH", "dev-build-manifest"),
+		ManifestBranch: firstEnv("ANTIMAGE_BINARY_DEV_MANIFEST_BRANCH", "dev-build-manifest"),
 		ManifestPath:   "dev-builds.json",
 		Now:            time.Now,
 		CacheTTL:       10 * time.Minute,

@@ -129,9 +129,9 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 }
 
 func TestRunMigrationsExternalDatabase(t *testing.T) {
-	url := strings.TrimSpace(os.Getenv("REBECCA_TEST_DATABASE_URL"))
+	url := strings.TrimSpace(os.Getenv("ANTIMAGE_TEST_DATABASE_URL"))
 	if url == "" {
-		t.Skip("REBECCA_TEST_DATABASE_URL is not set")
+		t.Skip("ANTIMAGE_TEST_DATABASE_URL is not set")
 	}
 	ctx := context.Background()
 	pool, err := platformdb.Open(url)

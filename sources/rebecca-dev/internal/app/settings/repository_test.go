@@ -99,7 +99,7 @@ func TestReadTemplateContentIgnoresPersistentDirectoryWhenDBDirectoryIsEmpty(t *
 	}
 
 	dataDir := t.TempDir()
-	t.Setenv("REBECCA_DATA_DIR", dataDir)
+	t.Setenv("ANTIMAGE_DATA_DIR", dataDir)
 	staleTemplatePath := filepath.Join(dataDir, "templates", "subscription", "index.html")
 	if err := os.MkdirAll(filepath.Dir(staleTemplatePath), 0o755); err != nil {
 		t.Fatal(err)

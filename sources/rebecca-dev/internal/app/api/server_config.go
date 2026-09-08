@@ -59,34 +59,34 @@ func LoadConfig() (Config, error) {
 
 	cfg := Config{
 		Database:                     lookup("SQLALCHEMY_DATABASE_URL", "DATABASE_URL"),
-		CertificateBase:              lookup("REBECCA_CERT_BASE"),
-		CertbotBinary:                lookup("REBECCA_CERTBOT_BIN"),
-		ExternalAppsBase:             lookup("REBECCA_EXTERNAL_APPS_BASE"),
+		CertificateBase:              lookup("ANTIMAGE_CERT_BASE"),
+		CertbotBinary:                lookup("ANTIMAGE_CERTBOT_BIN"),
+		ExternalAppsBase:             lookup("ANTIMAGE_EXTERNAL_APPS_BASE"),
 		MySQLRootPassword:            lookup("MYSQL_ROOT_PASSWORD"),
-		NodeOperationsPollInterval:   lookup("REBECCA_NODE_OPERATIONS_POLL_INTERVAL"),
-		NodeUsageCollectionInterval:  lookup("REBECCA_NODE_USAGE_COLLECTION_INTERVAL"),
-		NodeUsageCollectionLimit:     parseIntDefault(lookup("REBECCA_NODE_USAGE_COLLECTION_LIMIT"), 0),
-		NodeUsageFlushInterval:       lookup("REBECCA_NODE_USAGE_FLUSH_INTERVAL"),
-		NodeUsageFlushBatchSize:      parseIntDefault(lookup("REBECCA_NODE_USAGE_FLUSH_BATCH_SIZE"), 2000),
+		NodeOperationsPollInterval:   lookup("ANTIMAGE_NODE_OPERATIONS_POLL_INTERVAL"),
+		NodeUsageCollectionInterval:  lookup("ANTIMAGE_NODE_USAGE_COLLECTION_INTERVAL"),
+		NodeUsageCollectionLimit:     parseIntDefault(lookup("ANTIMAGE_NODE_USAGE_COLLECTION_LIMIT"), 0),
+		NodeUsageFlushInterval:       lookup("ANTIMAGE_NODE_USAGE_FLUSH_INTERVAL"),
+		NodeUsageFlushBatchSize:      parseIntDefault(lookup("ANTIMAGE_NODE_USAGE_FLUSH_BATCH_SIZE"), 2000),
 		RecordNodeUsage:              true,
 		RecordNodeUserUsages:         true,
-		AdminLifecycleInterval:       lookup("REBECCA_ADMIN_LIFECYCLE_INTERVAL"),
-		UserLifecycleInterval:        firstNonEmpty(lookup("REBECCA_USER_LIFECYCLE_INTERVAL"), secondsEnv(lookup("JOB_REVIEW_USERS_INTERVAL"))),
-		UserLifecycleBatchSize:       parseIntDefault(lookup("REBECCA_USER_LIFECYCLE_BATCH_SIZE", "JOB_REVIEW_USERS_BATCH_SIZE"), 500),
-		UserUsageResetInterval:       lookup("REBECCA_USER_USAGE_RESET_INTERVAL"),
-		UserUsageResetBatchSize:      parseIntDefault(lookup("REBECCA_USER_USAGE_RESET_BATCH_SIZE"), 500),
-		UserAutodeleteInterval:       lookup("REBECCA_USER_AUTODELETE_INTERVAL"),
-		UserAutodeleteBatchSize:      parseIntDefault(lookup("REBECCA_USER_AUTODELETE_BATCH_SIZE"), 500),
+		AdminLifecycleInterval:       lookup("ANTIMAGE_ADMIN_LIFECYCLE_INTERVAL"),
+		UserLifecycleInterval:        firstNonEmpty(lookup("ANTIMAGE_USER_LIFECYCLE_INTERVAL"), secondsEnv(lookup("JOB_REVIEW_USERS_INTERVAL"))),
+		UserLifecycleBatchSize:       parseIntDefault(lookup("ANTIMAGE_USER_LIFECYCLE_BATCH_SIZE", "JOB_REVIEW_USERS_BATCH_SIZE"), 500),
+		UserUsageResetInterval:       lookup("ANTIMAGE_USER_USAGE_RESET_INTERVAL"),
+		UserUsageResetBatchSize:      parseIntDefault(lookup("ANTIMAGE_USER_USAGE_RESET_BATCH_SIZE"), 500),
+		UserAutodeleteInterval:       lookup("ANTIMAGE_USER_AUTODELETE_INTERVAL"),
+		UserAutodeleteBatchSize:      parseIntDefault(lookup("ANTIMAGE_USER_AUTODELETE_BATCH_SIZE"), 500),
 		UsersAutodeleteDays:          parseIntDefault(lookup("USERS_AUTODELETE_DAYS"), -1),
 		UserAutodeleteIncludeLimited: parseBoolDefault(lookup("USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS"), false),
 		JWTAccessTokenExpireMinutes:  parseIntDefault(lookup("JWT_ACCESS_TOKEN_EXPIRE_MINUTES"), 1440),
 		UsersListTimeoutSeconds:      parseFloatDefault(lookup("USERS_LIST_TIMEOUT_SECONDS"), 0),
-		TelegramAPIBase:              lookup("REBECCA_TELEGRAM_API_BASE"),
+		TelegramAPIBase:              lookup("ANTIMAGE_TELEGRAM_API_BASE"),
 		WebhookAddresses:             splitWebhookAddresses(lookup("WEBHOOK_ADDRESS")),
 		WebhookSecret:                lookup("WEBHOOK_SECRET"),
-		WebhookSendInterval:          firstNonEmpty(lookup("REBECCA_WEBHOOK_SEND_INTERVAL"), secondsEnv(lookup("JOB_SEND_NOTIFICATIONS_INTERVAL"))),
+		WebhookSendInterval:          firstNonEmpty(lookup("ANTIMAGE_WEBHOOK_SEND_INTERVAL"), secondsEnv(lookup("JOB_SEND_NOTIFICATIONS_INTERVAL"))),
 		WebhookMaxRetries:            parseIntDefault(lookup("NUMBER_OF_RECURRENT_NOTIFICATIONS"), 3),
-		WebhookRetryInterval:         firstNonEmpty(lookup("REBECCA_WEBHOOK_RETRY_INTERVAL"), secondsEnv(lookup("RECURRENT_NOTIFICATIONS_TIMEOUT"))),
+		WebhookRetryInterval:         firstNonEmpty(lookup("ANTIMAGE_WEBHOOK_RETRY_INTERVAL"), secondsEnv(lookup("RECURRENT_NOTIFICATIONS_TIMEOUT"))),
 	}
 	if cfg.Database == "" {
 		return Config{}, fmt.Errorf("SQLALCHEMY_DATABASE_URL is required")
@@ -198,7 +198,7 @@ func candidateEnvFiles() []string {
 	}
 
 	paths := []string{}
-	paths = add(paths, os.Getenv("REBECCA_ENV_FILE"))
+	paths = add(paths, os.Getenv("ANTIMAGE_ENV_FILE"))
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
 		paths = add(paths, filepath.Join(dir, ".env"))

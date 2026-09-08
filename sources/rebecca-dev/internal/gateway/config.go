@@ -25,13 +25,13 @@ func LoadConfig() Config {
 		Addr:            gatewayListenAddr(env),
 		TLSCertFile:     lookupEnv(env, "UVICORN_SSL_CERTFILE", ""),
 		TLSKeyFile:      lookupEnv(env, "UVICORN_SSL_KEYFILE", ""),
-		CertificateBase: lookupEnv(env, "REBECCA_CERT_BASE", "/var/lib/rebecca/certificates"),
+		CertificateBase: lookupEnv(env, "ANTIMAGE_CERT_BASE", "/var/lib/antimage/certificates"),
 		DashboardPath:   "/dashboard/",
 	}
 }
 
 func gatewayListenAddr(env map[string]string) string {
-	if addr := lookupEnv(env, "REBECCA_GATEWAY_ADDR", ""); addr != "" {
+	if addr := lookupEnv(env, "ANTIMAGE_GATEWAY_ADDR", ""); addr != "" {
 		return addr
 	}
 	host := lookupEnv(env, "UVICORN_HOST", "0.0.0.0")
@@ -82,7 +82,7 @@ func candidateEnvFiles() []string {
 	}
 
 	paths := []string{}
-	paths = add(paths, os.Getenv("REBECCA_ENV_FILE"))
+	paths = add(paths, os.Getenv("ANTIMAGE_ENV_FILE"))
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
 		paths = add(paths, filepath.Join(dir, ".env"))

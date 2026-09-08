@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
-REBECCA_REPO="${REBECCA_REPO:-rebeccapanel/Rebecca}"
-REBECCA_REF="${REBECCA_REF:-master}"
-SCRIPT_URL="${REBECCA_SCRIPT_URL:-https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}/scripts/rebecca/rebecca.sh}"
+ANTIMAGE_REPO="${ANTIMAGE_REPO:-rebeccapanel/Rebecca}"
+ANTIMAGE_REF="${ANTIMAGE_REF:-master}"
+SCRIPT_URL="${ANTIMAGE_SCRIPT_URL:-https://raw.githubusercontent.com/${ANTIMAGE_REPO}/${ANTIMAGE_REF}/scripts/antimage/antimage.sh}"
 
 if [ "$(id -u)" != "0" ]; then
     echo "This script must be run as root." >&2

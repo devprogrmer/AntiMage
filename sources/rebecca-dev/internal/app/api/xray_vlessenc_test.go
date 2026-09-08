@@ -108,9 +108,9 @@ func assertVLESSEncAuthBlocks(t *testing.T, auths []map[string]string) {
 }
 
 func TestGeneratedVLESSEncryptionAcceptedByOfficialXray(t *testing.T) {
-	binary := strings.TrimSpace(os.Getenv("REBECCA_XRAY_TEST_BINARY"))
+	binary := strings.TrimSpace(os.Getenv("ANTIMAGE_XRAY_TEST_BINARY"))
 	if binary == "" {
-		t.Skip("set REBECCA_XRAY_TEST_BINARY to an official Xray binary")
+		t.Skip("set ANTIMAGE_XRAY_TEST_BINARY to an official Xray binary")
 	}
 	auths, err := generateVLESSEncAuthBlocks()
 	if err != nil {

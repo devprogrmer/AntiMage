@@ -4,7 +4,7 @@ set -euo pipefail
 NODE_SEARCH_BASE="/opt"
 NODE_IMAGE_REPO="rebeccapanel/rebecca-node"
 DEFAULT_IMAGE_TAG="latest"
-NODE_SCRIPT_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca-node.sh"
+NODE_SCRIPT_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/antimage/rebecca-node.sh"
 
 declare -a NODE_PATHS=()
 declare -a NODE_NAMES=()
@@ -206,8 +206,8 @@ default_tag = sys.argv[3]
 text = path.read_text()
 
 def replace_paths(value: str) -> str:
-    value = re.sub(r'(:\s*["\']?)/var/lib/marzban-node', r'\1/var/lib/rebecca-node', value)
-    value = re.sub(r'(:\s*["\']?)/var/lib/marzban', r'\1/var/lib/rebecca', value)
+    value = re.sub(r'(:\s*["\']?)/var/lib/marzban-node', r'\1/var/lib/antimage-node', value)
+    value = re.sub(r'(:\s*["\']?)/var/lib/marzban', r'\1/var/lib/antimage', value)
     return value
 
 def replace_image(value: str, default_tag: str) -> str:
@@ -245,8 +245,8 @@ path = pathlib.Path(sys.argv[1])
 original_text = path.read_text()
 lines = original_text.splitlines()
 replacements = [
-    (re.compile(r'(=\s*["\']?)/var/lib/marzban-node'), r"\1/var/lib/rebecca-node"),
-    (re.compile(r'(=\s*["\']?)/var/lib/marzban'), r"\1/var/lib/rebecca"),
+    (re.compile(r'(=\s*["\']?)/var/lib/marzban-node'), r"\1/var/lib/antimage-node"),
+    (re.compile(r'(=\s*["\']?)/var/lib/marzban'), r"\1/var/lib/antimage"),
 ]
 skip_keywords = ("DATABASE",)
 

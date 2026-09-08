@@ -15,7 +15,7 @@ test_dedicated_database() (
     root=$(mktemp -d)
     trap 'rm -rf "$root"' EXIT
     new_fixture "$root"
-    export REBECCA_SOURCE_ONLY=1 REBECCA_MYSQL_CONFIG_ROOT="$root"
+    export ANTIMAGE_SOURCE_ONLY=1 ANTIMAGE_MYSQL_CONFIG_ROOT="$root"
     source "$SCRIPT_PATH"
 
     local restarted=0 purged=0
@@ -49,7 +49,7 @@ test_shared_database_is_untouched() (
     trap 'rm -rf "$root"' EXIT
     new_fixture "$root"
     before=$(cat "$root/mysql.conf.d/rebecca.cnf")
-    export REBECCA_SOURCE_ONLY=1 REBECCA_MYSQL_CONFIG_ROOT="$root"
+    export ANTIMAGE_SOURCE_ONLY=1 ANTIMAGE_MYSQL_CONFIG_ROOT="$root"
     source "$SCRIPT_PATH"
 
     is_binary_install() { return 0; }
@@ -73,7 +73,7 @@ test_replication_database_is_untouched() (
     new_fixture "$root"
     printf '[mysqld]\nserver-id=12\n' > "$root/mysql.conf.d/replication.cnf"
     before=$(cat "$root/mysql.conf.d/rebecca.cnf")
-    export REBECCA_SOURCE_ONLY=1 REBECCA_MYSQL_CONFIG_ROOT="$root"
+    export ANTIMAGE_SOURCE_ONLY=1 ANTIMAGE_MYSQL_CONFIG_ROOT="$root"
     source "$SCRIPT_PATH"
 
     is_binary_install() { return 0; }
@@ -96,7 +96,7 @@ test_failed_restart_restores_config() (
     trap 'rm -rf "$root"' EXIT
     new_fixture "$root"
     before=$(cat "$root/mysql.conf.d/rebecca.cnf")
-    export REBECCA_SOURCE_ONLY=1 REBECCA_MYSQL_CONFIG_ROOT="$root"
+    export ANTIMAGE_SOURCE_ONLY=1 ANTIMAGE_MYSQL_CONFIG_ROOT="$root"
     source "$SCRIPT_PATH"
 
     is_binary_install() { return 0; }
@@ -120,7 +120,7 @@ test_failed_restart_restores_config() (
 )
 
 test_external_database_is_rejected() (
-    export REBECCA_SOURCE_ONLY=1
+    export ANTIMAGE_SOURCE_ONLY=1
     source "$SCRIPT_PATH"
     get_env_value() { echo 'mysql+pymysql://rebecca:secret@db.example.com:3306/rebecca'; }
     ! managed_database_url_is_local
@@ -130,7 +130,7 @@ test_running_database_is_restarted() (
     local expected_database_type="$1"
     local expected_service_name="$2"
     local restarted="" waited=0
-    export REBECCA_SOURCE_ONLY=1
+    export ANTIMAGE_SOURCE_ONLY=1
     source "$SCRIPT_PATH"
 
     is_binary_install() { return 0; }
@@ -149,7 +149,7 @@ test_running_database_is_restarted() (
 
 test_inactive_database_is_not_restarted() (
     local restarted=0
-    export REBECCA_SOURCE_ONLY=1
+    export ANTIMAGE_SOURCE_ONLY=1
     source "$SCRIPT_PATH"
 
     is_binary_install() { return 0; }
@@ -164,10 +164,10 @@ test_inactive_database_is_not_restarted() (
 
 test_panel_restart_stops_when_database_fails() (
     local panel_restart_scheduled=0
-    export REBECCA_SOURCE_ONLY=1
+    export ANTIMAGE_SOURCE_ONLY=1
     source "$SCRIPT_PATH"
 
-    is_rebecca_installed() { return 0; }
+    is_ANTIMAGE_installed() { return 0; }
     is_binary_install() { return 0; }
     restart_binary_database_if_running() { return 1; }
     schedule_binary_service_restart() { panel_restart_scheduled=1; }

@@ -13,7 +13,7 @@ import (
 var rebeccaScriptPath = "/usr/local/bin/rebecca"
 
 func runManagedDatabaseMaintenance(ctx context.Context) {
-	if !strings.EqualFold(strings.TrimSpace(os.Getenv("REBECCA_INSTALL_MODE")), "binary") {
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv("ANTIMAGE_INSTALL_MODE")), "binary") {
 		return
 	}
 	if _, err := os.Stat(rebeccaScriptPath); err != nil {
