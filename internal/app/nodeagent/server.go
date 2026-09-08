@@ -285,22 +285,44 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	if err := os.MkdirAll(s.cfg.DataDir, 0755); err != nil {
 		return nil, err
 	}
+
 	configPath := filepath.Join(s.cfg.DataDir, "xray-config.json")
+
+	xrayAvailable := false
+	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
+		xrayAvailable = true
+	} else if !os.IsNotExist(err) {
+		return nil, status.Errorf(codes.Internal, "stat xray binary: %v", err)
+	}
+
+	// Validate a temporary candidate before touching the last-known-good config.
+	if xrayAvailable {
+		pending, err := os.CreateTemp(s.cfg.DataDir, "xray-config-*.json")
+		if err != nil {
+			return nil, err
+		}
+		pendingPath := pending.Name()
+		defer os.Remove(pendingPath)
+
+		if _, err := pending.WriteString(req.GetConfigJson()); err != nil {
+			_ = pending.Close()
+			return nil, err
+		}
+		if err := pending.Close(); err != nil {
+			return nil, err
+		}
+
+		if err := s.validateXrayConfig(pendingPath); err != nil {
+			s.appendLog(err.Error())
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
 	if err := os.WriteFile(configPath, []byte(req.GetConfigJson()), 0644); err != nil {
 		return nil, err
 	}
 
-	s.mu.Lock()
-	s.lastConfig = configPath
-	if req.GetDesiredRevision() > s.appliedRev {
-		s.appliedRev = req.GetDesiredRevision()
-	}
-	s.mu.Unlock()
-	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
-		if err := s.validateXrayConfig(configPath); err != nil {
-			s.appendLog(err.Error())
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
+	if xrayAvailable {
 		if err := s.startXray(configPath); err != nil {
 			s.appendLog("failed to start xray: " + err.Error())
 			return nil, status.Errorf(codes.Internal, "start xray: %v", err)
@@ -309,9 +331,17 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	} else {
 		message += "; xray binary is not installed yet"
 	}
+
+	// Only mark the revision applied after validation/persistence/runtime start succeeded.
+	s.mu.Lock()
+	s.lastConfig = configPath
+	if req.GetDesiredRevision() > s.appliedRev {
+		s.appliedRev = req.GetDesiredRevision()
+	}
+	s.mu.Unlock()
+
 	return s.action(req.GetOperationId(), message), nil
 }
-
 func (s *Server) validateXrayConfig(configPath string) error {
 	cmd := runtimeCommand(s.cfg.XrayPath, "run", "-test", "-config", configPath)
 	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+s.cfg.XrayAssetsDir)
