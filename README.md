@@ -30,7 +30,7 @@ curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/a
 برای نصب نسخه مشخص:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --version v0.1.1
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --version v0.1.3
 ```
 
 نصب‌کننده باینری، سرویس systemd، فایل تنظیمات و مسیر داده را آماده می‌کند:
@@ -50,7 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/a
 
 ```bash
 docker pull ghcr.io/devprogrmer/antimage:latest
-docker pull ghcr.io/devprogrmer/antimage:v0.1.1
+docker pull ghcr.io/devprogrmer/antimage:v0.1.3
 ```
 
 برای MySQL یا MariaDB:
@@ -116,7 +116,7 @@ curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/a
 
 ```bash
 docker pull ghcr.io/devprogrmer/antimage-node:latest
-docker pull ghcr.io/devprogrmer/antimage-node:v0.1.1
+docker pull ghcr.io/devprogrmer/antimage-node:v0.1.3
 ```
 
 ## تنظیمات اصلی
@@ -177,7 +177,7 @@ sudo antimage restart
 یا نسخه مشخص:
 
 ```bash
-sudo antimage update --version v0.1.1
+sudo antimage update --version v0.1.3
 ```
 
 قبل از ارتقا سرویس را در محیط تست بررسی و از `/var/lib/antimage` backup بگیرید.

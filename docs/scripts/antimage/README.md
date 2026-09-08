@@ -13,7 +13,7 @@ curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/a
 نسخه مشخص:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --version v0.1.1
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --version v0.1.3
 ```
 
 ## نصب Master با Docker
@@ -27,7 +27,7 @@ Pull مستقیم image:
 
 ```bash
 docker pull ghcr.io/devprogrmer/antimage:latest
-docker pull ghcr.io/devprogrmer/antimage:v0.1.1
+docker pull ghcr.io/devprogrmer/antimage:v0.1.3
 ```
 
 برای اجرای مطمئن، قبل از نصب Docker و Docker Compose را نصب کنید. imageهای Docker باید از طریق انتشار پروژه در دسترس باشند؛ در غیر این صورت نصب Binary را انتخاب کنید.
@@ -63,7 +63,7 @@ sudo antimage status
 sudo antimage logs
 sudo antimage restart
 sudo antimage update
-sudo antimage update --version v0.1.1
+sudo antimage update --version v0.1.3
 sudo antimage core-update
 ```
 
