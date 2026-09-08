@@ -156,7 +156,67 @@ func (s *Server) Metrics(context.Context, *nodev1.MetricsRequest) (*nodev1.Metri
 }
 
 func (s *Server) PublicIPs(context.Context, *nodev1.PublicIPsRequest) (*nodev1.PublicIPsResponse, error) {
-	return &nodev1.PublicIPsResponse{}, nil
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "list network interfaces: %v", err)
+	}
+
+	ipv4, ipv6 := publicIPsFromAddrs(addrs)
+	return &nodev1.PublicIPsResponse{
+		Ipv4: ipv4,
+		Ipv6: ipv6,
+	}, nil
+}
+
+func publicIPsFromAddrs(addrs []net.Addr) (string, string) {
+	var ipv4 string
+	var ipv6 string
+
+	for _, addr := range addrs {
+		var ip net.IP
+
+		switch value := addr.(type) {
+		case *net.IPNet:
+			ip = value.IP
+		case *net.IPAddr:
+			ip = value.IP
+		default:
+			continue
+		}
+
+		if !isPublicInterfaceIP(ip) {
+			continue
+		}
+
+		if v4 := ip.To4(); v4 != nil {
+			if ipv4 == "" {
+				ipv4 = v4.String()
+			}
+		} else if ip.To16() != nil && ipv6 == "" {
+			ipv6 = ip.String()
+		}
+
+		if ipv4 != "" && ipv6 != "" {
+			break
+		}
+	}
+
+	return ipv4, ipv6
+}
+
+func isPublicInterfaceIP(ip net.IP) bool {
+	if ip == nil || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return false
+	}
+
+	if v4 := ip.To4(); v4 != nil {
+		// RFC 6598 carrier-grade NAT space is not a public address.
+		if v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127 {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (s *Server) RestartService(context.Context, *nodev1.ServiceRestartRequest) (*nodev1.RuntimeActionResponse, error) {

@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -93,5 +94,24 @@ func TestStartXrayClearsRuntimeAfterProcessExit(t *testing.T) {
 			t.Fatal("runtime process exited but lastRuntime was not cleared")
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestPublicIPsFromAddrs(t *testing.T) {
+	addrs := []net.Addr{
+		&net.IPNet{IP: net.ParseIP("127.0.0.1"), Mask: net.CIDRMask(8, 32)},
+		&net.IPNet{IP: net.ParseIP("10.20.30.40"), Mask: net.CIDRMask(8, 32)},
+		&net.IPNet{IP: net.ParseIP("100.64.1.2"), Mask: net.CIDRMask(10, 32)},
+		&net.IPNet{IP: net.ParseIP("8.8.8.8"), Mask: net.CIDRMask(32, 32)},
+		&net.IPNet{IP: net.ParseIP("2606:4700:4700::1111"), Mask: net.CIDRMask(128, 128)},
+	}
+
+	ipv4, ipv6 := publicIPsFromAddrs(addrs)
+
+	if ipv4 != "8.8.8.8" {
+		t.Fatalf("unexpected public IPv4: %q", ipv4)
+	}
+	if ipv6 != "2606:4700:4700::1111" {
+		t.Fatalf("unexpected public IPv6: %q", ipv6)
 	}
 }
