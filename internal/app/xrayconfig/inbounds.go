@@ -1281,11 +1281,81 @@ func (r Repository) enqueueAffectedServiceUsersTx(ctx context.Context, tx *sql.T
 	if len(serviceIDs) == 0 {
 		return nil
 	}
-	sort.Slice(serviceIDs, func(i, j int) bool { return serviceIDs[i] < serviceIDs[j] })
-	return r.enqueueSyncConfigTx(ctx, tx, nil, map[string]any{
-		"source":      "inbounds",
-		"service_ids": serviceIDs,
+
+	sort.Slice(serviceIDs, func(i, j int) bool {
+		return serviceIDs[i] < serviceIDs[j]
 	})
+
+	uniqueServiceIDs := make([]int64, 0, len(serviceIDs))
+	for _, serviceID := range serviceIDs {
+		if serviceID <= 0 {
+			continue
+		}
+		if len(uniqueServiceIDs) > 0 &&
+			uniqueServiceIDs[len(uniqueServiceIDs)-1] == serviceID {
+			continue
+		}
+		uniqueServiceIDs = append(uniqueServiceIDs, serviceID)
+	}
+
+	if len(uniqueServiceIDs) == 0 {
+		return nil
+	}
+
+	placeholders := sqlPlaceholders(len(uniqueServiceIDs))
+	args := int64SliceToAny(uniqueServiceIDs)
+
+	rows, err := tx.QueryContext(
+		ctx,
+		`SELECT id
+FROM users
+WHERE service_id IN (`+placeholders+`)
+  AND COALESCE(status, '') != 'deleted'
+ORDER BY id`,
+		args...,
+	)
+	if err != nil {
+		return err
+	}
+
+	userIDs := make([]int64, 0)
+	for rows.Next() {
+		var userID int64
+		if err := rows.Scan(&userID); err != nil {
+			rows.Close()
+			return err
+		}
+		userIDs = append(userIDs, userID)
+	}
+
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	payload := map[string]any{
+		"source":      "inbounds",
+		"service_ids": uniqueServiceIDs,
+	}
+
+	for _, userID := range userIDs {
+		targetUserID := userID
+		if err := enqueueNodeOperationTx(
+			ctx,
+			tx,
+			"update_user",
+			nil,
+			&targetUserID,
+			payload,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func sqlPlaceholders(count int) string {

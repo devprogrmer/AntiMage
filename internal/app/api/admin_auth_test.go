@@ -228,7 +228,13 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			certificate TEXT NULL,
 			certificate_key TEXT NULL,
 			xray_config_mode TEXT DEFAULT 'default',
-			xray_config TEXT NULL
+			xray_config TEXT NULL,
+                        desired_revision INTEGER NOT NULL DEFAULT 0,
+                        applied_revision INTEGER NOT NULL DEFAULT 0,
+                        agent_status TEXT NOT NULL DEFAULT 'unknown',
+                        xray_status TEXT NOT NULL DEFAULT 'unknown',
+                        node_capabilities TEXT NULL,
+                        last_seen_at DATETIME NULL
 		)`,
 		`CREATE TABLE pending_node_certificates (
 			id INTEGER PRIMARY KEY,
@@ -342,7 +348,7 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 		cfg: Config{
 			Database:                    "sqlite:///" + filepath.ToSlash(path),
 			JWTAccessTokenExpireMinutes: 1440,
-			NodeOperationsPollInterval:   "0",
+			NodeOperationsPollInterval:  "0",
 		},
 		db:             db,
 		dialect:        "sqlite",
