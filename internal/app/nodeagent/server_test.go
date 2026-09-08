@@ -28,6 +28,9 @@ func TestNodeAgentHelperProcess(t *testing.T) {
 		os.Exit(2)
 	case "runtime-exit":
 		os.Exit(0)
+	case "runtime-wait":
+		time.Sleep(30 * time.Second)
+		os.Exit(0)
 	default:
 		fmt.Fprintln(os.Stderr, "unknown helper mode:", mode)
 		os.Exit(3)

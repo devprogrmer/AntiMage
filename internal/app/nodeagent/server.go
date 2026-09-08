@@ -288,6 +288,12 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 
 	configPath := filepath.Join(s.cfg.DataDir, "xray-config.json")
 
+	previousConfig, readErr := os.ReadFile(configPath)
+	previousExists := readErr == nil
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return nil, status.Errorf(codes.Internal, "read previous xray config: %v", readErr)
+	}
+
 	xrayAvailable := false
 	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
 		xrayAvailable = true
@@ -318,14 +324,57 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 		}
 	}
 
+	s.mu.Lock()
+	hadRuntime := s.lastRuntime != nil
+	s.mu.Unlock()
+
 	if err := os.WriteFile(configPath, []byte(req.GetConfigJson()), 0644); err != nil {
+		_ = restoreConfigFile(configPath, previousConfig, previousExists)
 		return nil, err
 	}
 
 	if xrayAvailable {
 		if err := s.startXray(configPath); err != nil {
+			rollbackErr := restoreConfigFile(configPath, previousConfig, previousExists)
+
+			var restartErr error
+			if rollbackErr == nil && hadRuntime && previousExists {
+				restartErr = s.startXray(configPath)
+			}
+
 			s.appendLog("failed to start xray: " + err.Error())
-			return nil, status.Errorf(codes.Internal, "start xray: %v", err)
+
+			if rollbackErr != nil {
+				return nil, status.Errorf(
+					codes.Internal,
+					"start xray: %v; restore previous config: %v",
+					err,
+					rollbackErr,
+				)
+			}
+
+			if hadRuntime && !previousExists {
+				return nil, status.Errorf(
+					codes.Internal,
+					"start xray: %v; previous runtime cannot be restored because its config is missing",
+					err,
+				)
+			}
+
+			if restartErr != nil {
+				return nil, status.Errorf(
+					codes.Internal,
+					"start xray: %v; restart previous runtime: %v",
+					err,
+					restartErr,
+				)
+			}
+
+			return nil, status.Errorf(
+				codes.Internal,
+				"start xray: %v; previous config and runtime restored",
+				err,
+			)
 		}
 		message += " and runtime started"
 	} else {
@@ -341,6 +390,17 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	s.mu.Unlock()
 
 	return s.action(req.GetOperationId(), message), nil
+}
+
+func restoreConfigFile(path string, previous []byte, existed bool) error {
+	if existed {
+		return os.WriteFile(path, previous, 0644)
+	}
+
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 func (s *Server) validateXrayConfig(configPath string) error {
 	cmd := runtimeCommand(s.cfg.XrayPath, "run", "-test", "-config", configPath)
