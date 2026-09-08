@@ -208,4 +208,7 @@ func TestExternalAppFastCGILocationDefaultsTo302(t *testing.T) {
 	if response.Code != http.StatusFound || response.Header().Get("Location") != "/login" {
 		t.Fatalf("redirect = %d %q", response.Code, response.Header().Get("Location"))
 	}
+	if got := response.Header().Get("Content-Security-Policy"); !strings.Contains(got, "sandbox") {
+		t.Fatalf("missing sandbox CSP: %q", got)
+	}
 }

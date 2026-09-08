@@ -4,7 +4,7 @@ Panel/subscription settings, template content, AntiMage backup, and certificate
 management are Go-native. The remaining disabled settings feature is listed
 below.
 
-## 3x-ui Import
+## Legacy Import
 
-The 3x-ui importer is also disabled from Go with `410 Gone` and should be
+The legacy importer is also disabled from Go with `410 Gone` and should be
 rebuilt as a Go-native importer.

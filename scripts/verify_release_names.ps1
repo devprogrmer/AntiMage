@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 
-$patterns = "\bRebecca\b|\brebecca\b|vpn-ui|VPN-UI|rebeccapanel|rb-|rb_|rb[A-Z]|RB_"
+$patterns = "\brebecca\b|\bRebecca\b|\bREBECCA\b|vpn-ui|VPN-UI|3x-ui|3X-UI|sanaei|alireza"
 
 $excluded = @(
     "sources",
@@ -14,17 +14,20 @@ $excluded = @(
     "dashboard/build",
     "internal/gateway/static/dashboard/build",
     "dist",
-    ".git"
+    ".git",
+    "scripts/verify_release_names.ps1"
 )
 
 Push-Location $root
 try {
-    $files = Get-ChildItem -Recurse -File | Where-Object {
-        $path = $_.FullName.Replace("\", "/")
-        -not ($excluded | Where-Object { $path -like "*/$_/*" })
+    $files = git ls-files | Where-Object {
+        $path = $_.Replace("\", "/")
+        -not ($excluded | Where-Object { $path -eq $_ -or $path -like "$_/*" })
     }
 
-    $output = $files | Select-String -Pattern $patterns
+    $output = if ($files) {
+        Select-String -Path $files -Pattern $patterns
+    }
 
     if ($output) {
         $output

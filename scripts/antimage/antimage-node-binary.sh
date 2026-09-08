@@ -1489,7 +1489,6 @@ services:
       XRAY_API_PORT: "$XRAY_API_PORT"
 
     volumes:
-      - $DATA_DIR:/var/lib/marzban-node
       - $DATA_DIR:/var/lib/antimage-node
 EOL
     colorized_echo green "File saved in $APP_DIR/docker-compose.yml"

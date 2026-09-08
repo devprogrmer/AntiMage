@@ -375,10 +375,19 @@ func writePHPMyAdminFastCGIResponse(w http.ResponseWriter, stdout []byte, status
 	rewritePHPMyAdminCookies(w.Header(), phpMyAdminEmbedPath)
 	body = rewritePHPMyAdminBody(body, status, phpMyAdminEmbedPath)
 	w.Header().Set("Cache-Control", "no-store")
+	setPHPMyAdminEmbedSecurityHeaders(w.Header())
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(statusCode)
 	_, err = w.Write(body)
 	return err
+}
+
+func setPHPMyAdminEmbedSecurityHeaders(header http.Header) {
+	header.Set("X-Content-Type-Options", "nosniff")
+	header.Set("Referrer-Policy", "same-origin")
+	header.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+	header.Set("X-Frame-Options", "SAMEORIGIN")
+	header.Set("Content-Security-Policy", "sandbox allow-forms allow-scripts allow-same-origin allow-popups allow-downloads; base-uri 'self'; frame-ancestors 'self'")
 }
 
 func shouldSkipPHPMyAdminEmbedHeader(key string) bool {

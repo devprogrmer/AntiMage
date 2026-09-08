@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/a
 نصب نسخه مشخص:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --version v0.1.1
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --version v0.1.3
 ```
 
 مسیرهای مهم:
@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/a
 
 ```bash
 docker pull ghcr.io/devprogrmer/antimage:latest
-docker pull ghcr.io/devprogrmer/antimage:v0.1.1
+docker pull ghcr.io/devprogrmer/antimage:v0.1.3
 ```
 
 برای MySQL:
@@ -101,7 +101,7 @@ curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/a
 
 ```bash
 docker pull ghcr.io/devprogrmer/antimage-node:latest
-docker pull ghcr.io/devprogrmer/antimage-node:v0.1.1
+docker pull ghcr.io/devprogrmer/antimage-node:v0.1.3
 ```
 
 مسیرهای معمول Node:
@@ -175,7 +175,7 @@ sudo antimage status
 sudo antimage logs
 sudo antimage restart
 sudo antimage update
-sudo antimage update --version v0.1.1
+sudo antimage update --version v0.1.3
 sudo antimage core-update
 ```
 

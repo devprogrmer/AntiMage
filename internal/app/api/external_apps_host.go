@@ -354,6 +354,7 @@ func writeExternalAppFastCGIResponse(w http.ResponseWriter, stdout []byte) error
 		statusCode = http.StatusFound
 	}
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	setExternalAppSecurityHeaders(w.Header())
 	w.WriteHeader(statusCode)
 	_, err = w.Write(body)
 	return err
@@ -373,4 +374,5 @@ func setExternalAppSecurityHeaders(header http.Header) {
 	header.Set("Referrer-Policy", "same-origin")
 	header.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 	header.Set("X-Frame-Options", "SAMEORIGIN")
+	header.Set("Content-Security-Policy", "sandbox allow-forms allow-scripts allow-same-origin allow-popups allow-downloads; base-uri 'self'; frame-ancestors 'self'")
 }

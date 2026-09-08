@@ -628,8 +628,7 @@ const removeReverseFromConfig = (config: any, reverse: ReverseRow) => {
 	delete config.reverse;
 };
 
-// UX credit: the compact Xray settings panels and row action flow are
-// intentionally inspired by 3x-ui's Xray settings page.
+// Compact Xray settings panels keep row actions close to the edited section.
 const SettingsSection: FC<{
 	title: string;
 	children: ReactNode;
