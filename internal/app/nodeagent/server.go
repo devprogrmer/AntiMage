@@ -24,6 +24,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+var runtimeCommand = exec.Command
+
 type Server struct {
 	nodev1.UnimplementedNodeControlServiceServer
 	nodev1.UnimplementedNodeRuntimeServiceServer
@@ -234,9 +236,15 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 		s.appliedRev = req.GetDesiredRevision()
 	}
 	s.mu.Unlock()
-
 	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
-		_ = s.startXray(configPath)
+		if err := s.validateXrayConfig(configPath); err != nil {
+			s.appendLog(err.Error())
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		if err := s.startXray(configPath); err != nil {
+			s.appendLog("failed to start xray: " + err.Error())
+			return nil, status.Errorf(codes.Internal, "start xray: %v", err)
+		}
 		message += " and runtime started"
 	} else {
 		message += "; xray binary is not installed yet"
@@ -244,9 +252,24 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	return s.action(req.GetOperationId(), message), nil
 }
 
+func (s *Server) validateXrayConfig(configPath string) error {
+	cmd := runtimeCommand(s.cfg.XrayPath, "run", "-test", "-config", configPath)
+	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+s.cfg.XrayAssetsDir)
+
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+
+	detail := strings.TrimSpace(string(output))
+	if detail == "" {
+		detail = err.Error()
+	}
+	return fmt.Errorf("xray config validation failed: %s", detail)
+}
 func (s *Server) startXray(configPath string) error {
 	_ = s.stopRuntime()
-	cmd := exec.Command(s.cfg.XrayPath, "run", "-config", configPath)
+	cmd := runtimeCommand(s.cfg.XrayPath, "run", "-config", configPath)
 	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+s.cfg.XrayAssetsDir)
 	cmd.Stdout = logWriter{server: s}
 	cmd.Stderr = logWriter{server: s}
@@ -260,6 +283,13 @@ func (s *Server) startXray(configPath string) error {
 	s.appendLog("xray runtime started")
 	go func() {
 		err := cmd.Wait()
+
+		s.mu.Lock()
+		if s.lastRuntime == cmd {
+			s.lastRuntime = nil
+		}
+		s.mu.Unlock()
+
 		if err != nil {
 			s.appendLog("xray runtime stopped: " + err.Error())
 		} else {
