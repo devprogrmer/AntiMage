@@ -7,7 +7,7 @@ adminOnly: true
 
 <span id="section-haproxy-admin"></span>
 
-Rebecca can run HAProxy on selected nodes and use one public TCP port for several destinations. HAProxy reads the beginning of each connection, matches an SNI, HTTP Host, or HTTP Path, then passes the original TCP stream to the correct Xray inbound, external service, or website. It does not decrypt Xray traffic.
+AntiMage can run HAProxy on selected nodes and use one public TCP port for several destinations. HAProxy reads the beginning of each connection, matches an SNI, HTTP Host, or HTTP Path, then passes the original TCP stream to the correct Xray inbound, external service, or website. It does not decrypt Xray traffic.
 
 <p class="rb-panel-actions"><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/haproxy">Open HAProxy</a><a class="rb-panel-button" href="#eligible-inbounds">Check inbound eligibility</a><a class="rb-panel-button" href="#troubleshooting">Troubleshooting</a></p>
 
@@ -15,18 +15,18 @@ Rebecca can run HAProxy on selected nodes and use one public TCP port for severa
 The public port belongs to HAProxy after the configuration is enabled. Do not leave Xray, Nginx, Apache, OpenVPN, or another process listening on the same address and port. Every selected Xray inbound also needs its own different backend port.
 {{< /callout >}}
 
-## What Rebecca manages
+## What AntiMage manages
 
 A configuration has four levels:
 
 1. A **configuration** contains shared advanced settings and one or more target nodes.
-2. A **target** is a Rebecca node that will run this configuration.
+2. A **target** is a AntiMage node that will run this configuration.
 3. A **listener** is one public TCP address and port on that target, such as `0.0.0.0:443`.
 4. A listener contains **routes** and optional **websites**. Routes point to Xray inbounds or external TCP services. Websites handle ordinary HTTP or TLS traffic.
 
 You can create several HAProxy configurations in the panel. A node can belong to only one of them at a time, but one configuration can contain many nodes. Each target can have up to 16 listeners, so a node can use ports `443`, `550`, and any other valid TCP port in the same configuration. Each port has its own routes and websites.
 
-Rebecca Node validates the generated file with `haproxy -c` before replacing the active configuration. Node installation and node update install HAProxy automatically. The Rebecca Node Docker image also contains HAProxy. If an older node reports that HAProxy is missing, update that node before enabling the configuration.
+AntiMage Node validates the generated file with `haproxy -c` before replacing the active configuration. Node installation and node update install HAProxy automatically. The AntiMage Node Docker image also contains HAProxy. If an older node reports that HAProxy is missing, update that node before enabling the configuration.
 
 ## Before you start
 
@@ -57,7 +57,7 @@ This example sends three kinds of traffic through `443`:
 7. Select the WebSocket inbound with the `/ws-main` matcher and add it.
 8. Press **Add website**, enable it, enter `www.example.com`, choose **Certificate from panel SSL**, and select the matching active certificate.
 9. Pick a built-in, TemplateMo, or uploaded static template.
-10. Open **Editor**. Rebecca validates the draft and shows the exact HAProxy file for the target node.
+10. Open **Editor**. AntiMage validates the draft and shows the exact HAProxy file for the target node.
 11. Return to **Form**, enable the configuration, and press **Save**.
 
 Test every branch separately. A successful website response proves only the website branch. It does not prove the VLESS routes.
@@ -79,9 +79,9 @@ Matchers must be unique inside one listener. The same listener may have only one
 
 ## Eligible Xray inbounds {#eligible-inbounds}
 
-The inbound selector is generated from the selected node's actual Xray configuration. An inbound needs a nonempty tag, a valid port, and a usable matcher. Rebecca derives the matcher from `streamSettings`.
+The inbound selector is generated from the selected node's actual Xray configuration. An inbound needs a nonempty tag, a valid port, and a usable matcher. AntiMage derives the matcher from `streamSettings`.
 
-| Inbound transport or security | Matcher shown by Rebecca | Requirement |
+| Inbound transport or security | Matcher shown by AntiMage | Requirement |
 | --- | --- | --- |
 | Plain WebSocket, HTTPUpgrade, SplitHTTP, or another HTTP transport | `http_path` | A nonempty path in the transport settings |
 | Plain HTTP transport with a Host value or `headers.Host` | `http_host` | A valid and unique hostname |
@@ -129,7 +129,7 @@ Check these items on the same target node:
 | **Clone to all available nodes** | Copies this target's listeners, routes, sites, and settings to every active node that is free for this configuration. |
 | **Remove target** | Removes the node from this draft. The change reaches the node after you save. |
 
-Clone is deliberately strict. For each Xray route, the destination node must have the same inbound tag and the same matcher type and value. Rebecca updates the backend port from that destination node's own Xray config. If any required inbound is missing, the whole destination target is skipped and the warning names the node and inbound. Disabled nodes are never cloned.
+Clone is deliberately strict. For each Xray route, the destination node must have the same inbound tag and the same matcher type and value. AntiMage updates the backend port from that destination node's own Xray config. If any required inbound is missing, the whole destination target is skipped and the warning names the node and inbound. Disabled nodes are never cloned.
 
 ### Listener fields
 
@@ -182,13 +182,13 @@ Websites are optional. They are useful when ordinary browser traffic should rece
 | Website switch | Enables or disables this website without deleting its fields. Disabled websites are not generated. |
 | **Default HTTP/HTTPS website** | Available on the first website only. Unmatched HTTP and HTTPS traffic goes to this site after all route and hostname rules. It cannot be enabled while the listener has a `default` Xray or external route. |
 | **Show settings** | Expands or collapses this website card without enabling or disabling the site. |
-| **Website name** | Internal label, up to 64 characters. If empty, Rebecca uses the hostname. |
+| **Website name** | Internal label, up to 64 characters. If empty, AntiMage uses the hostname. |
 | **Hostname / SNI** | Host used for HTTP Host matching or TLS SNI matching. It is optional for the default website and required for other TLS websites. Other websites also need a hostname when a default website is enabled. |
 | **TLS certificate** | Selects plain HTTP, an automatic self-signed certificate, a managed panel certificate, or certificate files already on the node. |
 | **Template source** | Selects the lightweight built-in page, TemplateMo, or an uploaded ZIP. |
 | **Template selection** | For TemplateMo, choose either the panel catalog or one TemplateMo page URL. These modes are exclusive. |
 | **Template** | Chooses a catalog or uploaded template. |
-| **TemplateMo page URL** | Accepts a page URL such as `https://templatemo.com/tm-632-machina`. Rebecca converts it to the matching download, and the node downloads and caches the ZIP. |
+| **TemplateMo page URL** | Accepts a page URL such as `https://templatemo.com/tm-632-machina`. AntiMage converts it to the matching download, and the node downloads and caches the ZIP. |
 | **Open template preview** | Opens the TemplateMo page or available preview. It does not publish or save the configuration. |
 | **Custom 404 HTML** | Replaces the not-found response for this website only. Maximum size is 64 KiB. Leave it empty to use the normal static file response. |
 
@@ -200,7 +200,7 @@ TemplateMo URLs must use HTTPS, the `templatemo.com` host, and the `/tm-NNN-name
 | --- | --- |
 | **No TLS (plain HTTP)** | Serves ordinary HTTP. A hostname is optional. Without a hostname, the first matching plain HTTP site can receive general HTTP traffic not claimed by an earlier route. |
 | **Automatic self-signed certificate** | The node creates and caches a certificate for the hostname. Browsers will warn because the certificate is not signed by a trusted public CA. Useful for tests, not a normal public site. |
-| **Certificate from panel SSL** | Select an active certificate already managed by Rebecca. The certificate must cover the website hostname. The panel securely sends its PEM data to the selected node during sync. |
+| **Certificate from panel SSL** | Select an active certificate already managed by AntiMage. The certificate must cover the website hostname. The panel securely sends its PEM data to the selected node during sync. |
 | **Certificate paths on node** | Enter absolute paths to the fullchain and private key on that node, for example `/etc/ssl/example/fullchain.pem` and `/etc/ssl/example/privkey.pem`. The node process must be able to read them. |
 
 Use a separate website entry for every hostname. The default website automatically serves plain HTTP and unmatched HTTPS; when no TLS mode is selected, its HTTPS side uses a cached self-signed certificate. Several named TLS websites can share the same port because HAProxy selects them by SNI before the fallback. A certificate path is local to each node, so verify that the same paths exist before cloning a custom-certificate site.
@@ -221,7 +221,7 @@ The defaults work for ordinary deployments. Change one value at a time and verif
 | **Check interval (ms)** | `2000` | `100` to `60000` | Time between backend TCP checks. |
 | **Healthy after successes** | `2` | `1` to `10` | Consecutive successful checks required before a backend is considered healthy again. |
 | **Down after failures** | `3` | `1` to `10` | Consecutive failed checks required before a backend is marked down. |
-| **Log level** | `info` | `silent`, `emerg`, `alert`, `crit`, `err`, `warning`, `notice`, `info`, `debug` | Amount of HAProxy output written to the Rebecca Node service logs. Use `debug` only while investigating because it can be noisy. |
+| **Log level** | `info` | `silent`, `emerg`, `alert`, `crit`, `err`, `warning`, `notice`, `info`, `debug` | Amount of HAProxy output written to the AntiMage Node service logs. Use `debug` only while investigating because it can be noisy. |
 | **TCP keepalive** | On | On or off | Enables client-side and server-side TCP keepalive in HAProxy. |
 | **Do not log empty connections** | On | On or off | Suppresses connections that close without sending useful data. Turn it off temporarily when investigating scans or early disconnects. |
 
@@ -251,7 +251,7 @@ Configure and test one source target first. Then:
 
 The clone copies every listener. If the source has ports `443` and `550`, both appear on each accepted destination. Template randomization changes only TemplateMo choices. Built-in and uploaded templates stay unchanged. A direct TemplateMo URL is replaced with a catalog choice when randomization is enabled.
 
-Rebecca skips a destination if it is disabled, already belongs to another configuration, cannot be inspected, or lacks any required Xray tag and matcher. Generated target cards start collapsed.
+AntiMage skips a destination if it is disabled, already belongs to another configuration, cannot be inspected, or lacks any required Xray tag and matcher. Generated target cards start collapsed.
 
 ## Non-Xray protocol support
 
@@ -301,15 +301,15 @@ Add every detectable SNI, Host, and Path route first. Add the opaque service as 
 | Website hostname conflicts with a route | The same SNI is used by a TLS website and an Xray or external route. Give them different hostnames. |
 | Managed certificate is rejected | The certificate must be active in panel SSL and cover the website hostname. Check both the selected domain and certificate files. |
 | Custom certificate fails on one clone | Custom paths refer to files on each node. Copy the files to that node and check permissions, or use a managed certificate. |
-| Uploaded template does not reach a node | The panel needs a usable `REBECCA_PUBLIC_URL`, and the node must have an enrolled certificate so it can fetch the archive. |
+| Uploaded template does not reach a node | The panel needs a usable `AntiMage_PUBLIC_URL`, and the node must have an enrolled certificate so it can fetch the archive. |
 | TemplateMo download fails | Confirm the node has outbound HTTPS access and that the URL is a TemplateMo page in `/tm-NNN-name` format. |
-| HAProxy is not installed | Update or reinstall Rebecca Node. Current binary installation, update, and Docker image include the package. |
+| HAProxy is not installed | Update or reinstall AntiMage Node. Current binary installation, update, and Docker image include the package. |
 | Port is already in use | Stop or move the process currently bound to that address and port. Also confirm no selected Xray inbound uses the public listener port. |
 | Route works on one node but clone is skipped on another | The destination must contain the same inbound tag and exact matcher. Create or enable that inbound on the destination, then clone again. |
 | Slow clients reach the wrong backend | Increase **Inspection delay** carefully and confirm the client sends the expected SNI, Host, or Path. |
 | Connections close after an hour | Check client and server inactivity timeouts. Long-lived tunnels may need values above the `3600` second default. |
 
-For node-side errors, inspect Rebecca Node service logs. HAProxy validation, missing package, template download, certificate, and bind failures are reported there. Temporarily use the `debug` log level only when the normal log does not show enough detail.
+For node-side errors, inspect AntiMage Node service logs. HAProxy validation, missing package, template download, certificate, and bind failures are reported there. Temporarily use the `debug` log level only when the normal log does not show enough detail.
 
 ## Final checklist
 

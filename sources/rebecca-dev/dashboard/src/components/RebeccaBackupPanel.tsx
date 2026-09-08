@@ -31,9 +31,9 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "react-query";
 import {
-	exportRebeccaBackup,
-	importRebeccaBackup,
-	type RebeccaBackupScope,
+	exportAntiMageBackup,
+	importAntiMageBackup,
+	type AntiMageBackupScope,
 } from "service/settings";
 import {
 	generateErrorMessage,
@@ -41,9 +41,9 @@ import {
 } from "utils/toastHandler";
 import { FileDropzone } from "./common/FileDropzone";
 
-const buildBackupFilename = (scope: RebeccaBackupScope) => {
+const buildBackupFilename = (scope: AntiMageBackupScope) => {
 	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-	return `rebecca-${scope}-${timestamp}.rbbackup`;
+	return `AntiMage-${scope}-${timestamp}.rbbackup`;
 };
 
 type BackupDialog = "import" | "export" | null;
@@ -61,12 +61,12 @@ export const DashboardBackupControls = ({
 	const [isMenuOpen, setMenuOpen] = useState(false);
 	const [dialog, setDialog] = useState<BackupDialog>(null);
 	const [exportScope, setExportScope] =
-		useState<RebeccaBackupScope>("database");
+		useState<AntiMageBackupScope>("database");
 	const [selectedFile, setSelectedFile] = useState<File | null>(null);
 	const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 	const backupActionsAvailable = isBinaryRuntime && !runtimeLoading;
 
-	const exportMutation = useMutation(exportRebeccaBackup, {
+	const exportMutation = useMutation(exportAntiMageBackup, {
 		onSuccess: (blob, scope) => {
 			const url = URL.createObjectURL(blob);
 			const anchor = document.createElement("a");
@@ -85,7 +85,7 @@ export const DashboardBackupControls = ({
 	});
 
 	const importMutation = useMutation(
-		(file: File) => importRebeccaBackup(file, setUploadProgress),
+		(file: File) => importAntiMageBackup(file, setUploadProgress),
 		{
 			onMutate: () => setUploadProgress(0),
 			onSuccess: (result) => {
@@ -211,7 +211,7 @@ export const DashboardBackupControls = ({
 							<FormControl isRequired>
 								<FormLabel>{t("settings.backup.file")}</FormLabel>
 								<FileDropzone
-									accept=".rbbackup,application/vnd.rebecca.backup,application/gzip"
+									accept=".rbbackup,application/vnd.AntiMage.backup,application/gzip"
 									isDisabled={
 										!backupActionsAvailable || importMutation.isLoading
 									}
@@ -290,7 +290,7 @@ export const DashboardBackupControls = ({
 									value={exportScope}
 									showSearch={false}
 									onChange={(event) =>
-										setExportScope(event.target.value as RebeccaBackupScope)
+										setExportScope(event.target.value as AntiMageBackupScope)
 									}
 								>
 									<option value="database">

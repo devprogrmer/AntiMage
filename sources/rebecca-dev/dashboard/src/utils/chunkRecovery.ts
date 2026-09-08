@@ -1,4 +1,4 @@
-const chunkRecoveryKey = "rebecca:chunk-recovery";
+const chunkRecoveryKey = "antimage:chunk-recovery";
 const chunkRecoveryCooldownMs = 60_000;
 
 const chunkLoadErrorPatterns = [

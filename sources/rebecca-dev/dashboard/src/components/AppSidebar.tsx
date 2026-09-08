@@ -461,7 +461,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 						>
 							<LogoIcon
 								src={logoUrl}
-								alt="Rebecca"
+								alt="AntiMage"
 								filter={
 									colorMode === "dark" ? "brightness(0) invert(1)" : "none"
 								}
@@ -480,10 +480,10 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 							bg={sidebarPanelBg}
 							py={2}
 						>
-							<Tooltip label="Rebecca" placement="right" hasArrow>
+							<Tooltip label="AntiMage" placement="right" hasArrow>
 								<LogoIcon
 									src={logoUrl}
-									alt="Rebecca"
+									alt="AntiMage"
 									filter={
 										colorMode === "dark" ? "brightness(0) invert(1)" : "none"
 									}

@@ -469,7 +469,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 				}}
 			>
 				<XrayModalHeader>
-					{isAddMode ? t("nodes.addNewRebeccaNode") : t("nodes.editNode")}
+					{isAddMode ? t("nodes.addNewAntiMageNode") : t("nodes.editNode")}
 				</XrayModalHeader>
 				<ModalCloseButton />
 				<XrayModalBody>
@@ -746,7 +746,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 								<Input
 									label={t("nodes.nodeName")}
 									size="sm"
-									placeholder="Rebecca-S2"
+									placeholder="AntiMage-S2"
 									maxLength={120}
 									{...form.register("name")}
 									error={getInputError(form.formState?.errors?.name)}

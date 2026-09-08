@@ -13,7 +13,7 @@ an `alembic_version` table.
 - Multiple related Alembic revisions may be compressed into one named Go
   migration when their final behavior belongs to the same domain.
 - Go migration names are sequential and descriptive.
-- The production path is `rebecca migrate up`; Python/Alembic is not required
+- The production path is `antimage migrate up`; Python/Alembic is not required
   at runtime.
 
 ## Legacy Revision Set
@@ -243,8 +243,8 @@ Known broken Alembic tags:
 For normal operation use:
 
 ```bash
-rebecca migrate up
-rebecca migrate status
+antimage migrate up
+antimage migrate status
 ```
 
 Downgrades are not supported. Restore from a backup if a schema rollback is

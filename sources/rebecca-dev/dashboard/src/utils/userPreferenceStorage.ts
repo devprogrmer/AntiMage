@@ -1,9 +1,9 @@
-const NUM_USERS_PER_PAGE_LOCAL_STORAGE_KEY = "rebecca-num-users-per-page";
-const NUM_ADMINS_PER_PAGE_LOCAL_STORAGE_KEY = "rebecca-num-admins-per-page";
-const NUM_NODES_PER_PAGE_LOCAL_STORAGE_KEY = "rebecca-num-nodes-per-page";
+const NUM_USERS_PER_PAGE_LOCAL_STORAGE_KEY = "antimage-num-users-per-page";
+const NUM_ADMINS_PER_PAGE_LOCAL_STORAGE_KEY = "antimage-num-admins-per-page";
+const NUM_NODES_PER_PAGE_LOCAL_STORAGE_KEY = "antimage-num-nodes-per-page";
 const NUM_RECENT_ACTIONS_PER_PAGE_LOCAL_STORAGE_KEY =
-	"rebecca-num-recent-actions-per-page";
-const NUM_NODES_PER_PAGE_COOKIE_KEY = "rebecca-num-nodes-per-page";
+	"antimage-num-recent-actions-per-page";
+const NUM_NODES_PER_PAGE_COOKIE_KEY = "antimage-num-nodes-per-page";
 const NUM_PER_PAGE_DEFAULT = 10;
 const NUM_NODES_PER_PAGE_DEFAULT = 12;
 const NODE_PAGE_SIZE_OPTIONS = new Set([12, 24, 48, 96, 100]);

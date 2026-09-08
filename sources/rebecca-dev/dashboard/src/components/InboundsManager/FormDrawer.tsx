@@ -2258,7 +2258,7 @@ export const InboundFormModal: FC<Props> = ({
 															"inbounds.openvpn.accounting",
 															"Enable accounting",
 															"inbounds.openvpn.help.accounting",
-															"Record OpenVPN session traffic and report it to the same Rebecca user quota/accounting pipeline.",
+															"Record OpenVPN session traffic and report it to the same AntiMage user quota/accounting pipeline.",
 															{ mb: 0 },
 														)}
 														<Switch {...register("ovAccountingEnabled")} />
@@ -2586,7 +2586,7 @@ export const InboundFormModal: FC<Props> = ({
 															"inbounds.wireguard.accounting",
 															"Enable accounting",
 															"inbounds.wireguard.help.accounting",
-															"Record WireGuard peer traffic and report it to the same Rebecca user quota/accounting pipeline.",
+															"Record WireGuard peer traffic and report it to the same AntiMage user quota/accounting pipeline.",
 															{ mb: 0 },
 														)}
 														<Switch {...register("wgAccountingEnabled")} />
@@ -2770,7 +2770,7 @@ export const InboundFormModal: FC<Props> = ({
 															"inbounds.remoteAccess.accounting",
 															"Enable accounting",
 															"inbounds.remoteAccess.help.accounting",
-															"Report live usage to Rebecca quota accounting.",
+															"Report live usage to AntiMage quota accounting.",
 															{ mb: 0 },
 														)}
 														<Switch {...register("raAccountingEnabled")} />
@@ -3835,7 +3835,7 @@ export const InboundFormModal: FC<Props> = ({
 															"inbounds.l2tp.accounting",
 															"Enable accounting",
 															"inbounds.l2tp.help.accounting",
-															"Record L2TP session traffic and report it to the same Rebecca user quota/accounting pipeline.",
+															"Record L2TP session traffic and report it to the same AntiMage user quota/accounting pipeline.",
 															{ mb: 0 },
 														)}
 														<Switch {...register("l2tpAccountingEnabled")} />

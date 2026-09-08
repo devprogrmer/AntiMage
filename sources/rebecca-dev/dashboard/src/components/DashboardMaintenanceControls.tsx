@@ -43,7 +43,7 @@ import {
 	generateSuccessMessage,
 } from "utils/toastHandler";
 import { getAPIWebSocketURL } from "utils/websocket";
-import { DashboardBackupControls } from "./RebeccaBackupPanel";
+import { DashboardBackupControls } from "./AntiMageBackupPanel";
 import { PanelSelect as Select } from "./common/PanelSelect";
 
 type UpdateChannel = "current" | "latest" | "dev";

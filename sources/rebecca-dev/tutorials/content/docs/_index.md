@@ -1,7 +1,7 @@
 ---
 title: "Panel overview"
 weight: 1
-description: "Rebecca panel to create, manage, and troubleshoot users, admins, and nodes. Main areas: Dashboard, Users, Admins, Services, Hosts, Nodes, Integrations, My Account."
+description: "AntiMage panel to create, manage, and troubleshoot users, admins, and nodes. Main areas: Dashboard, Users, Admins, Services, Hosts, Nodes, Integrations, My Account."
 cascade:
   params:
     noindex: true
@@ -9,7 +9,7 @@ cascade:
 
 This page is a quick walk-through so you can ship accounts fast without touching the backend.
 
-Rebecca panel to create, manage, and troubleshoot users, admins, and nodes. Main areas: Dashboard, Users, Admins, Services, Hosts, Nodes, Integrations, My Account.
+AntiMage panel to create, manage, and troubleshoot users, admins, and nodes. Main areas: Dashboard, Users, Admins, Services, Hosts, Nodes, Integrations, My Account.
 
 - Create/renew users, statuses (active/on hold/limited/expired), links/QR, Auto Renew.
 - Admins with roles and permissions, data limit and user limit.
@@ -20,7 +20,7 @@ Rebecca panel to create, manage, and troubleshoot users, admins, and nodes. Main
 - Open source—if it helps you, please star the GitHub repo.
 
 - [GitHub](https://github.com/antimagepanel/antimage)
-- [Telegram](https://t.me/rebeccapanel)
+- [Telegram](https://t.me/AntiMagepanel)
 
 ## Start with a task
 

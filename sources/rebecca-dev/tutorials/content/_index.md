@@ -1,3 +1,3 @@
 ---
-title: Rebecca Tutorials
+title: AntiMage Tutorials
 ---

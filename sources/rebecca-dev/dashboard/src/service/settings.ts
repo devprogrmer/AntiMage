@@ -18,7 +18,7 @@ export interface TelegramSettingsResponse {
 	forum_topics: Record<string, TelegramTopicSettingsPayload>;
 	event_toggles: Record<string, boolean>;
 	backup_enabled: boolean;
-	backup_scope: RebeccaBackupScope;
+	backup_scope: AntiMageBackupScope;
 	backup_interval_value: number;
 	backup_interval_unit: "minutes" | "hours" | "days";
 	backup_last_sent_at: string | null;
@@ -38,7 +38,7 @@ export interface TelegramSettingsUpdatePayload {
 	forum_topics?: Record<string, TelegramTopicSettingsPayload>;
 	event_toggles?: Record<string, boolean>;
 	backup_enabled?: boolean;
-	backup_scope?: RebeccaBackupScope;
+	backup_scope?: AntiMageBackupScope;
 	backup_interval_value?: number;
 	backup_interval_unit?: "minutes" | "hours" | "days";
 }
@@ -46,7 +46,7 @@ export interface TelegramSettingsUpdatePayload {
 export interface TelegramBackupSendResponse {
 	ok: boolean;
 	filename: string;
-	scope: RebeccaBackupScope;
+	scope: AntiMageBackupScope;
 	size: number;
 	results: Array<{
 		chat_id: number;
@@ -122,7 +122,7 @@ export const testTelegramSettings = async (): Promise<{
 };
 
 export const sendTelegramBackup = async (
-	scope: RebeccaBackupScope,
+	scope: AntiMageBackupScope,
 ): Promise<TelegramBackupSendResponse> => {
 	return apiFetch("/settings/telegram/backup/send", {
 		method: "POST",
@@ -138,10 +138,10 @@ export interface PanelSettingsUpdatePayload {
 	default_subscription_type?: "username-key" | "key" | "token" | "key-username";
 }
 
-export type RebeccaBackupScope = "database" | "full";
+export type AntiMageBackupScope = "database" | "full";
 
-export interface RebeccaBackupImportResponse {
-	scope: RebeccaBackupScope;
+export interface AntiMageBackupImportResponse {
+	scope: AntiMageBackupScope;
 	tables_restored: number;
 	rows_restored: number;
 	files_restored: string[];
@@ -252,7 +252,7 @@ export interface RuntimeSettingsResponse {
 	phpmyadmin_port: number;
 	phpmyadmin_path: string;
 	phpmyadmin_public_url: string;
-	phpmyadmin_login_mode: "rebecca" | "custom";
+	phpmyadmin_login_mode: "AntiMage" | "custom";
 	phpmyadmin_username: string;
 	phpmyadmin_password: string;
 }
@@ -310,7 +310,7 @@ export interface PHPMyAdminStatus {
 	public_url: string;
 	external_url: string;
 	embed_url: string;
-	login_mode: "rebecca" | "custom";
+	login_mode: "AntiMage" | "custom";
 }
 
 export interface PHPMyAdminActionResponse {
@@ -630,8 +630,8 @@ export const updatePanelSettings = async (
 	});
 };
 
-export const exportRebeccaBackup = async (
-	scope: RebeccaBackupScope,
+export const exportAntiMageBackup = async (
+	scope: AntiMageBackupScope,
 ): Promise<Blob> => {
 	return $fetch<Blob>(`/settings/backup/export?scope=${scope}`, {
 		responseType: "blob",
@@ -639,10 +639,10 @@ export const exportRebeccaBackup = async (
 	} as any);
 };
 
-export const importRebeccaBackup = async (
+export const importAntiMageBackup = async (
 	file: File,
 	onProgress?: (percent: number) => void,
-): Promise<RebeccaBackupImportResponse> => {
+): Promise<AntiMageBackupImportResponse> => {
 	return new Promise((resolve, reject) => {
 		const body = new FormData();
 		body.append("file", file);
@@ -661,7 +661,7 @@ export const importRebeccaBackup = async (
 		xhr.upload.onload = () => onProgress?.(100);
 		xhr.onload = () => {
 			if (xhr.status >= 200 && xhr.status < 300) {
-				resolve(xhr.response as RebeccaBackupImportResponse);
+				resolve(xhr.response as AntiMageBackupImportResponse);
 				return;
 			}
 			reject({ response: { _data: xhr.response } });

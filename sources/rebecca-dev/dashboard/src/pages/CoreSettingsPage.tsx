@@ -101,9 +101,9 @@ import type { RoutingRule } from "../components/RuleModal";
 import type { TorProxyFormValues } from "../components/TorProxyModal";
 import type { WindscribeProxyFormValues } from "../components/WindscribeProxyModal";
 import {
-	canonicalizeRebeccaJson,
-	type RebeccaJsonContext,
-	stringifyRebeccaJson,
+	canonicalizeAntiMageJson,
+	type AntiMageJsonContext,
+	stringifyAntiMageJson,
 } from "../utils/jsonFormatting";
 import { SizeFormatter } from "../utils/outbound";
 import { computeOutboundIds } from "../utils/outboundId";
@@ -330,7 +330,7 @@ const SERVICES_OPTIONS: { label: string; value: string }[] = [
 	{ label: "Speedtest", value: "geosite:speedtest" },
 ];
 
-const XRAY_LOG_DIR_HINT = "/var/lib/rebecca/xray-core";
+const XRAY_LOG_DIR_HINT = "/var/lib/AntiMage/xray-core";
 const DEFAULT_ACCESS_LOG_PATH = `${XRAY_LOG_DIR_HINT}/access.log`;
 const DEFAULT_ERROR_LOG_PATH = `${XRAY_LOG_DIR_HINT}/error.log`;
 const LOG_CLEANUP_INTERVAL_OPTIONS = [
@@ -3161,17 +3161,17 @@ export const CoreSettingsPage: FC = () => {
 		const cfg = form.getValues("config") || {};
 		switch (advSettings) {
 			case "inboundSettings":
-				return stringifyRebeccaJson(cfg.inbounds ?? [], 2, "inbounds");
+				return stringifyAntiMageJson(cfg.inbounds ?? [], 2, "inbounds");
 			case "outboundSettings":
-				return stringifyRebeccaJson(cfg.outbounds ?? [], 2, "outbounds");
+				return stringifyAntiMageJson(cfg.outbounds ?? [], 2, "outbounds");
 			case "routingRuleSettings":
-				return stringifyRebeccaJson(
+				return stringifyAntiMageJson(
 					cfg.routing?.rules ?? [],
 					2,
 					"routingRules",
 				);
 			default:
-				return stringifyRebeccaJson(cfg ?? {}, 2, "config");
+				return stringifyAntiMageJson(cfg ?? {}, 2, "config");
 		}
 	};
 
@@ -3181,20 +3181,20 @@ export const CoreSettingsPage: FC = () => {
 			const cfg = { ...(form.getValues("config") || {}) };
 			switch (advSettings) {
 				case "inboundSettings":
-					cfg.inbounds = canonicalizeRebeccaJson(parsed, "inbounds");
+					cfg.inbounds = canonicalizeAntiMageJson(parsed, "inbounds");
 					break;
 				case "outboundSettings":
-					cfg.outbounds = canonicalizeRebeccaJson(parsed, "outbounds");
+					cfg.outbounds = canonicalizeAntiMageJson(parsed, "outbounds");
 					syncOutboundDisplay(cfg.outbounds as OutboundJson[]);
 					break;
 				case "routingRuleSettings":
 					if (!cfg.routing) cfg.routing = {};
-					cfg.routing.rules = canonicalizeRebeccaJson(parsed, "routingRules");
+					cfg.routing.rules = canonicalizeAntiMageJson(parsed, "routingRules");
 					syncRoutingRuleDisplay(cfg.routing.rules as RoutingRule[]);
 					break;
 				default: {
 					// replace whole config
-					const canonicalConfig = canonicalizeRebeccaJson(
+					const canonicalConfig = canonicalizeAntiMageJson(
 						parsed,
 						"config",
 					) as Record<string, any>;
@@ -3218,7 +3218,7 @@ export const CoreSettingsPage: FC = () => {
 			}
 			form.setValue(
 				"config",
-				canonicalizeRebeccaJson(cfg, "config") as EditableCoreConfig,
+				canonicalizeAntiMageJson(cfg, "config") as EditableCoreConfig,
 				{
 					shouldDirty: true,
 				},
@@ -4034,7 +4034,7 @@ export const CoreSettingsPage: FC = () => {
 	const activeAdvancedJsonMode =
 		advancedJsonModes.find((option) => option.value === advSettings) ||
 		advancedJsonModes[0];
-	const advancedJsonContext: RebeccaJsonContext =
+	const advancedJsonContext: AntiMageJsonContext =
 		advSettings === "inboundSettings"
 			? "inbounds"
 			: advSettings === "outboundSettings"

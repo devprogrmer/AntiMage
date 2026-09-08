@@ -494,7 +494,7 @@ export const Login: FC = () => {
 								/>
 							</Box>
 							<Text fontSize="lg" fontWeight="800" noOfLines={1}>
-								Rebecca
+								AntiMage
 							</Text>
 						</HStack>
 						<HStack flexShrink={0} spacing={2}>

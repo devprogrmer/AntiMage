@@ -178,7 +178,7 @@ const defaultRuntimeSettings: RuntimeSettingsResponse = {
 	phpmyadmin_port: 8080,
 	phpmyadmin_path: "/phpmyadmin/",
 	phpmyadmin_public_url: "",
-	phpmyadmin_login_mode: "rebecca",
+	phpmyadmin_login_mode: "AntiMage",
 	phpmyadmin_username: "",
 	phpmyadmin_password: "",
 };
@@ -2208,7 +2208,7 @@ export const IntegrationSettingsPage = () => {
 													setRuntimeSettingsForm((prev) => ({
 														...prev,
 														phpmyadmin_login_mode: event.target.value as
-															| "rebecca"
+															| "AntiMage"
 															| "custom",
 													}))
 												}
@@ -2217,8 +2217,8 @@ export const IntegrationSettingsPage = () => {
 													phpMyAdminDisableMutation.isLoading
 												}
 											>
-												<option value="rebecca">
-													{t("phpmyadmin.loginModeRebecca")}
+												<option value="AntiMage">
+													{t("phpmyadmin.loginModeAntiMage")}
 												</option>
 												<option value="custom">
 													{t("phpmyadmin.loginModeCustom")}
@@ -2760,7 +2760,7 @@ export const IntegrationSettingsPage = () => {
 											{t("settings.subscriptions.customTemplatesDir")}
 										</FormLabel>
 										<Input
-											placeholder="/var/lib/rebecca/templates"
+											placeholder="/var/lib/AntiMage/templates"
 											{...subscriptionRegister("custom_templates_directory")}
 										/>
 										<FormHelperText>

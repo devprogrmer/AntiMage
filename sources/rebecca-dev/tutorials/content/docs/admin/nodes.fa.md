@@ -1,19 +1,19 @@
 ---
 title: "نودها"
 weight: 3
-description: "ابتدا نود را در Rebecca بسازید و سپس سرور نود را با بسته گواهی اختصاصی آن نصب کنید."
+description: "ابتدا نود را در AntiMage بسازید و سپس سرور نود را با بسته گواهی اختصاصی آن نصب کنید."
 adminOnly: true
 ---
 
 <span id="section-nodes-admin"></span>
 
-هر نود یک رکورد جدا در پنل و یک بسته گواهی mTLS اختصاصی دارد. ابتدا رکورد را در Rebecca بسازید؛ پنل بعد از ساخت، بسته‌ای را تولید می‌کند که installer نود به آن نیاز دارد.
+هر نود یک رکورد جدا در پنل و یک بسته گواهی mTLS اختصاصی دارد. ابتدا رکورد را در AntiMage بسازید؛ پنل بعد از ساخت، بسته‌ای را تولید می‌کند که installer نود به آن نیاز دارد.
 
-<p class="rb-panel-actions"><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/node-settings">باز کردن تنظیمات نود</a><a class="rb-panel-button" href="https://github.com/rebeccapanel/Rebecca#rebecca-node" target="_blank" rel="noopener noreferrer">مشاهده مستندات نود</a></p>
+<p class="rb-panel-actions"><a class="rb-panel-button" data-primary="true" href="#" data-panel-route="/node-settings">باز کردن تنظیمات نود</a><a class="rb-panel-button" href="https://github.com/AntiMagepanel/AntiMage#AntiMage-node" target="_blank" rel="noopener noreferrer">مشاهده مستندات نود</a></p>
 
 ## پیش‌نیازها {#section-nodes-admin-intro}
 
-- آدرس نود و دو پورت متفاوت انتخاب کنید. مقدارهای پیش‌فرض Rebecca برای Service برابر `62050` و برای Xray API برابر `62051` است.
+- آدرس نود و دو پورت متفاوت انتخاب کنید. مقدارهای پیش‌فرض AntiMage برای Service برابر `62050` و برای Xray API برابر `62051` است.
 - مطمئن شوید سرور اصلی پنل به آدرس و Service port نود دسترسی دارد. در صورت امکان دسترسی فایروال را فقط به IP سرور پنل محدود کنید.
 - ساعت هر دو سرور را با NTP همگام نگه دارید؛ اعتبار گواهی و زمان رکوردهای مصرف به ساعت درست وابسته است.
 - ضریب مصرف را از قبل مشخص کنید. مقدار `1` مصرف واقعی را ثبت می‌کند و مقدار `2` ترافیک کاربران این نود را دو برابر حساب می‌کند.
@@ -26,23 +26,23 @@ adminOnly: true
 4. **Usage coefficient** را روی `1` نگه دارید، مگر اینکه عمداً بخواهید مصرف این نود با ضریب دیگری محاسبه شود.
 5. در صورت نیاز برای کل نود **Data limit** تعیین کنید. خالی‌بودن این فیلد یعنی بدون محدودیت.
 6. یک Note داخلی بنویسید. Proxy ارتباط پنل به نود را فقط زمانی فعال کنید که شبکه واقعاً به آن نیاز دارد.
-7. روی **افزودن نود** بزنید. حالا Rebecca رکورد نود را می‌سازد و گواهی به‌همراه private key اختصاصی آن را تولید می‌کند.
+7. روی **افزودن نود** بزنید. حالا AntiMage رکورد نود را می‌سازد و گواهی به‌همراه private key اختصاصی آن را تولید می‌کند.
 
 {{< callout type="warning" >}}
 همان لحظه **Node install bundle** کامل را Copy یا Download کنید. این بسته هم گواهی و هم private key را دارد. آن را به فرد دیگری ندهید، ناقص کپی نکنید و برای نود دیگری دوباره استفاده نکنید.
 {{< /callout >}}
 
-## ۲. نصب Rebecca Node روی سرور نود
+## ۲. نصب AntiMage Node روی سرور نود
 
 دستور نصب باینری را روی سرور نود اجرا کنید:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca-node-binary.sh | sudo bash -s -- install
+curl -sL https://raw.githubusercontent.com/AntiMagepanel/AntiMage/master/scripts/AntiMage/AntiMage-node-binary.sh | sudo bash -s -- install
 ```
 
 1. وقتی installer مقدار **Node install bundle** را خواست، کل بلوکی را که از پنل گرفته‌اید Paste کنید. installer گواهی و private key را خودکار جدا می‌کند.
 2. همان Service port و Xray API port ثبت‌شده در پنل را وارد کنید.
-3. نصب را کامل کنید تا سرویس `rebecca-node` اجرا شود.
+3. نصب را کامل کنید تا سرویس `AntiMage-node` اجرا شود.
 4. همین Bundle را روی سرور دوم نصب نکنید. برای هر host جدید، یک نود تازه در پنل بسازید.
 
 ## ۳. بررسی اتصال
@@ -56,7 +56,7 @@ curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/r
 | آدرس و پورت‌ها | مقدارهای پنل با installer یکسان باشند و جای دو پورت عوض نشده باشد. |
 | فایروال و Route | سرور اصلی پنل به Service port نود دسترسی داشته باشد و DNS به host درست resolve شود. |
 | بسته گواهی | کل گواهی و private key متعلق به همین نود Paste شده باشد. |
-| سرویس | سرویس `rebecca-node` اجرا باشد؛ اولین خطای اتصال را در log سرویس بخوانید. |
+| سرویس | سرویس `AntiMage-node` اجرا باشد؛ اولین خطای اتصال را در log سرویس بخوانید. |
 | زمان سرورها | ساعت هر دو سرور درست و NTP فعال باشد. |
 
 ## نصب دوباره یا جایگزینی نود

@@ -13,7 +13,7 @@
 	border: 0;
 }
 
-.rebecca-json-editor .jsoneditor {
+.antimage-json-editor .jsoneditor {
 	position: absolute;
 	inset: 0;
 	height: auto;
@@ -22,63 +22,63 @@
 	overscroll-behavior: contain;
 }
 
-.rebecca-json-editor .ace_editor {
+.antimage-json-editor .ace_editor {
 	border-radius: 0;
 	height: 100%;
 	min-height: 100%;
 	overscroll-behavior: contain;
 }
 
-.rebecca-json-editor .jsoneditor-outer {
+.antimage-json-editor .jsoneditor-outer {
 	height: 100%;
 }
 
-.rebecca-json-editor .jsoneditor-menu,
-.rebecca-json-editor .jsoneditor-statusbar {
+.antimage-json-editor .jsoneditor-menu,
+.antimage-json-editor .jsoneditor-statusbar {
 	display: none;
 }
 
-.rebecca-json-editor .ace_scrollbar {
+.antimage-json-editor .ace_scrollbar {
 	overscroll-behavior: contain;
 	scrollbar-width: thin;
 }
 
-.rebecca-json-editor .ace_scroller {
+.antimage-json-editor .ace_scroller {
 	overscroll-behavior: contain;
 }
 
-.rebecca-json-editor .ace_gutter {
+.antimage-json-editor .ace_gutter {
 	border-right: 1px solid var(--rb-panel-border);
 }
 
-.rebecca-json-editor .ace_gutter-cell.ace_error {
+.antimage-json-editor .ace_gutter-cell.ace_error {
 	background-image: none;
 	color: #ff6b7a;
 }
 
-.rebecca-json-error-line {
+.antimage-json-error-line {
 	background: rgba(248, 113, 113, 0.16);
 	position: absolute;
 }
 
-.rebecca-json-diff-removed {
+.antimage-json-diff-removed {
 	background: rgba(248, 113, 113, 0.22);
 	position: absolute;
 }
 
-.rebecca-json-diff-removed-text {
+.antimage-json-diff-removed-text {
 	background: rgba(248, 113, 113, 0.34);
 	border-radius: 2px;
 	box-shadow: inset 0 -1px 0 rgba(254, 202, 202, 0.55);
 	position: absolute;
 }
 
-.rebecca-json-diff-added {
+.antimage-json-diff-added {
 	background: rgba(74, 222, 128, 0.22);
 	position: absolute;
 }
 
-.rebecca-json-diff-added-text {
+.antimage-json-diff-added-text {
 	background: rgba(74, 222, 128, 0.34);
 	border-radius: 2px;
 	box-shadow: inset 0 -1px 0 rgba(187, 247, 208, 0.55);

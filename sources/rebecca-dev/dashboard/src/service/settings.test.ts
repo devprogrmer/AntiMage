@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { importRebeccaBackup } from "./settings";
+import { importAntiMageBackup } from "./settings";
 
 class UploadRequest {
 	static current: UploadRequest;
@@ -41,7 +41,7 @@ class UploadRequest {
 	}
 }
 
-describe("importRebeccaBackup", () => {
+describe("importAntiMageBackup", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
 	});
@@ -50,7 +50,7 @@ describe("importRebeccaBackup", () => {
 		vi.stubGlobal("XMLHttpRequest", UploadRequest);
 		const progress: number[] = [];
 
-		const result = await importRebeccaBackup(
+		const result = await importAntiMageBackup(
 			new File(["backup"], "test.rbbackup"),
 			(percent) => progress.push(percent),
 		);

@@ -30,8 +30,8 @@ import {
 import { useTranslation } from "react-i18next";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import {
-	stringifyRebeccaJson,
-	type RebeccaJsonContext,
+	stringifyAntiMageJson,
+	type AntiMageJsonContext,
 } from "../../utils/jsonFormatting";
 import "./styles.css";
 
@@ -44,7 +44,7 @@ export type JSONEditorProps = {
 	minHeight?: string | number;
 	readOnly?: boolean;
 	showToolbar?: boolean;
-	canonicalContext?: RebeccaJsonContext;
+	canonicalContext?: AntiMageJsonContext;
 	toolbarActions?: ReactNode;
 	onValidityChange?: (isValid: boolean, error?: string) => void;
 	highlightLines?: number[];
@@ -238,7 +238,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 					return;
 				}
 				const parsed = text.trim() ? JSON.parse(text) : {};
-				setEditorText(editor, stringifyRebeccaJson(parsed, 2, canonicalContext));
+				setEditorText(editor, stringifyAntiMageJson(parsed, 2, canonicalContext));
 			});
 		}, [canonicalContext, emitValidation, runWithEditorText, setEditorText]);
 
@@ -250,7 +250,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 					return;
 				}
 				const parsed = text.trim() ? JSON.parse(text) : {};
-				setEditorText(editor, stringifyRebeccaJson(parsed, 0, canonicalContext));
+				setEditorText(editor, stringifyAntiMageJson(parsed, 0, canonicalContext));
 			});
 		}, [canonicalContext, emitValidation, runWithEditorText, setEditorText]);
 
@@ -511,7 +511,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 				highlightMarkerRefs.current.push(
 					session.addMarker(
 						new Range(row, 0, row, 1),
-						`rebecca-json-diff-${highlightVariant}`,
+						`AntiMage-json-diff-${highlightVariant}`,
 						"fullLine",
 						true,
 					),
@@ -524,7 +524,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 				highlightMarkerRefs.current.push(
 					session.addMarker(
 						new Range(row, start, row, end),
-						`rebecca-json-diff-${highlightVariant}-text`,
+						`AntiMage-json-diff-${highlightVariant}-text`,
 						"text",
 						false,
 					),
@@ -559,7 +559,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 			if (Range && session.addMarker) {
 				errorMarkerRef.current = session.addMarker(
 					new Range(row, 0, row, 1),
-					"rebecca-json-error-line",
+					"AntiMage-json-error-line",
 					"fullLine",
 					true,
 				);
@@ -595,7 +595,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 				border="1px solid"
 				borderColor={borderColor}
 				borderRadius="10px"
-				className="rebecca-json-editor"
+				className="AntiMage-json-editor"
 				color={textColor}
 				h="full"
 				minH={minHeight}

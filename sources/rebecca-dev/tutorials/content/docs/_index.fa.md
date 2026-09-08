@@ -20,7 +20,7 @@ cascade:
 - کد منبع باز است؛ اگر مفید بود در گیت‌هاب ستاره بدهید.
 
 - [گیت‌هاب](https://github.com/antimagepanel/antimage)
-- [تلگرام](https://t.me/rebeccapanel)
+- [تلگرام](https://t.me/antimagepanel)
 
 ## شروع از یک کار مشخص
 

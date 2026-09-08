@@ -30,8 +30,8 @@ BotFather is Telegram's official tool for creating and managing bots.
 
 1. Open Telegram and search for @BotFather.
 2. Start the chat and send /newbot.
-3. Enter a display name for the bot, such as Rebecca Backup.
-4. Enter a unique username that ends with bot, for example rebecca_backup_bot.
+3. Enter a display name for the bot, such as AntiMage Backup.
+4. Enter a unique username that ends with bot, for example AntiMage_backup_bot.
 5. Copy the token BotFather gives you and store it somewhere private.
 
 {{< callout type="info" >}}

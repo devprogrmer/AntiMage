@@ -1,4 +1,4 @@
-# Dashboard UI for Rebecca
+# Dashboard UI for AntiMage
 
 ## Requirements
 
@@ -11,8 +11,8 @@ Use Node.js 20 LTS, which is also used in CI.
 
 ## Install
 
-    git clone https://github.com/rebeccapanel/Rebecca.git
-    cd Rebecca/dashboard
+    git clone https://github.com/AntiMagepanel/AntiMage.git
+    cd AntiMage/dashboard
     npm ci
 
 ### Configure app
@@ -25,7 +25,7 @@ Copy `example.env` to `.env` then set the backend api address:
 
 | Name          | Description                                                                          |
 | ------------- | ------------------------------------------------------------------------------------ |
-| VITE_BASE_API | The api url of the deployed backend ([Rebecca](https://github.com/rebeccapanel/Rebecca)) |
+| VITE_BASE_API | The api url of the deployed backend ([AntiMage](https://github.com/AntiMagepanel/AntiMage)) |
 
 ## Start development server
 

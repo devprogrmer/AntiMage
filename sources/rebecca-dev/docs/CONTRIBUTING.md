@@ -1,12 +1,12 @@
-# Contributing to Rebecca
+# Contributing to AntiMage
 
-Thanks for considering a contribution to Rebecca.
+Thanks for considering a contribution to AntiMage.
 
 ## Questions
 
 Please avoid opening issues for support questions. Use one of these channels instead:
 
-- Telegram channel: [@rebeccapanel_rebecca](https://t.me/rebeccapanel_rebecca)
+- Telegram channel: [@AntiMagepanel_AntiMage](https://t.me/AntiMagepanel_AntiMage)
 - GitHub Discussions for longer-term design or operational questions.
 
 ## Reporting Issues
@@ -16,7 +16,7 @@ When reporting a bug, include:
 - What you expected to happen.
 - What actually happened.
 - Relevant server logs, browser console errors, or API responses.
-- Rebecca version, install mode, database type, node version, and Xray version.
+- AntiMage version, install mode, database type, node version, and Xray version.
 - Sanitized `.env`, node settings, and Xray config snippets when the issue depends on configuration.
 
 ## Branches
@@ -29,7 +29,7 @@ Keep pull requests focused. Avoid mixing formatting, documentation moves, and be
 
 ```text
 .
-|-- cmd/                 # Rebecca server and CLI entrypoints
+|-- cmd/                 # AntiMage server and CLI entrypoints
 |-- internal/            # Go gateway, Master API, migrations, node controller, proto schema, and domain packages
 |-- dashboard/           # React dashboard. npm package files live here.
 |-- templates/           # Built-in subscription and home templates used by Go
@@ -39,7 +39,7 @@ Keep pull requests focused. Avoid mixing formatting, documentation moves, and be
 
 ## Architecture Notes
 
-Rebecca's runtime is Go-owned.
+AntiMage's runtime is Go-owned.
 
 - Go owns the gateway, Master API, migrations, node communication, admin/auth, users, subscriptions, services, settings, system, runtime helpers, and jobs.
 - The gateway does not fall back to a Python backend.

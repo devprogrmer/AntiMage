@@ -6,7 +6,7 @@ export const GitHubStars: FC = () => {
 	const [stars, setStars] = useState<number | null>(null);
 
 	useEffect(() => {
-		fetch("https://api.github.com/repos/rebeccapanel/Rebecca")
+		fetch("https://api.github.com/repos/AntiMagepanel/AntiMage")
 			.then((res) => res.json())
 			.then((data) => {
 				if (data.stargazers_count) {
@@ -20,7 +20,7 @@ export const GitHubStars: FC = () => {
 
 	const handleClick = () => {
 		window.open(
-			"https://github.com/rebeccapanel/Rebecca",
+			"https://github.com/AntiMagepanel/AntiMage",
 			"_blank",
 			"noopener,noreferrer",
 		);

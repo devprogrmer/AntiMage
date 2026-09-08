@@ -1,6 +1,6 @@
 type JsonObject = Record<string, unknown>;
 
-export type RebeccaJsonContext =
+export type AntiMageJsonContext =
 	| "config"
 	| "inbounds"
 	| "inbound"
@@ -38,7 +38,7 @@ const orderKeysWithTail = (
 	];
 };
 
-const childContextForKey = (key: string): RebeccaJsonContext | undefined => {
+const childContextForKey = (key: string): AntiMageJsonContext | undefined => {
 	switch (key) {
 		case "inbounds":
 			return "inbounds";
@@ -55,7 +55,7 @@ const childContextForKey = (key: string): RebeccaJsonContext | undefined => {
 
 const keyOrderForObject = (
 	object: JsonObject,
-	context?: RebeccaJsonContext,
+	context?: AntiMageJsonContext,
 ): string[] => {
 	if (
 		context === "config" ||
@@ -135,9 +135,9 @@ const keyOrderForObject = (
 	return Object.keys(object);
 };
 
-export const canonicalizeRebeccaJson = (
+export const canonicalizeAntiMageJson = (
 	value: unknown,
-	context?: RebeccaJsonContext,
+	context?: AntiMageJsonContext,
 ): unknown => {
 	if (Array.isArray(value)) {
 		const itemContext =
@@ -148,7 +148,7 @@ export const canonicalizeRebeccaJson = (
 					: context === "routingRules"
 						? "routingRule"
 						: undefined;
-		return value.map((item) => canonicalizeRebeccaJson(item, itemContext));
+		return value.map((item) => canonicalizeAntiMageJson(item, itemContext));
 	}
 
 	if (!isPlainObject(value)) {
@@ -158,13 +158,13 @@ export const canonicalizeRebeccaJson = (
 	const ordered: JsonObject = {};
 	for (const key of keyOrderForObject(value, context)) {
 		const childContext = childContextForKey(key);
-		ordered[key] = canonicalizeRebeccaJson(value[key], childContext);
+		ordered[key] = canonicalizeAntiMageJson(value[key], childContext);
 	}
 	return ordered;
 };
 
-export const stringifyRebeccaJson = (
+export const stringifyAntiMageJson = (
 	value: unknown,
 	space: number | string = 2,
-	context?: RebeccaJsonContext,
-) => JSON.stringify(canonicalizeRebeccaJson(value, context), null, space);
+	context?: AntiMageJsonContext,
+) => JSON.stringify(canonicalizeAntiMageJson(value, context), null, space);

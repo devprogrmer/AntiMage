@@ -30,8 +30,8 @@ BotFather ابزار رسمی تلگرام برای ساخت و مدیریت ر�
 
 1. در تلگرام @BotFather را جستجو کن و وارد چت شو.
 2. روی Start بزن یا دستور /newbot را بفرست.
-3. یک نام نمایشی برای ربات وارد کن؛ مثلاً Rebecca Backup.
-4. یک username یکتا وارد کن که آخرش bot باشد؛ مثلاً rebecca_backup_bot.
+3. یک نام نمایشی برای ربات وارد کن؛ مثلاً AntiMage Backup.
+4. یک username یکتا وارد کن که آخرش bot باشد؛ مثلاً AntiMage_backup_bot.
 5. توکنی که BotFather می‌دهد را کپی کن و در جای امن نگه دار.
 
 {{< callout type="info" >}}

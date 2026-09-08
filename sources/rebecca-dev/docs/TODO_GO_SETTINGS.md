@@ -1,6 +1,6 @@
 # TODO: Go-Native Settings Follow-Ups
 
-Panel/subscription settings, template content, Rebecca backup, and certificate
+Panel/subscription settings, template content, AntiMage backup, and certificate
 management are Go-native. The remaining disabled settings feature is listed
 below.
 
