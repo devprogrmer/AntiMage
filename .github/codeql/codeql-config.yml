@@ -1,0 +1,7 @@
+name: AntiMage CodeQL
+
+paths-ignore:
+  - sources/**
+  - dashboard/**
+  - internal/gateway/static/dashboard/build/**
+  - dist/**

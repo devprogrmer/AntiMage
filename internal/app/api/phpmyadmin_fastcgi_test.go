@@ -35,6 +35,20 @@ func TestRewritePHPMyAdminBodyRemovesFrameProtection(t *testing.T) {
 	}
 }
 
+func TestPHPMyAdminFastCGIResponseSetsEmbedSecurityHeaders(t *testing.T) {
+	response := httptest.NewRecorder()
+	status := phpMyAdminResponse{Path: "/phpmyadmin/", Port: 8080}
+	if err := writePHPMyAdminFastCGIResponse(response, []byte("Content-Type: text/html\r\n\r\n<html></html>"), status); err != nil {
+		t.Fatal(err)
+	}
+	if got := response.Header().Get("Content-Security-Policy"); !strings.Contains(got, "sandbox") {
+		t.Fatalf("missing sandbox CSP: %q", got)
+	}
+	if got := response.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("missing nosniff header: %q", got)
+	}
+}
+
 func TestPHPMyAdminEnvValueReadsAntiMageEnvFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".env")
 	if err := os.WriteFile(path, []byte("MYSQL_ROOT_PASSWORD = \"root-pass\"\n"), 0o600); err != nil {
