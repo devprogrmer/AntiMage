@@ -58,7 +58,7 @@
     },
     {
       "name": "Settings",
-      "description": "Panel settings, subscription settings, templates, backup import/export, and disabled migration TODO routes. Backup routes are binary-install only. Certificate and 3x-ui importer routes are documented but intentionally return 410 until rebuilt."
+      "description": "Panel settings, subscription settings, templates, backup import/export, and disabled migration TODO routes. Backup routes are binary-install only. Certificate and legacy importer routes are documented but intentionally return 410 until rebuilt."
     },
     {
       "name": "System",
@@ -3662,7 +3662,7 @@
           "Subscriptions"
         ],
         "summary": "Subscription alias",
-        "description": "Legacy 3x-ui-compatible subscription alias resolver.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
+        "description": "Legacy-compatible subscription alias resolver.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
         "security": [],
         "parameters": [
           {
@@ -3687,7 +3687,7 @@
           "Subscriptions"
         ],
         "summary": "Subscription alias with identifier",
-        "description": "Legacy 3x-ui-compatible subscription alias resolver with path identifier.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
+        "description": "Legacy-compatible subscription alias resolver with path identifier.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
         "security": [],
         "parameters": [
           {

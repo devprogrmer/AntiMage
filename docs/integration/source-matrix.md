@@ -7,7 +7,7 @@ working contract for implementation and release review.
 
 | Source | Upstream | License | AntiMage obligation |
 | --- | --- | --- | --- |
-| Rebecca | `rebeccapanel/Rebecca` | AGPLv3 | Preserve copyright and license notices; publish corresponding source |
+| antimage | `antimagepanel/antimage` | AGPLv3 | Preserve copyright and license notices; publish corresponding source |
 | VPN-UI | `Sir-MmD/vpn-ui` | GPLv3 | Preserve copyright and license notices; publish corresponding source |
 | AntiMage additions | This project | Must remain compatible with the combined copyleft obligations | Mark modified files and retain source availability |
 
@@ -16,16 +16,16 @@ of attribution, or represented as original AntiMage work.
 
 ## Capability ownership
 
-| Capability family | Rebecca baseline | VPN-UI baseline | AntiMage integration boundary |
+| Capability family | antimage baseline | VPN-UI baseline | AntiMage integration boundary |
 | --- | --- | --- | --- |
 | Xray users and inbounds | Native Go services and React dashboard | Extended Xray/core support | Shared domain model with protocol adapters |
-| Multi-node operations | Native | Primarily single-panel core management | Rebecca control plane remains authoritative |
+| Multi-node operations | Native | Primarily single-panel core management | antimage control plane remains authoritative |
 | Subscriptions | V2Ray, Sing-box, Clash, ClashMeta | Broader protocol exports | Unified subscription service and format tests |
 | Protocols | VMess, VLESS, Trojan, Shadowsocks | OpenVPN, L2TP/IPsec, PPTP, IKEv2, WireGuard, AmneziaWG, GRE, MTProto, SSH, AnyTLS, TUIC, NaiveProxy | Adapter registry with explicit lifecycle and health contracts |
 | Roles and access | Admin/user and node-aware workflows | Multi-admin and reseller controls | One authorization boundary at the service/domain layer |
 | Traffic, expiry, limits | Traffic and expiry controls | Device, speed, freeze, reseller metering | Shared accounting and idempotent state transitions |
 | Core lifecycle | Xray-oriented | Xray plus system daemons and bundled cores | Desired/applied runtime state per adapter |
-| Operator UX | Rebecca dashboard | VPN-UI redesign and bulk workflows | Unified dashboard, schema-driven forms, live status and audit |
+| Operator UX | antimage dashboard | VPN-UI redesign and bulk workflows | Unified dashboard, schema-driven forms, live status and audit |
 
 ## Integration rules
 

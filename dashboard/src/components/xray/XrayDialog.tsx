@@ -16,7 +16,7 @@ import {
 } from "@chakra-ui/react";
 import type { FC, ReactNode } from "react";
 
-// UX credit: Xray edit dialogs follow the compact Ant Design/3x-ui form rhythm:
+// Xray edit dialogs follow a compact form rhythm:
 // tight headers, section panels, small controls, and explicit footer actions.
 export const XrayModalContent: FC<ModalContentProps> = ({
 	children,
