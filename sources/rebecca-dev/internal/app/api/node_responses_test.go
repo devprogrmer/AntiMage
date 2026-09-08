@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
+	"github.com/antimagepanel/antimage/internal/app/nodecontroller"
 )
 
 func TestFlattenNodeStaticItemOmitsRuntimeFields(t *testing.T) {

@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
-	telegramapp "github.com/rebeccapanel/rebecca/internal/app/telegram"
-	webhookapp "github.com/rebeccapanel/rebecca/internal/app/webhook"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
+	telegramapp "github.com/antimagepanel/antimage/internal/app/telegram"
+	webhookapp "github.com/antimagepanel/antimage/internal/app/webhook"
 )
 
 const (

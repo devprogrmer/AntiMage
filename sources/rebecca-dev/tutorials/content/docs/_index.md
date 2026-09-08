@@ -19,7 +19,7 @@ Rebecca panel to create, manage, and troubleshoot users, admins, and nodes. Main
 - My Account: API keys, password change, daily and per-node usage charts.
 - Open source—if it helps you, please star the GitHub repo.
 
-- [GitHub](https://github.com/rebeccapanel/rebecca)
+- [GitHub](https://github.com/antimagepanel/antimage)
 - [Telegram](https://t.me/rebeccapanel)
 
 ## Start with a task

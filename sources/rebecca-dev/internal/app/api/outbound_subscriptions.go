@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rebeccapanel/rebecca/internal/app/logging"
-	outboundsubapp "github.com/rebeccapanel/rebecca/internal/app/outboundsub"
+	"github.com/antimagepanel/antimage/internal/app/logging"
+	outboundsubapp "github.com/antimagepanel/antimage/internal/app/outboundsub"
 )
 
 func (s *Server) handleOutboundSubscriptions(w http.ResponseWriter, r *http.Request) {

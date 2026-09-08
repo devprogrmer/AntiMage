@@ -1,4 +1,4 @@
-module github.com/rebeccapanel/rebecca/tutorials
+module github.com/antimagepanel/antimage/tutorials
 
 go 1.21
 

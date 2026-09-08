@@ -22,9 +22,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	admincore "github.com/rebeccapanel/rebecca/internal/app/admin"
-	"github.com/rebeccapanel/rebecca/internal/app/migrations"
-	"github.com/rebeccapanel/rebecca/internal/platform/db"
+	admincore "github.com/antimagepanel/antimage/internal/app/admin"
+	"github.com/antimagepanel/antimage/internal/app/migrations"
+	"github.com/antimagepanel/antimage/internal/platform/db"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/curve25519"
 	"golang.org/x/term"

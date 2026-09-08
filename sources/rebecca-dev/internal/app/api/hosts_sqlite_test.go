@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"testing"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
 )
 
 func TestHostsCRUDOnMigratedSQLite(t *testing.T) {

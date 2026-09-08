@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	externalapps "github.com/rebeccapanel/rebecca/internal/app/externalapps"
+	externalapps "github.com/antimagepanel/antimage/internal/app/externalapps"
 )
 
 const (

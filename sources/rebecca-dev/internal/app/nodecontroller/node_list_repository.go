@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	nodeapp "github.com/rebeccapanel/rebecca/internal/app/node"
+	nodeapp "github.com/antimagepanel/antimage/internal/app/node"
 )
 
 func (r Repository) ListNodeItems(ctx context.Context, nodeID int64) ([]NodeListItem, string, string, error) {

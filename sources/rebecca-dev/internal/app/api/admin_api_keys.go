@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
 )
 
 func (s *Server) handleAdminAPIKeyPath(w http.ResponseWriter, r *http.Request, username, suffix string) bool {

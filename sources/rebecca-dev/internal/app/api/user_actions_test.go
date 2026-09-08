@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
-	userapp "github.com/rebeccapanel/rebecca/internal/app/user"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
+	userapp "github.com/antimagepanel/antimage/internal/app/user"
 )
 
 func testUserMutationServer(t *testing.T) (*Server, *sql.DB, string) {

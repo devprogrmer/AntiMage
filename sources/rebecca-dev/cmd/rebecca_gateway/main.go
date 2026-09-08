@@ -7,9 +7,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rebeccapanel/rebecca/internal/app/api"
-	"github.com/rebeccapanel/rebecca/internal/app/logging"
-	"github.com/rebeccapanel/rebecca/internal/gateway"
+	"github.com/antimagepanel/antimage/internal/app/api"
+	"github.com/antimagepanel/antimage/internal/app/logging"
+	"github.com/antimagepanel/antimage/internal/gateway"
 )
 
 func main() {

@@ -9,9 +9,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/rebeccapanel/rebecca/internal/app/logging"
-	userread "github.com/rebeccapanel/rebecca/internal/app/user"
-	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
+	"github.com/antimagepanel/antimage/internal/app/logging"
+	userread "github.com/antimagepanel/antimage/internal/app/user"
+	"github.com/antimagepanel/antimage/internal/app/xrayconfig"
 )
 
 var proxyProtocols = map[string]struct{}{

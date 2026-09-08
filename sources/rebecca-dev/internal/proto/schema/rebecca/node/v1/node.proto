@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package rebecca.node.v1;
 
-option go_package = "github.com/rebeccapanel/rebecca/internal/proto/node/v1;nodev1";
+option go_package = "github.com/antimagepanel/antimage/internal/proto/node/v1;nodev1";
 
 service NodeControlService {
   rpc Hello(HelloRequest) returns (HelloResponse);

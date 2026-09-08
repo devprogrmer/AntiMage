@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/rebeccapanel/rebecca/internal/app/online"
+	"github.com/antimagepanel/antimage/internal/app/online"
 )
 
 func (r Repository) UserGet(ctx context.Context, req UserGetRequest) (UserDetail, error) {

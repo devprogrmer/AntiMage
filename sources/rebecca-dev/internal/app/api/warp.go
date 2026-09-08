@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	warpapp "github.com/rebeccapanel/rebecca/internal/app/warp"
+	warpapp "github.com/antimagepanel/antimage/internal/app/warp"
 )
 
 func (s *Server) handleWarpAccount(w http.ResponseWriter, r *http.Request) {

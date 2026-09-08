@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	nodeapp "github.com/rebeccapanel/rebecca/internal/app/node"
+	nodeapp "github.com/antimagepanel/antimage/internal/app/node"
 )
 
 func (c Controller) List(ctx context.Context, req Request) (NodeListResult, error) {

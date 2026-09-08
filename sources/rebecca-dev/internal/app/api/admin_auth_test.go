@@ -20,15 +20,15 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
-	backupapp "github.com/rebeccapanel/rebecca/internal/app/backup"
-	certificateapp "github.com/rebeccapanel/rebecca/internal/app/certificates"
-	nodeapp "github.com/rebeccapanel/rebecca/internal/app/node"
-	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
-	settingsapp "github.com/rebeccapanel/rebecca/internal/app/settings"
-	telegramapp "github.com/rebeccapanel/rebecca/internal/app/telegram"
-	warpapp "github.com/rebeccapanel/rebecca/internal/app/warp"
-	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
+	backupapp "github.com/antimagepanel/antimage/internal/app/backup"
+	certificateapp "github.com/antimagepanel/antimage/internal/app/certificates"
+	nodeapp "github.com/antimagepanel/antimage/internal/app/node"
+	"github.com/antimagepanel/antimage/internal/app/nodecontroller"
+	settingsapp "github.com/antimagepanel/antimage/internal/app/settings"
+	telegramapp "github.com/antimagepanel/antimage/internal/app/telegram"
+	warpapp "github.com/antimagepanel/antimage/internal/app/warp"
+	"github.com/antimagepanel/antimage/internal/app/xrayconfig"
 )
 
 func testAdminServer(t *testing.T) (*Server, *sql.DB) {

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	dashboardapp "github.com/rebeccapanel/rebecca/internal/app/dashboard"
+	dashboardapp "github.com/antimagepanel/antimage/internal/app/dashboard"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/host"

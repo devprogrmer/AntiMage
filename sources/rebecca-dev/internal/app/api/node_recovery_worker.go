@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/rebeccapanel/rebecca/internal/app/logging"
-	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
+	"github.com/antimagepanel/antimage/internal/app/logging"
+	"github.com/antimagepanel/antimage/internal/app/nodecontroller"
 )
 
 const defaultNodeRecoveryPollInterval = 45 * time.Second

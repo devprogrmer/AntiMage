@@ -16,9 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
-	backupapp "github.com/rebeccapanel/rebecca/internal/app/backup"
-	telegramapp "github.com/rebeccapanel/rebecca/internal/app/telegram"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
+	backupapp "github.com/antimagepanel/antimage/internal/app/backup"
+	telegramapp "github.com/antimagepanel/antimage/internal/app/telegram"
 )
 
 func TestBackupExportRequiresBinaryRuntime(t *testing.T) {

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
-	"github.com/rebeccapanel/rebecca/internal/app/usage"
-	userapp "github.com/rebeccapanel/rebecca/internal/app/user"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
+	"github.com/antimagepanel/antimage/internal/app/usage"
+	userapp "github.com/antimagepanel/antimage/internal/app/user"
 )
 
 type serviceUsageTestPoint struct {

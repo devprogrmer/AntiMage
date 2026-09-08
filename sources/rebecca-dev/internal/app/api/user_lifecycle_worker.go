@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rebeccapanel/rebecca/internal/app/logging"
-	userapp "github.com/rebeccapanel/rebecca/internal/app/user"
+	"github.com/antimagepanel/antimage/internal/app/logging"
+	userapp "github.com/antimagepanel/antimage/internal/app/user"
 )
 
 const (

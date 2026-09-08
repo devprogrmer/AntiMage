@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
+	"github.com/antimagepanel/antimage/internal/app/nodecontroller"
 )
 
 const geoTemplatesIndexDefault = "https://raw.githubusercontent.com/ppouria/geo-templates/main/index.json"

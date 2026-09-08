@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
-	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
-	systemapp "github.com/rebeccapanel/rebecca/internal/app/system"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
+	"github.com/antimagepanel/antimage/internal/app/nodecontroller"
+	systemapp "github.com/antimagepanel/antimage/internal/app/system"
 )
 
 type fakeSystemMetricsProvider struct {

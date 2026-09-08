@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	externalapps "github.com/rebeccapanel/rebecca/internal/app/externalapps"
+	externalapps "github.com/antimagepanel/antimage/internal/app/externalapps"
 )
 
 const maxExternalAppResponseBytes = 64 << 20

@@ -1,6 +1,6 @@
 package system
 
-import dashboardapp "github.com/rebeccapanel/rebecca/internal/app/dashboard"
+import dashboardapp "github.com/antimagepanel/antimage/internal/app/dashboard"
 
 const DefaultVersion = "0.1.3"
 

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rebeccapanel/rebecca/internal/app/migrations"
+	"github.com/antimagepanel/antimage/internal/app/migrations"
 	_ "modernc.org/sqlite"
 )
 

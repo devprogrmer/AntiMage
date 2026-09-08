@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
-	"github.com/rebeccapanel/rebecca/internal/app/usage"
-	userapp "github.com/rebeccapanel/rebecca/internal/app/user"
-	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
+	"github.com/antimagepanel/antimage/internal/app/usage"
+	userapp "github.com/antimagepanel/antimage/internal/app/user"
+	"github.com/antimagepanel/antimage/internal/app/xrayconfig"
 )
 
 type serviceHostAssignment struct {

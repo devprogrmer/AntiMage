@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/flosch/pongo2/v6"
-	outboundsubapp "github.com/rebeccapanel/rebecca/internal/app/outboundsub"
-	"github.com/rebeccapanel/rebecca/internal/app/usage"
+	outboundsubapp "github.com/antimagepanel/antimage/internal/app/outboundsub"
+	"github.com/antimagepanel/antimage/internal/app/usage"
 )
 
 type SubscriptionClientConfig struct {

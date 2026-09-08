@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	platformdb "github.com/rebeccapanel/rebecca/internal/platform/db"
+	platformdb "github.com/antimagepanel/antimage/internal/platform/db"
 
 	_ "github.com/mattn/go-sqlite3"
 	_ "modernc.org/sqlite"

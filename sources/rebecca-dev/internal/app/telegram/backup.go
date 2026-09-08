@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	backupapp "github.com/rebeccapanel/rebecca/internal/app/backup"
+	backupapp "github.com/antimagepanel/antimage/internal/app/backup"
 )
 
 type BackupExporter interface {

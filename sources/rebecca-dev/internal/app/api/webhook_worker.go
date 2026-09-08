@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/rebeccapanel/rebecca/internal/app/logging"
-	webhookapp "github.com/rebeccapanel/rebecca/internal/app/webhook"
+	"github.com/antimagepanel/antimage/internal/app/logging"
+	webhookapp "github.com/antimagepanel/antimage/internal/app/webhook"
 )
 
 const defaultWebhookSendInterval = 30 * time.Second

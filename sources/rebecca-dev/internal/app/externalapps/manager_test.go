@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	certificateapp "github.com/rebeccapanel/rebecca/internal/app/certificates"
+	certificateapp "github.com/antimagepanel/antimage/internal/app/certificates"
 )
 
 func TestExtractExternalAppArchiveAndDetectRuntime(t *testing.T) {

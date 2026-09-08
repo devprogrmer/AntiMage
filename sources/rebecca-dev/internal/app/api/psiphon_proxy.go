@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
+	"github.com/antimagepanel/antimage/internal/app/nodecontroller"
 )
 
 const psiphonProxyBatchLimit = 20

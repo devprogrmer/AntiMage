@@ -1,4 +1,4 @@
-module github.com/rebeccapanel/rebecca
+module github.com/antimagepanel/antimage
 
 go 1.25.0
 

@@ -3748,7 +3748,7 @@ const file_rebecca_node_v1_node_proto_rawDesc = "" +
 	"\x10AckOutboundUsage\x12 .rebecca.node.v1.AckUsageRequest\x1a!.rebecca.node.v1.AckUsageResponse2_\n" +
 	"\x0fNodeLogsService\x12L\n" +
 	"\n" +
-	"StreamLogs\x12\".rebecca.node.v1.StreamLogsRequest\x1a\x18.rebecca.node.v1.LogLine0\x01B?Z=github.com/rebeccapanel/rebecca/internal/proto/node/v1;nodev1b\x06proto3"
+	"StreamLogs\x12\".rebecca.node.v1.StreamLogsRequest\x1a\x18.rebecca.node.v1.LogLine0\x01B?Z=github.com/antimagepanel/antimage/internal/proto/node/v1;nodev1b\x06proto3"
 
 var (
 	file_rebecca_node_v1_node_proto_rawDescOnce sync.Once

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rebeccapanel/rebecca/internal/app/online"
+	"github.com/antimagepanel/antimage/internal/app/online"
 )
 
 type Repository struct {

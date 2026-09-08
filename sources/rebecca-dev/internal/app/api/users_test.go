@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
-	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
-	userapp "github.com/rebeccapanel/rebecca/internal/app/user"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
+	"github.com/antimagepanel/antimage/internal/app/nodecontroller"
+	userapp "github.com/antimagepanel/antimage/internal/app/user"
 )
 
 func testUserReadServer(t *testing.T) (*Server, *sql.DB) {

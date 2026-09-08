@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	systemapp "github.com/rebeccapanel/rebecca/internal/app/system"
+	systemapp "github.com/antimagepanel/antimage/internal/app/system"
 	"golang.org/x/net/websocket"
 )
 

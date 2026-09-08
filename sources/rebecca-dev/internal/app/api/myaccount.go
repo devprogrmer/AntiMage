@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
 )
 
 type changePasswordPayload struct {

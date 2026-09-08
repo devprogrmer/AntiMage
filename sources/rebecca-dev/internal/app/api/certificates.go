@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	certificateapp "github.com/rebeccapanel/rebecca/internal/app/certificates"
-	"github.com/rebeccapanel/rebecca/internal/app/logging"
+	certificateapp "github.com/antimagepanel/antimage/internal/app/certificates"
+	"github.com/antimagepanel/antimage/internal/app/logging"
 )
 
 const certificateRequestLimit = 256 << 10

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
 )
 
 func TestPhase9AdminLoginRolesAndStandardPermissionEnforcement(t *testing.T) {

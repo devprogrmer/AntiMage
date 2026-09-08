@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
-	telegramapp "github.com/rebeccapanel/rebecca/internal/app/telegram"
-	"github.com/rebeccapanel/rebecca/internal/app/usage"
-	userapp "github.com/rebeccapanel/rebecca/internal/app/user"
-	webhookapp "github.com/rebeccapanel/rebecca/internal/app/webhook"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
+	telegramapp "github.com/antimagepanel/antimage/internal/app/telegram"
+	"github.com/antimagepanel/antimage/internal/app/usage"
+	userapp "github.com/antimagepanel/antimage/internal/app/user"
+	webhookapp "github.com/antimagepanel/antimage/internal/app/webhook"
 )
 
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {

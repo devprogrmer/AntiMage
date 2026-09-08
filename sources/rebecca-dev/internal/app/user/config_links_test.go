@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	outboundsubapp "github.com/rebeccapanel/rebecca/internal/app/outboundsub"
+	outboundsubapp "github.com/antimagepanel/antimage/internal/app/outboundsub"
 )
 
 func assertSIP002UserInfo(t *testing.T, link, want string) {

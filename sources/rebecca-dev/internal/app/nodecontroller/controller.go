@@ -14,10 +14,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/rebeccapanel/rebecca/internal/app/logging"
-	"github.com/rebeccapanel/rebecca/internal/app/nodeclient"
-	outboundsubapp "github.com/rebeccapanel/rebecca/internal/app/outboundsub"
-	nodev1 "github.com/rebeccapanel/rebecca/internal/proto/node/v1"
+	"github.com/antimagepanel/antimage/internal/app/logging"
+	"github.com/antimagepanel/antimage/internal/app/nodeclient"
+	outboundsubapp "github.com/antimagepanel/antimage/internal/app/outboundsub"
+	nodev1 "github.com/antimagepanel/antimage/internal/proto/node/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 )

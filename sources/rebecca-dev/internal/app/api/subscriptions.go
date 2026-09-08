@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	userapp "github.com/rebeccapanel/rebecca/internal/app/user"
+	userapp "github.com/antimagepanel/antimage/internal/app/user"
 )
 
 func (s *Server) handleSubscriptionPath(w http.ResponseWriter, r *http.Request) {

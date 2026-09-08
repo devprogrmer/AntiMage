@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	dashboardapp "github.com/rebeccapanel/rebecca/internal/app/dashboard"
-	systemapp "github.com/rebeccapanel/rebecca/internal/app/system"
+	dashboardapp "github.com/antimagepanel/antimage/internal/app/dashboard"
+	systemapp "github.com/antimagepanel/antimage/internal/app/system"
 )
 
 func (s *Server) handleSystemStats(w http.ResponseWriter, r *http.Request) {

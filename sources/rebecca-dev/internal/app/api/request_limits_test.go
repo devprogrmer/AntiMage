@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rebeccapanel/rebecca/internal/app/externalapps"
+	"github.com/antimagepanel/antimage/internal/app/externalapps"
 )
 
 func TestAPIRequestBodyLimitRejectsLargeDeclaredBody(t *testing.T) {

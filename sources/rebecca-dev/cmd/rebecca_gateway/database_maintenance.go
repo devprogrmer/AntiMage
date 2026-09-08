@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rebeccapanel/rebecca/internal/app/logging"
+	"github.com/antimagepanel/antimage/internal/app/logging"
 )
 
 var rebeccaScriptPath = "/usr/local/bin/rebecca"

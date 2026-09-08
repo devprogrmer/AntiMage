@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
-	nodev1 "github.com/rebeccapanel/rebecca/internal/proto/node/v1"
+	"github.com/antimagepanel/antimage/internal/app/xrayconfig"
+	nodev1 "github.com/antimagepanel/antimage/internal/proto/node/v1"
 )
 
 func (c Controller) runtimeConfigRequest(ctx context.Context, node NodeRow, operationID string, configJSON string) (*nodev1.RuntimeConfigRequest, error) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	nodev1 "github.com/rebeccapanel/rebecca/internal/proto/node/v1"
+	nodev1 "github.com/antimagepanel/antimage/internal/proto/node/v1"
 )
 
 func (c Controller) UpdateRuntime(ctx context.Context, req Request) (result RuntimeResult, err error) {

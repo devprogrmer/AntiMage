@@ -19,7 +19,7 @@ cascade:
 - حساب من: کلید API، تغییر رمز، گزارش مصرف روزانه و مصرف هر نود.
 - کد منبع باز است؛ اگر مفید بود در گیت‌هاب ستاره بدهید.
 
-- [گیت‌هاب](https://github.com/rebeccapanel/rebecca)
+- [گیت‌هاب](https://github.com/antimagepanel/antimage)
 - [تلگرام](https://t.me/rebeccapanel)
 
 ## شروع از یک کار مشخص

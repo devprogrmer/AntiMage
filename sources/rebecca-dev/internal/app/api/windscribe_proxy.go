@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
+	"github.com/antimagepanel/antimage/internal/app/nodecontroller"
 )
 
 var windscribeTagPattern = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)

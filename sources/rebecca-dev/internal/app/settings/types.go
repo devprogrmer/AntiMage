@@ -1,6 +1,6 @@
 package settings
 
-import certificateapp "github.com/rebeccapanel/rebecca/internal/app/certificates"
+import certificateapp "github.com/antimagepanel/antimage/internal/app/certificates"
 
 type PanelSettings struct {
 	DefaultSubscriptionType string `json:"default_subscription_type"`

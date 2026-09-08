@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
 )
 
 func rollbackQuiet(tx *sql.Tx) {

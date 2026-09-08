@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
-	settingsapp "github.com/rebeccapanel/rebecca/internal/app/settings"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
+	settingsapp "github.com/antimagepanel/antimage/internal/app/settings"
 )
 
 type SubscriptionTemplateReader interface {

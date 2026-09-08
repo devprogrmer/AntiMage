@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	nodev1 "github.com/rebeccapanel/rebecca/internal/proto/node/v1"
+	nodev1 "github.com/antimagepanel/antimage/internal/proto/node/v1"
 )
 
 func TestAddUserWithoutMatchingServiceInboundIsNoOp(t *testing.T) {

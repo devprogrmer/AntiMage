@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	userapp "github.com/rebeccapanel/rebecca/internal/app/user"
-	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
+	userapp "github.com/antimagepanel/antimage/internal/app/user"
+	"github.com/antimagepanel/antimage/internal/app/xrayconfig"
 )
 
 type L2TPRuntime struct {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
 )
 
 const (

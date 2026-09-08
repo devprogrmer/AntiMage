@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
-	systemapp "github.com/rebeccapanel/rebecca/internal/app/system"
+	adminapp "github.com/antimagepanel/antimage/internal/app/admin"
+	systemapp "github.com/antimagepanel/antimage/internal/app/system"
 )
 
 type fakeRuntimeDetector struct {
