@@ -34,4 +34,6 @@ for SCRIPT in "$ROOT/antimage-node.sh" "$ROOT/antimage-node-binary.sh"; do
     if [[ "$(uname -s)" == Linux* ]]; then
         [ "$(stat -c '%a' "$CERT_KEY_FILE")" = "600" ]
     fi
+    service_function=$(sed -n '/^create_binary_antimage_node_service() {$/,/^}$/p' "$SCRIPT")
+    grep -Fq 'EnvironmentFile=-$ENV_FILE' <<<"$service_function"
 done

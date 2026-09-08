@@ -1,6 +1,7 @@
 package nodeagent
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -62,6 +63,15 @@ func (s *Server) Run(ctx context.Context) error {
 		Certificates: []tls.Certificate{cert},
 		ClientAuth:   tls.RequireAnyClientCert,
 		MinVersion:   tls.VersionTLS12,
+		VerifyConnection: func(state tls.ConnectionState) error {
+			if len(state.PeerCertificates) == 0 {
+				return fmt.Errorf("client certificate is missing")
+			}
+			if len(cert.Certificate) == 0 || !bytes.Equal(state.PeerCertificates[0].Raw, cert.Certificate[0]) {
+				return fmt.Errorf("client certificate does not match the configured node certificate")
+			}
+			return nil
+		},
 	})))
 	nodev1.RegisterNodeControlServiceServer(grpcServer, s)
 	nodev1.RegisterNodeRuntimeServiceServer(grpcServer, s)
@@ -74,6 +84,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}()
 	go func() {
 		<-ctx.Done()
+		_ = s.stopRuntime()
 		grpcServer.GracefulStop()
 	}()
 
@@ -225,7 +236,7 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	s.mu.Unlock()
 
 	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
-		_ = s.startXray(ctx, configPath)
+		_ = s.startXray(configPath)
 		message += " and runtime started"
 	} else {
 		message += "; xray binary is not installed yet"
@@ -233,9 +244,9 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	return s.action(req.GetOperationId(), message), nil
 }
 
-func (s *Server) startXray(ctx context.Context, configPath string) error {
+func (s *Server) startXray(configPath string) error {
 	_ = s.stopRuntime()
-	cmd := exec.CommandContext(ctx, s.cfg.XrayPath, "run", "-config", configPath)
+	cmd := exec.Command(s.cfg.XrayPath, "run", "-config", configPath)
 	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+s.cfg.XrayAssetsDir)
 	cmd.Stdout = logWriter{server: s}
 	cmd.Stderr = logWriter{server: s}

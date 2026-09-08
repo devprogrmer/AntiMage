@@ -1113,6 +1113,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=$APP_DIR
+EnvironmentFile=-$ENV_FILE
 Environment=ANTIMAGE_NODE_APP_NAME=$APP_NAME
 Environment=ANTIMAGE_NODE_APP_DIR=$APP_DIR
 Environment=ANTIMAGE_NODE_DATA_DIR=$DATA_DIR
