@@ -365,7 +365,7 @@ describe("XHTTP inbound settings", () => {
 				network: "raw",
 				security: "reality",
 				realitySettings: {
-					maxTimediff: 1000,
+					maxTimeDiff: 1000,
 					limitFallbackUpload: {
 						afterBytes: 1024,
 						bytesPerSec: 2048,
