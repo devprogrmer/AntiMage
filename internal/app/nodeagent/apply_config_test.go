@@ -166,3 +166,79 @@ func TestApplyConfigStartFailureRestoresPreviousRuntime(t *testing.T) {
 		t.Fatalf("unexpected runtime start attempts: got %d want 2", startCalls)
 	}
 }
+
+func TestRestartRuntimeValidationFailureKeepsCurrentRuntime(t *testing.T) {
+	withRuntimeCommand(t, "validate-fail")
+
+	dataDir := t.TempDir()
+	xrayPath := filepath.Join(dataDir, "xray")
+	if err := os.WriteFile(xrayPath, []byte("placeholder"), 0755); err != nil {
+		t.Fatalf("create fake xray: %v", err)
+	}
+
+	configPath := filepath.Join(dataDir, "xray-config.json")
+	const lastGood = `{"log":{"loglevel":"warning"}}`
+	if err := os.WriteFile(configPath, []byte(lastGood), 0644); err != nil {
+		t.Fatalf("write last-good config: %v", err)
+	}
+
+	s := New(Config{
+		DataDir:       dataDir,
+		XrayPath:      xrayPath,
+		XrayAssetsDir: dataDir,
+	})
+	s.lastConfig = configPath
+	s.appliedRev = 7
+
+	oldCmd := exec.Command(
+		os.Args[0],
+		"-test.run=TestNodeAgentHelperProcess",
+		"--",
+		"runtime-wait",
+	)
+	if err := oldCmd.Start(); err != nil {
+		t.Fatalf("start current runtime helper: %v", err)
+	}
+	go func() {
+		_ = oldCmd.Wait()
+	}()
+
+	s.mu.Lock()
+	s.lastRuntime = oldCmd
+	s.mu.Unlock()
+
+	t.Cleanup(func() {
+		_ = s.stopRuntime()
+	})
+
+	_, err := s.RestartRuntime(context.Background(), &nodev1.RuntimeConfigRequest{
+		ConfigJson:      `{"broken":true}`,
+		DesiredRevision: 99,
+	})
+	if err == nil {
+		t.Fatal("expected invalid restart config to fail")
+	}
+
+	s.mu.Lock()
+	currentRuntime := s.lastRuntime
+	s.mu.Unlock()
+
+	if currentRuntime != oldCmd {
+		t.Fatal("current runtime was stopped before replacement config validation")
+	}
+
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read current config: %v", err)
+	}
+	if string(got) != lastGood {
+		t.Fatalf("current config changed after rejected restart: %s", got)
+	}
+
+	if s.appliedRev != 7 {
+		t.Fatalf(
+			"applied revision advanced after rejected restart: got %d want 7",
+			s.appliedRev,
+		)
+	}
+}

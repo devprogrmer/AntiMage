@@ -126,7 +126,6 @@ func (s *Server) StartRuntime(ctx context.Context, req *nodev1.RuntimeConfigRequ
 }
 
 func (s *Server) RestartRuntime(ctx context.Context, req *nodev1.RuntimeConfigRequest) (*nodev1.RuntimeActionResponse, error) {
-	_ = s.stopRuntime()
 	return s.applyConfig(ctx, req, "restarted")
 }
 
