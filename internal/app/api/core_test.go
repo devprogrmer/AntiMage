@@ -194,6 +194,13 @@ func TestTorProxySetupReturnsBeforeNodeInstallation(t *testing.T) {
 	if !body.Success || body.Obj.Outbound["tag"] != "tor-de" {
 		t.Fatalf("unexpected response: %#v", body)
 	}
+	var status string
+	if err := db.QueryRow(`SELECT status FROM node_operations WHERE operation_type = 'apply_tor_proxy' AND node_id = 999`).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "pending" {
+		t.Fatalf("Tor setup should be queued without running in the request, got operation status %q", status)
+	}
 }
 
 func TestTorProxySetupMasterRequiresConnectedNodes(t *testing.T) {

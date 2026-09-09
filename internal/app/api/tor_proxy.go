@@ -10,7 +10,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/antimage/antimage/internal/app/logging"
 	"github.com/antimage/antimage/internal/app/nodecontroller"
 )
 
@@ -85,29 +84,26 @@ func (s *Server) handleTorProxySetup(w http.ResponseWriter, r *http.Request) {
 		outbounds = append(outbounds, torOutbound(profile))
 	}
 	nodeIDs = append([]int64(nil), nodeIDs...)
-	go func() {
-		operationCount := len(nodeIDs) * len(profiles)
-		timeout := time.Duration(max(5, ((operationCount+3)/4)*5)) * time.Minute
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-		completed := 0
-		failed := make([]string, 0)
-		for _, profile := range profiles {
-			results, profileFailures := s.applyTorProxyToNodes(ctx, nodeIDs, profile.Port, profile.Country, strict)
-			completed += len(results)
-			failed = append(failed, profileFailures...)
+	queued := 0
+	for _, profile := range profiles {
+		for _, nodeID := range nodeIDs {
+			if err := s.nodeController.QueueTorProxy(r.Context(), nodecontroller.Request{
+				NodeID:         nodeID,
+				TorSocksPort:   profile.Port,
+				TorExitCountry: profile.Country,
+				TorStrictExit:  strict,
+			}); err != nil {
+				writeError(w, http.StatusBadGateway, err.Error())
+				return
+			}
+			queued++
 		}
-		if len(failed) > 0 {
-			logging.Warnf(logging.ComponentNode, "Tor proxy setup completed=%d failed=%d errors=%s", completed, len(failed), strings.Join(failed, "; "))
-			return
-		}
-		logging.Infof(logging.ComponentNode, "Tor proxy setup completed nodes=%d profiles=%d", len(nodeIDs), len(profiles))
-	}()
+	}
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"success": true,
 		"obj": map[string]any{
-			"message":   fmt.Sprintf("%d Tor setup(s) started on %d node(s); the outbounds are ready to save", len(profiles), len(nodeIDs)),
+			"message":   fmt.Sprintf("%d Tor setup operation(s) queued on %d node(s); the outbounds are ready to save", queued, len(nodeIDs)),
 			"outbound":  outbounds[0],
 			"outbounds": outbounds,
 		},
