@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
@@ -69,6 +70,53 @@ func TestApplyTorProxyStartsConfiguredLoopbackSocks(t *testing.T) {
 	}
 	if capabilities := res.GetRuntime().GetCapabilities(); !containsString(capabilities, "tor_proxy") || !containsString(capabilities, "tor_proxy_running") {
 		t.Fatalf("missing Tor capabilities: %v", capabilities)
+	}
+}
+
+func TestApplyTorProxyDoesNotBindProcessToRequestContext(t *testing.T) {
+	previousCommand := torCommandContext
+	previousLookPath := torLookPath
+	defer func() {
+		torCommandContext = previousCommand
+		torLookPath = previousLookPath
+	}()
+	torLookPath = func(string) (string, error) {
+		return os.Executable()
+	}
+
+	var processContext context.Context
+	torCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		processContext = ctx
+		allArgs := append([]string{"-test.run=TestHelperProcess", "--", "tor"}, args...)
+		cmd := exec.CommandContext(ctx, name, allArgs...)
+		cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
+		return cmd
+	}
+
+	requestContext, cancel := context.WithCancel(context.Background())
+	server := New(Config{DataDir: t.TempDir()})
+	_, err := server.ApplyTorProxy(requestContext, &nodev1.TorProxyRequest{SocksPort: 19051})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		server.mu.Lock()
+		for _, cmd := range server.torProxies {
+			if cmd != nil && cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+		}
+		server.mu.Unlock()
+	})
+	if processContext == nil {
+		t.Fatal("tor command was not started")
+	}
+
+	cancel()
+	select {
+	case <-processContext.Done():
+		t.Fatal("tor process context was cancelled with the request")
+	case <-time.After(20 * time.Millisecond):
 	}
 }
 

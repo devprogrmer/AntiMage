@@ -181,7 +181,7 @@ func (s *Server) ApplyTorProxy(ctx context.Context, req *nodev1.TorProxyRequest)
 		return nil, err
 	}
 
-	cmd := torCommandContext(ctx, torPath, "-f", torrcPath)
+	cmd := torCommandContext(context.Background(), torPath, "-f", torrcPath)
 	cmd.Stdout = logWriter{server: s}
 	cmd.Stderr = logWriter{server: s}
 	if err := cmd.Start(); err != nil {
