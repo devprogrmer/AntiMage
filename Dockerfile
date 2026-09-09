@@ -1,7 +1,8 @@
 FROM node:20-bookworm-slim AS dashboard
 
 WORKDIR /src/dashboard
-COPY dashboard/package*.json ./
+ENV NODE_OPTIONS=--max-old-space-size=2048
+COPY dashboard/package*.json dashboard/chakra.config.ts ./
 RUN npm ci
 COPY dashboard/ ./
 RUN VITE_BASE_API=/api/ npm run build \
