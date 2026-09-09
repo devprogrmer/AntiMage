@@ -1,7 +1,8 @@
 FROM node:20-bookworm-slim AS dashboard
 
 WORKDIR /src/dashboard
-ENV NODE_OPTIONS=--max-old-space-size=2048
+ARG DASHBOARD_NODE_OPTIONS=--max-old-space-size=2048
+ENV NODE_OPTIONS=${DASHBOARD_NODE_OPTIONS}
 COPY dashboard/package*.json dashboard/chakra.config.ts ./
 RUN npm ci
 COPY dashboard/ ./
