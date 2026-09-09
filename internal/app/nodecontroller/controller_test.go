@@ -8,9 +8,22 @@ import (
 
 func TestNodeGRPCPortCandidatesPreferControlPortWithLegacyFallback(t *testing.T) {
 	got := NodeGRPCPortCandidates(62033, 62034)
-	want := []int{62033, 62035}
+	want := []int{62033, 62034}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected candidates: got %v want %v", got, want)
+	}
+}
+
+func TestNodeGRPCPortCandidatesDoesNotInventAdjacentAPIPort(t *testing.T) {
+	got := NodeGRPCPortCandidates(62050, 62051)
+	want := []int{62050, 62051}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected candidates: got %v want %v", got, want)
+	}
+	for _, port := range got {
+		if port == 62052 {
+			t.Fatalf("unexpected invented API-adjacent port %d in %v", port, got)
+		}
 	}
 }
 

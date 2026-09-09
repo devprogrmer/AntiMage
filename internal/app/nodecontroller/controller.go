@@ -1286,7 +1286,7 @@ func NodeGRPCPortCandidates(servicePort int, apiPort int) []int {
 	}
 	add(servicePort)
 	if apiPort > 0 {
-		add(apiPort + 1)
+		add(apiPort)
 	}
 	return result
 }
