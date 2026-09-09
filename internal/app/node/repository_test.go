@@ -193,29 +193,37 @@ func TestNodeRepositoryDoesNotSyncForNonConnectionEdits(t *testing.T) {
 	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 2)
 }
 
-func TestNodeRepositoryRejectsLoopbackAddresses(t *testing.T) {
+func TestNodeRepositoryAllowsSelfNodeLoopbackAddress(t *testing.T) {
 	db := newNodeTestDB(t)
 	repo := NewRepository(db, "sqlite").WithNow(fixedNow())
 	ctx := context.Background()
 
 	for _, address := range []string{"127.0.0.1", "::1", "localhost"} {
-		payload := baseNodeCreate("loopback-" + strings.ReplaceAll(strings.ReplaceAll(address, ".", "-"), ":", "-"))
+		name := "loopback-" + strings.ReplaceAll(strings.ReplaceAll(address, ".", "-"), ":", "-")
+		payload := baseNodeCreate(name)
 		payload.Address = address
-		if _, err := repo.CreateNode(ctx, payload); !IsKind(err, ErrorInvalid) {
-			t.Fatalf("expected invalid create address %q, got %v", address, err)
+		created, err := repo.CreateNode(ctx, payload)
+		if err != nil {
+			t.Fatalf("CreateNode self-node address %q error: %v", address, err)
+		}
+		if created.Address != address {
+			t.Fatalf("created address = %q, want %q", created.Address, address)
 		}
 	}
-	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM nodes`, 0)
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM nodes`, 3)
 
 	created, err := repo.CreateNode(ctx, baseNodeCreate("safe-node"))
 	if err != nil {
 		t.Fatalf("CreateNode safe node error: %v", err)
 	}
 	address := "127.0.0.1"
-	if _, err := repo.UpdateNode(ctx, created.ID, NodeModify{Address: &address}); !IsKind(err, ErrorInvalid) {
-		t.Fatalf("expected invalid update address, got %v", err)
+	updated, err := repo.UpdateNode(ctx, created.ID, NodeModify{Address: &address})
+	if err != nil {
+		t.Fatalf("UpdateNode self-node address error: %v", err)
 	}
-	assertNodeRepositoryString(t, db, `SELECT address FROM nodes WHERE id = 1`, "192.0.2.10")
+	if updated.Address != address {
+		t.Fatalf("updated address = %q, want %q", updated.Address, address)
+	}
 }
 
 func TestNodeCreateRollsBackWhenNodeOperationFails(t *testing.T) {

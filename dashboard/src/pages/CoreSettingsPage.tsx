@@ -1490,6 +1490,7 @@ export const CoreSettingsPage: FC = () => {
 				msg?: string;
 			}>("/panel/xray/tor/setup", {
 				method: "POST",
+				timeout: 30000,
 				body: {
 					target_id: selectedTarget,
 					locations: values.locations,

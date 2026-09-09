@@ -2,14 +2,17 @@ import { Box, HStack, Text } from "@chakra-ui/react";
 import { StarIcon } from "@heroicons/react/24/solid";
 import { type FC, useEffect, useState } from "react";
 
+const REPOSITORY_URL = "https://github.com/devprogrmer/AntiMage";
+const REPOSITORY_API_URL = "https://api.github.com/repos/devprogrmer/AntiMage";
+
 export const GitHubStars: FC = () => {
 	const [stars, setStars] = useState<number | null>(null);
 
 	useEffect(() => {
-		fetch("https://api.github.com/repos/antimagepanel/AntiMage")
+		fetch(REPOSITORY_API_URL)
 			.then((res) => res.json())
 			.then((data) => {
-				if (data.stargazers_count) {
+				if (typeof data.stargazers_count === "number") {
 					setStars(data.stargazers_count);
 				}
 			})
@@ -19,11 +22,7 @@ export const GitHubStars: FC = () => {
 	}, []);
 
 	const handleClick = () => {
-		window.open(
-			"https://github.com/antimagepanel/AntiMage",
-			"_blank",
-			"noopener,noreferrer",
-		);
+		window.open(REPOSITORY_URL, "_blank", "noopener,noreferrer");
 	};
 
 	return (
@@ -53,7 +52,7 @@ export const GitHubStars: FC = () => {
 			}}
 			transition="background 0.15s ease, border-color 0.15s ease, color 0.15s ease"
 			cursor="pointer"
-			aria-label="GitHub Stars"
+			aria-label="Open AntiMage on GitHub"
 		>
 			<HStack spacing={1.5} align="center">
 				<svg

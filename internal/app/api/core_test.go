@@ -196,6 +196,34 @@ func TestTorProxySetupReturnsBeforeNodeInstallation(t *testing.T) {
 	}
 }
 
+func TestTorProxySetupMasterRequiresConnectedNodes(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterConfig(t, db, map[string]any{})
+	if _, err := db.Exec(`INSERT INTO nodes (id, name, address, port, api_port, status) VALUES
+		(31, 'offline-a', '127.0.0.1', 62050, 62051, 'error'),
+		(32, 'offline-b', '127.0.0.1', 62050, 62051, 'connecting')`); err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte(`{
+		"target_id": "master",
+		"port": 9050,
+		"country": "de",
+		"tag": "tor-de"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/panel/xray/tor/setup", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.handleTorProxySetup(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "no connected nodes") {
+		t.Fatalf("unexpected body=%s", rec.Body.String())
+	}
+}
+
 func TestTorProxySetupRejectsExistingOutboundTag(t *testing.T) {
 	server, db := testAdminServer(t)
 	insertMasterConfig(t, db, map[string]any{

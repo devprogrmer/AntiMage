@@ -70,13 +70,13 @@ func (s *Server) handleTorProxySetup(w http.ResponseWriter, r *http.Request) {
 		}
 		nodeIDs = nodeIDs[:0]
 		for _, node := range nodes.Nodes {
-			if node.ID > 0 && node.Status != "disabled" && node.Status != "limited" {
+			if node.ID > 0 && strings.EqualFold(strings.TrimSpace(node.Status), "connected") {
 				nodeIDs = append(nodeIDs, node.ID)
 			}
 		}
 	}
 	if len(nodeIDs) == 0 {
-		writeError(w, http.StatusBadRequest, "no active nodes found for Tor proxy setup")
+		writeError(w, http.StatusBadRequest, "no connected nodes found for Tor proxy setup")
 		return
 	}
 	strict := boolFromAny(payload["strict"], true)

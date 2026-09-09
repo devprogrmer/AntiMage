@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"strings"
 	"time"
 )
@@ -786,12 +785,6 @@ func validateNodeAddress(address string) error {
 	address = strings.TrimSpace(strings.Trim(address, "[]"))
 	if address == "" {
 		return wrapInvalid("address is required")
-	}
-	if strings.EqualFold(address, "localhost") {
-		return wrapInvalid("node address must be reachable from the panel; use the server IP or Docker host address instead of localhost")
-	}
-	if ip := net.ParseIP(address); ip != nil && ip.IsLoopback() {
-		return wrapInvalid("node address must be reachable from the panel; use the server IP or Docker host address instead of a loopback address")
 	}
 	return nil
 }
