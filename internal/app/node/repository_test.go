@@ -193,6 +193,31 @@ func TestNodeRepositoryDoesNotSyncForNonConnectionEdits(t *testing.T) {
 	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 2)
 }
 
+func TestNodeRepositoryRejectsLoopbackAddresses(t *testing.T) {
+	db := newNodeTestDB(t)
+	repo := NewRepository(db, "sqlite").WithNow(fixedNow())
+	ctx := context.Background()
+
+	for _, address := range []string{"127.0.0.1", "::1", "localhost"} {
+		payload := baseNodeCreate("loopback-" + strings.ReplaceAll(strings.ReplaceAll(address, ".", "-"), ":", "-"))
+		payload.Address = address
+		if _, err := repo.CreateNode(ctx, payload); !IsKind(err, ErrorInvalid) {
+			t.Fatalf("expected invalid create address %q, got %v", address, err)
+		}
+	}
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM nodes`, 0)
+
+	created, err := repo.CreateNode(ctx, baseNodeCreate("safe-node"))
+	if err != nil {
+		t.Fatalf("CreateNode safe node error: %v", err)
+	}
+	address := "127.0.0.1"
+	if _, err := repo.UpdateNode(ctx, created.ID, NodeModify{Address: &address}); !IsKind(err, ErrorInvalid) {
+		t.Fatalf("expected invalid update address, got %v", err)
+	}
+	assertNodeRepositoryString(t, db, `SELECT address FROM nodes WHERE id = 1`, "192.0.2.10")
+}
+
 func TestNodeCreateRollsBackWhenNodeOperationFails(t *testing.T) {
 	db := newNodeTestDB(t)
 	repo := NewRepository(db, "sqlite").WithNow(fixedNow())
