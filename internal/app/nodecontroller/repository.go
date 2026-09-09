@@ -61,6 +61,7 @@ const (
 	pendingOperationsPerNodeCap = 200
 	maxPendingOperationsLimit   = 10000
 	operationRetryBackoff       = 15 * time.Second
+	maxOperationRetryBackoff    = 5 * time.Minute
 )
 
 var runtimeProxyProtocolList = []string{"vmess", "vless", "trojan", "shadowsocks", "hysteria"}
@@ -942,14 +943,35 @@ func (r Repository) MarkOperationRetrying(ctx context.Context, id int64, message
 	if len(message) > 4096 {
 		message = message[:4096]
 	}
+	var attempts int
+	if err := r.db.QueryRowContext(ctx, `SELECT attempts FROM node_operations WHERE id = ?`, id).Scan(&attempts); err != nil {
+		return err
+	}
+	nextAttempts := attempts + 1
+	now := time.Now().UTC()
+	updatedAt := now.Add(operationRetryDelay(nextAttempts) - operationRetryBackoff)
 	_, err := r.db.ExecContext(
 		ctx,
 		`UPDATE node_operations SET status = 'retrying', attempts = attempts + 1, last_error = ?, updated_at = ? WHERE id = ?`,
 		message,
-		r.timeArg(time.Now().UTC()),
+		r.timeArg(updatedAt),
 		id,
 	)
 	return err
+}
+
+func operationRetryDelay(attempts int) time.Duration {
+	if attempts <= 1 {
+		return operationRetryBackoff
+	}
+	delay := operationRetryBackoff
+	for i := 1; i < attempts; i++ {
+		delay *= 2
+		if delay >= maxOperationRetryBackoff {
+			return maxOperationRetryBackoff
+		}
+	}
+	return delay
 }
 
 func (r Repository) MarkOperationFailed(ctx context.Context, id int64, message string) error {

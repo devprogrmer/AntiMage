@@ -105,6 +105,61 @@ VALUES ('add_user', 7, 42, '{"config_json":"{}"}', 'pending', 'op-1', CURRENT_TI
 	}
 }
 
+func TestRepositoryHighAttemptRetryUsesLongerBackoff(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-long-backoff.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (id INTEGER PRIMARY KEY, status TEXT);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO nodes (id, status) VALUES (7, 'connected');
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at)
+VALUES ('sync_config', 7, NULL, '{}', 'running', 4, 'op-high-attempt', CURRENT_TIMESTAMP, '2000-01-01 00:00:00')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	if err := repo.MarkOperationRetrying(ctx, 1, "node down"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := repo.PendingOperations(ctx, 7, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("expected high-attempt retry to wait for extended backoff, got %#v", rows)
+	}
+	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE id = 1`, 5)
+
+	if _, err := db.ExecContext(ctx, `UPDATE node_operations SET updated_at = '2000-01-01 00:00:00' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = repo.PendingOperations(ctx, 7, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Attempts != 5 {
+		t.Fatalf("expected retry after extended backoff expires, got %#v", rows)
+	}
+}
+
 func TestRepositoryPendingOperationsPreferConnectedNodesFairly(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-fair.db")+"?_pragma=busy_timeout(30000)")
