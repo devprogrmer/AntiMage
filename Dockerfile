@@ -21,6 +21,8 @@ COPY tutorials ./tutorials
 RUN hugo --source ./tutorials --destination /out --cleanDestinationDir --gc --minify
 
 FROM golang:1.25-bookworm AS builder
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
