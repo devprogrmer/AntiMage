@@ -1,13 +1,10 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
-	"sync"
-	"time"
 	"unicode"
 
 	"github.com/antimage/antimage/internal/app/nodecontroller"
@@ -60,19 +57,12 @@ func (s *Server) handleTorProxySetup(w http.ResponseWriter, r *http.Request) {
 
 	nodeIDs := []int64{nodeID}
 	if !isNode {
-		listCtx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-		defer cancel()
-		nodes, err := s.nodeController.List(listCtx, nodecontroller.Request{})
+		nodes, err := s.nodeController.ConnectedNodeIDs(r.Context())
 		if err != nil {
 			writeError(w, http.StatusBadGateway, err.Error())
 			return
 		}
-		nodeIDs = nodeIDs[:0]
-		for _, node := range nodes.Nodes {
-			if node.ID > 0 && strings.EqualFold(strings.TrimSpace(node.Status), "connected") {
-				nodeIDs = append(nodeIDs, node.ID)
-			}
-		}
+		nodeIDs = nodes
 	}
 	if len(nodeIDs) == 0 {
 		writeError(w, http.StatusBadRequest, "no connected nodes found for Tor proxy setup")
@@ -240,45 +230,6 @@ func torOutbound(profile torProxyProfile) map[string]any {
 			}},
 		},
 	}
-}
-
-func (s *Server) applyTorProxyToNodes(ctx context.Context, nodeIDs []int64, port uint32, country string, strict bool) ([]nodecontroller.RuntimeResult, []string) {
-	type result struct {
-		runtime nodecontroller.RuntimeResult
-		err     error
-	}
-	results := make([]nodecontroller.RuntimeResult, 0, len(nodeIDs))
-	failures := make([]string, 0)
-	ch := make(chan result, len(nodeIDs))
-	sem := make(chan struct{}, 4)
-	var wg sync.WaitGroup
-	for _, nodeID := range nodeIDs {
-		wg.Add(1)
-		go func(nodeID int64) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			runtime, err := s.nodeController.ApplyTorProxy(ctx, nodecontroller.Request{
-				NodeID:         nodeID,
-				TorSocksPort:   port,
-				TorExitCountry: country,
-				TorStrictExit:  strict,
-			})
-			ch <- result{runtime: runtime, err: err}
-		}(nodeID)
-	}
-	go func() {
-		wg.Wait()
-		close(ch)
-	}()
-	for item := range ch {
-		if item.err != nil {
-			failures = append(failures, item.err.Error())
-			continue
-		}
-		results = append(results, item.runtime)
-	}
-	return results, failures
 }
 
 func boolFromAny(value any, fallback bool) bool {
