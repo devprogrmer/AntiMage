@@ -203,6 +203,33 @@ func TestTorProxySetupReturnsBeforeNodeInstallation(t *testing.T) {
 	}
 }
 
+func TestTorProxySetupQueuesNonStrictExitByDefault(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertNodeConfig(t, db, 1001, "default", nil)
+	payload := []byte(`{
+		"target_id": "node:1001",
+		"port": 9050,
+		"country": "de",
+		"tag": "tor-de"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/panel/xray/tor/setup", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.handleTorProxySetup(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var queuedPayload string
+	if err := db.QueryRow(`SELECT payload FROM node_operations WHERE operation_type = 'apply_tor_proxy' AND node_id = 1001`).Scan(&queuedPayload); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(queuedPayload, `"tor_strict_exit":true`) {
+		t.Fatalf("Tor setup must not require strict exits by default: %s", queuedPayload)
+	}
+}
+
 func TestTorProxySetupMasterRequiresConnectedNodes(t *testing.T) {
 	server, db := testAdminServer(t)
 	insertMasterConfig(t, db, map[string]any{})

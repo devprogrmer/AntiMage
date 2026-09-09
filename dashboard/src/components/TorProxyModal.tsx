@@ -56,7 +56,7 @@ const defaults: TorProxyFormValues = {
 	portStep: 1,
 	direction: "up",
 	tagPrefix: "tor",
-	strict: true,
+	strict: false,
 };
 
 const parseLocations = (value: string) =>

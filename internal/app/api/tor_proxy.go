@@ -68,7 +68,7 @@ func (s *Server) handleTorProxySetup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "no connected nodes found for Tor proxy setup")
 		return
 	}
-	strict := boolFromAny(payload["strict"], true)
+	strict := boolFromAny(payload["strict"], false)
 	outbounds := make([]map[string]any, 0, len(profiles))
 	for _, profile := range profiles {
 		outbounds = append(outbounds, torOutbound(profile))
