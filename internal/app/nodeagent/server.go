@@ -41,8 +41,9 @@ type Server struct {
 }
 
 var (
-	torCommandContext = exec.CommandContext
-	torLookPath       = exec.LookPath
+	torCommandContext  = exec.CommandContext
+	torLookPath        = exec.LookPath
+	xrayCommandContext = exec.CommandContext
 )
 
 func New(cfg Config) *Server {
@@ -302,7 +303,7 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 
 func (s *Server) startXray(ctx context.Context, configPath string) error {
 	_ = s.stopRuntime()
-	cmd := exec.CommandContext(ctx, s.cfg.XrayPath, "run", "-config", configPath)
+	cmd := xrayCommandContext(context.Background(), s.cfg.XrayPath, "run", "-config", configPath)
 	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+s.cfg.XrayAssetsDir)
 	cmd.Stdout = logWriter{server: s}
 	cmd.Stderr = logWriter{server: s}
