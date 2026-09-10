@@ -112,9 +112,9 @@ Pull published images directly:
 
 ```bash
 docker pull ghcr.io/devprogrmer/antimage:latest
-docker pull ghcr.io/devprogrmer/antimage:v0.1.3
+docker pull ghcr.io/devprogrmer/antimage:v0.1.4
 docker pull ghcr.io/devprogrmer/antimage-node:latest
-docker pull ghcr.io/devprogrmer/antimage-node:v0.1.3
+docker pull ghcr.io/devprogrmer/antimage-node:v0.1.4
 ```
 
 For MySQL or MariaDB:
@@ -128,7 +128,7 @@ curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/a
 Install the master panel:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --version v0.1.3
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-binary.sh | sudo bash -s -- install --version v0.1.4
 ```
 
 Default binary paths:
@@ -178,13 +178,13 @@ make sure the master can reach the node address.
 Install the binary node agent:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install --version v0.1.3
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install --version v0.1.4
 ```
 
 For multiple node agents on one server:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install --name antimage-node-2 --version v0.1.3
+curl -fsSL https://raw.githubusercontent.com/devprogrmer/AntiMage/main/scripts/antimage/antimage-node-binary.sh | sudo bash -s -- install --name antimage-node-2 --version v0.1.4
 ```
 
 Default node paths:
@@ -358,7 +358,7 @@ Environment configuration:
 Binary upgrade:
 
 ```bash
-sudo antimage update --version v0.1.3
+sudo antimage update --version v0.1.4
 sudo antimage restart
 ```
 
@@ -435,6 +435,26 @@ Build release binaries locally:
 bash scripts/build_binary.sh
 ```
 
+## Release Notes: v0.1.4
+
+AntiMage v0.1.4 adds the production native OpenVPN inbound runtime for Linux
+binary nodes, including authentication, user policy enforcement, session and
+device tracking, quota/accounting support, and transparent TCP/UDP routing
+through Xray using TPROXY.
+
+Highlights:
+
+- Added production native OpenVPN runtime management on Linux nodes.
+- Added OpenVPN authentication and user status/expiry enforcement.
+- Added traffic quotas, live cutoff, device limits, and session callbacks.
+- Added persisted OpenVPN usage accounting and acknowledgement handling.
+- Routed OpenVPN TCP/UDP client traffic through Xray with Linux TPROXY.
+- Added graceful OpenVPN and TPROXY lifecycle cleanup.
+- Added runtime/controller tests for the OpenVPN implementation.
+- Verified a real OpenVPN client path through an L3 relay, AntiMage, TPROXY,
+  Xray, and Internet egress.
+
+Full notes are kept in `.github/release-notes/v0.1.4.md`.
 ## Release Notes: v0.1.3
 
 AntiMage v0.1.3 focuses on completing the AntiMage rename, stabilizing node
