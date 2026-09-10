@@ -194,6 +194,68 @@ func TestTorProxySetupReturnsBeforeNodeInstallation(t *testing.T) {
 	if !body.Success || body.Obj.Outbound["tag"] != "tor-de" {
 		t.Fatalf("unexpected response: %#v", body)
 	}
+	var status string
+	if err := db.QueryRow(`SELECT status FROM node_operations WHERE operation_type = 'apply_tor_proxy' AND node_id = 999`).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "pending" {
+		t.Fatalf("Tor setup should be queued without running in the request, got operation status %q", status)
+	}
+}
+
+func TestTorProxySetupQueuesNonStrictExitByDefault(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertNodeConfig(t, db, 1001, "default", nil)
+	payload := []byte(`{
+		"target_id": "node:1001",
+		"port": 9050,
+		"country": "de",
+		"tag": "tor-de"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/panel/xray/tor/setup", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.handleTorProxySetup(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var queuedPayload string
+	if err := db.QueryRow(`SELECT payload FROM node_operations WHERE operation_type = 'apply_tor_proxy' AND node_id = 1001`).Scan(&queuedPayload); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(queuedPayload, `"tor_strict_exit":true`) {
+		t.Fatalf("Tor setup must not require strict exits by default: %s", queuedPayload)
+	}
+}
+
+func TestTorProxySetupMasterRequiresConnectedNodes(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterConfig(t, db, map[string]any{})
+	if _, err := db.Exec(`INSERT INTO nodes (id, name, address, port, api_port, status) VALUES
+		(31, 'offline-a', '127.0.0.1', 62050, 62051, 'error'),
+		(32, 'offline-b', '127.0.0.1', 62050, 62051, 'connecting')`); err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte(`{
+		"target_id": "master",
+		"port": 9050,
+		"country": "de",
+		"tag": "tor-de"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/panel/xray/tor/setup", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.handleTorProxySetup(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "no connected nodes") {
+		t.Fatalf("unexpected body=%s", rec.Body.String())
+	}
 }
 
 func TestTorProxySetupRejectsExistingOutboundTag(t *testing.T) {

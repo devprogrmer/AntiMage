@@ -214,8 +214,8 @@ func (r Repository) UpdateNode(ctx context.Context, nodeID int64, payload NodeMo
 	}
 	if payload.Address != nil {
 		address := strings.TrimSpace(*payload.Address)
-		if address == "" {
-			return NodeResponse{}, wrapInvalid("address is required")
+		if err := validateNodeAddress(address); err != nil {
+			return NodeResponse{}, err
 		}
 		add("address", address)
 		if address != current.Address {
@@ -755,8 +755,8 @@ func validateNodeCreate(payload NodeCreate) error {
 	if payload.Note != nil && len([]rune(strings.TrimSpace(*payload.Note))) > MaxNodeNoteLength {
 		return wrapInvalid("note can be a maximum of %d characters", MaxNodeNoteLength)
 	}
-	if strings.TrimSpace(payload.Address) == "" {
-		return wrapInvalid("address is required")
+	if err := validateNodeAddress(payload.Address); err != nil {
+		return err
 	}
 	if payload.Port <= 0 {
 		payload.Port = 62050
@@ -777,6 +777,14 @@ func validateNodeCreate(payload NodeCreate) error {
 		if payload.ProxyPort == nil || *payload.ProxyPort <= 0 || *payload.ProxyPort > 65535 {
 			return wrapInvalid("proxy_port must be between 1 and 65535")
 		}
+	}
+	return nil
+}
+
+func validateNodeAddress(address string) error {
+	address = strings.TrimSpace(strings.Trim(address, "[]"))
+	if address == "" {
+		return wrapInvalid("address is required")
 	}
 	return nil
 }

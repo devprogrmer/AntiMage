@@ -1,16 +1,12 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
-	"sync"
-	"time"
 	"unicode"
 
-	"github.com/antimage/antimage/internal/app/logging"
 	"github.com/antimage/antimage/internal/app/nodecontroller"
 )
 
@@ -61,53 +57,43 @@ func (s *Server) handleTorProxySetup(w http.ResponseWriter, r *http.Request) {
 
 	nodeIDs := []int64{nodeID}
 	if !isNode {
-		listCtx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-		defer cancel()
-		nodes, err := s.nodeController.List(listCtx, nodecontroller.Request{})
+		nodes, err := s.nodeController.ConnectedNodeIDs(r.Context())
 		if err != nil {
 			writeError(w, http.StatusBadGateway, err.Error())
 			return
 		}
-		nodeIDs = nodeIDs[:0]
-		for _, node := range nodes.Nodes {
-			if node.ID > 0 && node.Status != "disabled" && node.Status != "limited" {
-				nodeIDs = append(nodeIDs, node.ID)
-			}
-		}
+		nodeIDs = nodes
 	}
 	if len(nodeIDs) == 0 {
-		writeError(w, http.StatusBadRequest, "no active nodes found for Tor proxy setup")
+		writeError(w, http.StatusBadRequest, "no connected nodes found for Tor proxy setup")
 		return
 	}
-	strict := boolFromAny(payload["strict"], true)
+	strict := boolFromAny(payload["strict"], false)
 	outbounds := make([]map[string]any, 0, len(profiles))
 	for _, profile := range profiles {
 		outbounds = append(outbounds, torOutbound(profile))
 	}
 	nodeIDs = append([]int64(nil), nodeIDs...)
-	go func() {
-		operationCount := len(nodeIDs) * len(profiles)
-		timeout := time.Duration(max(5, ((operationCount+3)/4)*5)) * time.Minute
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-		completed := 0
-		failed := make([]string, 0)
-		for _, profile := range profiles {
-			results, profileFailures := s.applyTorProxyToNodes(ctx, nodeIDs, profile.Port, profile.Country, strict)
-			completed += len(results)
-			failed = append(failed, profileFailures...)
+	queued := 0
+	for _, profile := range profiles {
+		for _, nodeID := range nodeIDs {
+			if err := s.nodeController.QueueTorProxy(r.Context(), nodecontroller.Request{
+				NodeID:         nodeID,
+				TorSocksPort:   profile.Port,
+				TorExitCountry: profile.Country,
+				TorStrictExit:  strict,
+			}); err != nil {
+				writeError(w, http.StatusBadGateway, err.Error())
+				return
+			}
+			queued++
 		}
-		if len(failed) > 0 {
-			logging.Warnf(logging.ComponentNode, "Tor proxy setup completed=%d failed=%d errors=%s", completed, len(failed), strings.Join(failed, "; "))
-			return
-		}
-		logging.Infof(logging.ComponentNode, "Tor proxy setup completed nodes=%d profiles=%d", len(nodeIDs), len(profiles))
-	}()
+	}
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"success": true,
 		"obj": map[string]any{
-			"message":   fmt.Sprintf("%d Tor setup(s) started on %d node(s); the outbounds are ready to save", len(profiles), len(nodeIDs)),
+			"message":   fmt.Sprintf("%d Tor setup operation(s) queued on %d node(s); the outbounds are ready to save", queued, len(nodeIDs)),
 			"outbound":  outbounds[0],
 			"outbounds": outbounds,
 		},
@@ -244,45 +230,6 @@ func torOutbound(profile torProxyProfile) map[string]any {
 			}},
 		},
 	}
-}
-
-func (s *Server) applyTorProxyToNodes(ctx context.Context, nodeIDs []int64, port uint32, country string, strict bool) ([]nodecontroller.RuntimeResult, []string) {
-	type result struct {
-		runtime nodecontroller.RuntimeResult
-		err     error
-	}
-	results := make([]nodecontroller.RuntimeResult, 0, len(nodeIDs))
-	failures := make([]string, 0)
-	ch := make(chan result, len(nodeIDs))
-	sem := make(chan struct{}, 4)
-	var wg sync.WaitGroup
-	for _, nodeID := range nodeIDs {
-		wg.Add(1)
-		go func(nodeID int64) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			runtime, err := s.nodeController.ApplyTorProxy(ctx, nodecontroller.Request{
-				NodeID:         nodeID,
-				TorSocksPort:   port,
-				TorExitCountry: country,
-				TorStrictExit:  strict,
-			})
-			ch <- result{runtime: runtime, err: err}
-		}(nodeID)
-	}
-	go func() {
-		wg.Wait()
-		close(ch)
-	}()
-	for item := range ch {
-		if item.err != nil {
-			failures = append(failures, item.err.Error())
-			continue
-		}
-		results = append(results, item.runtime)
-	}
-	return results, failures
 }
 
 func boolFromAny(value any, fallback bool) bool {

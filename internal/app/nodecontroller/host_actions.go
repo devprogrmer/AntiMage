@@ -57,6 +57,14 @@ func (c Controller) ApplyTorProxy(ctx context.Context, req Request) (result Runt
 	return
 }
 
+func (c Controller) QueueTorProxy(ctx context.Context, req Request) error {
+	if req.NodeID <= 0 {
+		return fmt.Errorf("node_id is required")
+	}
+	_, err := c.repo.QueueCommand(ctx, "apply_tor_proxy", req.NodeID, req)
+	return err
+}
+
 func (c Controller) ConfigureWindscribe(ctx context.Context, req Request) (result WindscribeResult, err error) {
 	err = c.runDurableCommand(ctx, "configure_windscribe", req, func(queued Request) error {
 		result, err = c.configureWindscribeNow(ctx, queued)

@@ -169,7 +169,9 @@ func (r Repository) UsersList(ctx context.Context, req UsersListRequest) (UsersR
 			}
 			links, err := BuildConfigLinks(configUser, inbounds, inboundOrder, hosts, masks, false)
 			if err != nil {
-				return UsersResponse{}, err
+				item.LinkError = err.Error()
+				items = append(items, item)
+				continue
 			}
 			item.Links = links.Links
 		}

@@ -193,6 +193,39 @@ func TestNodeRepositoryDoesNotSyncForNonConnectionEdits(t *testing.T) {
 	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 2)
 }
 
+func TestNodeRepositoryAllowsSelfNodeLoopbackAddress(t *testing.T) {
+	db := newNodeTestDB(t)
+	repo := NewRepository(db, "sqlite").WithNow(fixedNow())
+	ctx := context.Background()
+
+	for _, address := range []string{"127.0.0.1", "::1", "localhost"} {
+		name := "loopback-" + strings.ReplaceAll(strings.ReplaceAll(address, ".", "-"), ":", "-")
+		payload := baseNodeCreate(name)
+		payload.Address = address
+		created, err := repo.CreateNode(ctx, payload)
+		if err != nil {
+			t.Fatalf("CreateNode self-node address %q error: %v", address, err)
+		}
+		if created.Address != address {
+			t.Fatalf("created address = %q, want %q", created.Address, address)
+		}
+	}
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM nodes`, 3)
+
+	created, err := repo.CreateNode(ctx, baseNodeCreate("safe-node"))
+	if err != nil {
+		t.Fatalf("CreateNode safe node error: %v", err)
+	}
+	address := "127.0.0.1"
+	updated, err := repo.UpdateNode(ctx, created.ID, NodeModify{Address: &address})
+	if err != nil {
+		t.Fatalf("UpdateNode self-node address error: %v", err)
+	}
+	if updated.Address != address {
+		t.Fatalf("updated address = %q, want %q", updated.Address, address)
+	}
+}
+
 func TestNodeCreateRollsBackWhenNodeOperationFails(t *testing.T) {
 	db := newNodeTestDB(t)
 	repo := NewRepository(db, "sqlite").WithNow(fixedNow())

@@ -245,6 +245,59 @@ func TestBuildConfigLinksReplacesServerIPPlaceholder(t *testing.T) {
 	}
 }
 
+func TestBuildConfigLinksCreatesServiceCredentialLinkWithoutStoredProxyRows(t *testing.T) {
+	serviceID := int64(1)
+	links, err := BuildConfigLinks(
+		ConfigLinkUser{
+			ID:            13,
+			Username:      "alice",
+			Status:        "active",
+			ServiceID:     &serviceID,
+			CredentialKey: "a2a936ad3030a01e733f0cdc2e66710a",
+			ServerIP:      "217.11.164.81",
+			ServiceHostOrders: map[int64]int64{
+				1: 0,
+			},
+		},
+		map[string]ResolvedInbound{
+			"turkey": {
+				"tag":      "turkey",
+				"protocol": "shadowsocks",
+				"port":     int64(443),
+				"network":  "tcp",
+				"tls":      "tls",
+			},
+		},
+		[]string{"turkey"},
+		[]Host{{
+			ID:         1,
+			InboundTag: "turkey",
+			Remark:     "AntiMage ({USERNAME}) [{PROTOCOL} - {TRANSPORT}]",
+			Address:    "{SERVER_IP}, 127.0.0.1",
+			Security:   "inbound_default",
+			ServiceIDs: []int64{serviceID},
+		}},
+		map[string][]byte{},
+		false,
+	)
+	if err != nil {
+		t.Fatalf("BuildConfigLinks error: %v", err)
+	}
+	if len(links.Links) != 1 {
+		t.Fatalf("expected one service-backed credential link, got %#v", links.Links)
+	}
+	if strings.Contains(links.Links[0], ",") {
+		t.Fatalf("multi-address host was not narrowed to one endpoint: %s", links.Links[0])
+	}
+	profile, err := outboundsubapp.DecodeV2rayNShadowsocks(links.Links[0])
+	if err != nil {
+		t.Fatalf("generated Shadowsocks link could not be decoded: %v", err)
+	}
+	if profile.Address != "217.11.164.81" && profile.Address != "127.0.0.1" {
+		t.Fatalf("link did not contain a selected host address: %#v", profile)
+	}
+}
+
 func TestBuildConfigLinksKeepsXHTTPPaddingJSONCompact(t *testing.T) {
 	serviceID := int64(1)
 	links, err := BuildConfigLinks(

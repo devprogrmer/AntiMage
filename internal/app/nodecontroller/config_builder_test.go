@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -319,6 +320,27 @@ func TestInlineTLSCertificateFilesErrorsWhenPathIsMissing(t *testing.T) {
 
 	if err := inlineTLSCertificateFiles(raw); err == nil {
 		t.Fatal("expected missing certificate file to fail")
+	}
+}
+
+func TestInlineTLSCertificateFilesRejectsEmptyCertificateEntry(t *testing.T) {
+	raw := map[string]any{
+		"inbounds": []any{
+			map[string]any{
+				"tag": "empty-cert",
+				"streamSettings": map[string]any{
+					"security": "tls",
+					"tlsSettings": map[string]any{
+						"certificates": []any{map[string]any{"usage": "encipherment"}},
+					},
+				},
+			},
+		},
+	}
+
+	err := inlineTLSCertificateFiles(raw)
+	if err == nil || !strings.Contains(err.Error(), "certificate content or file is required") {
+		t.Fatalf("expected empty certificate entry to fail visibly, got %v", err)
 	}
 }
 

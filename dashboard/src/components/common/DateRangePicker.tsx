@@ -34,6 +34,14 @@ const CalendarIconStyled = chakra(CalendarIcon, { baseStyle: { w: 4, h: 4 } });
 
 type DateType = Date | null;
 
+const datePickerLocale = (language: string | undefined) => {
+	const normalized = (language || "en").toLowerCase();
+	if (normalized.startsWith("fa")) return "fa";
+	if (normalized.startsWith("ru")) return "ru";
+	if (normalized.startsWith("zh")) return "zh-cn";
+	return undefined;
+};
+
 export type DateRangeValue = {
 	start: Date;
 	end: Date;
@@ -359,7 +367,7 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 								<TabPanel px={3} pb={3} className="datepicker-panel">
 									<VStack>
 										<DatePicker
-											locale={i18n.language.toLocaleLowerCase()}
+											locale={datePickerLocale(i18n.language)}
 											selected={startDate}
 											onChange={handleAbsoluteChange}
 											startDate={startDate}

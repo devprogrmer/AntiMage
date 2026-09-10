@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,15 +35,23 @@ type Server struct {
 	startedAt   time.Time
 	lastConfig  string
 	lastRuntime *exec.Cmd
+	torProxies  map[uint32]*exec.Cmd
 	appliedRev  uint64
 	logs        []string
 }
 
+var (
+	torCommandContext  = exec.CommandContext
+	torLookPath        = exec.LookPath
+	xrayCommandContext = exec.CommandContext
+)
+
 func New(cfg Config) *Server {
 	return &Server{
-		cfg:       cfg,
-		startedAt: time.Now(),
-		logs:      []string{"AntiMage-node agent initialized"},
+		cfg:        cfg,
+		startedAt:  time.Now(),
+		torProxies: make(map[uint32]*exec.Cmd),
+		logs:       []string{"AntiMage-node agent initialized"},
 	}
 }
 
@@ -150,6 +159,65 @@ func (s *Server) RestartService(context.Context, *nodev1.ServiceRestartRequest) 
 	return s.action("", "service restart acknowledged"), nil
 }
 
+func (s *Server) ApplyTorProxy(ctx context.Context, req *nodev1.TorProxyRequest) (*nodev1.RuntimeActionResponse, error) {
+	port := req.GetSocksPort()
+	if port < 1024 || port > 65535 {
+		return nil, status.Error(codes.InvalidArgument, "socks_port must be between 1024 and 65535")
+	}
+	country := strings.ToLower(strings.TrimSpace(req.GetExitCountry()))
+	if country != "" && len(country) != 2 {
+		return nil, status.Error(codes.InvalidArgument, "exit_country must be a two-letter ISO code")
+	}
+	torPath, err := torLookPath("tor")
+	if err != nil {
+		return nil, status.Error(codes.FailedPrecondition, "tor is not installed on this node")
+	}
+	proxyDir := filepath.Join(s.cfg.DataDir, "tor", strconv.FormatUint(uint64(port), 10))
+	if err := os.MkdirAll(filepath.Join(proxyDir, "data"), 0700); err != nil {
+		return nil, err
+	}
+	torrc := torConfig(port, country, req.GetStrictExit(), filepath.Join(proxyDir, "data"))
+	torrcPath := filepath.Join(proxyDir, "torrc")
+	if err := os.WriteFile(torrcPath, []byte(torrc), 0600); err != nil {
+		return nil, err
+	}
+
+	cmd := torCommandContext(context.Background(), torPath, "-f", torrcPath)
+	cmd.Stdout = logWriter{server: s}
+	cmd.Stderr = logWriter{server: s}
+	if err := cmd.Start(); err != nil {
+		s.appendLog("failed to start tor proxy: " + err.Error())
+		return nil, err
+	}
+
+	s.mu.Lock()
+	if previous := s.torProxies[port]; previous != nil && previous.Process != nil {
+		_ = previous.Process.Kill()
+	}
+	s.torProxies[port] = cmd
+	s.mu.Unlock()
+
+	go func() {
+		err := cmd.Wait()
+		s.mu.Lock()
+		if s.torProxies[port] == cmd {
+			delete(s.torProxies, port)
+		}
+		s.mu.Unlock()
+		if err != nil {
+			s.appendLog("tor proxy stopped: " + err.Error())
+		} else {
+			s.appendLog("tor proxy stopped")
+		}
+	}()
+
+	message := fmt.Sprintf("tor proxy started on 127.0.0.1:%d", port)
+	if country != "" {
+		message += " exit=" + country
+	}
+	return s.action(req.GetOperationId(), message), nil
+}
+
 func (s *Server) UpdateRuntime(context.Context, *nodev1.RuntimeUpdateRequest) (*nodev1.RuntimeActionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "runtime update is managed by the installer")
 }
@@ -235,7 +303,7 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 
 func (s *Server) startXray(ctx context.Context, configPath string) error {
 	_ = s.stopRuntime()
-	cmd := exec.CommandContext(ctx, s.cfg.XrayPath, "run", "-config", configPath)
+	cmd := xrayCommandContext(context.Background(), s.cfg.XrayPath, "run", "-config", configPath)
 	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+s.cfg.XrayAssetsDir)
 	cmd.Stdout = logWriter{server: s}
 	cmd.Stderr = logWriter{server: s}
@@ -283,7 +351,12 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 	s.mu.Lock()
 	started := s.lastRuntime != nil
 	applied := s.appliedRev
+	torProxyCount := len(s.torProxies)
 	s.mu.Unlock()
+	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "tor_proxy"}
+	if torProxyCount > 0 {
+		capabilities = append(capabilities, "tor_proxy_running")
+	}
 	return &nodev1.RuntimeState{
 		Connected:       true,
 		Started:         started,
@@ -292,9 +365,24 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 		InstallMode:     s.cfg.InstallMode,
 		UpdateChannel:   s.cfg.UpdateChannel,
 		Message:         message,
-		Capabilities:    []string{"config_revision", "logs", "metrics", "full_config_sync"},
+		Capabilities:    capabilities,
 		AppliedRevision: applied,
 	}
+}
+
+func torConfig(port uint32, country string, strict bool, dataDir string) string {
+	lines := []string{
+		"SocksPort 127.0.0.1:" + strconv.FormatUint(uint64(port), 10),
+		"DataDirectory " + dataDir,
+		"Log notice stdout",
+	}
+	if country != "" {
+		lines = append(lines, "ExitNodes {"+country+"}")
+		if strict {
+			lines = append(lines, "StrictNodes 1")
+		}
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func (s *Server) metrics(includeRuntime bool) *nodev1.MetricsResponse {

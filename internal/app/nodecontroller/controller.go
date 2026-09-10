@@ -145,6 +145,10 @@ func (c Controller) PruneFinishedOperations(ctx context.Context, retain, limit i
 	return c.repo.PruneFinishedOperations(ctx, retain, limit)
 }
 
+func (c Controller) ConnectedNodeIDs(ctx context.Context) ([]int64, error) {
+	return c.repo.ConnectedNodeIDs(ctx)
+}
+
 func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, error) {
 	unlock := c.lockNode(req.NodeID)
 	defer unlock()
@@ -1286,7 +1290,7 @@ func NodeGRPCPortCandidates(servicePort int, apiPort int) []int {
 	}
 	add(servicePort)
 	if apiPort > 0 {
-		add(apiPort + 1)
+		add(apiPort)
 	}
 	return result
 }

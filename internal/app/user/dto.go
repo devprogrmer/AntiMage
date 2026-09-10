@@ -99,6 +99,7 @@ type UserListItem struct {
 	AdminID                *int64           `json:"admin_id"`
 	AdminUsername          *string          `json:"admin_username"`
 	Links                  []string         `json:"links"`
+	LinkError              string           `json:"link_error,omitempty"`
 	SubscriptionURL        string           `json:"subscription_url"`
 	SubscriptionURLs       OrderedStringMap `json:"subscription_urls"`
 }

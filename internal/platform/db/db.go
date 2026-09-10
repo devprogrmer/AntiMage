@@ -48,11 +48,10 @@ func Open(databaseURL string) (Pool, error) {
 	}
 
 	if dialect == "sqlite" {
-		// SQLite has one writer per database file. Keep the embedded panel's
-		// worker pool on one connection so concurrent jobs cannot contend for
-		// the same file lock; WAL still keeps the connection's reads efficient.
-		sqlDB.SetMaxOpenConns(1)
-		sqlDB.SetMaxIdleConns(1)
+		// WAL allows readers to proceed while a writer is active. Keep a small
+		// pool so long-running node workers cannot starve dashboard/API reads.
+		sqlDB.SetMaxOpenConns(8)
+		sqlDB.SetMaxIdleConns(4)
 		sqlDB.SetConnMaxIdleTime(30 * time.Second)
 	} else {
 		sqlDB.SetMaxOpenConns(64)

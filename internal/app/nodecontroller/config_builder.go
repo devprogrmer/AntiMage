@@ -491,6 +491,12 @@ func inlineCertificatePair(certificate map[string]any) error {
 	if err := inlineCertificateFile(certificate, "key", []string{"keyFile", "keyfile"}); err != nil {
 		return err
 	}
+	if _, ok := certificateContentLines(certificate["certificate"]); !ok {
+		return fmt.Errorf("certificate content or file is required")
+	}
+	if _, ok := certificateContentLines(certificate["key"]); !ok {
+		return fmt.Errorf("key content or file is required")
+	}
 	return nil
 }
 

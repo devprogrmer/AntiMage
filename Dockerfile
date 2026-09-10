@@ -1,7 +1,9 @@
 FROM node:20-bookworm-slim AS dashboard
 
 WORKDIR /src/dashboard
-COPY dashboard/package*.json ./
+ARG DASHBOARD_NODE_OPTIONS=--max-old-space-size=2048
+ENV NODE_OPTIONS=${DASHBOARD_NODE_OPTIONS}
+COPY dashboard/package*.json dashboard/chakra.config.ts ./
 RUN npm ci
 COPY dashboard/ ./
 RUN VITE_BASE_API=/api/ npm run build \
@@ -20,6 +22,8 @@ COPY tutorials ./tutorials
 RUN hugo --source ./tutorials --destination /out --cleanDestinationDir --gc --minify
 
 FROM golang:1.25-bookworm AS builder
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
