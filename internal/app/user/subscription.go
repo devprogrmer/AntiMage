@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -360,6 +361,8 @@ func (s Service) resolveSubscriptionUser(ctx context.Context, req SubscriptionRe
 		if isCredentialKey(candidate) {
 			if user, err := s.repo.subscriptionUserByKeyOnly(ctx, candidate); err == nil {
 				return user, nil
+			} else if !isSubscriptionNotFound(err) {
+				return UserDetail{}, err
 			}
 		}
 		if user, err := s.repo.subscriptionUserBySubadress(ctx, candidate); err == nil {
@@ -367,6 +370,11 @@ func (s Service) resolveSubscriptionUser(ctx context.Context, req SubscriptionRe
 		}
 	}
 	return UserDetail{}, clientError(404, "Not Found")
+}
+
+func isSubscriptionNotFound(err error) bool {
+	var mutationErr MutationError
+	return errors.As(err, &mutationErr) && mutationErr.Status == 404
 }
 
 func (s Service) resolveSubscriptionToken(ctx context.Context, token string) (UserDetail, error) {
