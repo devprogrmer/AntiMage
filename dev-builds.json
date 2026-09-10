@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "project": "AntiMage",
+  "latest": "dev-e4892dc",
+  "updated_at": "2026-09-10T23:39:01Z",
+  "builds": [
+    {
+      "tag": "dev-e4892dc",
+      "sha": "e4892dccc9a31107498de21038347ef3a6b56627",
+      "branch": "dev",
+      "workflow": "Binary Build",
+      "run_id": "34542581650",
+      "run_number": "78",
+      "created_at": "2026-09-10T23:39:01Z",
+      "release_tag": "dev-builds",
+      "assets": {
+        "linux-amd64": {
+          "name": "antimage-linux-amd64-dev-e4892dc.tar.gz",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-linux-amd64-dev-e4892dc.tar.gz"
+        },
+        "windows-amd64": {
+          "name": "antimage-windows-amd64-dev-e4892dc.zip",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-e4892dc.zip"
+        }
+      }
+    }
+  ]
+}
