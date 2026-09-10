@@ -30,14 +30,21 @@ type Server struct {
 	nodev1.UnimplementedNodeUsageServiceServer
 	nodev1.UnimplementedNodeLogsServiceServer
 
-	cfg         Config
-	mu          sync.Mutex
-	startedAt   time.Time
-	lastConfig  string
-	lastRuntime *exec.Cmd
-	torProxies  map[uint32]*exec.Cmd
-	appliedRev  uint64
-	logs        []string
+	cfg                            Config
+	mu                             sync.Mutex
+	startedAt                      time.Time
+	lastConfig                     string
+	lastRuntime                    *exec.Cmd
+	openVPNRuntimes                map[string]*openVPNProcess
+	openVPNTProxySpecs             map[string]openVPNTProxySpec
+	openVPNTProxyStartupReconciled bool
+	openVPNUsageMu                 sync.Mutex
+	openVPNUsageBaseline           map[string]uint64
+	openVPNUsagePending            *openVPNUsagePendingBatch
+	openVPNUsageLoaded             bool
+	torProxies                     map[uint32]*exec.Cmd
+	appliedRev                     uint64
+	logs                           []string
 }
 
 var (
@@ -48,10 +55,13 @@ var (
 
 func New(cfg Config) *Server {
 	return &Server{
-		cfg:        cfg,
-		startedAt:  time.Now(),
-		torProxies: make(map[uint32]*exec.Cmd),
-		logs:       []string{"AntiMage-node agent initialized"},
+		cfg:                  cfg,
+		startedAt:            time.Now(),
+		openVPNRuntimes:      make(map[string]*openVPNProcess),
+		openVPNTProxySpecs:   make(map[string]openVPNTProxySpec),
+		openVPNUsageBaseline: make(map[string]uint64),
+		torProxies:           make(map[uint32]*exec.Cmd),
+		logs:                 []string{"AntiMage-node agent initialized"},
 	}
 }
 
@@ -66,6 +76,12 @@ func (s *Server) Run(ctx context.Context) error {
 		return err
 	}
 	defer listener.Close()
+
+	defer func() {
+		s.stopAllOpenVPNRuntimes()
+		s.stopAllOpenVPNTProxySpecs()
+		_ = s.stopRuntime()
+	}()
 
 	grpcServer := grpc.NewServer(grpc.Creds(credentials.NewTLS(&tls.Config{
 		Certificates: []tls.Certificate{cert},
@@ -121,13 +137,25 @@ func (s *Server) StartRuntime(ctx context.Context, req *nodev1.RuntimeConfigRequ
 	return s.applyConfig(ctx, req, "started")
 }
 
-func (s *Server) RestartRuntime(ctx context.Context, req *nodev1.RuntimeConfigRequest) (*nodev1.RuntimeActionResponse, error) {
+func (s *Server) RestartRuntime(
+	ctx context.Context,
+	req *nodev1.RuntimeConfigRequest,
+) (*nodev1.RuntimeActionResponse, error) {
+	s.stopAllOpenVPNRuntimes()
+	s.stopAllOpenVPNTProxySpecs()
 	_ = s.stopRuntime()
+
 	return s.applyConfig(ctx, req, "restarted")
 }
 
-func (s *Server) StopRuntime(context.Context, *nodev1.StopRuntimeRequest) (*nodev1.RuntimeActionResponse, error) {
+func (s *Server) StopRuntime(
+	context.Context,
+	*nodev1.StopRuntimeRequest,
+) (*nodev1.RuntimeActionResponse, error) {
+	s.stopAllOpenVPNRuntimes()
+	s.stopAllOpenVPNTProxySpecs()
 	_ = s.stopRuntime()
+
 	return s.action("", "stopped"), nil
 }
 
@@ -238,12 +266,18 @@ func (s *Server) CollectOnlineUsers(context.Context, *nodev1.Empty) (*nodev1.Onl
 	return &nodev1.OnlineUsersResponse{}, nil
 }
 
-func (s *Server) CollectUserUsage(context.Context, *nodev1.CollectUsageRequest) (*nodev1.UserUsageBatch, error) {
-	return &nodev1.UserUsageBatch{BatchId: fmt.Sprintf("user-%d", time.Now().Unix())}, nil
+func (s *Server) CollectUserUsage(
+	ctx context.Context,
+	req *nodev1.CollectUsageRequest,
+) (*nodev1.UserUsageBatch, error) {
+	return s.collectOpenVPNUserUsage(ctx, req)
 }
 
-func (s *Server) AckUserUsage(context.Context, *nodev1.AckUsageRequest) (*nodev1.AckUsageResponse, error) {
-	return &nodev1.AckUsageResponse{Acknowledged: true}, nil
+func (s *Server) AckUserUsage(
+	ctx context.Context,
+	req *nodev1.AckUsageRequest,
+) (*nodev1.AckUsageResponse, error) {
+	return s.ackOpenVPNUserUsage(ctx, req)
 }
 
 func (s *Server) CollectOutboundUsage(context.Context, *nodev1.CollectUsageRequest) (*nodev1.OutboundUsageBatch, error) {
@@ -277,6 +311,7 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	if strings.TrimSpace(req.GetConfigJson()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "config_json is required")
 	}
+
 	if err := os.MkdirAll(s.cfg.DataDir, 0755); err != nil {
 		return nil, err
 	}
@@ -293,11 +328,18 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	s.mu.Unlock()
 
 	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
-		_ = s.startXray(ctx, configPath)
+		if err := s.startXray(ctx, configPath); err != nil {
+			return nil, status.Error(codes.Internal, "start xray: "+err.Error())
+		}
 		message += " and runtime started"
 	} else {
 		message += "; xray binary is not installed yet"
 	}
+
+	if err := s.applyNativeRuntime(req.GetOvRuntimeJson()); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+
 	return s.action(req.GetOperationId(), message), nil
 }
 

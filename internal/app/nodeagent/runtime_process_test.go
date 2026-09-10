@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
@@ -26,10 +25,7 @@ func TestStartRuntimeDoesNotBindXrayProcessToRequestContext(t *testing.T) {
 	}
 
 	dataDir := t.TempDir()
-	xrayPath := filepath.Join(dataDir, "xray")
-	if err := os.WriteFile(xrayPath, []byte("helper"), 0755); err != nil {
-		t.Fatal(err)
-	}
+	xrayPath := os.Args[0]
 	server := New(Config{DataDir: dataDir, XrayPath: xrayPath, XrayAssetsDir: dataDir})
 	requestContext, cancel := context.WithCancel(context.Background())
 	_, err := server.StartRuntime(requestContext, &nodev1.RuntimeConfigRequest{
