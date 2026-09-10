@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"sort"
@@ -12,7 +13,7 @@ import (
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
-// xrayStatsClient queries Xray's local stats API via xray cli command
+// xrayStatsClient queries Xray's local stats API via xray api statsquery command
 type xrayStatsClient struct {
 	xrayPath string
 	apiPort  int
@@ -25,12 +26,17 @@ func newXrayStatsClient(xrayPath string, apiPort int) *xrayStatsClient {
 	}
 }
 
-// queryStats queries Xray stats via 'xray api stats' command
+// queryStats queries Xray stats via 'xray api statsquery' command
+// Returns structured stats parsed from JSON output
 func (c *xrayStatsClient) queryStats(ctx context.Context, pattern string, reset bool) ([]xrayStat, error) {
-	// Build command: xray api stats --server=127.0.0.1:apiPort
+	// Build command: xray api statsquery --server=127.0.0.1:apiPort [--pattern=...] [--reset]
 	args := []string{
-		"api", "stats",
+		"api", "statsquery",
 		fmt.Sprintf("--server=127.0.0.1:%d", c.apiPort),
+	}
+
+	if pattern != "" {
+		args = append(args, fmt.Sprintf("--pattern=%s", pattern))
 	}
 
 	if reset {
@@ -40,41 +46,23 @@ func (c *xrayStatsClient) queryStats(ctx context.Context, pattern string, reset 
 	cmd := exec.CommandContext(ctx, c.xrayPath, args...)
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("xray api stats command failed: %w", err)
+		return nil, fmt.Errorf("xray api statsquery command failed: %w", err)
 	}
 
-	// Parse output - xray api stats returns lines like:
-	// stat_name value
-	lines := strings.Split(string(output), "\n")
-	stats := make([]xrayStat, 0, len(lines))
+	// Parse JSON output - reuse existing xrayStatsQueryResponse from route_stats.go
+	var response xrayStatsQueryResponse
+	if err := json.Unmarshal(output, &response); err != nil {
+		return nil, fmt.Errorf("parse xray stats JSON: %w", err)
+	}
 
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		// Split by whitespace
-		parts := strings.Fields(line)
-		if len(parts) < 2 {
-			continue
-		}
-
-		name := parts[0]
-		valueStr := parts[1]
-
-		// Filter by pattern if specified
-		if pattern != "" && !strings.Contains(name, pattern) {
-			continue
-		}
-
-		value, err := strconv.ParseInt(valueStr, 10, 64)
+	stats := make([]xrayStat, 0, len(response.Stat))
+	for _, s := range response.Stat {
+		value, err := parseXrayStatValue(s.Value)
 		if err != nil {
 			continue
 		}
-
 		stats = append(stats, xrayStat{
-			Name:  name,
+			Name:  s.Name,
 			Value: value,
 		})
 	}
@@ -113,18 +101,19 @@ func (s *Server) collectXrayUserUsage(
 	s.mu.Lock()
 	xrayRunning := s.lastRuntime != nil
 	xrayPath := s.cfg.XrayPath
+	xrayAPIPort := s.cfg.XrayAPIPort
 	s.mu.Unlock()
 
 	if !xrayRunning {
 		return &nodev1.UserUsageBatch{}, nil
 	}
 
-	// Query Xray stats via CLI
-	client := newXrayStatsClient(xrayPath, s.cfg.XrayAPIPort)
+	// Query Xray stats via CLI with user pattern
+	client := newXrayStatsClient(xrayPath, xrayAPIPort)
 
 	stats, err := client.queryStats(ctx, "user>>>", false)
 	if err != nil {
-		s.appendLog("xray stats query failed: " + err.Error())
+		s.appendLog("xray user stats query failed: " + err.Error())
 		return &nodev1.UserUsageBatch{}, nil
 	}
 

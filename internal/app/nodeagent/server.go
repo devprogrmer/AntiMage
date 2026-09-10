@@ -46,6 +46,13 @@ type Server struct {
 	xrayUsageBaseline              map[string]uint64
 	xrayUsagePending               *xrayUsagePendingBatch
 	xrayUsageLoaded                bool
+	xrayOutboundUsageMu            sync.Mutex
+	xrayOutboundUsageBaseline      map[string]uint64
+	xrayOutboundUsagePending       *xrayOutboundUsagePendingBatch
+	xrayOutboundUsageLoaded        bool
+	mergedUsageMu                  sync.Mutex
+	mergedUsagePending             *mergedUsagePendingBatch
+	mergedUsageLoaded              bool
 	torProxies                     map[uint32]*exec.Cmd
 	appliedRev                     uint64
 	logs                           []string
@@ -59,14 +66,15 @@ var (
 
 func New(cfg Config) *Server {
 	return &Server{
-		cfg:                  cfg,
-		startedAt:            time.Now(),
-		openVPNRuntimes:      make(map[string]*openVPNProcess),
-		openVPNTProxySpecs:   make(map[string]openVPNTProxySpec),
-		openVPNUsageBaseline: make(map[string]uint64),
-		xrayUsageBaseline:    make(map[string]uint64),
-		torProxies:           make(map[uint32]*exec.Cmd),
-		logs:                 []string{"AntiMage-node agent initialized"},
+		cfg:                       cfg,
+		startedAt:                 time.Now(),
+		openVPNRuntimes:           make(map[string]*openVPNProcess),
+		openVPNTProxySpecs:        make(map[string]openVPNTProxySpec),
+		openVPNUsageBaseline:      make(map[string]uint64),
+		xrayUsageBaseline:         make(map[string]uint64),
+		xrayOutboundUsageBaseline: make(map[string]uint64),
+		torProxies:                make(map[uint32]*exec.Cmd),
+		logs:                      []string{"AntiMage-node agent initialized"},
 	}
 }
 
@@ -333,10 +341,23 @@ func (s *Server) CollectOutboundUsage(ctx context.Context, req *nodev1.CollectUs
 	default:
 	}
 
+	s.xrayOutboundUsageMu.Lock()
+	defer s.xrayOutboundUsageMu.Unlock()
+
+	if err := s.ensureXrayOutboundUsageStateLoadedLocked(); err != nil {
+		return nil, err
+	}
+
+	// If there's a pending batch, return it (waiting for ACK)
+	if s.xrayOutboundUsagePending != nil {
+		return xrayOutboundUsageBatchProto(s.xrayOutboundUsagePending), nil
+	}
+
 	// Check if Xray runtime is running
 	s.mu.Lock()
 	xrayRunning := s.lastRuntime != nil
 	xrayPath := s.cfg.XrayPath
+	xrayAPIPort := s.cfg.XrayAPIPort
 	s.mu.Unlock()
 
 	if !xrayRunning {
@@ -345,8 +366,8 @@ func (s *Server) CollectOutboundUsage(ctx context.Context, req *nodev1.CollectUs
 		}, nil
 	}
 
-	// Query Xray stats via CLI
-	client := newXrayStatsClient(xrayPath, s.cfg.XrayAPIPort)
+	// Query Xray stats via CLI with outbound pattern
+	client := newXrayStatsClient(xrayPath, xrayAPIPort)
 
 	stats, err := client.queryStats(ctx, "outbound>>>", false)
 	if err != nil {
@@ -356,9 +377,18 @@ func (s *Server) CollectOutboundUsage(ctx context.Context, req *nodev1.CollectUs
 		}, nil
 	}
 
+	if s.xrayOutboundUsageBaseline == nil {
+		s.xrayOutboundUsageBaseline = make(map[string]uint64)
+	}
+
+	nextBaseline := make(map[string]uint64, len(s.xrayOutboundUsageBaseline))
+	for key, value := range s.xrayOutboundUsageBaseline {
+		nextBaseline[key] = value
+	}
+
 	type outboundTraffic struct {
-		up   uint64
-		down uint64
+		upDelta   uint64
+		downDelta uint64
 	}
 
 	byTag := make(map[string]*outboundTraffic)
@@ -374,10 +404,27 @@ func (s *Server) CollectOutboundUsage(ctx context.Context, req *nodev1.CollectUs
 			continue
 		}
 
-		value := uint64(0)
+		// Build baseline key: tag:direction
+		baselineKey := tag + ":" + statName.Direction
+
+		baseline, exists := s.xrayOutboundUsageBaseline[baselineKey]
+
+		currentValue := uint64(0)
 		if stat.Value >= 0 {
-			value = uint64(stat.Value)
+			currentValue = uint64(stat.Value)
 		}
+
+		delta := currentValue
+		if exists && currentValue >= baseline {
+			delta = currentValue - baseline
+		}
+
+		// Counter reset detection
+		if exists && currentValue < baseline {
+			delta = currentValue
+		}
+
+		nextBaseline[baselineKey] = currentValue
 
 		traffic := byTag[tag]
 		if traffic == nil {
@@ -387,32 +434,97 @@ func (s *Server) CollectOutboundUsage(ctx context.Context, req *nodev1.CollectUs
 
 		switch statName.Direction {
 		case "uplink":
-			traffic.up = value
+			traffic.upDelta = delta
 		case "downlink":
-			traffic.down = value
+			traffic.downDelta = delta
 		}
 	}
 
-	outboundStats := make([]*nodev1.OutboundUsageSample, 0, len(byTag))
+	if len(byTag) == 0 {
+		return &nodev1.OutboundUsageBatch{
+			BatchId: fmt.Sprintf("outbound-%d", time.Now().Unix()),
+		}, nil
+	}
+
+	samples := make([]xrayOutboundUsageSample, 0, len(byTag))
 	for tag, traffic := range byTag {
-		if traffic.up == 0 && traffic.down == 0 {
+		if traffic.upDelta == 0 && traffic.downDelta == 0 {
 			continue
 		}
-		outboundStats = append(outboundStats, &nodev1.OutboundUsageSample{
+		samples = append(samples, xrayOutboundUsageSample{
 			Tag:  tag,
-			Up:   traffic.up,
-			Down: traffic.down,
+			Up:   traffic.upDelta,
+			Down: traffic.downDelta,
+		})
+	}
+
+	pending := &xrayOutboundUsagePendingBatch{
+		BatchID:      fmt.Sprintf("outbound-%d", time.Now().UTC().UnixNano()),
+		Samples:      samples,
+		NextBaseline: nextBaseline,
+	}
+
+	s.xrayOutboundUsagePending = pending
+
+	if err := s.persistXrayOutboundUsageStateLocked(); err != nil {
+		s.xrayOutboundUsagePending = nil
+		return nil, err
+	}
+
+	return xrayOutboundUsageBatchProto(pending), nil
+}
+
+func (s *Server) AckOutboundUsage(ctx context.Context, req *nodev1.AckUsageRequest) (*nodev1.AckUsageResponse, error) {
+	batchID := strings.TrimSpace(req.GetBatchId())
+	if batchID == "" {
+		return &nodev1.AckUsageResponse{Acknowledged: false}, nil
+	}
+
+	s.xrayOutboundUsageMu.Lock()
+	defer s.xrayOutboundUsageMu.Unlock()
+
+	if err := s.ensureXrayOutboundUsageStateLoadedLocked(); err != nil {
+		return nil, err
+	}
+
+	pending := s.xrayOutboundUsagePending
+
+	if pending == nil || pending.BatchID != batchID {
+		return &nodev1.AckUsageResponse{Acknowledged: false}, nil
+	}
+
+	previousBaseline := s.xrayOutboundUsageBaseline
+
+	s.xrayOutboundUsageBaseline = pending.NextBaseline
+	s.xrayOutboundUsagePending = nil
+
+	if err := s.persistXrayOutboundUsageStateLocked(); err != nil {
+		s.xrayOutboundUsageBaseline = previousBaseline
+		s.xrayOutboundUsagePending = pending
+		return nil, err
+	}
+
+	return &nodev1.AckUsageResponse{Acknowledged: true}, nil
+}
+
+func xrayOutboundUsageBatchProto(pending *xrayOutboundUsagePendingBatch) *nodev1.OutboundUsageBatch {
+	if pending == nil {
+		return &nodev1.OutboundUsageBatch{}
+	}
+
+	stats := make([]*nodev1.OutboundUsageSample, 0, len(pending.Samples))
+	for _, sample := range pending.Samples {
+		stats = append(stats, &nodev1.OutboundUsageSample{
+			Tag:  sample.Tag,
+			Up:   sample.Up,
+			Down: sample.Down,
 		})
 	}
 
 	return &nodev1.OutboundUsageBatch{
-		BatchId: fmt.Sprintf("outbound-%d", time.Now().Unix()),
-		Stats:   outboundStats,
-	}, nil
-}
-
-func (s *Server) AckOutboundUsage(context.Context, *nodev1.AckUsageRequest) (*nodev1.AckUsageResponse, error) {
-	return &nodev1.AckUsageResponse{Acknowledged: true}, nil
+		BatchId: pending.BatchID,
+		Stats:   stats,
+	}
 }
 
 func (s *Server) StreamLogs(req *nodev1.StreamLogsRequest, stream grpc.ServerStreamingServer[nodev1.LogLine]) error {

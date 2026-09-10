@@ -244,7 +244,11 @@ func TestXrayUsageBatchProtoFormat(t *testing.T) {
 }
 
 func TestMergeUserUsageBatches(t *testing.T) {
-	server := &Server{}
+	server := &Server{
+		cfg: Config{
+			DataDir: t.TempDir(),
+		},
+	}
 
 	ovpnBatch := &nodev1.UserUsageBatch{
 		BatchId: "openvpn-123",
@@ -269,16 +273,17 @@ func TestMergeUserUsageBatches(t *testing.T) {
 	if !contains(merged.GetBatchId(), "merged-") {
 		t.Errorf("Merged batch ID should start with 'merged-', got %q", merged.GetBatchId())
 	}
-	if !contains(merged.GetBatchId(), "openvpn-123") {
-		t.Error("Merged batch ID should contain OpenVPN batch ID")
-	}
-	if !contains(merged.GetBatchId(), "xray-456") {
-		t.Error("Merged batch ID should contain Xray batch ID")
-	}
 
 	// Check stats are merged
 	if len(merged.GetStats()) != 2 {
 		t.Errorf("Expected 2 merged stats, got %d", len(merged.GetStats()))
+	}
+
+	// Check idempotence - calling again should return SAME batch ID
+	merged2 := server.mergeUserUsageBatches(ovpnBatch, xrayBatch)
+	if merged2.GetBatchId() != merged.GetBatchId() {
+		t.Errorf("Repeated merge should return same batch ID, got %q != %q",
+			merged2.GetBatchId(), merged.GetBatchId())
 	}
 }
 
