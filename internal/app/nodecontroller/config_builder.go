@@ -154,6 +154,8 @@ func (c Controller) buildRuntimeConfigWithData(ctx context.Context, node NodeRow
 	if err := c.includeDBUsers(ctx, raw, data); err != nil {
 		return "", err
 	}
+	// Enable Xray API for user telemetry and traffic accounting
+	applyRuntimeAPI(raw, node.APIPort)
 	encoded, err := json.Marshal(raw)
 	if err != nil {
 		return "", err

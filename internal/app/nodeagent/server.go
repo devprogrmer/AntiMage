@@ -42,6 +42,10 @@ type Server struct {
 	openVPNUsageBaseline           map[string]uint64
 	openVPNUsagePending            *openVPNUsagePendingBatch
 	openVPNUsageLoaded             bool
+	xrayUsageMu                    sync.Mutex
+	xrayUsageBaseline              map[string]uint64
+	xrayUsagePending               *xrayUsagePendingBatch
+	xrayUsageLoaded                bool
 	torProxies                     map[uint32]*exec.Cmd
 	appliedRev                     uint64
 	logs                           []string
@@ -60,6 +64,7 @@ func New(cfg Config) *Server {
 		openVPNRuntimes:      make(map[string]*openVPNProcess),
 		openVPNTProxySpecs:   make(map[string]openVPNTProxySpec),
 		openVPNUsageBaseline: make(map[string]uint64),
+		xrayUsageBaseline:    make(map[string]uint64),
 		torProxies:           make(map[uint32]*exec.Cmd),
 		logs:                 []string{"AntiMage-node agent initialized"},
 	}
@@ -270,18 +275,140 @@ func (s *Server) CollectUserUsage(
 	ctx context.Context,
 	req *nodev1.CollectUsageRequest,
 ) (*nodev1.UserUsageBatch, error) {
-	return s.collectOpenVPNUserUsage(ctx, req)
+	// Collect OpenVPN usage
+	ovpnBatch, ovpnErr := s.collectOpenVPNUserUsage(ctx, req)
+
+	// Collect Xray usage
+	xrayBatch, xrayErr := s.collectXrayUserUsage(ctx, req)
+
+	// If both failed, return the first error
+	if ovpnErr != nil && xrayErr != nil {
+		return nil, ovpnErr
+	}
+
+	// If one succeeded, use it
+	if ovpnErr != nil {
+		return xrayBatch, xrayErr
+	}
+	if xrayErr != nil {
+		return ovpnBatch, ovpnErr
+	}
+
+	// Both succeeded - merge the batches
+	return s.mergeUserUsageBatches(ovpnBatch, xrayBatch), nil
 }
 
 func (s *Server) AckUserUsage(
 	ctx context.Context,
 	req *nodev1.AckUsageRequest,
 ) (*nodev1.AckUsageResponse, error) {
-	return s.ackOpenVPNUserUsage(ctx, req)
+	batchID := strings.TrimSpace(req.GetBatchId())
+	if batchID == "" {
+		return &nodev1.AckUsageResponse{Acknowledged: false}, nil
+	}
+
+	// Try OpenVPN ACK
+	if strings.HasPrefix(batchID, "openvpn-") {
+		return s.ackOpenVPNUserUsage(ctx, req)
+	}
+
+	// Try Xray ACK
+	if strings.HasPrefix(batchID, "xray-") {
+		return s.ackXrayUserUsage(ctx, req)
+	}
+
+	// Try merged batch ACK
+	if strings.HasPrefix(batchID, "merged-") {
+		return s.ackMergedUserUsage(ctx, req)
+	}
+
+	// Unknown batch ID format
+	return &nodev1.AckUsageResponse{Acknowledged: false}, nil
 }
 
-func (s *Server) CollectOutboundUsage(context.Context, *nodev1.CollectUsageRequest) (*nodev1.OutboundUsageBatch, error) {
-	return &nodev1.OutboundUsageBatch{BatchId: fmt.Sprintf("outbound-%d", time.Now().Unix())}, nil
+func (s *Server) CollectOutboundUsage(ctx context.Context, req *nodev1.CollectUsageRequest) (*nodev1.OutboundUsageBatch, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	// Check if Xray runtime is running
+	s.mu.Lock()
+	xrayRunning := s.lastRuntime != nil
+	xrayPath := s.cfg.XrayPath
+	s.mu.Unlock()
+
+	if !xrayRunning {
+		return &nodev1.OutboundUsageBatch{
+			BatchId: fmt.Sprintf("outbound-%d", time.Now().Unix()),
+		}, nil
+	}
+
+	// Query Xray stats via CLI
+	client := newXrayStatsClient(xrayPath, s.cfg.XrayAPIPort)
+
+	stats, err := client.queryStats(ctx, "outbound>>>", false)
+	if err != nil {
+		s.appendLog("xray outbound stats query failed: " + err.Error())
+		return &nodev1.OutboundUsageBatch{
+			BatchId: fmt.Sprintf("outbound-%d", time.Now().Unix()),
+		}, nil
+	}
+
+	type outboundTraffic struct {
+		up   uint64
+		down uint64
+	}
+
+	byTag := make(map[string]*outboundTraffic)
+
+	for _, stat := range stats {
+		statName, ok := parseXrayStatName(stat.Name)
+		if !ok || statName.Type != "outbound" {
+			continue
+		}
+
+		tag := statName.Tag
+		if tag == "" {
+			continue
+		}
+
+		value := uint64(0)
+		if stat.Value >= 0 {
+			value = uint64(stat.Value)
+		}
+
+		traffic := byTag[tag]
+		if traffic == nil {
+			traffic = &outboundTraffic{}
+			byTag[tag] = traffic
+		}
+
+		switch statName.Direction {
+		case "uplink":
+			traffic.up = value
+		case "downlink":
+			traffic.down = value
+		}
+	}
+
+	outboundStats := make([]*nodev1.OutboundUsageSample, 0, len(byTag))
+	for tag, traffic := range byTag {
+		if traffic.up == 0 && traffic.down == 0 {
+			continue
+		}
+		outboundStats = append(outboundStats, &nodev1.OutboundUsageSample{
+			Tag:  tag,
+			Up:   traffic.up,
+			Down: traffic.down,
+		})
+	}
+
+	return &nodev1.OutboundUsageBatch{
+		BatchId: fmt.Sprintf("outbound-%d", time.Now().Unix()),
+		Stats:   outboundStats,
+	}, nil
 }
 
 func (s *Server) AckOutboundUsage(context.Context, *nodev1.AckUsageRequest) (*nodev1.AckUsageResponse, error) {

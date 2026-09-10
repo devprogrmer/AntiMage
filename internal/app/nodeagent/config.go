@@ -16,6 +16,7 @@ type Config struct {
 	KeyFile       string
 	XrayPath      string
 	XrayAssetsDir string
+	XrayAPIPort   int
 	InstallMode   string
 	UpdateChannel string
 	Version       string
@@ -32,6 +33,7 @@ func LoadConfig() Config {
 		KeyFile:       envString("SSL_KEY_FILE", filepath.Join(dataDir, "cert.key")),
 		XrayPath:      envString("XRAY_EXECUTABLE_PATH", filepath.Join(dataDir, "xray-core", executableName("xray"))),
 		XrayAssetsDir: envString("XRAY_ASSETS_PATH", filepath.Join(dataDir, "xray-core")),
+		XrayAPIPort:   envInt("XRAY_API_PORT", 10085),
 		InstallMode:   envString("ANTIMAGE_NODE_INSTALL_MODE", "binary"),
 		UpdateChannel: envString("ANTIMAGE_NODE_UPDATE_CHANNEL", "stable"),
 		Version:       envString("ANTIMAGE_NODE_VERSION", "dev"),
