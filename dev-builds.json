@@ -1,9 +1,29 @@
 {
   "schema_version": 1,
   "project": "AntiMage",
-  "latest": "dev-fcb6d90",
-  "updated_at": "2026-09-11T02:29:45Z",
+  "latest": "dev-ab8960c",
+  "updated_at": "2026-09-11T02:53:46Z",
   "builds": [
+    {
+      "tag": "dev-ab8960c",
+      "sha": "ab8960ccad00f80b692734ff012186b458e30f41",
+      "branch": "dev",
+      "workflow": "Binary Build",
+      "run_id": "34556033276",
+      "run_number": "87",
+      "created_at": "2026-09-11T02:53:46Z",
+      "release_tag": "dev-builds",
+      "assets": {
+        "windows-amd64": {
+          "name": "antimage-windows-amd64-dev-ab8960c.zip",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-ab8960c.zip"
+        },
+        "linux-amd64": {
+          "name": "antimage-linux-amd64-dev-ab8960c.tar.gz",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-linux-amd64-dev-ab8960c.tar.gz"
+        }
+      }
+    },
     {
       "tag": "dev-fcb6d90",
       "sha": "fcb6d903b58840c20035dce7f086dbdecdbfa54e",
