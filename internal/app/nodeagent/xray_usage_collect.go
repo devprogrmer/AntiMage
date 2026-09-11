@@ -109,10 +109,6 @@ func (s *Server) collectXrayUserUsage(
 	}
 
 	// Query Xray stats via CLI for traffic counters
-	// LIMITATION: The node agent uses CLI-only (no xray-core import to avoid version coupling)
-	// xray api statsquery returns traffic counters from QueryStats gRPC method
-	// but does NOT have CLI access to GetAllOnlineUsers/GetStatsOnlineIpList (OnlineMap)
-	// Therefore we use activity-based heuristic: traffic delta > 0 in collection window
 	client := newXrayStatsClient(xrayPath, xrayAPIPort)
 
 	stats, err := client.queryStats(ctx, "user>>>", false)
@@ -140,7 +136,8 @@ func (s *Server) collectXrayUserUsage(
 
 	aggregated := make(map[aggregateKey]xrayUsageSample)
 
-	// Collect traffic deltas (for billing) and detect activity (for online heuristic)
+	// Collect traffic deltas for billing
+	uniqueEmails := make(map[string]bool)
 	for _, stat := range stats {
 		statName, ok := parseXrayStatName(stat.Name)
 		if !ok || statName.Type != "user" || statName.Metric != "traffic" {
@@ -156,6 +153,9 @@ func (s *Server) collectXrayUserUsage(
 		if identity.UserID <= 0 {
 			continue
 		}
+
+		// Track unique emails for online queries
+		uniqueEmails[statName.Email] = true
 
 		// Build a session key for baseline tracking
 		// Format: email:direction
@@ -191,21 +191,78 @@ func (s *Server) collectXrayUserUsage(
 		sample.UserID = identity.UserID
 		sample.InboundTag = identity.InboundTag
 
-		// Online heuristic: User with traffic delta > 0 in this collection window is considered active
-		// This is a workaround for lack of CLI access to Xray OnlineMap
-		// LIMITATION: A user who disconnected but had traffic in the collection window
-		// will still show as Online until the next collection
-		// This is safer than the previous bug (cumulative counters keeping users Online forever)
-		if delta > 0 {
-			sample.Online = true
-		}
-
 		// Accumulate delta with overflow protection
 		if ^uint64(0)-sample.Value >= delta {
 			sample.Value += delta
 		}
 
 		aggregated[key] = sample
+	}
+
+	// Query online state from Xray OnlineMap via CLI
+	// This is separate from traffic accounting
+	onlineClient := newXrayOnlineClient(xrayPath, xrayAPIPort)
+
+	// Try bulk query first (more efficient)
+	bulkOnline, bulkErr := onlineClient.queryAllOnlineUsers(ctx)
+	useBulk := bulkErr == nil && len(bulkOnline) > 0
+
+	// Track online state per email
+	emailOnlineCount := make(map[string]int32)
+
+	if useBulk {
+		// Use bulk query results
+		emailOnlineCount = bulkOnline
+	} else {
+		// Fall back to per-user queries
+		for email := range uniqueEmails {
+			count, err := onlineClient.queryOnlineCount(ctx, email)
+			if err != nil {
+				// Online query failed for this user
+				// Don't fail the whole collection - use activity fallback
+				continue
+			}
+			if count > 0 {
+				emailOnlineCount[email] = count
+			}
+		}
+	}
+
+	// Apply online state to aggregated samples
+	// Also handle users who are online but have no traffic delta
+	for email, count := range emailOnlineCount {
+		if count <= 0 {
+			continue
+		}
+
+		// Parse email to get user identity
+		identity, err := parseXrayUserEmail(email)
+		if err != nil {
+			continue
+		}
+
+		key := aggregateKey{
+			UserID:     identity.UserID,
+			InboundTag: identity.InboundTag,
+		}
+
+		sample := aggregated[key]
+		sample.UserID = identity.UserID
+		sample.InboundTag = identity.InboundTag
+		sample.Online = true // count > 0 means user is online
+
+		aggregated[key] = sample
+	}
+
+	// Activity-based fallback for users where online query failed
+	// If online query didn't provide state, use delta > 0 as heuristic
+	for key, sample := range aggregated {
+		if !sample.Online && sample.Value > 0 {
+			// User has traffic delta but online query didn't confirm
+			// Use activity as fallback (degraded mode)
+			sample.Online = true
+			aggregated[key] = sample
+		}
 	}
 
 	if len(aggregated) == 0 {
