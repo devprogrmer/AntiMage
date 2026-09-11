@@ -258,6 +258,13 @@ func (s *Server) ackXrayUserUsage(
 		return nil, err
 	}
 
+	// Idempotent ACK: If this batch was already successfully ACKed, return true
+	if s.xrayUsageLastAckedBatchID == batchID {
+		return &nodev1.AckUsageResponse{
+			Acknowledged: true,
+		}, nil
+	}
+
 	pending := s.xrayUsagePending
 
 	if pending == nil || pending.BatchID != batchID {
@@ -267,13 +274,16 @@ func (s *Server) ackXrayUserUsage(
 	}
 
 	previousBaseline := s.xrayUsageBaseline
+	previousLastAcked := s.xrayUsageLastAckedBatchID
 
 	s.xrayUsageBaseline = pending.NextBaseline
 	s.xrayUsagePending = nil
+	s.xrayUsageLastAckedBatchID = batchID
 
 	if err := s.persistXrayUsageStateLocked(); err != nil {
 		s.xrayUsageBaseline = previousBaseline
 		s.xrayUsagePending = pending
+		s.xrayUsageLastAckedBatchID = previousLastAcked
 		return nil, err
 	}
 

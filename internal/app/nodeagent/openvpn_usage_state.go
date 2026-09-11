@@ -10,8 +10,9 @@ import (
 )
 
 type openVPNUsageDiskState struct {
-	Baseline map[string]uint64         `json:"baseline,omitempty"`
-	Pending  *openVPNUsagePendingBatch `json:"pending,omitempty"`
+	Baseline         map[string]uint64         `json:"baseline,omitempty"`
+	Pending          *openVPNUsagePendingBatch `json:"pending,omitempty"`
+	LastAckedBatchID string                    `json:"last_acked_batch_id,omitempty"`
 }
 
 func (s *Server) openVPNUsageStatePath() string {
@@ -67,6 +68,7 @@ func (s *Server) ensureOpenVPNUsageStateLoadedLocked() error {
 
 	s.openVPNUsageBaseline = state.Baseline
 	s.openVPNUsagePending = state.Pending
+	s.openVPNUsageLastAckedBatchID = state.LastAckedBatchID
 	s.openVPNUsageLoaded = true
 
 	return nil
@@ -83,8 +85,9 @@ func (s *Server) persistOpenVPNUsageStateLocked() error {
 	}
 
 	state := openVPNUsageDiskState{
-		Baseline: s.openVPNUsageBaseline,
-		Pending:  s.openVPNUsagePending,
+		Baseline:         s.openVPNUsageBaseline,
+		Pending:          s.openVPNUsagePending,
+		LastAckedBatchID: s.openVPNUsageLastAckedBatchID,
 	}
 
 	raw, err := json.Marshal(state)

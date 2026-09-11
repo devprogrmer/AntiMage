@@ -273,6 +273,13 @@ func (s *Server) ackOpenVPNUserUsage(
 		return nil, err
 	}
 
+	// Idempotent ACK: If this batch was already successfully ACKed, return true
+	if s.openVPNUsageLastAckedBatchID == batchID {
+		return &nodev1.AckUsageResponse{
+			Acknowledged: true,
+		}, nil
+	}
+
 	pending := s.openVPNUsagePending
 
 	if pending == nil || pending.BatchID != batchID {
@@ -282,13 +289,16 @@ func (s *Server) ackOpenVPNUserUsage(
 	}
 
 	previousBaseline := s.openVPNUsageBaseline
+	previousLastAcked := s.openVPNUsageLastAckedBatchID
 
 	s.openVPNUsageBaseline = pending.NextBaseline
 	s.openVPNUsagePending = nil
+	s.openVPNUsageLastAckedBatchID = batchID
 
 	if err := s.persistOpenVPNUsageStateLocked(); err != nil {
 		s.openVPNUsageBaseline = previousBaseline
 		s.openVPNUsagePending = pending
+		s.openVPNUsageLastAckedBatchID = previousLastAcked
 		return nil, err
 	}
 

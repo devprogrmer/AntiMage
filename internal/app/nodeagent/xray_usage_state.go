@@ -25,8 +25,9 @@ type xrayUsagePendingBatch struct {
 
 // xrayUsageDiskState is the persisted state on disk
 type xrayUsageDiskState struct {
-	Baseline map[string]uint64      `json:"baseline,omitempty"`
-	Pending  *xrayUsagePendingBatch `json:"pending,omitempty"`
+	Baseline         map[string]uint64      `json:"baseline,omitempty"`
+	Pending          *xrayUsagePendingBatch `json:"pending,omitempty"`
+	LastAckedBatchID string                 `json:"last_acked_batch_id,omitempty"`
 }
 
 func (s *Server) xrayUsageStatePath() string {
@@ -82,6 +83,7 @@ func (s *Server) ensureXrayUsageStateLoadedLocked() error {
 
 	s.xrayUsageBaseline = state.Baseline
 	s.xrayUsagePending = state.Pending
+	s.xrayUsageLastAckedBatchID = state.LastAckedBatchID
 	s.xrayUsageLoaded = true
 
 	return nil
@@ -98,8 +100,9 @@ func (s *Server) persistXrayUsageStateLocked() error {
 	}
 
 	state := xrayUsageDiskState{
-		Baseline: s.xrayUsageBaseline,
-		Pending:  s.xrayUsagePending,
+		Baseline:         s.xrayUsageBaseline,
+		Pending:          s.xrayUsagePending,
+		LastAckedBatchID: s.xrayUsageLastAckedBatchID,
 	}
 
 	raw, err := json.Marshal(state)

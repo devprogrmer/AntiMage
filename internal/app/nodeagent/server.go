@@ -42,10 +42,12 @@ type Server struct {
 	openVPNUsageBaseline           map[string]uint64
 	openVPNUsagePending            *openVPNUsagePendingBatch
 	openVPNUsageLoaded             bool
+	openVPNUsageLastAckedBatchID   string
 	xrayUsageMu                    sync.Mutex
 	xrayUsageBaseline              map[string]uint64
 	xrayUsagePending               *xrayUsagePendingBatch
 	xrayUsageLoaded                bool
+	xrayUsageLastAckedBatchID      string
 	xrayOutboundUsageMu            sync.Mutex
 	xrayOutboundUsageBaseline      map[string]uint64
 	xrayOutboundUsagePending       *xrayOutboundUsagePendingBatch
