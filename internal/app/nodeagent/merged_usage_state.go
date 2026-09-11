@@ -21,7 +21,8 @@ type mergedUsagePendingBatch struct {
 
 // mergedUsageDiskState is the persisted merged state
 type mergedUsageDiskState struct {
-	Pending *mergedUsagePendingBatch `json:"pending,omitempty"`
+	Pending          *mergedUsagePendingBatch `json:"pending,omitempty"`
+	LastAckedBatchID string                   `json:"last_acked_batch_id,omitempty"`
 }
 
 func (s *Server) mergedUsageStatePath() string {
@@ -62,6 +63,7 @@ func (s *Server) ensureMergedUsageStateLoadedLocked() error {
 	}
 
 	s.mergedUsagePending = state.Pending
+	s.mergedUsageLastAckedBatchID = state.LastAckedBatchID
 	s.mergedUsageLoaded = true
 
 	return nil
@@ -78,7 +80,8 @@ func (s *Server) persistMergedUsageStateLocked() error {
 	}
 
 	state := mergedUsageDiskState{
-		Pending: s.mergedUsagePending,
+		Pending:          s.mergedUsagePending,
+		LastAckedBatchID: s.mergedUsageLastAckedBatchID,
 	}
 
 	raw, err := json.Marshal(state)
@@ -264,6 +267,10 @@ func (s *Server) ackMergedUserUsage(
 		return nil, err
 	}
 
+	if s.mergedUsageLastAckedBatchID == batchID {
+		return &nodev1.AckUsageResponse{Acknowledged: true}, nil
+	}
+
 	pending := s.mergedUsagePending
 	if pending == nil || pending.MergedBatchID != batchID {
 		return &nodev1.AckUsageResponse{Acknowledged: false}, nil
@@ -303,10 +310,14 @@ func (s *Server) ackMergedUserUsage(
 		return &nodev1.AckUsageResponse{Acknowledged: false}, nil
 	}
 
-	// Clear pending merged batch
+	previousPending := s.mergedUsagePending
+	previousLastAcked := s.mergedUsageLastAckedBatchID
 	s.mergedUsagePending = nil
+	s.mergedUsageLastAckedBatchID = batchID
 
 	if err := s.persistMergedUsageStateLocked(); err != nil {
+		s.mergedUsagePending = previousPending
+		s.mergedUsageLastAckedBatchID = previousLastAcked
 		return nil, err
 	}
 
