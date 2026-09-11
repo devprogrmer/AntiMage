@@ -9,8 +9,9 @@ import (
 	"time"
 )
 
-// xrayOnlineClient queries Xray's OnlineMap via CLI
-// Uses 'xray api statsonline' or 'xray api statsonlineiplist' commands
+const maxXrayOnlineCount = int64(1<<31 - 1)
+
+// xrayOnlineClient queries Xray's local OnlineMap through the Xray CLI.
 type xrayOnlineClient struct {
 	xrayPath string
 	apiPort  int
@@ -23,14 +24,92 @@ func newXrayOnlineClient(xrayPath string, apiPort int) *xrayOnlineClient {
 	}
 }
 
-// xrayOnlineUserResponse represents the response from xray api statsonline
-type xrayOnlineUserResponse struct {
-	Count int32 `json:"count"` // Number of active connections/IPs for this user
+// Xray v26.7.11 statsonline returns app.stats.command.GetStatsResponse:
+//
+//	{
+//	 "stat": {
+//	   "name": "user>>>42.alice>>>online",
+//	   "value": 1
+//	 }
+//	}
+//
+// It does not return a top-level "count" field.
+type xrayOnlineStatResponse struct {
+	Stat *struct {
+		Name  string          `json:"name"`
+		Value json.RawMessage `json:"value"`
+	} `json:"stat"`
 }
 
-// queryOnlineCount queries the online connection count for a specific user email
-// Returns count > 0 if user is online (may have multiple active connections/IPs)
-// Returns 0 if user is offline
+// statsonlineiplist -all returns GetUsersStatsResponse. "users" is an array,
+// and the online count for each user is the number of entries in "ips".
+type xrayBulkOnlineResponse struct {
+	Users []struct {
+		Email string            `json:"email"`
+		IPs   []json.RawMessage `json:"ips"`
+	} `json:"users"`
+}
+
+func parseXrayOnlineCountResponse(output []byte, email string) (int32, error) {
+	var response xrayOnlineStatResponse
+	if err := json.Unmarshal(output, &response); err != nil {
+		return 0, fmt.Errorf("decode statsonline response: %w", err)
+	}
+	if response.Stat == nil {
+		return 0, fmt.Errorf("statsonline response is missing stat")
+	}
+
+	expectedName := "user>>>" + strings.TrimSpace(email) + ">>>online"
+	if response.Stat.Name != expectedName {
+		return 0, fmt.Errorf(
+			"unexpected statsonline stat name %q, want %q",
+			response.Stat.Name,
+			expectedName,
+		)
+	}
+
+	value, err := parseXrayStatValue(response.Stat.Value)
+	if err != nil {
+		return 0, fmt.Errorf("decode statsonline value: %w", err)
+	}
+	if value < 0 || value > maxXrayOnlineCount {
+		return 0, fmt.Errorf("statsonline value %d is outside int32 range", value)
+	}
+
+	return int32(value), nil
+}
+
+func parseXrayBulkOnlineResponse(output []byte) (map[string]int32, error) {
+	var response xrayBulkOnlineResponse
+	if err := json.Unmarshal(output, &response); err != nil {
+		return nil, fmt.Errorf("decode statsonlineiplist response: %w", err)
+	}
+
+	online := make(map[string]int32, len(response.Users))
+	for _, user := range response.Users {
+		email := strings.TrimSpace(user.Email)
+		if email == "" {
+			continue
+		}
+
+		count := len(user.IPs)
+		if int64(count) > maxXrayOnlineCount {
+			return nil, fmt.Errorf(
+				"online IP count for %q exceeds int32 range",
+				email,
+			)
+		}
+
+		if count > 0 {
+			online[email] = int32(count)
+		}
+	}
+
+	return online, nil
+}
+
+// queryOnlineCount returns the number of online IPs currently tracked by
+// Xray's OnlineMap for one runtime user.
 func (c *xrayOnlineClient) queryOnlineCount(ctx context.Context, email string) (int32, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -45,37 +124,31 @@ func (c *xrayOnlineClient) queryOnlineCount(ctx context.Context, email string) (
 	cmd := exec.CommandContext(ctx, c.xrayPath, args...)
 	output, err := cmd.Output()
 	if err != nil {
-		// If command fails, it might be because:
-		// 1. Xray version doesn't support statsonline
-		// 2. User is not in OnlineMap (offline)
-		// 3. statsUserOnline not enabled in config
-		return 0, fmt.Errorf("xray api statsonline failed for %s: %w", email, err)
+		return 0, fmt.Errorf(
+			"xray api statsonline failed for %s: %w",
+			email,
+			err,
+		)
 	}
 
-	// Parse JSON output
-	var response xrayOnlineUserResponse
-	if err := json.Unmarshal(output, &response); err != nil {
-		return 0, fmt.Errorf("parse statsonline response for %s: %w", email, err)
+	count, err := parseXrayOnlineCountResponse(output, email)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"parse statsonline response for %s: %w",
+			email,
+			err,
+		)
 	}
 
-	// Count represents number of active connections/IPs
-	// count > 0 means user is online
-	// count can be > 1 if user has multiple active connections
-	return response.Count, nil
+	return count, nil
 }
 
-// queryAllOnlineUsers queries all online users in bulk
-// Returns map of email -> connection count
-// This is more efficient than per-user queries when checking many users
+// queryAllOnlineUsers returns email -> online IP count using Xray's bulk
+// GetUsersStats API exposed by `statsonlineiplist -all`.
 func (c *xrayOnlineClient) queryAllOnlineUsers(ctx context.Context) (map[string]int32, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	// Try to get all online users at once
-	// Note: The exact CLI command for bulk retrieval may vary by Xray version
-	// We'll try multiple approaches
-
-	// Approach 1: Try statsonlineiplist with -all flag (if supported)
 	args := []string{
 		"api",
 		"statsonlineiplist",
@@ -85,50 +158,28 @@ func (c *xrayOnlineClient) queryAllOnlineUsers(ctx context.Context) (map[string]
 
 	cmd := exec.CommandContext(ctx, c.xrayPath, args...)
 	output, err := cmd.Output()
-
 	if err != nil {
-		// Command might not be supported or flag not available
-		// Fall back to empty map (will use per-user queries)
+		// Bulk support is an optimization. Returning an empty result allows the
+		// collector to fall back to per-user statsonline queries.
 		return make(map[string]int32), nil
 	}
 
-	// Try to parse bulk response
-	// Format may be JSON with user data
-	var bulkData map[string]interface{}
-	if err := json.Unmarshal(output, &bulkData); err != nil {
-		// If parsing fails, return empty map to trigger per-user fallback
-		return make(map[string]int32), nil
+	online, err := parseXrayBulkOnlineResponse(output)
+	if err != nil {
+		// A response-shape mismatch must trigger the safe per-user fallback
+		// instead of silently interpreting every user as offline.
+		return nil, err
 	}
 
-	// Extract online users from bulk response
-	// The exact format depends on Xray version
-	// This is a best-effort parse
-	onlineUsers := make(map[string]int32)
-
-	// Common format: {"users": {"email1": count1, "email2": count2}}
-	if users, ok := bulkData["users"].(map[string]interface{}); ok {
-		for email, countVal := range users {
-			switch v := countVal.(type) {
-			case float64:
-				onlineUsers[email] = int32(v)
-			case int:
-				onlineUsers[email] = int32(v)
-			case int32:
-				onlineUsers[email] = v
-			}
-		}
-	}
-
-	return onlineUsers, nil
+	return online, nil
 }
 
-// isOnlineCommandAvailable checks if Xray supports online CLI commands
-// by attempting a simple statsonline query
+// isOnlineCommandAvailable checks whether the configured Xray binary exposes
+// the statsonline CLI command.
 func (c *xrayOnlineClient) isOnlineCommandAvailable(ctx context.Context) bool {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	// Try to query with a dummy email to see if command exists
 	args := []string{
 		"api",
 		"statsonline",
@@ -140,15 +191,13 @@ func (c *xrayOnlineClient) isOnlineCommandAvailable(ctx context.Context) bool {
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {
-		// Check if error is about unknown command vs. other errors
-		outputStr := string(output)
+		outputStr := strings.ToLower(string(output))
 		if strings.Contains(outputStr, "unknown command") ||
 			strings.Contains(outputStr, "not found") ||
-			strings.Contains(strings.ToLower(outputStr), "unrecognized") {
+			strings.Contains(outputStr, "unrecognized") {
 			return false
 		}
 	}
 
-	// If we got any response (even if user doesn't exist), command is available
 	return true
 }

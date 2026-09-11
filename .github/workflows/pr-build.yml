@@ -48,6 +48,31 @@ jobs:
       - name: Build dashboard
         run: bash scripts/build_dashboard.sh
 
+      - name: Install pinned Xray for E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          XRAY_VERSION="v26.7.11"
+          XRAY_SHA256="aa11c3685c71da0ffc71e511db50404609e7e963bb914b048f59a6a00af8930e"
+          XRAY_ARCHIVE="${RUNNER_TEMP}/Xray-linux-64-${XRAY_VERSION}.zip"
+          XRAY_DIR="${RUNNER_TEMP}/antimage-xray-e2e-${XRAY_VERSION}"
+
+          curl --fail --location --retry 3 --retry-delay 2 \
+            --output "${XRAY_ARCHIVE}" \
+            "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-64.zip"
+
+          echo "${XRAY_SHA256}  ${XRAY_ARCHIVE}" | sha256sum --check -
+
+          rm -rf "${XRAY_DIR}"
+          mkdir -p "${XRAY_DIR}"
+
+          python3 -m zipfile -e "${XRAY_ARCHIVE}" "${XRAY_DIR}"
+          chmod +x "${XRAY_DIR}/xray"
+
+          "${XRAY_DIR}/xray" -version
+
+          echo "ANTIMAGE_XRAY_E2E_BINARY=${XRAY_DIR}/xray" >> "${GITHUB_ENV}"
       - name: Verify Go suites
         run: go test -p 1 -buildvcs=false ./cmd/... ./internal/...
 
