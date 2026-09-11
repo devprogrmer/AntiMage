@@ -16,10 +16,22 @@ type xrayUsageSample struct {
 	Online     bool
 }
 
-// xrayUsagePendingBatch represents a pending batch awaiting ACK
+type xrayOnlineIPSnapshot struct {
+	IP           string
+	LastSeenUnix int64
+}
+
+type xrayOnlineUserSnapshot struct {
+	UserID int64
+	Email  string
+	IPs    []xrayOnlineIPSnapshot
+}
+
+// xrayUsagePendingBatch represents a pending batch awaiting ACK.
 type xrayUsagePendingBatch struct {
 	BatchID      string
 	Samples      []xrayUsageSample
+	OnlineUsers  []xrayOnlineUserSnapshot
 	NextBaseline map[string]uint64
 }
 

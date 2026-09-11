@@ -212,6 +212,15 @@ func TestXrayUsageBatchProtoFormat(t *testing.T) {
 			{UserID: 99, InboundTag: "", Value: 2000, Online: true},
 			{UserID: 100, InboundTag: "vmess-in", Value: 0, Online: true},
 		},
+		OnlineUsers: []xrayOnlineUserSnapshot{
+			{
+				UserID: 42,
+				Email:  "42.alice",
+				IPs: []xrayOnlineIPSnapshot{
+					{IP: "203.0.113.10", LastSeenUnix: 1234},
+				},
+			},
+		},
 		NextBaseline: map[string]uint64{},
 	}
 
@@ -240,6 +249,19 @@ func TestXrayUsageBatchProtoFormat(t *testing.T) {
 	// Third sample: zero traffic, online-only
 	if stats[2].GetUid() != "online:xray:100" {
 		t.Errorf("Online-only UID should have 'online:' prefix, got %q", stats[2].GetUid())
+	}
+
+	onlineIPs := batch.GetOnlineIps()
+	if len(onlineIPs) != 1 {
+		t.Fatalf("Expected 1 online-IP user, got %d", len(onlineIPs))
+	}
+	if onlineIPs[0].GetUid() != "xray:42" || onlineIPs[0].GetEmail() != "42.alice" {
+		t.Fatalf("Unexpected online-IP identity: %+v", onlineIPs[0])
+	}
+	if len(onlineIPs[0].GetIps()) != 1 ||
+		onlineIPs[0].GetIps()[0].GetIp() != "203.0.113.10" ||
+		onlineIPs[0].GetIps()[0].GetLastSeenUnix() != 1234 {
+		t.Fatalf("Unexpected online IP payload: %+v", onlineIPs[0].GetIps())
 	}
 }
 

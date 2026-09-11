@@ -76,6 +76,11 @@ jobs:
       - name: Verify Go suites
         run: go test -p 1 -buildvcs=false ./cmd/... ./internal/...
 
+      - name: Verify Go race detector
+        env:
+          ANTIMAGE_XRAY_E2E_BINARY: ""
+        run: go test -race -p 1 -buildvcs=false ./internal/...
+
       - name: Verify product naming
         shell: pwsh
         run: ./scripts/verify_release_names.ps1

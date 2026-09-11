@@ -284,7 +284,19 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 		t.Fatalf("online count=%d, want >0", count)
 	}
 
-	realXrayWaitForBulkOnline(t, onlineClient, userEmail)
+	bulkState := realXrayWaitForBulkOnline(t, onlineClient, userEmail)
+	foundClientIP := false
+	for _, item := range bulkState.IPs {
+		if item.IP == "127.0.0.2" {
+			foundClientIP = true
+			if item.LastSeen <= 0 {
+				t.Fatalf("bulk OnlineMap lastSeen=%d, want >0", item.LastSeen)
+			}
+		}
+	}
+	if !foundClientIP {
+		t.Fatalf("bulk OnlineMap IPs=%+v, want client IP 127.0.0.2", bulkState.IPs)
+	}
 
 	statsClient := newXrayStatsClient(xrayPath, apiPort)
 	realXrayWaitForPositiveUserTraffic(
@@ -473,7 +485,7 @@ func realXrayWaitForBulkOnline(
 	t *testing.T,
 	client *xrayOnlineClient,
 	email string,
-) {
+) xrayOnlineUserState {
 	t.Helper()
 
 	deadline := time.Now().Add(6 * time.Second)
@@ -487,8 +499,9 @@ func realXrayWaitForBulkOnline(
 		users, err := client.queryAllOnlineUsers(ctx)
 		cancel()
 
-		if err == nil && users[email] > 0 {
-			return
+		state, ok := users[email]
+		if err == nil && ok && state.Count > 0 {
+			return state
 		}
 
 		lastErr = err
@@ -500,6 +513,7 @@ func realXrayWaitForBulkOnline(
 		email,
 		lastErr,
 	)
+	return xrayOnlineUserState{}
 }
 
 func realXrayWaitForPositiveUserTraffic(
