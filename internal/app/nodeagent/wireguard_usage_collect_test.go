@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -239,5 +240,84 @@ func TestWireGuardUsageResolvesInterfaceByListenPort(t *testing.T) {
 			"resolved baseline = %d, want 200",
 			server.wireGuardUsagePending.NextBaseline[key],
 		)
+	}
+}
+
+func TestWireGuardUsageCollectionFailurePreservesBaseline(t *testing.T) {
+	server := New(Config{DataDir: t.TempDir()})
+	ctx := context.Background()
+
+	if err := server.syncWireGuardUsageConfigs(
+		[]wireGuardRuntimeInbound{{
+			Tag:        "wg-main",
+			ListenPort: 51820,
+			Settings: map[string]any{
+				"accounting_enabled": true,
+				"interface_name":     "wg-test0",
+			},
+			Peers: []wireGuardRuntimePeer{{
+				UserID:    42,
+				PublicKey: "peer-a",
+			}},
+		}},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	baselineKey := wireGuardUsageBaselineKey(
+		"wg-main",
+		"wg-test0",
+		"peer-a",
+	)
+	server.wireGuardUsageLoaded = true
+	server.wireGuardUsageBaseline = map[string]uint64{
+		baselineKey: 300,
+	}
+
+	previousDump := wireGuardDumpInterface
+	failQuery := true
+	wireGuardDumpInterface = func(
+		context.Context,
+		string,
+	) ([]byte, error) {
+		if failQuery {
+			return nil, errors.New("temporary wg query failure")
+		}
+		return []byte(
+			"priv\tserver-pub\t51820\toff\n" +
+				"peer-a\t(none)\t198.51.100.4:20000\t10.69.0.2/32\t1700000001\t300\t200\t25\n",
+		), nil
+	}
+	t.Cleanup(func() {
+		wireGuardDumpInterface = previousDump
+	})
+
+	failedPass, err := server.collectWireGuardUserUsage(
+		ctx,
+		&nodev1.CollectUsageRequest{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(failedPass.GetStats()) != 0 {
+		t.Fatalf("failed scrape stats = %#v, want none", failedPass.GetStats())
+	}
+	if got := server.wireGuardUsageBaseline[baselineKey]; got != 300 {
+		t.Fatalf("baseline after failed scrape = %d, want 300", got)
+	}
+
+	failQuery = false
+	next, err := server.collectWireGuardUserUsage(
+		ctx,
+		&nodev1.CollectUsageRequest{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(next.GetStats()) != 1 {
+		t.Fatalf("stats = %d, want 1", len(next.GetStats()))
+	}
+	if got := next.GetStats()[0].GetValue(); got != 200 {
+		t.Fatalf("delta after recovery = %d, want 200", got)
 	}
 }

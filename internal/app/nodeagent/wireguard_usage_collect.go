@@ -63,6 +63,7 @@ func (s *Server) collectWireGuardUserUsage(
 	}
 	aggregated := make(map[aggregateKey]wireGuardUsageSample)
 	configuredKeys := make(map[string]struct{})
+	baselinePruningSafe := true
 
 	var allDump map[string]wireGuardInterfaceDump
 	allDumpLoaded := false
@@ -92,6 +93,7 @@ func (s *Server) collectWireGuardUserUsage(
 			if os.IsNotExist(err) {
 				continue
 			}
+			baselinePruningSafe = false
 			s.appendLog(
 				"wireguard usage config read failed for " +
 					entry.Name() + ": " + err.Error(),
@@ -101,6 +103,7 @@ func (s *Server) collectWireGuardUserUsage(
 
 		var cfg wireGuardUsageRuntimeConfig
 		if err := json.Unmarshal(raw, &cfg); err != nil {
+			baselinePruningSafe = false
 			s.appendLog(
 				"wireguard usage config parse failed for " +
 					entry.Name() + ": " + err.Error(),
@@ -111,6 +114,7 @@ func (s *Server) collectWireGuardUserUsage(
 		cfg.InboundTag = strings.TrimSpace(cfg.InboundTag)
 		cfg.InterfaceName = strings.TrimSpace(cfg.InterfaceName)
 		if cfg.InboundTag == "" {
+			baselinePruningSafe = false
 			continue
 		}
 
@@ -120,6 +124,7 @@ func (s *Server) collectWireGuardUserUsage(
 		if interfaceName != "" {
 			rawDump, err := wireGuardDumpInterface(ctx, interfaceName)
 			if err != nil {
+				baselinePruningSafe = false
 				s.appendLog(
 					"wireguard stats query failed for " +
 						cfg.InboundTag + " (" + interfaceName +
@@ -129,6 +134,7 @@ func (s *Server) collectWireGuardUserUsage(
 			}
 			peers, err = parseWireGuardDump(string(rawDump))
 			if err != nil {
+				baselinePruningSafe = false
 				s.appendLog(
 					"wireguard stats parse failed for " +
 						cfg.InboundTag + ": " + err.Error(),
@@ -137,6 +143,7 @@ func (s *Server) collectWireGuardUserUsage(
 			}
 		} else {
 			if cfg.ListenPort <= 0 {
+				baselinePruningSafe = false
 				s.appendLog(
 					"wireguard interface resolve failed for " +
 						cfg.InboundTag + ": missing listen port",
@@ -147,6 +154,7 @@ func (s *Server) collectWireGuardUserUsage(
 			if !allDumpLoaded {
 				rawDump, err := wireGuardDumpAll(ctx)
 				if err != nil {
+					baselinePruningSafe = false
 					s.appendLog(
 						"wireguard all-interface stats query failed: " +
 							err.Error(),
@@ -158,6 +166,7 @@ func (s *Server) collectWireGuardUserUsage(
 
 				allDump, err = parseWireGuardAllDump(string(rawDump))
 				if err != nil {
+					baselinePruningSafe = false
 					s.appendLog(
 						"wireguard all-interface stats parse failed: " +
 							err.Error(),
@@ -174,6 +183,7 @@ func (s *Server) collectWireGuardUserUsage(
 				}
 			}
 			if len(matches) != 1 {
+				baselinePruningSafe = false
 				s.appendLog(fmt.Sprintf(
 					"wireguard interface resolve failed for %s: listen port %d matched %d interfaces",
 					cfg.InboundTag,
@@ -239,9 +249,11 @@ func (s *Server) collectWireGuardUserUsage(
 		}
 	}
 
-	for key := range nextBaseline {
-		if _, keep := configuredKeys[key]; !keep {
-			delete(nextBaseline, key)
+	if baselinePruningSafe {
+		for key := range nextBaseline {
+			if _, keep := configuredKeys[key]; !keep {
+				delete(nextBaseline, key)
+			}
 		}
 	}
 
