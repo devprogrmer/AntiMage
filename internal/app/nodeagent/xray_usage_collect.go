@@ -203,39 +203,42 @@ func (s *Server) collectXrayUserUsage(
 	// This is separate from traffic accounting
 	onlineClient := newXrayOnlineClient(xrayPath, xrayAPIPort)
 
-	// Try bulk query first (more efficient)
+	// Try bulk query first. Besides the online count, the bulk API is the
+	// source of truth for real client IPs used by device/IP enforcement.
 	bulkOnline, bulkErr := onlineClient.queryAllOnlineUsers(ctx)
 	useBulk := bulkErr == nil && len(bulkOnline) > 0
 
-	// Track online state per email
-	emailOnlineCount := make(map[string]int32)
+	// Track online state per email. The per-user fallback can recover the
+	// boolean/count but cannot recover individual client IPs.
+	emailOnlineState := make(map[string]xrayOnlineUserState)
 
 	if useBulk {
-		// Use bulk query results
-		emailOnlineCount = bulkOnline
+		emailOnlineState = bulkOnline
 	} else {
-		// Fall back to per-user queries
 		for email := range uniqueEmails {
 			count, err := onlineClient.queryOnlineCount(ctx, email)
 			if err != nil {
-				// Online query failed for this user
-				// Don't fail the whole collection - use activity fallback
+				// Don't fail the whole collection - use activity fallback.
 				continue
 			}
 			if count > 0 {
-				emailOnlineCount[email] = count
+				emailOnlineState[email] = xrayOnlineUserState{Count: count}
 			}
 		}
 	}
 
-	// Apply online state to aggregated samples
-	// Also handle users who are online but have no traffic delta
-	for email, count := range emailOnlineCount {
-		if count <= 0 {
+	onlineUsers := make(
+		[]xrayOnlineUserSnapshot,
+		0,
+		len(emailOnlineState),
+	)
+
+	// Apply online state to aggregated samples and snapshot real OnlineMap IPs.
+	for email, state := range emailOnlineState {
+		if state.Count <= 0 {
 			continue
 		}
 
-		// Parse email to get user identity
 		identity, err := parseXrayUserEmail(email)
 		if err != nil {
 			continue
@@ -249,10 +252,33 @@ func (s *Server) collectXrayUserUsage(
 		sample := aggregated[key]
 		sample.UserID = identity.UserID
 		sample.InboundTag = identity.InboundTag
-		sample.Online = true // count > 0 means user is online
-
+		sample.Online = true
 		aggregated[key] = sample
+
+		if len(state.IPs) == 0 {
+			continue
+		}
+
+		snapshot := xrayOnlineUserSnapshot{
+			UserID: identity.UserID,
+			Email:  email,
+			IPs:    make([]xrayOnlineIPSnapshot, 0, len(state.IPs)),
+		}
+		for _, item := range state.IPs {
+			snapshot.IPs = append(snapshot.IPs, xrayOnlineIPSnapshot{
+				IP:           item.IP,
+				LastSeenUnix: item.LastSeen,
+			})
+		}
+		onlineUsers = append(onlineUsers, snapshot)
 	}
+
+	sort.Slice(onlineUsers, func(i, j int) bool {
+		if onlineUsers[i].UserID == onlineUsers[j].UserID {
+			return onlineUsers[i].Email < onlineUsers[j].Email
+		}
+		return onlineUsers[i].UserID < onlineUsers[j].UserID
+	})
 
 	// Activity-based fallback for users where online query failed
 	// If online query didn't provide state, use delta > 0 as heuristic
@@ -297,6 +323,7 @@ func (s *Server) collectXrayUserUsage(
 			time.Now().UTC().UnixNano(),
 		),
 		Samples:      samples,
+		OnlineUsers:  onlineUsers,
 		NextBaseline: nextBaseline,
 	}
 
@@ -393,8 +420,32 @@ func xrayUsageBatchProto(
 		)
 	}
 
+	onlineIPs := make(
+		[]*nodev1.OnlineUserIP,
+		0,
+		len(pending.OnlineUsers),
+	)
+	for _, user := range pending.OnlineUsers {
+		ips := make([]*nodev1.OnlineIP, 0, len(user.IPs))
+		for _, item := range user.IPs {
+			ips = append(ips, &nodev1.OnlineIP{
+				Ip:           item.IP,
+				LastSeenUnix: item.LastSeenUnix,
+			})
+		}
+		if len(ips) == 0 {
+			continue
+		}
+		onlineIPs = append(onlineIPs, &nodev1.OnlineUserIP{
+			Uid:   "xray:" + strconv.FormatInt(user.UserID, 10),
+			Email: user.Email,
+			Ips:   ips,
+		})
+	}
+
 	return &nodev1.UserUsageBatch{
-		BatchId: pending.BatchID,
-		Stats:   stats,
+		BatchId:   pending.BatchID,
+		Stats:     stats,
+		OnlineIps: onlineIPs,
 	}
 }

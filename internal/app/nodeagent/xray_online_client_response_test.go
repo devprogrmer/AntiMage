@@ -85,7 +85,9 @@ func TestParseXrayBulkOnlineResponseV26711(t *testing.T) {
 "email": "42.alice",
 "ips": [
 {"ip":"127.0.0.1","lastSeen":100},
-{"ip":"127.0.0.2","lastSeen":101}
+{"ip":"127.0.0.2","lastSeen":101},
+{"ip":"127.0.0.1","lastSeen":103},
+{"ip":"   ","lastSeen":104}
 ]
 },
 {
@@ -102,11 +104,26 @@ func TestParseXrayBulkOnlineResponseV26711(t *testing.T) {
 		t.Fatalf("parse bulk online response: %v", err)
 	}
 
-	if got["42.alice"] != 2 {
-		t.Fatalf("alice count=%d, want 2", got["42.alice"])
+	alice := got["42.alice"]
+	if alice.Count != 2 {
+		t.Fatalf("alice count=%d, want 2", alice.Count)
 	}
-	if got["77.bob"] != 1 {
-		t.Fatalf("bob count=%d, want 1", got["77.bob"])
+	if len(alice.IPs) != 2 {
+		t.Fatalf("alice IPs=%d, want 2", len(alice.IPs))
+	}
+	if alice.IPs[0].IP != "127.0.0.1" || alice.IPs[0].LastSeen != 103 {
+		t.Fatalf("alice first IP=%+v, want 127.0.0.1 lastSeen=103", alice.IPs[0])
+	}
+	if alice.IPs[1].IP != "127.0.0.2" || alice.IPs[1].LastSeen != 101 {
+		t.Fatalf("alice second IP=%+v, want 127.0.0.2 lastSeen=101", alice.IPs[1])
+	}
+
+	bob := got["77.bob"]
+	if bob.Count != 1 {
+		t.Fatalf("bob count=%d, want 1", bob.Count)
+	}
+	if len(bob.IPs) != 1 || bob.IPs[0].IP != "127.0.0.3" {
+		t.Fatalf("bob IPs=%+v, want 127.0.0.3", bob.IPs)
 	}
 }
 

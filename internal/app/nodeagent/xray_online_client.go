@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 )
@@ -41,12 +42,22 @@ type xrayOnlineStatResponse struct {
 	} `json:"stat"`
 }
 
+type xrayOnlineIP struct {
+	IP       string `json:"ip"`
+	LastSeen int64  `json:"lastSeen"`
+}
+
+type xrayOnlineUserState struct {
+	Count int32
+	IPs   []xrayOnlineIP
+}
+
 // statsonlineiplist -all returns GetUsersStatsResponse. "users" is an array,
-// and the online count for each user is the number of entries in "ips".
+// and each entry carries the real OnlineMap IP plus its lastSeen timestamp.
 type xrayBulkOnlineResponse struct {
 	Users []struct {
-		Email string            `json:"email"`
-		IPs   []json.RawMessage `json:"ips"`
+		Email string         `json:"email"`
+		IPs   []xrayOnlineIP `json:"ips"`
 	} `json:"users"`
 }
 
@@ -79,29 +90,61 @@ func parseXrayOnlineCountResponse(output []byte, email string) (int32, error) {
 	return int32(value), nil
 }
 
-func parseXrayBulkOnlineResponse(output []byte) (map[string]int32, error) {
+func parseXrayBulkOnlineResponse(output []byte) (map[string]xrayOnlineUserState, error) {
 	var response xrayBulkOnlineResponse
 	if err := json.Unmarshal(output, &response); err != nil {
 		return nil, fmt.Errorf("decode statsonlineiplist response: %w", err)
 	}
 
-	online := make(map[string]int32, len(response.Users))
+	online := make(map[string]xrayOnlineUserState, len(response.Users))
 	for _, user := range response.Users {
 		email := strings.TrimSpace(user.Email)
 		if email == "" {
 			continue
 		}
 
-		count := len(user.IPs)
+		// OnlineMap can report duplicate entries during churn. Device/IP
+		// enforcement cares about unique client addresses, so collapse them
+		// while preserving the newest lastSeen value.
+		byIP := make(map[string]int64, len(user.IPs))
+		for _, candidate := range user.IPs {
+			ip := strings.TrimSpace(candidate.IP)
+			if ip == "" {
+				continue
+			}
+			if previous, ok := byIP[ip]; !ok || candidate.LastSeen > previous {
+				byIP[ip] = candidate.LastSeen
+			}
+		}
+
+		count := len(byIP)
 		if int64(count) > maxXrayOnlineCount {
 			return nil, fmt.Errorf(
 				"online IP count for %q exceeds int32 range",
 				email,
 			)
 		}
+		if count == 0 {
+			continue
+		}
 
-		if count > 0 {
-			online[email] = int32(count)
+		orderedIPs := make([]string, 0, count)
+		for ip := range byIP {
+			orderedIPs = append(orderedIPs, ip)
+		}
+		sort.Strings(orderedIPs)
+
+		ips := make([]xrayOnlineIP, 0, count)
+		for _, ip := range orderedIPs {
+			ips = append(ips, xrayOnlineIP{
+				IP:       ip,
+				LastSeen: byIP[ip],
+			})
+		}
+
+		online[email] = xrayOnlineUserState{
+			Count: int32(count),
+			IPs:   ips,
 		}
 	}
 
@@ -145,7 +188,7 @@ func (c *xrayOnlineClient) queryOnlineCount(ctx context.Context, email string) (
 
 // queryAllOnlineUsers returns email -> online IP count using Xray's bulk
 // GetUsersStats API exposed by `statsonlineiplist -all`.
-func (c *xrayOnlineClient) queryAllOnlineUsers(ctx context.Context) (map[string]int32, error) {
+func (c *xrayOnlineClient) queryAllOnlineUsers(ctx context.Context) (map[string]xrayOnlineUserState, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -161,7 +204,7 @@ func (c *xrayOnlineClient) queryAllOnlineUsers(ctx context.Context) (map[string]
 	if err != nil {
 		// Bulk support is an optimization. Returning an empty result allows the
 		// collector to fall back to per-user statsonline queries.
-		return make(map[string]int32), nil
+		return make(map[string]xrayOnlineUserState), nil
 	}
 
 	online, err := parseXrayBulkOnlineResponse(output)
