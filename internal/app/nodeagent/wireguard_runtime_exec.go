@@ -364,4 +364,6 @@ func (s *Server) stopAllWireGuardRuntimes() {
 			))
 		}
 	}
+
+	s.cleanupWireGuardRoutingAll()
 }

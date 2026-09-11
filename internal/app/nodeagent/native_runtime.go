@@ -187,6 +187,10 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		}
 	}
 
+	if err := s.reconcileWireGuardRouting(wgPrepared); err != nil {
+		return err
+	}
+
 	for _, runtime := range ovPrepared {
 		if err := s.applyOpenVPNTProxy(runtime.Tag, runtime.TProxy); err != nil {
 			return err

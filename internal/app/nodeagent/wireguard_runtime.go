@@ -23,6 +23,7 @@ type preparedWireGuardRuntime struct {
 	ServerCIDR    string
 	SourceCIDR    string
 	MTU           int
+	Routing       wireGuardRoutingSpec
 	Inbound       wireGuardRuntimeInbound
 }
 
@@ -233,6 +234,15 @@ func (s *Server) prepareWireGuardInbound(
 		)
 	}
 
+	routing, err := buildWireGuardRoutingSpec(
+		inbound,
+		interfaceName,
+		pool.String(),
+	)
+	if err != nil {
+		return preparedWireGuardRuntime{}, err
+	}
+
 	return preparedWireGuardRuntime{
 		Tag:           tag,
 		InterfaceName: interfaceName,
@@ -240,6 +250,7 @@ func (s *Server) prepareWireGuardInbound(
 		ServerCIDR:    serverCIDR,
 		SourceCIDR:    pool.String(),
 		MTU:           wireGuardIntSetting(inbound.Settings, "mtu"),
+		Routing:       routing,
 		Inbound:       inbound,
 	}, nil
 }

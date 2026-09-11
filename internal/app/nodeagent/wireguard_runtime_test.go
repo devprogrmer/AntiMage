@@ -22,6 +22,7 @@ func TestPrepareWireGuardInboundDefaults(t *testing.T) {
 	inbound := wireGuardRuntimeInbound{
 		Tag:        "wg-main",
 		ListenPort: 51820,
+		TunnelPort: 41940,
 		Settings: map[string]any{
 			"private_key": wireGuardTestKey(1),
 		},
@@ -75,6 +76,7 @@ func TestPrepareWireGuardInboundUsesGlobalPSKFallback(t *testing.T) {
 	inbound := wireGuardRuntimeInbound{
 		Tag:        "wg-main",
 		ListenPort: 51820,
+		TunnelPort: 41940,
 		Settings: map[string]any{
 			"private_key":    wireGuardTestKey(1),
 			"pre_shared_key": psk,
@@ -134,6 +136,7 @@ func TestApplyWireGuardRuntimeCreatesAndConfiguresInterface(t *testing.T) {
 		wireGuardRuntimeInbound{
 			Tag:        "wg-main",
 			ListenPort: 51820,
+			TunnelPort: 41940,
 			Settings: map[string]any{
 				"private_key": wireGuardTestKey(1),
 				"mtu":         1380,
