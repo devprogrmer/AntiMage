@@ -190,6 +190,7 @@ func TestApplyWireGuardRuntimeCreatesAndConfiguresInterface(t *testing.T) {
 	for _, want := range []string{
 		"sysctl -w net.ipv4.ip_forward=1",
 		"ip link add dev " + prepared.InterfaceName + " type wireguard",
+		"ip link set dev " + prepared.InterfaceName + " alias " + wireGuardOwnershipAlias(prepared.Tag),
 		"wg syncconf " + prepared.InterfaceName,
 		"ip -4 address flush dev " + prepared.InterfaceName + " scope global",
 		"ip address add 10.69.0.1/16 dev " + prepared.InterfaceName,
@@ -226,9 +227,13 @@ func TestWireGuardRuntimeAddressingAcceptsPlainServerIP(t *testing.T) {
 
 func TestStopAllWireGuardRuntimesRecoversPersistedState(t *testing.T) {
 	server := New(Config{DataDir: t.TempDir()})
+	interfaceName, err := wireGuardGeneratedInterfaceName("wg-main")
+	if err != nil {
+		t.Fatal(err)
+	}
 	state := wireGuardRuntimeState{
 		Tag:           "wg-main",
-		InterfaceName: "amwgdeadbeef",
+		InterfaceName: interfaceName,
 		ConfigPath:    "unused",
 		ServerCIDR:    "10.69.0.1/16",
 		SourceCIDR:    "10.69.0.0/16",
@@ -345,16 +350,21 @@ func TestApplyWireGuardRuntimeAllowsPreviouslyManagedExplicitInterface(
 ) {
 	server := New(Config{DataDir: t.TempDir()})
 	server.wireGuardRuntimes["wg-main"] = wireGuardRuntimeState{
-		Tag:           "wg-main",
-		InterfaceName: "wg-managed0",
+		Tag:               "wg-main",
+		InterfaceName:     "wg-managed0",
+		ExplicitInterface: true,
 	}
 
 	oldGOOS := wireGuardRuntimeGOOS
 	oldLookPath := wireGuardRuntimeLookPath
 	oldRun := wireGuardRuntimeRun
+	oldReadFile := wireGuardRuntimeReadFile
 	wireGuardRuntimeGOOS = "linux"
 	wireGuardRuntimeLookPath = func(name string) (string, error) {
 		return name, nil
+	}
+	wireGuardRuntimeReadFile = func(string) ([]byte, error) {
+		return []byte(wireGuardOwnershipAlias("wg-main") + "\n"), nil
 	}
 
 	var calls []string
@@ -375,6 +385,7 @@ func TestApplyWireGuardRuntimeAllowsPreviouslyManagedExplicitInterface(
 		wireGuardRuntimeGOOS = oldGOOS
 		wireGuardRuntimeLookPath = oldLookPath
 		wireGuardRuntimeRun = oldRun
+		wireGuardRuntimeReadFile = oldReadFile
 	})
 
 	err := server.applyWireGuardRuntime(preparedWireGuardRuntime{
@@ -458,5 +469,211 @@ func TestApplyWireGuardRuntimeRejectsExplicitInterfaceOwnedByDifferentRuntime(
 				joined,
 			)
 		}
+	}
+}
+
+func TestPrepareWireGuardInboundRejectsInvalidMTUBeforeWritingConfig(
+	t *testing.T,
+) {
+	dataDir := t.TempDir()
+	server := New(Config{DataDir: dataDir})
+	_, err := server.prepareWireGuardInbound(wireGuardRuntimeInbound{
+		Tag:        "wg-main",
+		ListenPort: 51820,
+		TunnelPort: 41940,
+		Settings: map[string]any{
+			"private_key": wireGuardTestKey(1),
+			"mtu":         500,
+		},
+		Peers: []wireGuardRuntimePeer{{
+			UserID:    1,
+			PublicKey: wireGuardTestKey(2),
+			Address:   "10.69.0.2",
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid MTU") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestStopAllWireGuardRuntimesDoesNotDeleteReusedExplicitInterface(
+	t *testing.T,
+) {
+	server := New(Config{DataDir: t.TempDir()})
+	state := wireGuardRuntimeState{
+		Tag:               "wg-main",
+		InterfaceName:     "wg-external0",
+		ExplicitInterface: true,
+		ConfigPath:        "unused",
+		ServerCIDR:        "10.69.0.1/16",
+		SourceCIDR:        "10.69.0.0/16",
+	}
+	if err := server.persistWireGuardRuntimeState(state); err != nil {
+		t.Fatal(err)
+	}
+
+	oldGOOS := wireGuardRuntimeGOOS
+	oldLookPath := wireGuardRuntimeLookPath
+	oldRun := wireGuardRuntimeRun
+	oldReadFile := wireGuardRuntimeReadFile
+	wireGuardRuntimeGOOS = "linux"
+	wireGuardRuntimeLookPath = func(name string) (string, error) {
+		return name, nil
+	}
+	wireGuardRuntimeReadFile = func(string) ([]byte, error) {
+		return []byte("owned-by-someone-else\n"), nil
+	}
+
+	var calls []string
+	wireGuardRuntimeRun = func(
+		_ context.Context,
+		name string,
+		args ...string,
+	) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return []byte("exists"), nil
+	}
+	t.Cleanup(func() {
+		wireGuardRuntimeGOOS = oldGOOS
+		wireGuardRuntimeLookPath = oldLookPath
+		wireGuardRuntimeRun = oldRun
+		wireGuardRuntimeReadFile = oldReadFile
+	})
+
+	server.stopAllWireGuardRuntimes()
+
+	joined := strings.Join(calls, "\n")
+	if strings.Contains(joined, "ip link delete dev wg-external0") {
+		t.Fatalf("reused external interface was deleted:\n%s", joined)
+	}
+	if _, err := os.Stat(
+		server.wireGuardRuntimeManifestPath(state.Tag),
+	); !os.IsNotExist(err) {
+		t.Fatalf("stale runtime manifest still exists: %v", err)
+	}
+}
+
+func TestStopAllWireGuardRuntimesDeletesOwnedExplicitInterface(
+	t *testing.T,
+) {
+	server := New(Config{DataDir: t.TempDir()})
+	state := wireGuardRuntimeState{
+		Tag:               "wg-main",
+		InterfaceName:     "wg-managed0",
+		ExplicitInterface: true,
+		ConfigPath:        "unused",
+		ServerCIDR:        "10.69.0.1/16",
+		SourceCIDR:        "10.69.0.0/16",
+	}
+	if err := server.persistWireGuardRuntimeState(state); err != nil {
+		t.Fatal(err)
+	}
+
+	oldGOOS := wireGuardRuntimeGOOS
+	oldLookPath := wireGuardRuntimeLookPath
+	oldRun := wireGuardRuntimeRun
+	oldReadFile := wireGuardRuntimeReadFile
+	wireGuardRuntimeGOOS = "linux"
+	wireGuardRuntimeLookPath = func(name string) (string, error) {
+		return name, nil
+	}
+	wireGuardRuntimeReadFile = func(string) ([]byte, error) {
+		return []byte(wireGuardOwnershipAlias("wg-main") + "\n"), nil
+	}
+
+	var calls []string
+	wireGuardRuntimeRun = func(
+		_ context.Context,
+		name string,
+		args ...string,
+	) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return []byte("exists"), nil
+	}
+	t.Cleanup(func() {
+		wireGuardRuntimeGOOS = oldGOOS
+		wireGuardRuntimeLookPath = oldLookPath
+		wireGuardRuntimeRun = oldRun
+		wireGuardRuntimeReadFile = oldReadFile
+	})
+
+	server.stopAllWireGuardRuntimes()
+
+	joined := strings.Join(calls, "\n")
+	if !strings.Contains(joined, "ip link delete dev wg-managed0") {
+		t.Fatalf("owned explicit interface was not deleted:\n%s", joined)
+	}
+}
+
+func TestStopAllWireGuardRuntimesTreatsLegacyCustomNameAsExplicit(
+	t *testing.T,
+) {
+	server := New(Config{DataDir: t.TempDir()})
+	state := wireGuardRuntimeState{
+		Tag:           "wg-main",
+		InterfaceName: "wg-external0",
+		ConfigPath:    "unused",
+		ServerCIDR:    "10.69.0.1/16",
+		SourceCIDR:    "10.69.0.0/16",
+		// ExplicitInterface intentionally omitted to emulate a pre-hardening manifest.
+	}
+	if err := server.persistWireGuardRuntimeState(state); err != nil {
+		t.Fatal(err)
+	}
+
+	oldGOOS := wireGuardRuntimeGOOS
+	oldLookPath := wireGuardRuntimeLookPath
+	oldRun := wireGuardRuntimeRun
+	oldReadFile := wireGuardRuntimeReadFile
+	wireGuardRuntimeGOOS = "linux"
+	wireGuardRuntimeLookPath = func(name string) (string, error) {
+		return name, nil
+	}
+	wireGuardRuntimeReadFile = func(string) ([]byte, error) {
+		return []byte("owned-by-someone-else\n"), nil
+	}
+
+	var calls []string
+	wireGuardRuntimeRun = func(
+		_ context.Context,
+		name string,
+		args ...string,
+	) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return []byte("exists"), nil
+	}
+	t.Cleanup(func() {
+		wireGuardRuntimeGOOS = oldGOOS
+		wireGuardRuntimeLookPath = oldLookPath
+		wireGuardRuntimeRun = oldRun
+		wireGuardRuntimeReadFile = oldReadFile
+	})
+
+	server.stopAllWireGuardRuntimes()
+
+	joined := strings.Join(calls, "\n")
+	if strings.Contains(joined, "ip link delete dev wg-external0") {
+		t.Fatalf("legacy explicit interface was deleted:\n%s", joined)
+	}
+	if _, err := os.Stat(
+		server.wireGuardRuntimeManifestPath(state.Tag),
+	); !os.IsNotExist(err) {
+		t.Fatalf("legacy stale manifest still exists: %v", err)
+	}
+}
+
+func TestWireGuardRuntimeStateUsesGeneratedNameForLegacyManagedState(
+	t *testing.T,
+) {
+	name, err := wireGuardGeneratedInterfaceName("wg-main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := wireGuardRuntimeState{
+		Tag:           "wg-main",
+		InterfaceName: name,
+	}
+	if wireGuardRuntimeStateUsesExplicitInterface(state) {
+		t.Fatalf("generated legacy interface %q classified as explicit", name)
 	}
 }

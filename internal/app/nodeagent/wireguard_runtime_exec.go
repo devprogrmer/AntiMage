@@ -20,8 +20,34 @@ var (
 		return exec.CommandContext(ctx, name, args...).CombinedOutput()
 	}
 	wireGuardRuntimeLookPath = exec.LookPath
+	wireGuardRuntimeReadFile = os.ReadFile
 	wireGuardRuntimeGOOS     = runtime.GOOS
 )
+
+func wireGuardOwnershipAlias(tag string) string {
+	return "antimage:" + strings.TrimSpace(tag)
+}
+
+func wireGuardInterfaceHasOwnershipAlias(
+	tag string,
+	interfaceName string,
+) (bool, error) {
+	tag = strings.TrimSpace(tag)
+	interfaceName = strings.TrimSpace(interfaceName)
+	if tag == "" || interfaceName == "" {
+		return false, nil
+	}
+	raw, err := wireGuardRuntimeReadFile(
+		filepath.Join("/sys/class/net", interfaceName, "ifalias"),
+	)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return strings.TrimSpace(string(raw)) == wireGuardOwnershipAlias(tag), nil
+}
 
 func (s *Server) wireGuardInterfaceOwnedByAntiMage(
 	tag string,
@@ -37,7 +63,10 @@ func (s *Server) wireGuardInterfaceOwnedByAntiMage(
 	state, ok := s.wireGuardRuntimes[tag]
 	s.mu.Unlock()
 	if ok && strings.TrimSpace(state.InterfaceName) == interfaceName {
-		return true, nil
+		if !wireGuardRuntimeStateUsesExplicitInterface(state) {
+			return true, nil
+		}
+		return wireGuardInterfaceHasOwnershipAlias(tag, interfaceName)
 	}
 
 	persisted, err := s.loadWireGuardRuntimeStates()
@@ -49,9 +78,98 @@ func (s *Server) wireGuardInterfaceOwnedByAntiMage(
 	}
 	state, ok = persisted[tag]
 	if ok && strings.TrimSpace(state.InterfaceName) == interfaceName {
-		return true, nil
+		if !wireGuardRuntimeStateUsesExplicitInterface(state) {
+			return true, nil
+		}
+		return wireGuardInterfaceHasOwnershipAlias(tag, interfaceName)
 	}
 	return false, nil
+}
+
+func (s *Server) preflightWireGuardRuntimes(
+	prepared []preparedWireGuardRuntime,
+) error {
+	if len(prepared) == 0 {
+		return nil
+	}
+	if wireGuardRuntimeGOOS != "linux" {
+		return fmt.Errorf("wireguard native runtime is supported only on linux")
+	}
+
+	ipPath, err := wireGuardRuntimeLookPath("ip")
+	if err != nil {
+		return fmt.Errorf("wireguard runtime: ip command not installed")
+	}
+	if _, err := wireGuardRuntimeLookPath("wg"); err != nil {
+		return fmt.Errorf("wireguard runtime: wg command not installed")
+	}
+	if _, err := wireGuardRuntimeLookPath("sysctl"); err != nil {
+		return fmt.Errorf("wireguard runtime: sysctl command not installed")
+	}
+
+	needsRouting := false
+	needsTProxyIP := false
+	for _, item := range prepared {
+		if item.Routing.Mode != wireGuardRoutingNone {
+			needsRouting = true
+		}
+		if item.Routing.Mode == wireGuardRoutingTProxy {
+			needsTProxyIP = true
+		}
+
+		if !item.ExplicitInterface {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, showErr := wireGuardRuntimeRun(
+			ctx,
+			ipPath,
+			"link",
+			"show",
+			"dev",
+			item.InterfaceName,
+		)
+		cancel()
+		if showErr != nil {
+			continue
+		}
+		owned, err := s.wireGuardInterfaceOwnedByAntiMage(
+			item.Tag,
+			item.InterfaceName,
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"wireguard %q: verify explicit interface ownership: %w",
+				item.Tag,
+				err,
+			)
+		}
+		if !owned {
+			return fmt.Errorf(
+				"wireguard %q: explicit interface %q already exists and is not managed by AntiMage",
+				item.Tag,
+				item.InterfaceName,
+			)
+		}
+	}
+
+	if needsRouting {
+		if wireGuardRoutingGOOS != "linux" {
+			return fmt.Errorf("wireguard routing is supported only on linux")
+		}
+		if _, err := wireGuardRoutingLookPath("iptables"); err != nil {
+			return fmt.Errorf("wireguard routing: iptables command not installed")
+		}
+		if _, err := wireGuardRoutingLookPath("sysctl"); err != nil {
+			return fmt.Errorf("wireguard routing: sysctl command not installed")
+		}
+		if needsTProxyIP {
+			if _, err := wireGuardRoutingLookPath("ip"); err != nil {
+				return fmt.Errorf("wireguard tproxy: ip command not installed")
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Server) applyWireGuardRuntime(
@@ -163,6 +281,24 @@ func (s *Server) applyWireGuardRuntime(
 
 	if err := runWireGuardRuntimeRequired(
 		ctx,
+		ipPath,
+		"link",
+		"set",
+		"dev",
+		prepared.InterfaceName,
+		"alias",
+		wireGuardOwnershipAlias(prepared.Tag),
+	); err != nil {
+		rollbackCreated()
+		return fmt.Errorf(
+			"wireguard %q: mark interface ownership: %w",
+			prepared.Tag,
+			err,
+		)
+	}
+
+	if err := runWireGuardRuntimeRequired(
+		ctx,
 		wgPath,
 		"syncconf",
 		prepared.InterfaceName,
@@ -246,12 +382,13 @@ func (s *Server) applyWireGuardRuntime(
 	}
 
 	state := wireGuardRuntimeState{
-		Tag:           prepared.Tag,
-		InterfaceName: prepared.InterfaceName,
-		ConfigPath:    prepared.ConfigPath,
-		ServerCIDR:    prepared.ServerCIDR,
-		SourceCIDR:    prepared.SourceCIDR,
-		MTU:           prepared.MTU,
+		Tag:               prepared.Tag,
+		InterfaceName:     prepared.InterfaceName,
+		ExplicitInterface: prepared.ExplicitInterface,
+		ConfigPath:        prepared.ConfigPath,
+		ServerCIDR:        prepared.ServerCIDR,
+		SourceCIDR:        prepared.SourceCIDR,
+		MTU:               prepared.MTU,
 	}
 	if err := s.persistWireGuardRuntimeState(state); err != nil {
 		rollbackCreated()
@@ -333,6 +470,27 @@ func removeWireGuardInterface(interfaceName string) error {
 	)
 }
 
+func (s *Server) removeWireGuardRuntimeInterface(
+	state wireGuardRuntimeState,
+) (bool, error) {
+	if wireGuardRuntimeStateUsesExplicitInterface(state) {
+		owned, err := wireGuardInterfaceHasOwnershipAlias(
+			state.Tag,
+			state.InterfaceName,
+		)
+		if err != nil {
+			return false, err
+		}
+		if !owned {
+			return false, nil
+		}
+	}
+	if err := removeWireGuardInterface(state.InterfaceName); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Server) stopRemovedWireGuardRuntimes(
 	desired map[string]preparedWireGuardRuntime,
 ) {
@@ -347,17 +505,26 @@ func (s *Server) stopRemovedWireGuardRuntimes(
 		if keep && next.InterfaceName == old.InterfaceName {
 			continue
 		}
-		if err := removeWireGuardInterface(old.InterfaceName); err != nil {
+		removed, err := s.removeWireGuardRuntimeInterface(old)
+		if err != nil {
 			s.appendLog(
 				"remove stale wireguard interface failed: " +
 					tag + ": " + err.Error(),
 			)
 			continue
 		}
+		if !removed && wireGuardRuntimeStateUsesExplicitInterface(old) {
+			s.appendLog(
+				"skip stale explicit wireguard interface not owned by AntiMage: " +
+					tag + ": " + old.InterfaceName,
+			)
+		}
 		if !keep {
 			_ = os.RemoveAll(filepath.Dir(
 				s.wireGuardRuntimeManifestPath(tag),
 			))
+		} else {
+			_ = os.Remove(s.wireGuardRuntimeManifestPath(tag))
 		}
 	}
 
@@ -374,10 +541,18 @@ func (s *Server) stopRemovedWireGuardRuntimes(
 	s.mu.Unlock()
 
 	for _, state := range removed {
-		if err := removeWireGuardInterface(state.InterfaceName); err != nil {
+		wasRemoved, err := s.removeWireGuardRuntimeInterface(state)
+		if err != nil {
 			s.appendLog(
 				"remove wireguard interface failed: " +
 					state.Tag + ": " + err.Error(),
+			)
+			continue
+		}
+		if !wasRemoved && wireGuardRuntimeStateUsesExplicitInterface(state) {
+			s.appendLog(
+				"skip explicit wireguard interface not owned by AntiMage: " +
+					state.Tag + ": " + state.InterfaceName,
 			)
 		}
 	}
@@ -412,12 +587,19 @@ func (s *Server) stopAllWireGuardRuntimes() {
 	s.mu.Unlock()
 
 	for _, state := range statesByInterface {
-		if err := removeWireGuardInterface(state.InterfaceName); err != nil {
+		removed, err := s.removeWireGuardRuntimeInterface(state)
+		if err != nil {
 			s.appendLog(
 				"stop wireguard interface failed: " +
 					state.Tag + ": " + err.Error(),
 			)
 			continue
+		}
+		if !removed && wireGuardRuntimeStateUsesExplicitInterface(state) {
+			s.appendLog(
+				"skip explicit wireguard interface not owned by AntiMage: " +
+					state.Tag + ": " + state.InterfaceName,
+			)
 		}
 		if strings.TrimSpace(state.Tag) != "" {
 			_ = os.RemoveAll(filepath.Dir(

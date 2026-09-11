@@ -29,24 +29,17 @@ type preparedWireGuardRuntime struct {
 }
 
 type wireGuardRuntimeState struct {
-	Tag           string `json:"tag"`
-	InterfaceName string `json:"interface_name"`
-	ConfigPath    string `json:"config_path"`
-	ServerCIDR    string `json:"server_cidr"`
-	SourceCIDR    string `json:"source_cidr"`
-	MTU           int    `json:"mtu,omitempty"`
+	Tag               string `json:"tag"`
+	InterfaceName     string `json:"interface_name"`
+	ExplicitInterface bool   `json:"explicit_interface,omitempty"`
+	ConfigPath        string `json:"config_path"`
+	ServerCIDR        string `json:"server_cidr"`
+	SourceCIDR        string `json:"source_cidr"`
+	MTU               int    `json:"mtu,omitempty"`
 }
 
-func wireGuardManagedInterfaceName(
-	inbound wireGuardRuntimeInbound,
-) (string, error) {
-	if explicit, err := wireGuardInterfaceName(inbound); err != nil {
-		return "", err
-	} else if explicit != "" {
-		return explicit, nil
-	}
-
-	tag := strings.TrimSpace(inbound.Tag)
+func wireGuardGeneratedInterfaceName(tag string) (string, error) {
+	tag = strings.TrimSpace(tag)
 	if tag == "" {
 		return "", fmt.Errorf("wireguard inbound tag is required")
 	}
@@ -60,6 +53,30 @@ func wireGuardManagedInterfaceName(
 		)
 	}
 	return name, nil
+}
+
+func wireGuardManagedInterfaceName(
+	inbound wireGuardRuntimeInbound,
+) (string, error) {
+	if explicit, err := wireGuardInterfaceName(inbound); err != nil {
+		return "", err
+	} else if explicit != "" {
+		return explicit, nil
+	}
+	return wireGuardGeneratedInterfaceName(inbound.Tag)
+}
+
+func wireGuardRuntimeStateUsesExplicitInterface(
+	state wireGuardRuntimeState,
+) bool {
+	if state.ExplicitInterface {
+		return true
+	}
+	generated, err := wireGuardGeneratedInterfaceName(state.Tag)
+	if err != nil {
+		return true
+	}
+	return strings.TrimSpace(state.InterfaceName) != generated
 }
 
 func (s *Server) prepareWireGuardInbound(
@@ -87,6 +104,15 @@ func (s *Server) prepareWireGuardInbound(
 	explicitInterfaceName, err := wireGuardInterfaceName(inbound)
 	if err != nil {
 		return preparedWireGuardRuntime{}, err
+	}
+
+	mtu := wireGuardIntSetting(inbound.Settings, "mtu")
+	if mtu > 0 && (mtu < 576 || mtu > 1500) {
+		return preparedWireGuardRuntime{}, fmt.Errorf(
+			"wireguard %q: invalid MTU %d",
+			tag,
+			mtu,
+		)
 	}
 
 	privateKey := wireGuardStringSetting(inbound.Settings, "private_key")
@@ -256,7 +282,7 @@ func (s *Server) prepareWireGuardInbound(
 		ConfigPath:        configPath,
 		ServerCIDR:        serverCIDR,
 		SourceCIDR:        pool.String(),
-		MTU:               wireGuardIntSetting(inbound.Settings, "mtu"),
+		MTU:               mtu,
 		Routing:           routing,
 		Inbound:           inbound,
 	}, nil

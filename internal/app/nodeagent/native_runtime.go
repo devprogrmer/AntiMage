@@ -209,6 +209,10 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		)
 	}
 
+	if err := s.preflightWireGuardRuntimes(wgPrepared); err != nil {
+		return err
+	}
+
 	if err := s.syncWireGuardUsageConfigs(wgUsageInbounds); err != nil {
 		return err
 	}
