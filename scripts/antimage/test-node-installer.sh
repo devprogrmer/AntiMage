@@ -36,4 +36,19 @@ for SCRIPT in "$ROOT/antimage-node.sh" "$ROOT/antimage-node-binary.sh"; do
     fi
 
     sed -n '/^create_binary_antimage_node_service() {$/,/^}$/p' "$SCRIPT" | grep -Fq 'EnvironmentFile=-$APP_DIR/.env'
+
+    bash -n "$SCRIPT"
+    grep -Fq 'ensure_vpn_host_prerequisites()' "$SCRIPT"
+    grep -Fq 'ensure_vpn_binary_prerequisites()' "$SCRIPT"
+    grep -Fq '    ensure_vpn_binary_prerequisites' "$SCRIPT"
+    grep -Fq '    ensure_vpn_host_prerequisites' "$SCRIPT"
+    grep -Fq '    cap_add:' "$SCRIPT"
+    grep -Fq '      - NET_ADMIN' "$SCRIPT"
+    grep -Fq '      - /dev/net/tun:/dev/net/tun' "$SCRIPT"
+done
+
+NODE_DOCKERFILE="$ROOT/../../Dockerfile.node"
+
+for package in openvpn wireguard-tools iproute2 iptables nftables procps; do
+    grep -Eq "^[[:space:]]+${package}[[:space:]]*\\\\$" "$NODE_DOCKERFILE"
 done

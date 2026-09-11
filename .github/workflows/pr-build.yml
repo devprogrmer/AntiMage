@@ -85,6 +85,9 @@ jobs:
         shell: pwsh
         run: ./scripts/verify_release_names.ps1
 
+      - name: Verify node installer provisioning
+        run: bash scripts/antimage/test-node-installer.sh
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
 
@@ -100,3 +103,14 @@ jobs:
           tags: |
             devprogrmer/antimage:pr-${{ github.event.pull_request.number }}
             ghcr.io/devprogrmer/antimage:pr-${{ github.event.pull_request.number }}
+
+      - name: Build Docker node image (local only)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.node
+          platforms: linux/amd64
+          push: false
+          tags: |
+            devprogrmer/antimage-node:pr-${{ github.event.pull_request.number }}
+            ghcr.io/devprogrmer/antimage-node:pr-${{ github.event.pull_request.number }}
