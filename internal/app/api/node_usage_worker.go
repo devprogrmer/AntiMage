@@ -10,6 +10,7 @@ import (
 )
 
 const defaultNodeUsageCollectionInterval = 5 * time.Second
+const maxNodeUsageCollectionInterval = 30 * time.Second
 const defaultNodeUsageFlushInterval = 2 * time.Second
 const nodeUsageHistoryFlushInterval = 30 * time.Second
 const nodeUsageQueueCleanupInterval = time.Minute
@@ -22,21 +23,24 @@ func (s *Server) runNodeUsageCollector(ctx context.Context) {
 		return
 	}
 
+	// Start the ticker before collection so execution time is not added
+	// to the configured polling interval.
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
 	for {
 		s.collectNodeUsage(ctx)
 		if ctx.Err() != nil {
 			return
 		}
-		timer := time.NewTimer(interval)
+
 		select {
 		case <-ctx.Done():
-			timer.Stop()
 			return
-		case <-timer.C:
+		case <-ticker.C:
 		}
 	}
 }
-
 func (s *Server) runNodeUsageFlushWorker(ctx context.Context) {
 	interval := parseWorkerInterval(s.cfg.NodeUsageFlushInterval, defaultNodeUsageFlushInterval)
 	if interval <= 0 {
@@ -204,6 +208,15 @@ func parseNodeUsageCollectionInterval(value string) time.Duration {
 		return 0
 	}
 	if duration, err := time.ParseDuration(value); err == nil {
+		if duration > maxNodeUsageCollectionInterval {
+			logging.Warnf(
+				logging.ComponentNode,
+				"node usage collection interval %s exceeds online-presence-safe maximum %s; capping it",
+				duration,
+				maxNodeUsageCollectionInterval,
+			)
+			return maxNodeUsageCollectionInterval
+		}
 		return duration
 	}
 	return defaultNodeUsageCollectionInterval
