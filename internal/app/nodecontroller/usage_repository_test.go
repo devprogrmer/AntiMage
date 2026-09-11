@@ -129,6 +129,354 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'disable_user' AND user_id = 10`, 1)
 }
 
+func TestRepositoryCarriesQuotaOvershootIntoNextPlan(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-overshoot.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE user_usage_logs (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+user_id INTEGER NOT NULL,
+used_traffic_at_reset INTEGER NOT NULL,
+reset_at DATETIME NULL
+);
+CREATE TABLE next_plans (
+id INTEGER PRIMARY KEY,
+user_id INTEGER NOT NULL,
+position INTEGER NOT NULL DEFAULT 0,
+data_limit INTEGER NOT NULL DEFAULT 0,
+expire INTEGER NULL,
+add_remaining_traffic INTEGER NOT NULL DEFAULT 0,
+fire_on_either INTEGER NOT NULL DEFAULT 1,
+increase_data_limit INTEGER NOT NULL DEFAULT 0,
+start_on_first_connect INTEGER NOT NULL DEFAULT 0,
+trigger_on TEXT NOT NULL DEFAULT 'either'
+);
+INSERT INTO admins (id, users_usage, lifetime_usage)
+VALUES (1, 0, 0);
+
+INSERT INTO services (
+id,
+used_traffic,
+lifetime_used_traffic,
+users_usage,
+updated_at
+)
+VALUES (2, 0, 0, 0, CURRENT_TIMESTAMP);
+
+INSERT INTO admins_services (
+admin_id,
+service_id,
+used_traffic,
+lifetime_used_traffic,
+updated_at
+)
+VALUES (1, 2, 0, 0, CURRENT_TIMESTAMP);
+
+INSERT INTO users (
+id,
+status,
+used_traffic,
+data_limit,
+admin_id,
+service_id
+)
+VALUES (10, 'active', 90, 100, 1, 2);
+
+INSERT INTO nodes (
+id,
+status,
+uplink,
+downlink,
+data_limit,
+usage_coefficient
+)
+VALUES (7, 'connected', 0, 0, NULL, 1);
+
+INSERT INTO next_plans (
+id,
+user_id,
+position,
+data_limit,
+expire,
+add_remaining_traffic,
+fire_on_either,
+increase_data_limit,
+start_on_first_connect,
+trigger_on
+)
+VALUES (1, 10, 0, 50, NULL, 0, 0, 0, 0, 'data');
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	if err := repo.PersistCollectedUsage(
+		ctx,
+		NodeRow{ID: 7, UsageCoefficient: 1},
+		[]UserUsageDelta{{UserID: 10, Value: 30}},
+		nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Actual usage is 120. The first 100 bytes exhaust the old plan and
+	// the 20-byte overshoot belongs to the next plan.
+	assertString(t, db, `SELECT status FROM users WHERE id = 10`, "active")
+	assertInt64(t, db, `SELECT data_limit FROM users WHERE id = 10`, 50)
+	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id = 10`, 20)
+	assertInt64(t, db, `SELECT used_traffic_at_reset FROM user_usage_logs WHERE user_id = 10`, 100)
+	assertInt64(
+		t,
+		db,
+		`SELECT COALESCE(used_traffic, 0) +
+        COALESCE((
+            SELECT SUM(used_traffic_at_reset)
+            FROM user_usage_logs
+            WHERE user_id = 10
+        ), 0)
+   FROM users
+  WHERE id = 10`,
+		120,
+	)
+	assertInt64(t, db, `SELECT COUNT(*) FROM next_plans WHERE user_id = 10`, 0)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 10`, 1)
+
+	// Aggregate/lifetime accounting must still see the real delta.
+	assertInt64(t, db, `SELECT users_usage FROM admins WHERE id = 1`, 30)
+	assertInt64(t, db, `SELECT lifetime_usage FROM admins WHERE id = 1`, 30)
+	assertInt64(t, db, `SELECT used_traffic FROM services WHERE id = 2`, 30)
+	assertInt64(t, db, `SELECT lifetime_used_traffic FROM services WHERE id = 2`, 30)
+}
+
+func TestRepositoryUsageNextPlanHonorsAddRemainingTraffic(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-next-plan-remaining.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+
+	expired := time.Now().UTC().Add(-time.Hour).Unix()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE user_usage_logs (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+user_id INTEGER NOT NULL,
+used_traffic_at_reset INTEGER NOT NULL,
+reset_at DATETIME NULL
+);
+CREATE TABLE next_plans (
+id INTEGER PRIMARY KEY,
+user_id INTEGER NOT NULL,
+position INTEGER NOT NULL DEFAULT 0,
+data_limit INTEGER NOT NULL DEFAULT 0,
+expire INTEGER NULL,
+add_remaining_traffic INTEGER NOT NULL DEFAULT 0,
+fire_on_either INTEGER NOT NULL DEFAULT 1,
+increase_data_limit INTEGER NOT NULL DEFAULT 0,
+start_on_first_connect INTEGER NOT NULL DEFAULT 0,
+trigger_on TEXT NOT NULL DEFAULT 'either'
+);
+INSERT INTO admins (id, users_usage, lifetime_usage)
+VALUES (1, 0, 0);
+
+INSERT INTO services (
+id,
+used_traffic,
+lifetime_used_traffic,
+users_usage,
+updated_at
+)
+VALUES (2, 0, 0, 0, CURRENT_TIMESTAMP);
+
+INSERT INTO admins_services (
+admin_id,
+service_id,
+used_traffic,
+lifetime_used_traffic,
+updated_at
+)
+VALUES (1, 2, 0, 0, CURRENT_TIMESTAMP);
+
+INSERT INTO users (
+id,
+status,
+used_traffic,
+data_limit,
+expire,
+admin_id,
+service_id
+)
+VALUES (10, 'active', 40, 100, ?, 1, 2);
+
+INSERT INTO nodes (
+id,
+status,
+uplink,
+downlink,
+data_limit,
+usage_coefficient
+)
+VALUES (7, 'connected', 0, 0, NULL, 1);
+
+INSERT INTO next_plans (
+id,
+user_id,
+position,
+data_limit,
+expire,
+add_remaining_traffic,
+fire_on_either,
+increase_data_limit,
+start_on_first_connect,
+trigger_on
+)
+VALUES (1, 10, 0, 50, NULL, 1, 0, 0, 0, 'expire');
+`, expired)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	if err := repo.PersistCollectedUsage(
+		ctx,
+		NodeRow{ID: 7, UsageCoefficient: 1},
+		[]UserUsageDelta{{UserID: 10, Value: 1}},
+		nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// 41 of 100 bytes are consumed, leaving 59 bytes.
+	// add_remaining_traffic=true must add those 59 bytes to the
+	// next plan's 50 bytes.
+	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id = 10`, 0)
+	assertInt64(t, db, `SELECT data_limit FROM users WHERE id = 10`, 109)
+	assertInt64(t, db, `SELECT used_traffic_at_reset FROM user_usage_logs WHERE user_id = 10`, 41)
+}
+func TestRepositoryCarriesQuotaOvershootAcrossMultipleNextPlans(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-multi-plan-overshoot.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE user_usage_logs (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+user_id INTEGER NOT NULL,
+used_traffic_at_reset INTEGER NOT NULL,
+reset_at DATETIME NULL
+);
+CREATE TABLE next_plans (
+id INTEGER PRIMARY KEY,
+user_id INTEGER NOT NULL,
+position INTEGER NOT NULL DEFAULT 0,
+data_limit INTEGER NOT NULL DEFAULT 0,
+expire INTEGER NULL,
+add_remaining_traffic INTEGER NOT NULL DEFAULT 0,
+fire_on_either INTEGER NOT NULL DEFAULT 1,
+increase_data_limit INTEGER NOT NULL DEFAULT 0,
+start_on_first_connect INTEGER NOT NULL DEFAULT 0,
+trigger_on TEXT NOT NULL DEFAULT 'either'
+);
+
+INSERT INTO admins (id, users_usage, lifetime_usage)
+VALUES (1, 0, 0);
+
+INSERT INTO services (
+id, used_traffic, lifetime_used_traffic, users_usage, updated_at
+)
+VALUES (2, 0, 0, 0, CURRENT_TIMESTAMP);
+
+INSERT INTO admins_services (
+admin_id, service_id, used_traffic, lifetime_used_traffic, updated_at
+)
+VALUES (1, 2, 0, 0, CURRENT_TIMESTAMP);
+
+INSERT INTO users (
+id, status, used_traffic, data_limit, admin_id, service_id
+)
+VALUES (10, 'active', 90, 100, 1, 2);
+
+INSERT INTO nodes (
+id, status, uplink, downlink, data_limit, usage_coefficient
+)
+VALUES (7, 'connected', 0, 0, NULL, 1);
+
+INSERT INTO next_plans (
+id, user_id, position, data_limit, expire,
+add_remaining_traffic, fire_on_either,
+increase_data_limit, start_on_first_connect, trigger_on
+)
+VALUES
+(1, 10, 0, 50, NULL, 0, 0, 0, 0, 'data'),
+(2, 10, 1, 200, NULL, 0, 0, 0, 0, 'data');
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+
+	if err := repo.PersistCollectedUsage(
+		ctx,
+		NodeRow{ID: 7, UsageCoefficient: 1},
+		[]UserUsageDelta{{UserID: 10, Value: 200}},
+		nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// 90 + 200 = 290 actual bytes.
+	// Old plan consumes 100, first next-plan consumes 50,
+	// leaving 140 bytes in the second 200-byte plan.
+	assertString(t, db, `SELECT status FROM users WHERE id = 10`, "active")
+	assertInt64(t, db, `SELECT data_limit FROM users WHERE id = 10`, 200)
+	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id = 10`, 140)
+
+	assertInt64(
+		t,
+		db,
+		`SELECT COALESCE(SUM(used_traffic_at_reset), 0)
+   FROM user_usage_logs
+  WHERE user_id = 10`,
+		150,
+	)
+
+	assertInt64(
+		t,
+		db,
+		`SELECT COALESCE(used_traffic, 0) +
+        COALESCE((
+            SELECT SUM(used_traffic_at_reset)
+              FROM user_usage_logs
+             WHERE user_id = 10
+        ), 0)
+   FROM users
+  WHERE id = 10`,
+		290,
+	)
+
+	assertInt64(t, db, `SELECT COUNT(*) FROM next_plans WHERE user_id = 10`, 0)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 10`, 1)
+
+	// Aggregate accounting must still contain the complete real delta.
+	assertInt64(t, db, `SELECT users_usage FROM admins WHERE id = 1`, 200)
+	assertInt64(t, db, `SELECT lifetime_usage FROM admins WHERE id = 1`, 200)
+	assertInt64(t, db, `SELECT used_traffic FROM services WHERE id = 2`, 200)
+	assertInt64(t, db, `SELECT lifetime_used_traffic FROM services WHERE id = 2`, 200)
+}
 func TestRepositoryUsageLifecycleBatchQueuesUserDeltas(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-batch-sync.db")+"?_pragma=busy_timeout(30000)")

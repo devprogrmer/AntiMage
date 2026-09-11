@@ -47,8 +47,9 @@ VALUES (10, 2, 0, 500, NULL, 0, 0, 0, 0, 'data');`,
 	}
 	assertLifecycleString(t, db, `SELECT status FROM users WHERE id = 1`, "limited")
 	assertLifecycleString(t, db, `SELECT status FROM users WHERE id = 2`, "active")
-	assertLifecycleInt64(t, db, `SELECT used_traffic FROM users WHERE id = 2`, 0)
+	assertLifecycleInt64(t, db, `SELECT used_traffic FROM users WHERE id = 2`, 100)
 	assertLifecycleInt64(t, db, `SELECT data_limit FROM users WHERE id = 2`, 500)
+	assertLifecycleInt64(t, db, `SELECT used_traffic_at_reset FROM user_usage_logs WHERE user_id = 2`, 100)
 	assertLifecycleString(t, db, `SELECT status FROM users WHERE id = 3`, "active")
 	assertLifecycleInt64(t, db, `SELECT expire FROM users WHERE id = 3`, now.Unix()+3600)
 	assertLifecycleInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'disable_user' AND user_id = 1`, 1)
@@ -56,6 +57,117 @@ VALUES (10, 2, 0, 500, NULL, 0, 0, 0, 0, 'data');`,
 	assertLifecycleInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'enable_user' AND user_id = 3`, 1)
 }
 
+func TestReviewLifecycleCarriesOvershootAcrossMultipleNextPlans(t *testing.T) {
+	ctx := context.Background()
+	db := newLifecycleTestDB(t)
+	service := NewService(NewRepository(db, "sqlite"))
+
+	now := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+	created := now.Add(-time.Hour).Format("2006-01-02 15:04:05")
+
+	_, err := db.ExecContext(ctx, `
+INSERT INTO nodes (id, status)
+VALUES (1, 'connected');
+
+INSERT INTO users (
+id,
+username,
+status,
+used_traffic,
+data_limit,
+created_at
+)
+VALUES (
+40,
+'multi_plan_overshoot',
+'active',
+290,
+100,
+?
+);
+
+INSERT INTO next_plans (
+id,
+user_id,
+position,
+data_limit,
+expire,
+add_remaining_traffic,
+fire_on_either,
+increase_data_limit,
+start_on_first_connect,
+trigger_on
+)
+VALUES
+(100, 40, 0, 50, NULL, 0, 0, 0, 0, 'data'),
+(101, 40, 1, 200, NULL, 0, 0, 0, 0, 'data');
+`, created)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.ReviewLifecycle(
+		ctx,
+		LifecycleOptions{
+			Now:       now,
+			BatchSize: 100,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.AppliedNextPlan != 1 {
+		t.Fatalf("unexpected lifecycle result: %#v", result)
+	}
+
+	assertLifecycleString(
+		t,
+		db,
+		`SELECT status FROM users WHERE id = 40`,
+		"active",
+	)
+
+	assertLifecycleInt64(
+		t,
+		db,
+		`SELECT data_limit FROM users WHERE id = 40`,
+		200,
+	)
+
+	assertLifecycleInt64(
+		t,
+		db,
+		`SELECT used_traffic FROM users WHERE id = 40`,
+		140,
+	)
+
+	assertLifecycleInt64(
+		t,
+		db,
+		`SELECT COALESCE(SUM(used_traffic_at_reset), 0)
+   FROM user_usage_logs
+  WHERE user_id = 40`,
+		150,
+	)
+
+	assertLifecycleInt64(
+		t,
+		db,
+		`SELECT COUNT(*) FROM next_plans WHERE user_id = 40`,
+		0,
+	)
+
+	assertLifecycleInt64(
+		t,
+		db,
+		`SELECT COUNT(*)
+   FROM node_operations
+  WHERE user_id = 40
+    AND operation_type = 'update_user'`,
+		1,
+	)
+}
 func TestResetPeriodicUsageReactivatesLimitedUser(t *testing.T) {
 	ctx := context.Background()
 	db := newLifecycleTestDB(t)

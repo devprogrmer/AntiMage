@@ -1481,49 +1481,153 @@ func usageNextPlanMatches(plan *usageNextPlanRow, user usageLifecycleRow, limite
 }
 
 func (r Repository) applyUsageNextPlan(ctx context.Context, tx *sql.Tx, user usageLifecycleRow, plan usageNextPlanRow, now time.Time) (usageQueuedOperation, error) {
-	currentLimit := int64(0)
-	if user.DataLimit.Valid {
-		currentLimit = user.DataLimit.Int64
-	}
-	newLimit := plan.DataLimit
-	if plan.IncreaseDataLimit {
-		newLimit = currentLimit + plan.DataLimit
-	} else if !plan.AddRemainingTraffic {
-		remaining := currentLimit - user.UsedTraffic
-		if remaining < 0 {
-			remaining = 0
+	originalStatus := user.Status
+	currentPlan := plan
+
+	for {
+		currentLimit := int64(0)
+		if user.DataLimit.Valid {
+			currentLimit = user.DataLimit.Int64
 		}
-		newLimit = plan.DataLimit + remaining
+
+		resetUsage := user.UsedTraffic
+		carryUsage := int64(0)
+
+		// A single usage sample can cross multiple plan boundaries.
+		// Archive only the usage belonging to the current plan and
+		// carry the remainder into the following plan.
+		if currentLimit > 0 && user.UsedTraffic > currentLimit {
+			resetUsage = currentLimit
+			carryUsage = user.UsedTraffic - currentLimit
+		}
+
+		newLimit := currentPlan.DataLimit
+
+		if currentPlan.IncreaseDataLimit {
+			newLimit = addUsageDelta(currentLimit, currentPlan.DataLimit)
+		} else if currentPlan.AddRemainingTraffic {
+			remaining := currentLimit - resetUsage
+			if remaining < 0 {
+				remaining = 0
+			}
+			newLimit = addUsageDelta(currentPlan.DataLimit, remaining)
+		}
+
+		nextExpire := user.Expire
+		if currentPlan.Expire.Valid {
+			nextExpire = currentPlan.Expire
+		}
+
+		var expire any
+		if nextExpire.Valid {
+			expire = nextExpire.Int64
+		}
+
+		if _, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO user_usage_logs
+ (user_id, used_traffic_at_reset, reset_at)
+ VALUES (?, ?, ?)`,
+			user.ID,
+			resetUsage,
+			r.timeArg(now),
+		); err != nil {
+			return usageQueuedOperation{}, err
+		}
+
+		if _, err := tx.ExecContext(
+			ctx,
+			`DELETE FROM node_user_usages WHERE user_id = ?`,
+			user.ID,
+		); err != nil {
+			return usageQueuedOperation{}, err
+		}
+
+		if _, err := tx.ExecContext(
+			ctx,
+			`UPDATE users
+ SET used_traffic = ?,
+     data_limit = ?,
+     expire = ?,
+     status = 'active',
+     last_status_change = ?
+ WHERE id = ?`,
+			carryUsage,
+			newLimit,
+			expire,
+			r.timeArg(now),
+			user.ID,
+		); err != nil {
+			return usageQueuedOperation{}, err
+		}
+
+		if _, err := tx.ExecContext(
+			ctx,
+			`DELETE FROM next_plans WHERE id = ?`,
+			currentPlan.ID,
+		); err != nil {
+			return usageQueuedOperation{}, err
+		}
+
+		if err := r.compactUsageNextPlans(ctx, tx, user.ID); err != nil {
+			return usageQueuedOperation{}, err
+		}
+
+		user.UsedTraffic = carryUsage
+		user.DataLimit = sql.NullInt64{
+			Int64: newLimit,
+			Valid: true,
+		}
+		user.Expire = nextExpire
+		user.Status = "active"
+
+		limited := newLimit > 0 && carryUsage >= newLimit
+
+		if !limited {
+			break
+		}
+
+		nextPlan, err := r.usageNextPlan(ctx, tx, user.ID)
+		if err != nil {
+			return usageQueuedOperation{}, err
+		}
+
+		if nextPlan == nil ||
+			!usageNextPlanMatches(nextPlan, user, true, false) {
+
+			if _, err := tx.ExecContext(
+				ctx,
+				`UPDATE users
+ SET status = 'limited',
+     last_status_change = ?
+ WHERE id = ?`,
+				r.timeArg(now),
+				user.ID,
+			); err != nil {
+				return usageQueuedOperation{}, err
+			}
+
+			return usageQueuedOperation{
+				OperationType: "disable_user",
+				UserID:        user.ID,
+			}, nil
+		}
+
+		currentPlan = *nextPlan
 	}
-	expire := any(nil)
-	if user.Expire.Valid {
-		expire = user.Expire.Int64
-	}
-	if plan.Expire.Valid {
-		expire = plan.Expire.Int64
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO user_usage_logs (user_id, used_traffic_at_reset, reset_at) VALUES (?, ?, ?)`, user.ID, user.UsedTraffic, r.timeArg(now)); err != nil {
-		return usageQueuedOperation{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM node_user_usages WHERE user_id = ?`, user.ID); err != nil {
-		return usageQueuedOperation{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE users SET used_traffic = 0, data_limit = ?, expire = ?, status = 'active', last_status_change = ? WHERE id = ?`, newLimit, expire, r.timeArg(now), user.ID); err != nil {
-		return usageQueuedOperation{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM next_plans WHERE id = ?`, plan.ID); err != nil {
-		return usageQueuedOperation{}, err
-	}
-	if err := r.compactUsageNextPlans(ctx, tx, user.ID); err != nil {
-		return usageQueuedOperation{}, err
-	}
+
 	opType := "update_user"
-	if user.Status != "active" && user.Status != "on_hold" {
+
+	if originalStatus != "active" &&
+		originalStatus != "on_hold" {
 		opType = "enable_user"
 	}
-	return usageQueuedOperation{OperationType: opType, UserID: user.ID}, nil
-}
 
+	return usageQueuedOperation{
+		OperationType: opType,
+		UserID:        user.ID,
+	}, nil
+}
 func (r Repository) compactUsageNextPlans(ctx context.Context, tx *sql.Tx, userID int64) error {
 	rows, err := tx.QueryContext(ctx, `SELECT id FROM next_plans WHERE user_id = ? ORDER BY position, id`, userID)
 	if err != nil {

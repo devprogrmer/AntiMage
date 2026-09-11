@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"database/sql"
+	"math"
 	"time"
 )
 
@@ -478,51 +479,170 @@ func nextPlanMatches(plan *nextPlanRow, user lifecycleUserRow, limited bool, exp
 }
 
 func (r Repository) applyNextPlanTx(ctx context.Context, tx *sql.Tx, user lifecycleUserRow, plan *nextPlanRow, now time.Time) error {
-	newLimit := plan.DataLimit
-	currentLimit := int64PtrValue(user.DataLimit)
-	if plan.IncreaseDataLimit {
-		newLimit = currentLimit + plan.DataLimit
-	} else if plan.AddRemainingTraffic {
-		remaining := currentLimit - user.UsedTraffic
-		if remaining < 0 {
-			remaining = 0
+	originalStatus := user.Status
+	currentPlan := plan
+
+	for {
+		currentLimit := int64PtrValue(user.DataLimit)
+
+		resetUsage := user.UsedTraffic
+		carryUsage := int64(0)
+
+		if currentLimit > 0 && user.UsedTraffic > currentLimit {
+			resetUsage = currentLimit
+			carryUsage = user.UsedTraffic - currentLimit
 		}
-		newLimit = plan.DataLimit + remaining
+
+		newLimit := currentPlan.DataLimit
+
+		if currentPlan.IncreaseDataLimit {
+			if currentPlan.DataLimit > 0 &&
+				currentLimit > math.MaxInt64-currentPlan.DataLimit {
+				newLimit = math.MaxInt64
+			} else {
+				newLimit = currentLimit + currentPlan.DataLimit
+			}
+		} else if currentPlan.AddRemainingTraffic {
+			remaining := currentLimit - resetUsage
+			if remaining < 0 {
+				remaining = 0
+			}
+
+			if remaining > 0 &&
+				currentPlan.DataLimit > math.MaxInt64-remaining {
+				newLimit = math.MaxInt64
+			} else {
+				newLimit = currentPlan.DataLimit + remaining
+			}
+		}
+
+		nextExpire := user.Expire
+		if currentPlan.Expire != nil {
+			nextExpire = currentPlan.Expire
+		}
+
+		if _, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO user_usage_logs
+ (user_id, used_traffic_at_reset, reset_at)
+ VALUES (?, ?, ?)`,
+			user.ID,
+			resetUsage,
+			dbTime(now),
+		); err != nil {
+			return err
+		}
+
+		if _, err := tx.ExecContext(
+			ctx,
+			`DELETE FROM node_user_usages WHERE user_id = ?`,
+			user.ID,
+		); err != nil {
+			return err
+		}
+
+		if _, err := tx.ExecContext(
+			ctx,
+			`UPDATE users
+ SET used_traffic = ?,
+     data_limit = ?,
+     expire = ?,
+     status = ?,
+     last_status_change = ?
+ WHERE id = ?`,
+			carryUsage,
+			newLimit,
+			nullableInt64Ptr(nextExpire),
+			string(UserStatusActive),
+			dbTime(now),
+			user.ID,
+		); err != nil {
+			return err
+		}
+
+		if _, err := tx.ExecContext(
+			ctx,
+			`DELETE FROM next_plans WHERE id = ?`,
+			currentPlan.ID,
+		); err != nil {
+			return err
+		}
+
+		if err := r.compactNextPlansTx(
+			ctx,
+			tx,
+			user.ID,
+		); err != nil {
+			return err
+		}
+
+		user.UsedTraffic = carryUsage
+
+		limit := newLimit
+		user.DataLimit = &limit
+		user.Expire = nextExpire
+		user.Status = UserStatusActive
+
+		limited := newLimit > 0 && carryUsage >= newLimit
+
+		if !limited {
+			break
+		}
+
+		nextPlan, err := r.nextPlanTx(
+			ctx,
+			tx,
+			user.ID,
+		)
+		if err != nil {
+			return err
+		}
+
+		if nextPlan == nil ||
+			!nextPlanMatches(nextPlan, user, true, false) {
+
+			if _, err := tx.ExecContext(
+				ctx,
+				`UPDATE users
+ SET status = ?,
+     last_status_change = ?
+ WHERE id = ?`,
+				string(UserStatusLimited),
+				dbTime(now),
+				user.ID,
+			); err != nil {
+				return err
+			}
+
+			return r.enqueueUserOperationForNodesTx(
+				ctx,
+				tx,
+				NodeOperationDisableUser,
+				user.ID,
+				now,
+			)
+		}
+
+		currentPlan = nextPlan
 	}
-	expire := user.Expire
-	if plan.Expire != nil {
-		expire = plan.Expire
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO user_usage_logs (user_id, used_traffic_at_reset, reset_at) VALUES (?, ?, ?)`, user.ID, user.UsedTraffic, dbTime(now)); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM node_user_usages WHERE user_id = ?`, user.ID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(
-		ctx,
-		`UPDATE users SET used_traffic = 0, data_limit = ?, expire = ?, status = ?, last_status_change = ? WHERE id = ?`,
-		newLimit,
-		nullableInt64Ptr(expire),
-		string(UserStatusActive),
-		dbTime(now),
-		user.ID,
-	); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM next_plans WHERE id = ?`, plan.ID); err != nil {
-		return err
-	}
-	if err := r.compactNextPlansTx(ctx, tx, user.ID); err != nil {
-		return err
-	}
-	op := operationForStatusChange(user.Status, UserStatusActive)
+
+	op := operationForStatusChange(
+		originalStatus,
+		UserStatusActive,
+	)
+
 	if op == "" {
 		op = NodeOperationUpdateUser
 	}
-	return r.enqueueUserOperationForNodesTx(ctx, tx, op, user.ID, now)
-}
 
+	return r.enqueueUserOperationForNodesTx(
+		ctx,
+		tx,
+		op,
+		user.ID,
+		now,
+	)
+}
 func shouldActivateOnHold(user lifecycleUserRow, now time.Time) bool {
 	base := user.LastStatusChange
 	if user.CreatedAt != nil {
