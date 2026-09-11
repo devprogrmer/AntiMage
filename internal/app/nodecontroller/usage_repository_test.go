@@ -248,6 +248,17 @@ VALUES (1, 10, 0, 50, NULL, 0, 0, 0, 0, 'data');
 	assertInt64(t, db, `SELECT COUNT(*) FROM next_plans WHERE user_id = 10`, 0)
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 10`, 1)
 
+	// Subscription usage is historical. A next-plan transition must not
+	// erase the traffic bucket that was just collected.
+	assertInt64(
+		t,
+		db,
+		`SELECT COALESCE(SUM(used_traffic), 0)
+   FROM node_user_usages
+  WHERE user_id = 10 AND node_id = 7`,
+		30,
+	)
+
 	// Aggregate/lifetime accounting must still see the real delta.
 	assertInt64(t, db, `SELECT users_usage FROM admins WHERE id = 1`, 30)
 	assertInt64(t, db, `SELECT lifetime_usage FROM admins WHERE id = 1`, 30)

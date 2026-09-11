@@ -29,7 +29,14 @@ VALUES
   (2, 'next_user', 'active', 200, 100, ?, ?, NULL, NULL),
   (3, 'hold_user', 'on_hold', 0, 1000, ?, ?, ?, 3600);
 INSERT INTO next_plans (id, user_id, position, data_limit, expire, add_remaining_traffic, fire_on_either, increase_data_limit, start_on_first_connect, trigger_on)
-VALUES (10, 2, 0, 500, NULL, 0, 0, 0, 0, 'data');`,
+VALUES (10, 2, 0, 500, NULL, 0, 0, 0, 0, 'data');
+INSERT INTO node_user_usages (
+created_at,
+user_id,
+node_id,
+used_traffic
+)
+VALUES (CURRENT_TIMESTAMP, 2, 1, 200);`,
 		past, past,
 		past, past,
 		past, past, online,
@@ -50,6 +57,15 @@ VALUES (10, 2, 0, 500, NULL, 0, 0, 0, 0, 'data');`,
 	assertLifecycleInt64(t, db, `SELECT used_traffic FROM users WHERE id = 2`, 100)
 	assertLifecycleInt64(t, db, `SELECT data_limit FROM users WHERE id = 2`, 500)
 	assertLifecycleInt64(t, db, `SELECT used_traffic_at_reset FROM user_usage_logs WHERE user_id = 2`, 100)
+	// Subscription reports span plan boundaries, so historical buckets must survive.
+	assertLifecycleInt64(
+		t,
+		db,
+		`SELECT COALESCE(SUM(used_traffic), 0)
+   FROM node_user_usages
+  WHERE user_id = 2`,
+		200,
+	)
 	assertLifecycleString(t, db, `SELECT status FROM users WHERE id = 3`, "active")
 	assertLifecycleInt64(t, db, `SELECT expire FROM users WHERE id = 3`, now.Unix()+3600)
 	assertLifecycleInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'disable_user' AND user_id = 1`, 1)
@@ -197,7 +213,15 @@ INSERT INTO node_user_usages (created_at, user_id, node_id, used_traffic) VALUES
 	}
 	assertLifecycleString(t, db, `SELECT status FROM users WHERE id = 20`, "active")
 	assertLifecycleInt64(t, db, `SELECT used_traffic FROM users WHERE id = 20`, 0)
-	assertLifecycleInt64(t, db, `SELECT COUNT(*) FROM node_user_usages WHERE user_id = 20`, 0)
+	// Reset current quota accounting without deleting subscription history.
+	assertLifecycleInt64(
+		t,
+		db,
+		`SELECT COALESCE(SUM(used_traffic), 0)
+   FROM node_user_usages
+  WHERE user_id = 20`,
+		90,
+	)
 	assertLifecycleInt64(t, db, `SELECT used_traffic_at_reset FROM user_usage_logs WHERE user_id = 20`, 90)
 	assertLifecycleInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'enable_user' AND user_id = 20`, 1)
 }

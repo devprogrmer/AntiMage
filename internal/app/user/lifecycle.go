@@ -535,14 +535,6 @@ func (r Repository) applyNextPlanTx(ctx context.Context, tx *sql.Tx, user lifecy
 
 		if _, err := tx.ExecContext(
 			ctx,
-			`DELETE FROM node_user_usages WHERE user_id = ?`,
-			user.ID,
-		); err != nil {
-			return err
-		}
-
-		if _, err := tx.ExecContext(
-			ctx,
 			`UPDATE users
  SET used_traffic = ?,
      data_limit = ?,
@@ -684,9 +676,6 @@ func (r Repository) resetPeriodicUserUsage(ctx context.Context, opts UsageResetO
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO user_usage_logs (user_id, used_traffic_at_reset, reset_at) VALUES (?, ?, ?)`, row.ID, row.UsedTraffic, dbTime(now)); err != nil {
-			return result, err
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM node_user_usages WHERE user_id = ?`, row.ID); err != nil {
 			return result, err
 		}
 		newStatus := row.Status

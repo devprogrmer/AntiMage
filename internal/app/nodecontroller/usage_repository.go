@@ -1537,14 +1537,6 @@ func (r Repository) applyUsageNextPlan(ctx context.Context, tx *sql.Tx, user usa
 
 		if _, err := tx.ExecContext(
 			ctx,
-			`DELETE FROM node_user_usages WHERE user_id = ?`,
-			user.ID,
-		); err != nil {
-			return usageQueuedOperation{}, err
-		}
-
-		if _, err := tx.ExecContext(
-			ctx,
 			`UPDATE users
  SET used_traffic = ?,
      data_limit = ?,
