@@ -115,3 +115,46 @@ func TestParseNativeRuntimeSessionCallback(t *testing.T) {
 		)
 	}
 }
+
+func TestParseNativeRuntimePayloadWireGuard(t *testing.T) {
+	payload, err := parseNativeRuntimePayload(`{
+"generated_at":"2026-09-11T00:00:00Z",
+"target":"node:1",
+"wg_inbounds":[{
+"tag":"wg-main",
+"listen_port":51820,
+"tunnel_port":29987,
+"settings":{
+"accounting_enabled":true,
+"interface_name":"wg-test0"
+},
+"peers":[{
+"user_id":42,
+"username":"alice",
+"public_key":"peer-a",
+"address":"10.69.0.2",
+"status":"active",
+"used_traffic":0,
+"device_limit":1
+}]
+}]
+}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.WireGuardInbounds) != 1 {
+		t.Fatalf(
+			"expected 1 WireGuard inbound, got %d",
+			len(payload.WireGuardInbounds),
+		)
+	}
+	inbound := payload.WireGuardInbounds[0]
+	if inbound.Tag != "wg-main" || inbound.ListenPort != 51820 {
+		t.Fatalf("unexpected inbound: %#v", inbound)
+	}
+	if len(inbound.Peers) != 1 ||
+		inbound.Peers[0].UserID != 42 ||
+		inbound.Peers[0].PublicKey != "peer-a" {
+		t.Fatalf("unexpected peers: %#v", inbound.Peers)
+	}
+}

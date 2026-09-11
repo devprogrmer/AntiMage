@@ -44,6 +44,11 @@ type Server struct {
 	openVPNUsagePending            *openVPNUsagePendingBatch
 	openVPNUsageLoaded             bool
 	openVPNUsageLastAckedBatchID   string
+	wireGuardUsageMu               sync.Mutex
+	wireGuardUsageBaseline         map[string]uint64
+	wireGuardUsagePending          *wireGuardUsagePendingBatch
+	wireGuardUsageLoaded           bool
+	wireGuardUsageLastAckedBatchID string
 	xrayUsageMu                    sync.Mutex
 	xrayUsageBaseline              map[string]uint64
 	xrayUsagePending               *xrayUsagePendingBatch
@@ -56,6 +61,11 @@ type Server struct {
 	mergedUsageMu                  sync.Mutex
 	mergedUsagePending             *mergedUsagePendingBatch
 	mergedUsageLoaded              bool
+	mergedUsageLastAckedBatchID    string
+	combinedUsageMu                sync.Mutex
+	combinedUsagePending           *combinedUsagePendingBatch
+	combinedUsageLoaded            bool
+	combinedUsageLastAckedBatchID  string
 	torProxies                     map[uint32]*exec.Cmd
 	appliedRev                     uint64
 	logs                           []string
@@ -75,6 +85,7 @@ func New(cfg Config) *Server {
 		openVPNRuntimes:           make(map[string]*openVPNProcess),
 		openVPNTProxySpecs:        make(map[string]openVPNTProxySpec),
 		openVPNUsageBaseline:      make(map[string]uint64),
+		wireGuardUsageBaseline:    make(map[string]uint64),
 		xrayUsageBaseline:         make(map[string]uint64),
 		xrayOutboundUsageBaseline: make(map[string]uint64),
 		torProxies:                make(map[uint32]*exec.Cmd),
@@ -287,27 +298,7 @@ func (s *Server) CollectUserUsage(
 	ctx context.Context,
 	req *nodev1.CollectUsageRequest,
 ) (*nodev1.UserUsageBatch, error) {
-	// Collect OpenVPN usage
-	ovpnBatch, ovpnErr := s.collectOpenVPNUserUsage(ctx, req)
-
-	// Collect Xray usage
-	xrayBatch, xrayErr := s.collectXrayUserUsage(ctx, req)
-
-	// If both failed, return the first error
-	if ovpnErr != nil && xrayErr != nil {
-		return nil, ovpnErr
-	}
-
-	// If one succeeded, use it
-	if ovpnErr != nil {
-		return xrayBatch, xrayErr
-	}
-	if xrayErr != nil {
-		return ovpnBatch, ovpnErr
-	}
-
-	// Both succeeded - merge the batches
-	return s.mergeUserUsageBatches(ovpnBatch, xrayBatch), nil
+	return s.collectUserUsageWithWireGuard(ctx, req)
 }
 
 func (s *Server) AckUserUsage(
@@ -327,6 +318,16 @@ func (s *Server) AckUserUsage(
 	// Try Xray ACK
 	if strings.HasPrefix(batchID, "xray-") {
 		return s.ackXrayUserUsage(ctx, req)
+	}
+
+	// Try WireGuard ACK
+	if strings.HasPrefix(batchID, "wireguard-") {
+		return s.ackWireGuardUserUsage(ctx, req)
+	}
+
+	// Try combined OpenVPN/Xray + WireGuard ACK
+	if strings.HasPrefix(batchID, "combined-") {
+		return s.ackCombinedUserUsage(ctx, req)
 	}
 
 	// Try merged batch ACK

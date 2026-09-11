@@ -16,12 +16,12 @@ type nativeRuntimePayload struct {
 	Target          string                       `json:"target"`
 	SessionCallback nativeRuntimeSessionCallback `json:"session_callback,omitempty"`
 
-	OpenVPNInbounds    []openVPNRuntimeInbound `json:"inbounds"`
-	L2TPInbounds       []json.RawMessage       `json:"l2tp_inbounds"`
-	PPTPInbounds       []json.RawMessage       `json:"pptp_inbounds"`
-	WireGuardInbounds  []json.RawMessage       `json:"wg_inbounds"`
-	IKEv2Inbounds      []json.RawMessage       `json:"ikev2_inbounds"`
-	AnyConnectInbounds []json.RawMessage       `json:"anyconnect_inbounds"`
+	OpenVPNInbounds    []openVPNRuntimeInbound   `json:"inbounds"`
+	L2TPInbounds       []json.RawMessage         `json:"l2tp_inbounds"`
+	PPTPInbounds       []json.RawMessage         `json:"pptp_inbounds"`
+	WireGuardInbounds  []wireGuardRuntimeInbound `json:"wg_inbounds"`
+	IKEv2Inbounds      []json.RawMessage         `json:"ikev2_inbounds"`
+	AnyConnectInbounds []json.RawMessage         `json:"anyconnect_inbounds"`
 
 	HAProxy json.RawMessage `json:"haproxy"`
 }
@@ -82,6 +82,10 @@ func (s *Server) applyNativeRuntime(raw string) error {
 
 	payload, err := parseNativeRuntimePayload(raw)
 	if err != nil {
+		return err
+	}
+
+	if err := s.syncWireGuardUsageConfigs(payload.WireGuardInbounds); err != nil {
 		return err
 	}
 
