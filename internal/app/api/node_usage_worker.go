@@ -115,6 +115,8 @@ func (s *Server) flushNodeUsage(ctx context.Context) {
 			break
 		}
 	}
+	s.handleNodeUsageFlushOperations(total.Operations)
+
 	if total.UserRows > 0 || total.OutboundRows > 0 || total.Operations > 0 {
 		logging.Debugf(
 			logging.ComponentNode,
@@ -126,6 +128,14 @@ func (s *Server) flushNodeUsage(ctx context.Context) {
 	}
 }
 
+func (s *Server) handleNodeUsageFlushOperations(operations int) {
+	// Accounting may atomically queue runtime operations when usage crosses
+	// a lifecycle boundary such as the user's data quota. Wake the runtime
+	// worker immediately instead of waiting for its normal polling interval.
+	if operations > 0 {
+		s.kickNodeOperationsSoon()
+	}
+}
 func (s *Server) flushNodeUsageHistory(ctx context.Context) {
 	workerCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()

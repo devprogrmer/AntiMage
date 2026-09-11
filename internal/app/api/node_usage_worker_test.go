@@ -97,3 +97,46 @@ func TestOnlineActiveWindowHasJitterBudget(t *testing.T) {
 		)
 	}
 }
+
+func TestHandleNodeUsageFlushOperationsKicksWorker(t *testing.T) {
+	s := &Server{
+		nodeOperationsKick: make(chan struct{}, 1),
+	}
+
+	s.handleNodeUsageFlushOperations(1)
+
+	select {
+	case <-s.nodeOperationsKick:
+	// Expected.
+	default:
+		t.Fatal("usage-created runtime operation did not wake node operations worker")
+	}
+}
+
+func TestHandleNodeUsageFlushOperationsDoesNotKickWithoutOperations(t *testing.T) {
+	s := &Server{
+		nodeOperationsKick: make(chan struct{}, 1),
+	}
+
+	s.handleNodeUsageFlushOperations(0)
+
+	select {
+	case <-s.nodeOperationsKick:
+		t.Fatal("ordinary usage accounting unexpectedly woke node operations worker")
+	default:
+		// Expected.
+	}
+}
+
+func TestHandleNodeUsageFlushOperationsCoalescesWakeups(t *testing.T) {
+	s := &Server{
+		nodeOperationsKick: make(chan struct{}, 1),
+	}
+
+	s.handleNodeUsageFlushOperations(1)
+	s.handleNodeUsageFlushOperations(20)
+
+	if got := len(s.nodeOperationsKick); got != 1 {
+		t.Fatalf("queued wakeups=%d, want 1 coalesced wakeup", got)
+	}
+}
