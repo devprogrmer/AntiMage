@@ -131,10 +131,6 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		)
 	}
 
-	if err := s.syncWireGuardUsageConfigs(wgUsageInbounds); err != nil {
-		return err
-	}
-
 	ovDesired := make(
 		map[string]struct{},
 		len(payload.OpenVPNInbounds),
@@ -175,6 +171,10 @@ func (s *Server) applyNativeRuntime(raw string) error {
 				TProxy:     tproxy,
 			},
 		)
+	}
+
+	if err := s.syncWireGuardUsageConfigs(wgUsageInbounds); err != nil {
+		return err
 	}
 
 	s.stopRemovedWireGuardRuntimes(wgDesired)
