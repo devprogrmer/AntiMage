@@ -108,7 +108,11 @@ func (s *Server) collectXrayUserUsage(
 		return &nodev1.UserUsageBatch{}, nil
 	}
 
-	// Query Xray stats via CLI with user pattern (gets both traffic and online stats)
+	// Query Xray stats via CLI for traffic counters
+	// LIMITATION: The node agent uses CLI-only (no xray-core import to avoid version coupling)
+	// xray api statsquery returns traffic counters from QueryStats gRPC method
+	// but does NOT have CLI access to GetAllOnlineUsers/GetStatsOnlineIpList (OnlineMap)
+	// Therefore we use activity-based heuristic: traffic delta > 0 in collection window
 	client := newXrayStatsClient(xrayPath, xrayAPIPort)
 
 	stats, err := client.queryStats(ctx, "user>>>", false)
@@ -136,7 +140,7 @@ func (s *Server) collectXrayUserUsage(
 
 	aggregated := make(map[aggregateKey]xrayUsageSample)
 
-	// First pass: collect traffic deltas (for billing)
+	// Collect traffic deltas (for billing) and detect activity (for online heuristic)
 	for _, stat := range stats {
 		statName, ok := parseXrayStatName(stat.Name)
 		if !ok || statName.Type != "user" || statName.Metric != "traffic" {
@@ -187,62 +191,21 @@ func (s *Server) collectXrayUserUsage(
 		sample.UserID = identity.UserID
 		sample.InboundTag = identity.InboundTag
 
+		// Online heuristic: User with traffic delta > 0 in this collection window is considered active
+		// This is a workaround for lack of CLI access to Xray OnlineMap
+		// LIMITATION: A user who disconnected but had traffic in the collection window
+		// will still show as Online until the next collection
+		// This is safer than the previous bug (cumulative counters keeping users Online forever)
+		if delta > 0 {
+			sample.Online = true
+		}
+
 		// Accumulate delta with overflow protection
 		if ^uint64(0)-sample.Value >= delta {
 			sample.Value += delta
 		}
 
 		aggregated[key] = sample
-	}
-
-	// Second pass: collect online state (separate from traffic)
-	// This uses Xray's statsUserOnline which is independent of cumulative traffic counters
-	onlineUsers := make(map[aggregateKey]bool)
-	for _, stat := range stats {
-		statName, ok := parseXrayStatName(stat.Name)
-		if !ok || statName.Type != "user" || statName.Metric != "online" {
-			continue
-		}
-
-		identity, err := parseXrayUserEmail(statName.Email)
-		if err != nil {
-			continue
-		}
-
-		if identity.UserID <= 0 {
-			continue
-		}
-
-		key := aggregateKey{
-			UserID:     identity.UserID,
-			InboundTag: identity.InboundTag,
-		}
-
-		// Xray online stat: 1 = online, 0 = offline
-		// Only mark online if stat value is 1
-		if stat.Value == 1 {
-			onlineUsers[key] = true
-		}
-	}
-
-	// Apply online state to samples
-	for key := range aggregated {
-		sample := aggregated[key]
-		sample.Online = onlineUsers[key] // true if online stat was 1, false otherwise
-		aggregated[key] = sample
-	}
-
-	// Also include users who are online but have no traffic delta in this period
-	// This ensures we report online users even if they're idle
-	for key := range onlineUsers {
-		if _, exists := aggregated[key]; !exists {
-			aggregated[key] = xrayUsageSample{
-				UserID:     key.UserID,
-				InboundTag: key.InboundTag,
-				Value:      0,
-				Online:     true,
-			}
-		}
 	}
 
 	if len(aggregated) == 0 {
