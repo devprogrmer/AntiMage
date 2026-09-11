@@ -77,6 +77,11 @@ func (s *Server) reconcileWireGuardRouting(
 	cleanupWireGuardTProxy(ctx, iptablesPath)
 	cleanupWireGuardNAT(ctx, iptablesPath)
 
+	rollback := func() {
+		cleanupWireGuardTProxy(ctx, iptablesPath)
+		cleanupWireGuardNAT(ctx, iptablesPath)
+	}
+
 	sort.Slice(tproxySpecs, func(i, j int) bool {
 		if tproxySpecs[i].Interface == tproxySpecs[j].Interface {
 			return tproxySpecs[i].TunnelPort < tproxySpecs[j].TunnelPort
@@ -92,12 +97,14 @@ func (s *Server) reconcileWireGuardRouting(
 
 	if len(tproxySpecs) > 0 {
 		if err := applyWireGuardTProxy(ctx, iptablesPath, tproxySpecs); err != nil {
+			rollback()
 			return err
 		}
 	}
 
 	if len(natSpecs) > 0 {
 		if err := applyWireGuardNAT(ctx, iptablesPath, natSpecs); err != nil {
+			rollback()
 			return err
 		}
 	}
@@ -258,8 +265,25 @@ func ensureWireGuardChain(
 
 	checkJump := append([]string{"-w", "5"}, tableArgs...)
 	checkJump = append(checkJump, "-C", parent, "-j", chain)
-	if _, err := wireGuardRoutingRun(ctx, iptablesPath, checkJump...); err == nil {
+	output, checkErr := wireGuardRoutingRun(ctx, iptablesPath, checkJump...)
+	if checkErr == nil {
 		return nil
+	}
+	if !wireGuardRoutingMissing(output, checkErr) {
+		detail := strings.TrimSpace(string(output))
+		if detail == "" {
+			return fmt.Errorf(
+				"wireguard routing check command %q failed: %w",
+				iptablesPath,
+				checkErr,
+			)
+		}
+		return fmt.Errorf(
+			"wireguard routing check command %q failed: %w: %s",
+			iptablesPath,
+			checkErr,
+			detail,
+		)
 	}
 
 	addJump := append([]string{"-w", "5"}, tableArgs...)
@@ -290,6 +314,21 @@ func runWireGuardRoutingRequired(
 		err,
 		detail,
 	)
+}
+
+func wireGuardRoutingMissing(output []byte, err error) bool {
+	if err == nil {
+		return false
+	}
+	detail := strings.ToLower(strings.TrimSpace(string(output)))
+	if strings.Contains(detail, "no chain/target/match by that name") ||
+		strings.Contains(detail, "does not exist") {
+		return true
+	}
+	if exitErr, ok := err.(interface{ ExitCode() int }); ok {
+		return exitErr.ExitCode() == 1
+	}
+	return strings.EqualFold(strings.TrimSpace(err.Error()), "missing")
 }
 
 func (s *Server) cleanupWireGuardRoutingAll() {
@@ -382,20 +421,26 @@ func cleanupWireGuardChain(
 	for {
 		check := append([]string{"-w", "5"}, tableArgs...)
 		check = append(check, "-C", parent, "-j", chain)
-		if _, err := wireGuardRoutingRun(ctx, iptablesPath, check...); err != nil {
-			break
+		output, err := wireGuardRoutingRun(ctx, iptablesPath, check...)
+		if err != nil {
+			if wireGuardRoutingMissing(output, err) {
+				break
+			}
+			return
 		}
 
 		del := append([]string{"-w", "5"}, tableArgs...)
 		del = append(del, "-D", parent, "-j", chain)
 		if _, err := wireGuardRoutingRun(ctx, iptablesPath, del...); err != nil {
-			break
+			return
 		}
 	}
 
 	flush := append([]string{"-w", "5"}, tableArgs...)
 	flush = append(flush, "-F", chain)
-	_, _ = wireGuardRoutingRun(ctx, iptablesPath, flush...)
+	if _, err := wireGuardRoutingRun(ctx, iptablesPath, flush...); err != nil {
+		return
+	}
 
 	deleteChain := append([]string{"-w", "5"}, tableArgs...)
 	deleteChain = append(deleteChain, "-X", chain)
