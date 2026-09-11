@@ -28,6 +28,46 @@ func wireGuardOwnershipAlias(tag string) string {
 	return "antimage:" + strings.TrimSpace(tag)
 }
 
+func wireGuardInterfaceExists(
+	ctx context.Context,
+	ipPath string,
+	interfaceName string,
+) (bool, error) {
+	output, err := wireGuardRuntimeRun(
+		ctx,
+		ipPath,
+		"link",
+		"show",
+		"dev",
+		interfaceName,
+	)
+	if err == nil {
+		return true, nil
+	}
+
+	detail := strings.TrimSpace(string(output))
+	lowerDetail := strings.ToLower(detail)
+	lowerErr := strings.ToLower(strings.TrimSpace(err.Error()))
+	if strings.Contains(lowerDetail, "does not exist") ||
+		strings.Contains(lowerDetail, "cannot find device") ||
+		lowerErr == "not found" {
+		return false, nil
+	}
+	if detail == "" {
+		return false, fmt.Errorf(
+			"probe wireguard interface %q: %w",
+			interfaceName,
+			err,
+		)
+	}
+	return false, fmt.Errorf(
+		"probe wireguard interface %q: %w: %s",
+		interfaceName,
+		err,
+		detail,
+	)
+}
+
 func wireGuardInterfaceHasOwnershipAlias(
 	tag string,
 	interfaceName string,
@@ -121,16 +161,20 @@ func (s *Server) preflightWireGuardRuntimes(
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_, showErr := wireGuardRuntimeRun(
+		exists, showErr := wireGuardInterfaceExists(
 			ctx,
 			ipPath,
-			"link",
-			"show",
-			"dev",
 			item.InterfaceName,
 		)
 		cancel()
 		if showErr != nil {
+			return fmt.Errorf(
+				"wireguard %q: preflight interface probe failed: %w",
+				item.Tag,
+				showErr,
+			)
+		}
+		if !exists {
 			continue
 		}
 		owned, err := s.wireGuardInterfaceOwnedByAntiMage(
@@ -198,33 +242,33 @@ func (s *Server) applyWireGuardRuntime(
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if prepared.ExplicitInterface {
-		if _, err := wireGuardRuntimeRun(
-			ctx,
-			ipPath,
-			"link",
-			"show",
-			"dev",
+	exists, err := wireGuardInterfaceExists(
+		ctx,
+		ipPath,
+		prepared.InterfaceName,
+	)
+	if err != nil {
+		return fmt.Errorf("wireguard %q: %w", prepared.Tag, err)
+	}
+
+	if prepared.ExplicitInterface && exists {
+		owned, err := s.wireGuardInterfaceOwnedByAntiMage(
+			prepared.Tag,
 			prepared.InterfaceName,
-		); err == nil {
-			owned, err := s.wireGuardInterfaceOwnedByAntiMage(
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"wireguard %q: verify explicit interface ownership: %w",
+				prepared.Tag,
+				err,
+			)
+		}
+		if !owned {
+			return fmt.Errorf(
+				"wireguard %q: explicit interface %q already exists and is not managed by AntiMage",
 				prepared.Tag,
 				prepared.InterfaceName,
 			)
-			if err != nil {
-				return fmt.Errorf(
-					"wireguard %q: verify explicit interface ownership: %w",
-					prepared.Tag,
-					err,
-				)
-			}
-			if !owned {
-				return fmt.Errorf(
-					"wireguard %q: explicit interface %q already exists and is not managed by AntiMage",
-					prepared.Tag,
-					prepared.InterfaceName,
-				)
-			}
 		}
 	}
 
@@ -238,14 +282,7 @@ func (s *Server) applyWireGuardRuntime(
 	}
 
 	created := false
-	if _, err := wireGuardRuntimeRun(
-		ctx,
-		ipPath,
-		"link",
-		"show",
-		"dev",
-		prepared.InterfaceName,
-	); err != nil {
+	if !exists {
 		if err := runWireGuardRuntimeRequired(
 			ctx,
 			ipPath,
@@ -450,14 +487,11 @@ func removeWireGuardInterface(interfaceName string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if _, err := wireGuardRuntimeRun(
-		ctx,
-		ipPath,
-		"link",
-		"show",
-		"dev",
-		interfaceName,
-	); err != nil {
+	exists, err := wireGuardInterfaceExists(ctx, ipPath, interfaceName)
+	if err != nil {
+		return err
+	}
+	if !exists {
 		return nil
 	}
 	return runWireGuardRuntimeRequired(
