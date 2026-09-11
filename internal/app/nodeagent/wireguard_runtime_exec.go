@@ -23,6 +23,37 @@ var (
 	wireGuardRuntimeGOOS     = runtime.GOOS
 )
 
+func (s *Server) wireGuardInterfaceOwnedByAntiMage(
+	tag string,
+	interfaceName string,
+) (bool, error) {
+	tag = strings.TrimSpace(tag)
+	interfaceName = strings.TrimSpace(interfaceName)
+	if tag == "" || interfaceName == "" {
+		return false, nil
+	}
+
+	s.mu.Lock()
+	state, ok := s.wireGuardRuntimes[tag]
+	s.mu.Unlock()
+	if ok && strings.TrimSpace(state.InterfaceName) == interfaceName {
+		return true, nil
+	}
+
+	persisted, err := s.loadWireGuardRuntimeStates()
+	if err != nil {
+		return false, fmt.Errorf(
+			"load managed wireguard runtime state: %w",
+			err,
+		)
+	}
+	state, ok = persisted[tag]
+	if ok && strings.TrimSpace(state.InterfaceName) == interfaceName {
+		return true, nil
+	}
+	return false, nil
+}
+
 func (s *Server) applyWireGuardRuntime(
 	prepared preparedWireGuardRuntime,
 ) error {
@@ -48,6 +79,36 @@ func (s *Server) applyWireGuardRuntime(
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+
+	if prepared.ExplicitInterface {
+		if _, err := wireGuardRuntimeRun(
+			ctx,
+			ipPath,
+			"link",
+			"show",
+			"dev",
+			prepared.InterfaceName,
+		); err == nil {
+			owned, err := s.wireGuardInterfaceOwnedByAntiMage(
+				prepared.Tag,
+				prepared.InterfaceName,
+			)
+			if err != nil {
+				return fmt.Errorf(
+					"wireguard %q: verify explicit interface ownership: %w",
+					prepared.Tag,
+					err,
+				)
+			}
+			if !owned {
+				return fmt.Errorf(
+					"wireguard %q: explicit interface %q already exists and is not managed by AntiMage",
+					prepared.Tag,
+					prepared.InterfaceName,
+				)
+			}
+		}
+	}
 
 	if err := runWireGuardRuntimeRequired(
 		ctx,

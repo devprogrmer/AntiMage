@@ -17,14 +17,15 @@ import (
 const defaultWireGuardPoolCIDR = "10.69.0.0/16"
 
 type preparedWireGuardRuntime struct {
-	Tag           string
-	InterfaceName string
-	ConfigPath    string
-	ServerCIDR    string
-	SourceCIDR    string
-	MTU           int
-	Routing       wireGuardRoutingSpec
-	Inbound       wireGuardRuntimeInbound
+	Tag               string
+	InterfaceName     string
+	ExplicitInterface bool
+	ConfigPath        string
+	ServerCIDR        string
+	SourceCIDR        string
+	MTU               int
+	Routing           wireGuardRoutingSpec
+	Inbound           wireGuardRuntimeInbound
 }
 
 type wireGuardRuntimeState struct {
@@ -79,6 +80,11 @@ func (s *Server) prepareWireGuardInbound(
 	}
 
 	interfaceName, err := wireGuardManagedInterfaceName(inbound)
+	if err != nil {
+		return preparedWireGuardRuntime{}, err
+	}
+
+	explicitInterfaceName, err := wireGuardInterfaceName(inbound)
 	if err != nil {
 		return preparedWireGuardRuntime{}, err
 	}
@@ -244,14 +250,15 @@ func (s *Server) prepareWireGuardInbound(
 	}
 
 	return preparedWireGuardRuntime{
-		Tag:           tag,
-		InterfaceName: interfaceName,
-		ConfigPath:    configPath,
-		ServerCIDR:    serverCIDR,
-		SourceCIDR:    pool.String(),
-		MTU:           wireGuardIntSetting(inbound.Settings, "mtu"),
-		Routing:       routing,
-		Inbound:       inbound,
+		Tag:               tag,
+		InterfaceName:     interfaceName,
+		ExplicitInterface: explicitInterfaceName != "",
+		ConfigPath:        configPath,
+		ServerCIDR:        serverCIDR,
+		SourceCIDR:        pool.String(),
+		MTU:               wireGuardIntSetting(inbound.Settings, "mtu"),
+		Routing:           routing,
+		Inbound:           inbound,
 	}, nil
 }
 

@@ -276,3 +276,187 @@ func TestStopAllWireGuardRuntimesRecoversPersistedState(t *testing.T) {
 		t.Fatalf("runtime manifest still exists: %v", err)
 	}
 }
+
+func TestApplyWireGuardRuntimeRejectsUnmanagedExplicitExistingInterface(
+	t *testing.T,
+) {
+	server := New(Config{DataDir: t.TempDir()})
+
+	oldGOOS := wireGuardRuntimeGOOS
+	oldLookPath := wireGuardRuntimeLookPath
+	oldRun := wireGuardRuntimeRun
+	wireGuardRuntimeGOOS = "linux"
+	wireGuardRuntimeLookPath = func(name string) (string, error) {
+		return name, nil
+	}
+
+	var calls []string
+	wireGuardRuntimeRun = func(
+		_ context.Context,
+		name string,
+		args ...string,
+	) ([]byte, error) {
+		call := name + " " + strings.Join(args, " ")
+		calls = append(calls, call)
+		if name == "ip" &&
+			strings.Contains(call, "link show dev wg-external0") {
+			return []byte("exists"), nil
+		}
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		wireGuardRuntimeGOOS = oldGOOS
+		wireGuardRuntimeLookPath = oldLookPath
+		wireGuardRuntimeRun = oldRun
+	})
+
+	err := server.applyWireGuardRuntime(preparedWireGuardRuntime{
+		Tag:               "wg-main",
+		InterfaceName:     "wg-external0",
+		ExplicitInterface: true,
+		ConfigPath:        "unused.conf",
+		ServerCIDR:        "10.69.0.1/16",
+		SourceCIDR:        "10.69.0.0/16",
+	})
+	if err == nil ||
+		!strings.Contains(err.Error(), "not managed by AntiMage") {
+		t.Fatalf("error = %v", err)
+	}
+
+	joined := strings.Join(calls, "\n")
+	for _, forbidden := range []string{
+		"sysctl -w net.ipv4.ip_forward=1",
+		"wg syncconf",
+		"address flush",
+		"link set dev wg-external0 up",
+	} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf(
+				"destructive command %q ran before ownership rejection:\n%s",
+				forbidden,
+				joined,
+			)
+		}
+	}
+}
+
+func TestApplyWireGuardRuntimeAllowsPreviouslyManagedExplicitInterface(
+	t *testing.T,
+) {
+	server := New(Config{DataDir: t.TempDir()})
+	server.wireGuardRuntimes["wg-main"] = wireGuardRuntimeState{
+		Tag:           "wg-main",
+		InterfaceName: "wg-managed0",
+	}
+
+	oldGOOS := wireGuardRuntimeGOOS
+	oldLookPath := wireGuardRuntimeLookPath
+	oldRun := wireGuardRuntimeRun
+	wireGuardRuntimeGOOS = "linux"
+	wireGuardRuntimeLookPath = func(name string) (string, error) {
+		return name, nil
+	}
+
+	var calls []string
+	wireGuardRuntimeRun = func(
+		_ context.Context,
+		name string,
+		args ...string,
+	) ([]byte, error) {
+		call := name + " " + strings.Join(args, " ")
+		calls = append(calls, call)
+		if name == "ip" &&
+			strings.Contains(call, "link show dev wg-managed0") {
+			return []byte("exists"), nil
+		}
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		wireGuardRuntimeGOOS = oldGOOS
+		wireGuardRuntimeLookPath = oldLookPath
+		wireGuardRuntimeRun = oldRun
+	})
+
+	err := server.applyWireGuardRuntime(preparedWireGuardRuntime{
+		Tag:               "wg-main",
+		InterfaceName:     "wg-managed0",
+		ExplicitInterface: true,
+		ConfigPath:        "managed.conf",
+		ServerCIDR:        "10.69.0.1/16",
+		SourceCIDR:        "10.69.0.0/16",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	joined := strings.Join(calls, "\n")
+	if !strings.Contains(joined, "wg syncconf wg-managed0 managed.conf") {
+		t.Fatalf("managed interface was not configured:\n%s", joined)
+	}
+}
+
+func TestApplyWireGuardRuntimeRejectsExplicitInterfaceOwnedByDifferentRuntime(
+	t *testing.T,
+) {
+	server := New(Config{DataDir: t.TempDir()})
+	server.wireGuardRuntimes["wg-other"] = wireGuardRuntimeState{
+		Tag:           "wg-other",
+		InterfaceName: "wg-shared0",
+	}
+
+	oldGOOS := wireGuardRuntimeGOOS
+	oldLookPath := wireGuardRuntimeLookPath
+	oldRun := wireGuardRuntimeRun
+	wireGuardRuntimeGOOS = "linux"
+	wireGuardRuntimeLookPath = func(name string) (string, error) {
+		return name, nil
+	}
+
+	var calls []string
+	wireGuardRuntimeRun = func(
+		_ context.Context,
+		name string,
+		args ...string,
+	) ([]byte, error) {
+		call := name + " " + strings.Join(args, " ")
+		calls = append(calls, call)
+		if name == "ip" &&
+			strings.Contains(call, "link show dev wg-shared0") {
+			return []byte("exists"), nil
+		}
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		wireGuardRuntimeGOOS = oldGOOS
+		wireGuardRuntimeLookPath = oldLookPath
+		wireGuardRuntimeRun = oldRun
+	})
+
+	err := server.applyWireGuardRuntime(preparedWireGuardRuntime{
+		Tag:               "wg-main",
+		InterfaceName:     "wg-shared0",
+		ExplicitInterface: true,
+		ConfigPath:        "unused.conf",
+		ServerCIDR:        "10.69.0.1/16",
+		SourceCIDR:        "10.69.0.0/16",
+	})
+	if err == nil ||
+		!strings.Contains(err.Error(), "not managed by AntiMage") {
+		t.Fatalf("error = %v", err)
+	}
+
+	joined := strings.Join(calls, "\n")
+	for _, forbidden := range []string{
+		"sysctl -w net.ipv4.ip_forward=1",
+		"wg syncconf",
+		"address flush",
+	} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf(
+				"destructive command %q ran for interface owned by another runtime:\n%s",
+				forbidden,
+				joined,
+			)
+		}
+	}
+}
