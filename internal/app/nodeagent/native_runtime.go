@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"strings"
 )
 
@@ -97,6 +98,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		len(payload.WireGuardInbounds),
 	)
 	usedWGInterfaces := make(map[string]string)
+	usedWGPools := make(map[string]string)
 
 	for _, inbound := range payload.WireGuardInbounds {
 		tag := strings.TrimSpace(inbound.Tag)
@@ -120,6 +122,40 @@ func (s *Server) applyNativeRuntime(raw string) error {
 			)
 		}
 		usedWGInterfaces[prepared.InterfaceName] = tag
+
+		pool, err := netip.ParsePrefix(prepared.SourceCIDR)
+		if err != nil {
+			return fmt.Errorf(
+				"wireguard %q: invalid prepared source pool %q: %w",
+				tag,
+				prepared.SourceCIDR,
+				err,
+			)
+		}
+		pool = pool.Masked()
+		for rawOtherPool, owner := range usedWGPools {
+			otherPool, parseErr := netip.ParsePrefix(rawOtherPool)
+			if parseErr != nil {
+				return fmt.Errorf(
+					"wireguard %q: invalid existing source pool %q: %w",
+					owner,
+					rawOtherPool,
+					parseErr,
+				)
+			}
+			otherPool = otherPool.Masked()
+			if pool.Contains(otherPool.Addr()) ||
+				otherPool.Contains(pool.Addr()) {
+				return fmt.Errorf(
+					"wireguard address pool %q for %q overlaps pool %q used by %q",
+					pool,
+					tag,
+					otherPool,
+					owner,
+				)
+			}
+		}
+		usedWGPools[pool.String()] = tag
 		wgDesired[tag] = prepared
 		wgPrepared = append(wgPrepared, prepared)
 		wgUsageInbounds = append(
