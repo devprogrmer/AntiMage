@@ -642,5 +642,7 @@ func (s *Server) stopAllWireGuardRuntimes() {
 		}
 	}
 
-	s.cleanupWireGuardRoutingAll()
+	if err := s.cleanupWireGuardRoutingAll(); err != nil {
+		s.appendLog("cleanup wireguard routing failed: " + err.Error())
+	}
 }
