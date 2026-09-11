@@ -71,64 +71,80 @@ func parseXrayUserEmail(email string) (xrayUserIdentity, error) {
 
 // xrayStatName represents a parsed Xray stat name
 type xrayStatName struct {
-	Type      string // "user" or "outbound" or "inbound"
-	Email     string // for user stats
-	Tag       string // for outbound/inbound stats
-	Direction string // "uplink" or "downlink"
+	Type      string // "user", "outbound", "inbound"
+	Email     string // For user stats
+	Tag       string // For outbound/inbound stats
+	Metric    string // "traffic", "online"
+	Direction string // "uplink", "downlink" (for traffic only)
 }
 
 // parseXrayStatName parses Xray stat names such as:
 // - "user>>>email>>>traffic>>>uplink"
 // - "user>>>email>>>traffic>>>downlink"
+// - "user>>>email>>>online"
 // - "outbound>>>tag>>>traffic>>>uplink"
 // - "outbound>>>tag>>>traffic>>>downlink"
 // - "inbound>>>tag>>>traffic>>>uplink"
 // - "inbound>>>tag>>>traffic>>>downlink"
 func parseXrayStatName(name string) (xrayStatName, bool) {
 	parts := strings.Split(name, ">>>")
-	if len(parts) != 4 {
+	if len(parts) < 3 {
 		return xrayStatName{}, false
 	}
 
 	statType := strings.ToLower(strings.TrimSpace(parts[0]))
 	identity := strings.TrimSpace(parts[1])
-	if parts[2] != "traffic" {
-		return xrayStatName{}, false
-	}
-
-	direction := strings.ToLower(strings.TrimSpace(parts[3]))
-	if direction != "uplink" && direction != "downlink" {
-		return xrayStatName{}, false
-	}
+	metric := strings.ToLower(strings.TrimSpace(parts[2]))
 
 	switch statType {
 	case "user":
 		if identity == "" {
 			return xrayStatName{}, false
 		}
-		return xrayStatName{
-			Type:      "user",
-			Email:     identity,
-			Direction: direction,
-		}, true
 
-	case "outbound":
-		if identity == "" {
+		if metric == "online" {
+			// user>>>email>>>online
+			return xrayStatName{
+				Type:   "user",
+				Email:  identity,
+				Metric: "online",
+			}, true
+		}
+
+		if metric == "traffic" {
+			// user>>>email>>>traffic>>>uplink|downlink
+			if len(parts) != 4 {
+				return xrayStatName{}, false
+			}
+			direction := strings.ToLower(strings.TrimSpace(parts[3]))
+			if direction != "uplink" && direction != "downlink" {
+				return xrayStatName{}, false
+			}
+			return xrayStatName{
+				Type:      "user",
+				Email:     identity,
+				Metric:    "traffic",
+				Direction: direction,
+			}, true
+		}
+
+		return xrayStatName{}, false
+
+	case "outbound", "inbound":
+		if identity == "" || metric != "traffic" {
+			return xrayStatName{}, false
+		}
+		if len(parts) != 4 {
+			return xrayStatName{}, false
+		}
+		direction := strings.ToLower(strings.TrimSpace(parts[3]))
+		if direction != "uplink" && direction != "downlink" {
 			return xrayStatName{}, false
 		}
 		return xrayStatName{
-			Type:      "outbound",
+			Type:      statType,
 			Tag:       identity,
-			Direction: direction,
-		}, true
-
-	case "inbound":
-		if identity == "" {
-			return xrayStatName{}, false
-		}
-		return xrayStatName{
-			Type:      "inbound",
-			Tag:       identity,
+			Metric:    "traffic",
 			Direction: direction,
 		}, true
 

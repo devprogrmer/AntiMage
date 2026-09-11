@@ -108,7 +108,7 @@ func (s *Server) collectXrayUserUsage(
 		return &nodev1.UserUsageBatch{}, nil
 	}
 
-	// Query Xray stats via CLI with user pattern
+	// Query Xray stats via CLI with user pattern (gets both traffic and online stats)
 	client := newXrayStatsClient(xrayPath, xrayAPIPort)
 
 	stats, err := client.queryStats(ctx, "user>>>", false)
@@ -136,9 +136,10 @@ func (s *Server) collectXrayUserUsage(
 
 	aggregated := make(map[aggregateKey]xrayUsageSample)
 
+	// First pass: collect traffic deltas (for billing)
 	for _, stat := range stats {
 		statName, ok := parseXrayStatName(stat.Name)
-		if !ok || statName.Type != "user" {
+		if !ok || statName.Type != "user" || statName.Metric != "traffic" {
 			continue
 		}
 
@@ -185,7 +186,6 @@ func (s *Server) collectXrayUserUsage(
 		sample := aggregated[key]
 		sample.UserID = identity.UserID
 		sample.InboundTag = identity.InboundTag
-		sample.Online = true
 
 		// Accumulate delta with overflow protection
 		if ^uint64(0)-sample.Value >= delta {
@@ -193,6 +193,56 @@ func (s *Server) collectXrayUserUsage(
 		}
 
 		aggregated[key] = sample
+	}
+
+	// Second pass: collect online state (separate from traffic)
+	// This uses Xray's statsUserOnline which is independent of cumulative traffic counters
+	onlineUsers := make(map[aggregateKey]bool)
+	for _, stat := range stats {
+		statName, ok := parseXrayStatName(stat.Name)
+		if !ok || statName.Type != "user" || statName.Metric != "online" {
+			continue
+		}
+
+		identity, err := parseXrayUserEmail(statName.Email)
+		if err != nil {
+			continue
+		}
+
+		if identity.UserID <= 0 {
+			continue
+		}
+
+		key := aggregateKey{
+			UserID:     identity.UserID,
+			InboundTag: identity.InboundTag,
+		}
+
+		// Xray online stat: 1 = online, 0 = offline
+		// Only mark online if stat value is 1
+		if stat.Value == 1 {
+			onlineUsers[key] = true
+		}
+	}
+
+	// Apply online state to samples
+	for key := range aggregated {
+		sample := aggregated[key]
+		sample.Online = onlineUsers[key] // true if online stat was 1, false otherwise
+		aggregated[key] = sample
+	}
+
+	// Also include users who are online but have no traffic delta in this period
+	// This ensures we report online users even if they're idle
+	for key := range onlineUsers {
+		if _, exists := aggregated[key]; !exists {
+			aggregated[key] = xrayUsageSample{
+				UserID:     key.UserID,
+				InboundTag: key.InboundTag,
+				Value:      0,
+				Online:     true,
+			}
+		}
 	}
 
 	if len(aggregated) == 0 {
