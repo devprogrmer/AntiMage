@@ -39,6 +39,7 @@ type Server struct {
 	openVPNRuntimes                map[string]*openVPNProcess
 	openVPNTProxySpecs             map[string]openVPNTProxySpec
 	openVPNTProxyStartupReconciled bool
+	wireGuardRuntimes              map[string]wireGuardRuntimeState
 	openVPNUsageMu                 sync.Mutex
 	openVPNUsageBaseline           map[string]uint64
 	openVPNUsagePending            *openVPNUsagePendingBatch
@@ -84,6 +85,7 @@ func New(cfg Config) *Server {
 		startedAt:                 time.Now(),
 		openVPNRuntimes:           make(map[string]*openVPNProcess),
 		openVPNTProxySpecs:        make(map[string]openVPNTProxySpec),
+		wireGuardRuntimes:         make(map[string]wireGuardRuntimeState),
 		openVPNUsageBaseline:      make(map[string]uint64),
 		wireGuardUsageBaseline:    make(map[string]uint64),
 		xrayUsageBaseline:         make(map[string]uint64),
@@ -108,6 +110,7 @@ func (s *Server) Run(ctx context.Context) error {
 	defer func() {
 		s.stopAllOpenVPNRuntimes()
 		s.stopAllOpenVPNTProxySpecs()
+		s.stopAllWireGuardRuntimes()
 		_ = s.stopRuntime()
 	}()
 
@@ -171,6 +174,7 @@ func (s *Server) RestartRuntime(
 ) (*nodev1.RuntimeActionResponse, error) {
 	s.stopAllOpenVPNRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
+	s.stopAllWireGuardRuntimes()
 	_ = s.stopRuntime()
 
 	return s.applyConfig(ctx, req, "restarted")
@@ -182,6 +186,7 @@ func (s *Server) StopRuntime(
 ) (*nodev1.RuntimeActionResponse, error) {
 	s.stopAllOpenVPNRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
+	s.stopAllWireGuardRuntimes()
 	_ = s.stopRuntime()
 
 	return s.action("", "stopped"), nil

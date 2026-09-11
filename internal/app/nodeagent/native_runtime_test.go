@@ -1,6 +1,11 @@
 package nodeagent
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestParseNativeRuntimePayloadOpenVPN(t *testing.T) {
 	raw := `{
@@ -156,5 +161,124 @@ func TestParseNativeRuntimePayloadWireGuard(t *testing.T) {
 		inbound.Peers[0].UserID != 42 ||
 		inbound.Peers[0].PublicKey != "peer-a" {
 		t.Fatalf("unexpected peers: %#v", inbound.Peers)
+	}
+}
+
+func TestApplyNativeRuntimeValidatesOpenVPNBeforeWireGuardUsageSync(
+	t *testing.T,
+) {
+	dataDir := t.TempDir()
+	server := New(Config{DataDir: dataDir})
+
+	err := server.applyNativeRuntime(`{
+		"wg_inbounds": [{
+			"tag": "wg-main",
+			"listen_port": 51820,
+			"settings": {
+				"private_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+				"interface_name": "wg-test0",
+				"accounting_enabled": true,
+				"tproxy_enabled": false,
+				"nat_enabled": false
+			},
+			"peers": [{
+				"user_id": 42,
+				"username": "alice",
+				"public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+				"address": "10.69.0.2",
+				"status": "active"
+			}]
+		}],
+		"inbounds": [{
+			"tag": "",
+			"port": 1194,
+			"transport": "udp"
+		}]
+	}`)
+	if err == nil ||
+		!strings.Contains(err.Error(), "openvpn inbound tag is required") {
+		t.Fatalf("error = %v", err)
+	}
+
+	usageRoot := filepath.Join(dataDir, "wireguard", "inbounds")
+	if _, statErr := os.Stat(usageRoot); !os.IsNotExist(statErr) {
+		if statErr != nil {
+			t.Fatal(statErr)
+		}
+		t.Fatalf(
+			"wireguard usage state was mutated before OpenVPN validation: %s",
+			usageRoot,
+		)
+	}
+}
+
+func TestApplyNativeRuntimeRejectsOverlappingWireGuardPoolsBeforeMutation(
+	t *testing.T,
+) {
+	dataDir := t.TempDir()
+	server := New(Config{DataDir: dataDir})
+
+	keyA := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	keyB := "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA="
+
+	err := server.applyNativeRuntime(`{
+		"wg_inbounds": [
+			{
+				"tag": "wg-a",
+				"listen_port": 51820,
+				"settings": {
+					"private_key": "` + keyA + `",
+					"address_pool": "10.69.0.0/16",
+					"tproxy_enabled": false,
+					"nat_enabled": false
+				},
+				"peers": [{
+					"user_id": 1,
+					"username": "alice",
+					"public_key": "` + keyB + `",
+					"address": "10.69.0.2",
+					"status": "active"
+				}]
+			},
+			{
+				"tag": "wg-b",
+				"listen_port": 51821,
+				"settings": {
+					"private_key": "` + keyB + `",
+					"address_pool": "10.69.128.0/17",
+					"tproxy_enabled": false,
+					"nat_enabled": false
+				},
+				"peers": [{
+					"user_id": 2,
+					"username": "bob",
+					"public_key": "` + keyA + `",
+					"address": "10.69.128.2",
+					"status": "active"
+				}]
+			}
+		]
+	}`)
+	if err == nil ||
+		!strings.Contains(err.Error(), "overlaps pool") {
+		t.Fatalf("error = %v", err)
+	}
+
+	usageRoot := filepath.Join(dataDir, "wireguard", "inbounds")
+	if _, statErr := os.Stat(usageRoot); !os.IsNotExist(statErr) {
+		if statErr != nil {
+			t.Fatal(statErr)
+		}
+		t.Fatalf(
+			"wireguard usage state mutated before overlap validation: %s",
+			usageRoot,
+		)
+	}
+
+	if len(server.wireGuardRuntimes) != 0 {
+		t.Fatalf(
+			"wireguard runtime state mutated before overlap validation: %#v",
+			server.wireGuardRuntimes,
+		)
 	}
 }
