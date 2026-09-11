@@ -31,6 +31,7 @@ type Server struct {
 	nodev1.UnimplementedNodeLogsServiceServer
 
 	cfg                            Config
+	xrayAPIPortFallback            int
 	mu                             sync.Mutex
 	startedAt                      time.Time
 	lastConfig                     string
@@ -69,6 +70,7 @@ var (
 func New(cfg Config) *Server {
 	return &Server{
 		cfg:                       cfg,
+		xrayAPIPortFallback:       cfg.XrayAPIPort,
 		startedAt:                 time.Now(),
 		openVPNRuntimes:           make(map[string]*openVPNProcess),
 		openVPNTProxySpecs:        make(map[string]openVPNTProxySpec),
@@ -549,16 +551,30 @@ func (s *Server) StreamLogs(req *nodev1.StreamLogsRequest, stream grpc.ServerStr
 }
 
 func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigRequest, message string) (*nodev1.RuntimeActionResponse, error) {
-	if strings.TrimSpace(req.GetConfigJson()) == "" {
+	configJSON := req.GetConfigJson()
+	if strings.TrimSpace(configJSON) == "" {
 		return nil, status.Error(codes.InvalidArgument, "config_json is required")
+	}
+
+	// Validate the API endpoint in the incoming runtime config before touching
+	// disk or runtime state. This must not change the effective collector port.
+	if _, _, err := xrayAPIPortFromRuntimeConfig(configJSON); err != nil {
+		return nil, status.Error(codes.InvalidArgument, "xray api port: "+err.Error())
 	}
 
 	if err := os.MkdirAll(s.cfg.DataDir, 0755); err != nil {
 		return nil, err
 	}
+
 	configPath := filepath.Join(s.cfg.DataDir, "xray-config.json")
-	if err := os.WriteFile(configPath, []byte(req.GetConfigJson()), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
 		return nil, err
+	}
+
+	// Only after the exact runtime config has been persisted may its
+	// API_INBOUND port become authoritative for stats/online collectors.
+	if _, _, err := s.syncXrayAPIPortFromRuntimeConfig(configJSON); err != nil {
+		return nil, status.Error(codes.InvalidArgument, "xray api port: "+err.Error())
 	}
 
 	s.mu.Lock()
@@ -583,7 +599,6 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 
 	return s.action(req.GetOperationId(), message), nil
 }
-
 func (s *Server) startXray(ctx context.Context, configPath string) error {
 	_ = s.stopRuntime()
 	cmd := xrayCommandContext(context.Background(), s.cfg.XrayPath, "run", "-config", configPath)
