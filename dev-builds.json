@@ -1,9 +1,29 @@
 {
   "schema_version": 1,
   "project": "AntiMage",
-  "latest": "dev-f7f7e37",
-  "updated_at": "2026-09-11T11:10:33Z",
+  "latest": "dev-dda2a98",
+  "updated_at": "2026-09-11T12:31:43Z",
   "builds": [
+    {
+      "tag": "dev-dda2a98",
+      "sha": "dda2a98c4772cc0b8e77831c17c61159067fdc26",
+      "branch": "dev",
+      "workflow": "Binary Build",
+      "run_id": "34598795538",
+      "run_number": "96",
+      "created_at": "2026-09-11T12:31:43Z",
+      "release_tag": "dev-builds",
+      "assets": {
+        "linux-amd64": {
+          "name": "antimage-linux-amd64-dev-dda2a98.tar.gz",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-linux-amd64-dev-dda2a98.tar.gz"
+        },
+        "windows-amd64": {
+          "name": "antimage-windows-amd64-dev-dda2a98.zip",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-dda2a98.zip"
+        }
+      }
+    },
     {
       "tag": "dev-f7f7e37",
       "sha": "f7f7e3799f1a63933b6d7357f10488de3b7c952d",
