@@ -932,6 +932,12 @@ INSERT INTO inbounds (tag) VALUES ('shared'), ('upload-only'), ('download-only')
 	assertInt64(t, db, `SELECT downlink FROM inbounds WHERE tag = 'upload-only'`, 0)
 	assertInt64(t, db, `SELECT uplink FROM inbounds WHERE tag = 'download-only'`, 0)
 	assertInt64(t, db, `SELECT downlink FROM inbounds WHERE tag = 'download-only'`, 6)
+	assertInt64(t, db, `SELECT uplink FROM nodes WHERE id = 7`, 15)
+	assertInt64(t, db, `SELECT downlink FROM nodes WHERE id = 7`, 26)
+	assertInt64(t, db, `SELECT uplink FROM nodes WHERE id = 8`, 3)
+	assertInt64(t, db, `SELECT downlink FROM nodes WHERE id = 8`, 4)
+	assertInt64(t, db, `SELECT uplink FROM system WHERE id = 1`, 18)
+	assertInt64(t, db, `SELECT downlink FROM system WHERE id = 1`, 30)
 
 	for range 2 {
 		store(7, "batch-2", []InboundUsageDelta{{Tag: "shared", Up: 2, Down: 3}})
@@ -941,10 +947,54 @@ INSERT INTO inbounds (tag) VALUES ('shared'), ('upload-only'), ('download-only')
 	}
 	assertInt64(t, db, `SELECT uplink FROM inbounds WHERE tag = 'shared'`, 15)
 	assertInt64(t, db, `SELECT downlink FROM inbounds WHERE tag = 'shared'`, 27)
+	assertInt64(t, db, `SELECT uplink FROM nodes WHERE id = 7`, 17)
+	assertInt64(t, db, `SELECT downlink FROM nodes WHERE id = 7`, 29)
+	assertInt64(t, db, `SELECT uplink FROM system WHERE id = 1`, 20)
+	assertInt64(t, db, `SELECT downlink FROM system WHERE id = 1`, 33)
 
 	if err := repo.StoreCollectedUsageWithInbounds(ctx, NodeRow{ID: 7}, "", nil, "", nil, nil); err != nil {
 		t.Fatalf("old node payload should be a no-op: %v", err)
 	}
+}
+
+func TestRepositoryDoesNotDoubleCountInboundWhenOutboundExists(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "inbound-outbound-usage.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO nodes (id, status, usage_coefficient) VALUES (7, 'connected', 1);
+INSERT INTO inbounds (tag) VALUES ('direct'), ('wireguard');`); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	if err := repo.StoreCollectedUsageWithInbounds(
+		ctx,
+		NodeRow{ID: 7, UsageCoefficient: 1},
+		"",
+		nil,
+		"batch-1",
+		[]OutboundUsageDelta{{Tag: "direct", Up: 11, Down: 22}},
+		[]InboundUsageDelta{{Tag: "direct", Up: 11, Down: 22}, {Tag: "wireguard", Up: 5, Down: 6}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.FlushStagedUsage(ctx, 100); err != nil {
+		t.Fatal(err)
+	}
+
+	assertInt64(t, db, `SELECT uplink FROM inbounds WHERE tag = 'direct'`, 11)
+	assertInt64(t, db, `SELECT downlink FROM inbounds WHERE tag = 'direct'`, 22)
+	assertInt64(t, db, `SELECT uplink FROM inbounds WHERE tag = 'wireguard'`, 5)
+	assertInt64(t, db, `SELECT downlink FROM inbounds WHERE tag = 'wireguard'`, 6)
+	assertInt64(t, db, `SELECT uplink FROM nodes WHERE id = 7`, 16)
+	assertInt64(t, db, `SELECT downlink FROM nodes WHERE id = 7`, 28)
+	assertInt64(t, db, `SELECT uplink FROM system WHERE id = 1`, 16)
+	assertInt64(t, db, `SELECT downlink FROM system WHERE id = 1`, 28)
 }
 
 func TestRepositoryInboundUsageSaturatesWithoutOverflow(t *testing.T) {

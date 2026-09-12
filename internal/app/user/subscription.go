@@ -514,9 +514,7 @@ func proxyConfigLinks(response ConfigLinksResponse) ConfigLinksResponse {
 		Metadata: make([]ConfigLinkMetadata, 0, len(response.Links)),
 	}
 	for i, link := range response.Links {
-		scheme := strings.ToLower(strings.TrimSpace(linkScheme(link)))
-		switch scheme {
-		case "vmess", "vless", "trojan", "ss", "shadowsocks":
+		if isProxyConfigLink(link) {
 			filtered.Links = append(filtered.Links, link)
 			if i < len(response.Metadata) {
 				filtered.Metadata = append(filtered.Metadata, response.Metadata[i])
@@ -526,6 +524,19 @@ func proxyConfigLinks(response ConfigLinksResponse) ConfigLinksResponse {
 		}
 	}
 	return filtered
+}
+
+func isProxyConfigLink(link string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(link))
+	if strings.HasPrefix(normalized, "v2rayn://shadowsocks/") {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(linkScheme(link))) {
+	case "vmess", "vless", "trojan", "ss", "shadowsocks":
+		return true
+	default:
+		return false
+	}
 }
 
 func linkScheme(link string) string {
