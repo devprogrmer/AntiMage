@@ -18,6 +18,7 @@ import (
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/mem"
+	gopsnet "github.com/shirou/gopsutil/v4/net"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -73,6 +74,13 @@ type Server struct {
 	torProxies                       map[uint32]*exec.Cmd
 	appliedRev                       uint64
 	logs                             []string
+	lastTransferSample               *transferSample
+}
+
+type transferSample struct {
+	sampledAt time.Time
+	sent      uint64
+	received  uint64
 }
 
 var (
@@ -710,11 +718,50 @@ func (s *Server) metrics(includeRuntime bool) *nodev1.MetricsResponse {
 	if uptime, err := host.Uptime(); err == nil {
 		system.UptimeSeconds = uptime
 	}
-	res := &nodev1.MetricsResponse{System: system, Transfer: &nodev1.TransferMetrics{}, SampledAtUnix: time.Now().Unix()}
+	res := &nodev1.MetricsResponse{System: system, Transfer: s.transferMetrics(), SampledAtUnix: time.Now().Unix()}
 	if includeRuntime {
 		res.Runtime = s.runtimeState("metrics collected")
 	}
 	return res
+}
+
+func (s *Server) transferMetrics() *nodev1.TransferMetrics {
+	now := time.Now()
+	counters, err := gopsnet.IOCounters(false)
+	if err != nil || len(counters) == 0 {
+		return &nodev1.TransferMetrics{}
+	}
+	sample := transferSample{sampledAt: now}
+	for _, counter := range counters {
+		sample.sent += counter.BytesSent
+		sample.received += counter.BytesRecv
+	}
+
+	s.mu.Lock()
+	previous := s.lastTransferSample
+	s.lastTransferSample = &sample
+	s.mu.Unlock()
+
+	if previous == nil || !sample.sampledAt.After(previous.sampledAt) {
+		return &nodev1.TransferMetrics{}
+	}
+	elapsed := sample.sampledAt.Sub(previous.sampledAt).Seconds()
+	if elapsed <= 0 {
+		return &nodev1.TransferMetrics{}
+	}
+	return &nodev1.TransferMetrics{
+		UplinkTotal:   sample.sent,
+		DownlinkTotal: sample.received,
+		UploadSpeed:   bytesPerSecond(previous.sent, sample.sent, elapsed),
+		DownloadSpeed: bytesPerSecond(previous.received, sample.received, elapsed),
+	}
+}
+
+func bytesPerSecond(previous, current uint64, seconds float64) uint64 {
+	if current < previous || seconds <= 0 {
+		return 0
+	}
+	return uint64(float64(current-previous) / seconds)
 }
 
 func xrayVersion(path string) string {
