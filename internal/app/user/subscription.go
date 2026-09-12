@@ -1103,7 +1103,20 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 	if err != nil {
 		return "", err
 	}
-	rawLinks := proxyConfigLinks(connectableConfigLinks(links)).Links
+	rawLinks := append([]string(nil), connectableConfigLinks(links).Links...)
+	if openvpn, ok := vpnInfo["openvpn"].(map[string]any); ok {
+		if downloadLinks, ok := openvpn["downloads"].([]string); ok {
+			rawLinks = append(rawLinks, downloadLinks...)
+		}
+	}
+	if wireguard, ok := vpnInfo["wireguard"].(map[string]any); ok {
+		if wgLinks, ok := wireguard["links"].([]string); ok {
+			rawLinks = append(rawLinks, wgLinks...)
+		}
+		if downloadLinks, ok := wireguard["downloads"].([]string); ok {
+			rawLinks = append(rawLinks, downloadLinks...)
+		}
+	}
 	content := fallbackSubscriptionPageTemplate
 	if s.templates != nil {
 		templateContent, err := s.templates.ReadTemplateContent(ctx, "subscription_page_template", user.AdminID)

@@ -583,6 +583,47 @@ func TestSubscriptionInfoIncludesVPNDownloadMaterialAndProtocolEntries(t *testin
 	}
 }
 
+func TestHTMLSubscriptionIncludesProxyOpenVPNAndWireGuardMaterial(t *testing.T) {
+	service, key := newSubscriptionClientTestService(t)
+	ctx := context.Background()
+
+	response, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{
+		Identifier: key,
+		URL:        "https://panel.example/sub/" + key,
+		Accept:     "text/html",
+		ReadOnly:   true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(response.Body)
+	for _, expected := range []string{
+		"vless://11111111-1111-4111-8111-111111111111@edge.example.com:443",
+		"https://panel.example/sub/" + key + "/ov/ov-edge-2.ovpn",
+		"https://panel.example/sub/" + key + "/wg/wg-edge.conf",
+		"wireguard://",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("expected HTML subscription to include %q:\n%s", expected, body)
+		}
+	}
+
+	raw, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{
+		Identifier: key,
+		ClientType: "v2ray",
+		ReadOnly:   true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded := decodeSubscriptionTestBody(string(raw.Body))
+	for _, forbidden := range []string{".ovpn", ".conf", "wireguard://"} {
+		if strings.Contains(decoded, forbidden) {
+			t.Fatalf("v2ray subscription leaked %q:\n%s", forbidden, decoded)
+		}
+	}
+}
+
 func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "subscription-clients.db")+"?_pragma=busy_timeout(30000)")

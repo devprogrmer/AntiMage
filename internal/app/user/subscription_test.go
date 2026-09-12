@@ -2288,9 +2288,6 @@ func TestBundledSubscriptionPageTemplateRendersPanelStyleContext(t *testing.T) {
 			t.Fatalf("expected %q in rendered bundled template:\n%s", expected, html)
 		}
 	}
-	if strings.Contains(html, `var rawLinks = ['wireguard://`) || strings.Contains(html, `var rawLinks = ['vless://id@example.com:443?security=tls&type=ws#Alpha', 'ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwYXNz@example.net:8388#Beta', 'wireguard://`) {
-		t.Fatalf("bundled subscription template rawLinks leaked WireGuard links:\n%s", html)
-	}
 }
 
 func TestSubscriptionPageTemplateExposesRemoteAccessPlaceholders(t *testing.T) {
