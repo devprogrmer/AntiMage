@@ -887,15 +887,87 @@ install_package () {
     ui_spinner_run "Installing $PACKAGE" install_package_impl "$PACKAGE"
 }
 
-ensure_ov_binary_prerequisites() {
+ensure_vpn_host_prerequisites() {
     detect_os
     local packages=()
+
+    if ! command -v modprobe >/dev/null 2>&1; then
+        packages+=("kmod")
+    fi
+
+    if ! command -v sysctl >/dev/null 2>&1; then
+        if [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]] || [[ "$OS" == "Fedora"* ]] || [[ "$OS" == "Arch"* ]]; then
+            packages+=("procps-ng")
+        else
+            packages+=("procps")
+        fi
+    fi
+
+    for package in "${packages[@]}"; do
+        install_package "$package"
+    done
+
+    if [ ! -c /dev/net/tun ] && command -v modprobe >/dev/null 2>&1; then
+        modprobe tun >/dev/null 2>&1 || true
+    fi
+
+    if [ ! -c /dev/net/tun ]; then
+        mkdir -p /dev/net
+        mknod /dev/net/tun c 10 200 >/dev/null 2>&1 || true
+        chmod 0666 /dev/net/tun >/dev/null 2>&1 || true
+    fi
+
+    if [ ! -c /dev/net/tun ]; then
+        colorized_echo red "Unable to provision /dev/net/tun; OpenVPN cannot operate on this node."
+        return 1
+    fi
+
+    if command -v modprobe >/dev/null 2>&1; then
+        if ! modprobe wireguard >/dev/null 2>&1; then
+            colorized_echo yellow "WireGuard kernel module could not be loaded automatically; WireGuard availability will be verified by the node runtime."
+        fi
+    fi
+
+    mkdir -p /etc/sysctl.d
+    {
+        echo "net.ipv4.ip_forward=1"
+        if [ -e /proc/sys/net/ipv6/conf/all/forwarding ]; then
+            echo "net.ipv6.conf.all.forwarding=1"
+        fi
+    } > /etc/sysctl.d/99-antimage-node-vpn.conf
+
+    if ! sysctl -w net.ipv4.ip_forward=1 >/dev/null; then
+        colorized_echo red "Unable to enable IPv4 forwarding required by VPN inbounds."
+        return 1
+    fi
+
+    if [ -e /proc/sys/net/ipv6/conf/all/forwarding ]; then
+        sysctl -w net.ipv6.conf.all.forwarding=1 >/dev/null 2>&1 || \
+            colorized_echo yellow "Unable to enable IPv6 forwarding automatically."
+    fi
+}
+
+ensure_vpn_binary_prerequisites() {
+    ensure_vpn_host_prerequisites
+
+    local packages=()
+
     if ! command -v openvpn >/dev/null 2>&1; then
         packages+=("openvpn")
     fi
+
+    if ! command -v wg >/dev/null 2>&1; then
+        packages+=("wireguard-tools")
+    fi
+
     if ! command -v nft >/dev/null 2>&1; then
         packages+=("nftables")
     fi
+
+    if ! command -v iptables >/dev/null 2>&1; then
+        packages+=("iptables")
+    fi
+
     if ! command -v ip >/dev/null 2>&1; then
         if [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]] || [[ "$OS" == "Fedora"* ]]; then
             packages+=("iproute")
@@ -903,11 +975,23 @@ ensure_ov_binary_prerequisites() {
             packages+=("iproute2")
         fi
     fi
+
     for package in "${packages[@]}"; do
         install_package "$package"
     done
-    if command -v modprobe >/dev/null 2>&1 && [ ! -c /dev/net/tun ]; then
-        modprobe tun >/dev/null 2>&1 || colorized_echo yellow "Unable to load tun module automatically; OpenVPN needs /dev/net/tun."
+
+    local missing=()
+    local command_name
+
+    for command_name in openvpn wg ip iptables nft sysctl; do
+        if ! command -v "$command_name" >/dev/null 2>&1; then
+            missing+=("$command_name")
+        fi
+    done
+
+    if [ "${#missing[@]}" -ne 0 ]; then
+        colorized_echo red "VPN runtime prerequisites are still missing: ${missing[*]}"
+        return 1
     fi
 }
 
@@ -1294,7 +1378,7 @@ install_binary_antimage_node() {
             install_package "$package"
         fi
     done
-    ensure_ov_binary_prerequisites
+    ensure_vpn_binary_prerequisites
     ensure_haproxy_prerequisites
 
     binary_arch=$(detect_node_binary_arch)
@@ -1428,7 +1512,9 @@ install_antimage_node() {
     mkdir -p "$APP_DIR"
     mkdir -p "$DATA_MAIN_DIR"
     echo "$BRANCH" > "$BRANCH_FILE"
-    
+
+    ensure_vpn_host_prerequisites
+
     rm -f "$CERT_FILE" "$CERT_KEY_FILE"
     read_node_certificate_bundle
 
@@ -1479,6 +1565,10 @@ services:
     image: $DOCKER_IMAGE
     restart: always
     network_mode: host
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
     environment:
       ANTIMAGE_DATA_DIR: "/var/lib/antimage-node"
       SSL_CLIENT_CERT_FILE: "/var/lib/antimage-node/cert.pem"
