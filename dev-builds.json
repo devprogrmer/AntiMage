@@ -1,9 +1,29 @@
 {
   "schema_version": 1,
   "project": "AntiMage",
-  "latest": "dev-30c7d17",
-  "updated_at": "2026-09-12T01:45:19Z",
+  "latest": "dev-e7daabf",
+  "updated_at": "2026-09-12T12:11:54Z",
   "builds": [
+    {
+      "tag": "dev-e7daabf",
+      "sha": "e7daabff2129fd16c20d4345e94ed8a687c9c32a",
+      "branch": "dev",
+      "workflow": "Binary Build",
+      "run_id": "34692721556",
+      "run_number": "108",
+      "created_at": "2026-09-12T12:11:54Z",
+      "release_tag": "dev-builds",
+      "assets": {
+        "linux-amd64": {
+          "name": "antimage-linux-amd64-dev-e7daabf.tar.gz",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-linux-amd64-dev-e7daabf.tar.gz"
+        },
+        "windows-amd64": {
+          "name": "antimage-windows-amd64-dev-e7daabf.zip",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-e7daabf.zip"
+        }
+      }
+    },
     {
       "tag": "dev-30c7d17",
       "sha": "30c7d176af3c5b1e8faee85dad829e62013ea8d6",
