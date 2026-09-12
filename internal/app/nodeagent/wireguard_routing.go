@@ -56,15 +56,15 @@ func buildWireGuardRoutingSpec(
 		)
 	}
 
-	tproxyEnabled := wireGuardBoolSetting(
-		inbound.Settings,
-		"tproxy_enabled",
-		true,
-	)
 	natEnabled := wireGuardBoolSetting(
 		inbound.Settings,
 		"nat_enabled",
-		false,
+		true,
+	)
+	tproxyEnabled := wireGuardBoolSetting(
+		inbound.Settings,
+		"tproxy_enabled",
+		!natEnabled,
 	)
 
 	if tproxyEnabled {

@@ -226,6 +226,31 @@ func TestSubscriptionClientOutputsCoverExplicitFormatsAndAutoDetect(t *testing.T
 	}
 }
 
+func TestV2RaySubscriptionExcludesWireGuardLinks(t *testing.T) {
+	service, key := newSubscriptionClientTestService(t)
+	ctx := context.Background()
+
+	response, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: "v2ray"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded := decodeSubscriptionTestBody(string(response.Body))
+	if !strings.Contains(decoded, "vless://") {
+		t.Fatalf("expected proxy links in subscription: %s", decoded)
+	}
+	if strings.Contains(decoded, "wireguard://") {
+		t.Fatalf("v2ray subscription leaked WireGuard URI: %s", decoded)
+	}
+
+	wg, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: "wireguard"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(wg.Body), "[Interface]\n") {
+		t.Fatalf("explicit WireGuard profile was not preserved:\n%s", string(wg.Body))
+	}
+}
+
 func TestSubscriptionAccessUsesNarrowCoalescedRow(t *testing.T) {
 	service, _ := newSubscriptionClientTestService(t)
 	ctx := context.Background()

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -374,6 +375,9 @@ func (r Repository) StoreCollectedUsageWithInbounds(ctx context.Context, node No
 			if err := r.persistOutboundUsage(ctx, tx, node, outboundMapToDeltas(normalizedOutbound), now.Truncate(time.Hour), now, options); err != nil {
 				return fmt.Errorf("persist unbatched outbound usage: %w", err)
 			}
+			if err := r.persistNodeTotalsFromInboundUsage(ctx, tx, node, inboundUsageForNodeTotals(normalizedInbound, normalizedOutbound), now.Truncate(time.Hour), now, options); err != nil {
+				return fmt.Errorf("persist unbatched inbound node usage: %w", err)
+			}
 			if err := r.persistInboundUsage(ctx, tx, inboundMapToDeltas(normalizedInbound)); err != nil {
 				return fmt.Errorf("persist unbatched inbound usage: %w", err)
 			}
@@ -436,20 +440,31 @@ func (r Repository) FlushStagedUsage(ctx context.Context, limit int, optionValue
 		operations = append(operations, ops...)
 	}
 	for nodeID, rows := range groupStagedOutboundsByNode(outboundRows) {
-		deltas := make([]OutboundUsageDelta, 0, len(rows))
-		inboundDeltas := make([]InboundUsageDelta, 0, len(rows))
+		outboundByTag := map[string]OutboundUsageDelta{}
+		inboundByTag := map[string]InboundUsageDelta{}
 		for _, row := range rows {
 			if row.Uplink > 0 || row.Downlink > 0 {
-				deltas = append(deltas, OutboundUsageDelta{Tag: row.Tag, Up: row.Uplink, Down: row.Downlink})
+				delta := outboundByTag[row.Tag]
+				delta.Tag = row.Tag
+				delta.Up = addUsageDelta(delta.Up, row.Uplink)
+				delta.Down = addUsageDelta(delta.Down, row.Downlink)
+				outboundByTag[row.Tag] = delta
 			}
 			if row.InboundUplink > 0 || row.InboundDownlink > 0 {
-				inboundDeltas = append(inboundDeltas, InboundUsageDelta{Tag: row.Tag, Up: row.InboundUplink, Down: row.InboundDownlink})
+				delta := inboundByTag[row.Tag]
+				delta.Tag = row.Tag
+				delta.Up = addUsageDelta(delta.Up, row.InboundUplink)
+				delta.Down = addUsageDelta(delta.Down, row.InboundDownlink)
+				inboundByTag[row.Tag] = delta
 			}
 		}
-		if err := r.persistOutboundUsage(ctx, tx, NodeRow{ID: nodeID, UsageCoefficient: 1}, deltas, bucket, now, accountingOptions); err != nil {
+		if err := r.persistOutboundUsage(ctx, tx, NodeRow{ID: nodeID, UsageCoefficient: 1}, outboundMapToDeltas(outboundByTag), bucket, now, accountingOptions); err != nil {
 			return UsageFlushResult{}, fmt.Errorf("flush staged outbound usage node=%d: %w", nodeID, err)
 		}
-		if err := r.persistInboundUsage(ctx, tx, inboundDeltas); err != nil {
+		if err := r.persistNodeTotalsFromInboundUsage(ctx, tx, NodeRow{ID: nodeID, UsageCoefficient: 1}, inboundUsageForNodeTotals(inboundByTag, outboundByTag), bucket, now, accountingOptions); err != nil {
+			return UsageFlushResult{}, fmt.Errorf("flush staged inbound node usage node=%d: %w", nodeID, err)
+		}
+		if err := r.persistInboundUsage(ctx, tx, inboundMapToDeltas(inboundByTag)); err != nil {
 			return UsageFlushResult{}, fmt.Errorf("flush staged inbound usage node=%d: %w", nodeID, err)
 		}
 	}
@@ -705,6 +720,22 @@ func inboundMapToDeltas(byTag map[string]InboundUsageDelta) []InboundUsageDelta 
 	result := make([]InboundUsageDelta, 0, len(tags))
 	for _, tag := range tags {
 		result = append(result, byTag[tag])
+	}
+	return result
+}
+
+func inboundUsageForNodeTotals(inboundByTag map[string]InboundUsageDelta, outboundByTag map[string]OutboundUsageDelta) []InboundUsageDelta {
+	tags := make([]string, 0, len(inboundByTag))
+	for tag := range inboundByTag {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	result := make([]InboundUsageDelta, 0, len(tags))
+	for _, tag := range tags {
+		if outbound := outboundByTag[tag]; outbound.Up > 0 || outbound.Down > 0 {
+			continue
+		}
+		result = append(result, inboundByTag[tag])
 	}
 	return result
 }
@@ -1196,31 +1227,67 @@ func (r Repository) persistOutboundUsage(ctx context.Context, tx *sql.Tx, node N
 			return fmt.Errorf("upsert outbound traffic tag=%s node=%d: %w", delta.Tag, node.ID, err)
 		}
 	}
-	if totalUp != 0 || totalDown != 0 {
-		if !options.SkipNodeUsageHistory {
-			if err := r.upsertNodeUsage(ctx, tx, bucket, node.ID, totalUp, totalDown); err != nil {
-				return fmt.Errorf("upsert node usage node=%d: %w", node.ID, err)
-			}
+	if err := r.incrementNodeUsageTotals(ctx, tx, node.ID, totalUp, totalDown, bucket, now, options); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r Repository) persistNodeTotalsFromInboundUsage(ctx context.Context, tx *sql.Tx, node NodeRow, deltas []InboundUsageDelta, bucket time.Time, now time.Time, options UsagePersistOptions) error {
+	var totalUp, totalDown int64
+	for _, delta := range aggregateInboundUsageForStage(deltas) {
+		known, err := r.inboundTagExists(ctx, tx, delta.Tag)
+		if err != nil {
+			return fmt.Errorf("lookup inbound %q: %w", delta.Tag, err)
 		}
-		if err := r.incrementSystemUsage(ctx, tx, totalUp, totalDown); err != nil {
-			return fmt.Errorf("increment system usage: %w", err)
+		if !known {
+			continue
 		}
-		if _, err := tx.ExecContext(
-			ctx,
-			`UPDATE nodes
+		totalUp = addUsageDelta(totalUp, delta.Up)
+		totalDown = addUsageDelta(totalDown, delta.Down)
+	}
+	return r.incrementNodeUsageTotals(ctx, tx, node.ID, totalUp, totalDown, bucket, now, options)
+}
+
+func (r Repository) inboundTagExists(ctx context.Context, tx *sql.Tx, tag string) (bool, error) {
+	var exists int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM inbounds WHERE tag = ? LIMIT 1`, tag).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (r Repository) incrementNodeUsageTotals(ctx context.Context, tx *sql.Tx, nodeID int64, totalUp int64, totalDown int64, bucket time.Time, now time.Time, options UsagePersistOptions) error {
+	if totalUp == 0 && totalDown == 0 {
+		return nil
+	}
+	if !options.SkipNodeUsageHistory {
+		if err := r.upsertNodeUsage(ctx, tx, bucket, nodeID, totalUp, totalDown); err != nil {
+			return fmt.Errorf("upsert node usage node=%d: %w", nodeID, err)
+		}
+	}
+	if err := r.incrementSystemUsage(ctx, tx, totalUp, totalDown); err != nil {
+		return fmt.Errorf("increment system usage: %w", err)
+	}
+	if _, err := tx.ExecContext(
+		ctx,
+		`UPDATE nodes
 SET uplink = COALESCE(uplink, 0) + ?,
     downlink = COALESCE(downlink, 0) + ?
 WHERE id = ?
   AND LOWER(COALESCE(status, '')) <> 'deleted'`,
-			totalUp,
-			totalDown,
-			node.ID,
-		); err != nil {
-			return fmt.Errorf("update node %d totals: %w", node.ID, err)
-		}
-		if _, err := tx.ExecContext(
-			ctx,
-			`UPDATE nodes
+		totalUp,
+		totalDown,
+		nodeID,
+	); err != nil {
+		return fmt.Errorf("update node %d totals: %w", nodeID, err)
+	}
+	if _, err := tx.ExecContext(
+		ctx,
+		`UPDATE nodes
 SET status = 'limited',
     message = 'Data limit reached',
     last_status_change = ?
@@ -1229,11 +1296,10 @@ WHERE id = ?
   AND data_limit IS NOT NULL
   AND data_limit > 0
   AND (COALESCE(uplink, 0) + COALESCE(downlink, 0)) >= data_limit`,
-			r.timeArg(now),
-			node.ID,
-		); err != nil {
-			return fmt.Errorf("limit node %d by data limit: %w", node.ID, err)
-		}
+		r.timeArg(now),
+		nodeID,
+	); err != nil {
+		return fmt.Errorf("limit node %d by data limit: %w", nodeID, err)
 	}
 	return nil
 }
