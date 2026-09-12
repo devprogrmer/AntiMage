@@ -23,27 +23,33 @@ type wireGuardRuntimeInbound struct {
 }
 
 type wireGuardRuntimePeer struct {
-	UserID       int64  `json:"user_id"`
-	Username     string `json:"username"`
-	PublicKey    string `json:"public_key"`
-	PresharedKey string `json:"preshared_key,omitempty"`
-	Address      string `json:"address"`
-	Status       string `json:"status"`
-	UsedTraffic  int64  `json:"used_traffic"`
-	DataLimit    *int64 `json:"data_limit,omitempty"`
-	Expire       *int64 `json:"expire,omitempty"`
-	DeviceLimit  int64  `json:"device_limit,omitempty"`
+	UserID                int64  `json:"user_id"`
+	Username              string `json:"username"`
+	PublicKey             string `json:"public_key"`
+	PresharedKey          string `json:"preshared_key,omitempty"`
+	Address               string `json:"address"`
+	Status                string `json:"status"`
+	UsedTraffic           int64  `json:"used_traffic"`
+	ReflectedUsageBatchID string `json:"reflected_usage_batch_id,omitempty"`
+	DataLimit             *int64 `json:"data_limit,omitempty"`
+	Expire                *int64 `json:"expire,omitempty"`
+	DeviceLimit           int64  `json:"device_limit,omitempty"`
 }
 
 type wireGuardUsageRuntimeConfig struct {
-	InboundTag    string           `json:"inbound_tag"`
-	InterfaceName string           `json:"interface_name,omitempty"`
-	ListenPort    int              `json:"listen_port"`
-	Peers         map[string]int64 `json:"peers"`
+	InboundTag        string                             `json:"inbound_tag"`
+	InterfaceName     string                             `json:"interface_name,omitempty"`
+	ListenPort        int                                `json:"listen_port"`
+	Peers             map[string]int64                   `json:"peers"`
+	PeerAddresses     map[string]string                  `json:"peer_addresses,omitempty"`
+	Policies          map[string]nativeSessionUserPolicy `json:"policies,omitempty"`
+	AccountingEnabled *bool                              `json:"accounting_enabled,omitempty"`
+	Callback          nativeRuntimeSessionCallback       `json:"callback,omitempty"`
 }
 
 type wireGuardPeerCounters struct {
 	PublicKey       string
+	Endpoint        string
 	LatestHandshake int64
 	ReceivedBytes   uint64
 	SentBytes       uint64
@@ -140,6 +146,7 @@ func parseWireGuardDump(raw string) ([]wireGuardPeerCounters, error) {
 		}
 		result = append(result, wireGuardPeerCounters{
 			PublicKey:       publicKey,
+			Endpoint:        strings.TrimSpace(parts[2]),
 			LatestHandshake: handshake,
 			ReceivedBytes:   received,
 			SentBytes:       sent,
@@ -228,6 +235,7 @@ func parseWireGuardAllDump(
 		}
 		item.Peers = append(item.Peers, wireGuardPeerCounters{
 			PublicKey:       publicKey,
+			Endpoint:        strings.TrimSpace(parts[3]),
 			LatestHandshake: handshake,
 			ReceivedBytes:   received,
 			SentBytes:       sent,
@@ -318,9 +326,21 @@ func wireGuardBoolSetting(
 	}
 }
 
+func wireGuardUsageAccountingEnabled(cfg wireGuardUsageRuntimeConfig) bool {
+	if cfg.AccountingEnabled == nil {
+		return true
+	}
+	return *cfg.AccountingEnabled
+}
+
 func (s *Server) syncWireGuardUsageConfigs(
 	inbounds []wireGuardRuntimeInbound,
+	callbacks ...nativeRuntimeSessionCallback,
 ) error {
+	var callback nativeRuntimeSessionCallback
+	if len(callbacks) > 0 {
+		callback = callbacks[0]
+	}
 	root := filepath.Join(s.cfg.DataDir, "wireguard", "inbounds")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return fmt.Errorf("create wireguard usage config root: %w", err)
@@ -334,13 +354,11 @@ func (s *Server) syncWireGuardUsageConfigs(
 		if tag == "" {
 			return fmt.Errorf("wireguard inbound tag is required")
 		}
-		if !wireGuardBoolSetting(
+		accountingEnabled := wireGuardBoolSetting(
 			inbound.Settings,
 			"accounting_enabled",
 			true,
-		) {
-			continue
-		}
+		)
 
 		interfaceName, err := wireGuardInterfaceName(inbound)
 		if err != nil {
@@ -357,6 +375,8 @@ func (s *Server) syncWireGuardUsageConfigs(
 		interfaceOwners[interfaceName] = tag
 
 		peers := make(map[string]int64, len(inbound.Peers))
+		peerAddresses := make(map[string]string, len(inbound.Peers))
+		policies := make(map[string]nativeSessionUserPolicy, len(inbound.Peers))
 		for _, peer := range inbound.Peers {
 			publicKey := strings.TrimSpace(peer.PublicKey)
 			if publicKey == "" || peer.UserID <= 0 {
@@ -374,6 +394,38 @@ func (s *Server) syncWireGuardUsageConfigs(
 				)
 			}
 			peers[publicKey] = peer.UserID
+			peerAddresses[publicKey] = strings.TrimSpace(peer.Address)
+
+			var dataLimit int64
+
+			if peer.DataLimit != nil {
+
+				dataLimit = *peer.DataLimit
+
+			}
+
+			var expire int64
+
+			if peer.Expire != nil {
+
+				expire = *peer.Expire
+
+			}
+
+			policies[publicKey] = nativeSessionUserPolicy{
+
+				Status: strings.ToLower(
+
+					strings.TrimSpace(peer.Status),
+				),
+
+				UsedTraffic:           peer.UsedTraffic,
+				ReflectedUsageBatchID: strings.TrimSpace(peer.ReflectedUsageBatchID),
+
+				DataLimit: dataLimit,
+
+				Expire: expire,
+			}
 		}
 
 		dirName := wireGuardRuntimeDirName(tag)
@@ -384,10 +436,14 @@ func (s *Server) syncWireGuardUsageConfigs(
 		}
 
 		raw, err := json.Marshal(wireGuardUsageRuntimeConfig{
-			InboundTag:    tag,
-			InterfaceName: interfaceName,
-			ListenPort:    inbound.ListenPort,
-			Peers:         peers,
+			InboundTag:        tag,
+			InterfaceName:     interfaceName,
+			ListenPort:        inbound.ListenPort,
+			Peers:             peers,
+			PeerAddresses:     peerAddresses,
+			Policies:          policies,
+			AccountingEnabled: &accountingEnabled,
+			Callback:          callback,
 		})
 		if err != nil {
 			return fmt.Errorf(

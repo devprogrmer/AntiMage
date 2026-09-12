@@ -28,16 +28,17 @@ type WGRuntimeInbound struct {
 }
 
 type WGRuntimePeer struct {
-	UserID       int64  `json:"user_id"`
-	Username     string `json:"username"`
-	PublicKey    string `json:"public_key"`
-	PresharedKey string `json:"preshared_key,omitempty"`
-	Address      string `json:"address"`
-	Status       string `json:"status"`
-	UsedTraffic  int64  `json:"used_traffic"`
-	DataLimit    *int64 `json:"data_limit,omitempty"`
-	Expire       *int64 `json:"expire,omitempty"`
-	DeviceLimit  int64  `json:"device_limit,omitempty"`
+	UserID                int64  `json:"user_id"`
+	Username              string `json:"username"`
+	PublicKey             string `json:"public_key"`
+	PresharedKey          string `json:"preshared_key,omitempty"`
+	Address               string `json:"address"`
+	Status                string `json:"status"`
+	UsedTraffic           int64  `json:"used_traffic"`
+	ReflectedUsageBatchID string `json:"reflected_usage_batch_id,omitempty"`
+	DataLimit             *int64 `json:"data_limit,omitempty"`
+	Expire                *int64 `json:"expire,omitempty"`
+	DeviceLimit           int64  `json:"device_limit,omitempty"`
 }
 
 func (r Repository) WGRuntime(ctx context.Context, nodeID int64) (WGRuntime, error) {
@@ -93,6 +94,13 @@ func (r Repository) wgRuntime(ctx context.Context, nodeID int64, inbounds []map[
 		if len(peers) == 0 {
 			continue
 		}
+		if err := r.attachWGUsageReflections(ctx, nodeID, peers); err != nil {
+			return WGRuntime{}, fmt.Errorf(
+				"WireGuard usage reflections: %w",
+				err,
+			)
+		}
+
 		tunnelPort := xrayconfig.RuntimeTunnelPortForInbound(inbound, usedPorts)
 		if tunnelPort > 0 {
 			usedPorts[tunnelPort] = struct{}{}
@@ -107,6 +115,87 @@ func (r Repository) wgRuntime(ctx context.Context, nodeID int64, inbounds []map[
 		})
 	}
 	return runtimeConfig, nil
+}
+
+func (r Repository) attachWGUsageReflections(
+	ctx context.Context,
+	nodeID int64,
+	peers []WGRuntimePeer,
+) error {
+	if nodeID <= 0 || len(peers) == 0 {
+		return nil
+	}
+
+	userIDs := make([]int64, 0, len(peers))
+	seen := make(map[int64]struct{}, len(peers))
+
+	for _, peer := range peers {
+		if peer.UserID <= 0 {
+			continue
+		}
+		if _, ok := seen[peer.UserID]; ok {
+			continue
+		}
+
+		seen[peer.UserID] = struct{}{}
+		userIDs = append(userIDs, peer.UserID)
+	}
+
+	if len(userIDs) == 0 {
+		return nil
+	}
+
+	userPlaceholders := make([]string, len(userIDs))
+	args := make([]any, 0, 1+len(userIDs))
+	args = append(args, nodeID)
+
+	for i, userID := range userIDs {
+		userPlaceholders[i] = "?"
+		args = append(args, userID)
+	}
+
+	query := `
+SELECT user_id, batch_id
+FROM node_wireguard_usage_reflection
+WHERE node_id = ?
+  AND user_id IN (` + strings.Join(userPlaceholders, ",") + `)`
+
+	rows, err := r.db.QueryContext(
+		ctx,
+		query,
+		args...,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"load wireguard usage reflections for node %d: %w",
+			nodeID,
+			err,
+		)
+	}
+	defer rows.Close()
+
+	reflected := make(map[int64]string, len(userIDs))
+
+	for rows.Next() {
+		var userID int64
+		var batchID string
+
+		if err := rows.Scan(&userID, &batchID); err != nil {
+			return err
+		}
+
+		reflected[userID] = strings.TrimSpace(batchID)
+	}
+
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for i := range peers {
+		peers[i].ReflectedUsageBatchID = reflected[peers[i].UserID]
+	}
+
+	return nil
 }
 
 func (r Repository) WGUsersForServices(ctx context.Context, inboundTag string, serviceIDs []int64, pool string, serverAddress string) ([]WGRuntimePeer, error) {

@@ -30,46 +30,49 @@ type Server struct {
 	nodev1.UnimplementedNodeUsageServiceServer
 	nodev1.UnimplementedNodeLogsServiceServer
 
-	cfg                            Config
-	xrayAPIPortFallback            int
-	mu                             sync.Mutex
-	startedAt                      time.Time
-	lastConfig                     string
-	lastRuntime                    *exec.Cmd
-	openVPNRuntimes                map[string]*openVPNProcess
-	openVPNTProxySpecs             map[string]openVPNTProxySpec
-	openVPNTProxyStartupReconciled bool
-	wireGuardRuntimes              map[string]wireGuardRuntimeState
-	openVPNUsageMu                 sync.Mutex
-	openVPNUsageBaseline           map[string]uint64
-	openVPNUsagePending            *openVPNUsagePendingBatch
-	openVPNUsageLoaded             bool
-	openVPNUsageLastAckedBatchID   string
-	wireGuardUsageMu               sync.Mutex
-	wireGuardUsageBaseline         map[string]uint64
-	wireGuardUsagePending          *wireGuardUsagePendingBatch
-	wireGuardUsageLoaded           bool
-	wireGuardUsageLastAckedBatchID string
-	xrayUsageMu                    sync.Mutex
-	xrayUsageBaseline              map[string]uint64
-	xrayUsagePending               *xrayUsagePendingBatch
-	xrayUsageLoaded                bool
-	xrayUsageLastAckedBatchID      string
-	xrayOutboundUsageMu            sync.Mutex
-	xrayOutboundUsageBaseline      map[string]uint64
-	xrayOutboundUsagePending       *xrayOutboundUsagePendingBatch
-	xrayOutboundUsageLoaded        bool
-	mergedUsageMu                  sync.Mutex
-	mergedUsagePending             *mergedUsagePendingBatch
-	mergedUsageLoaded              bool
-	mergedUsageLastAckedBatchID    string
-	combinedUsageMu                sync.Mutex
-	combinedUsagePending           *combinedUsagePendingBatch
-	combinedUsageLoaded            bool
-	combinedUsageLastAckedBatchID  string
-	torProxies                     map[uint32]*exec.Cmd
-	appliedRev                     uint64
-	logs                           []string
+	cfg                              Config
+	xrayAPIPortFallback              int
+	mu                               sync.Mutex
+	startedAt                        time.Time
+	lastConfig                       string
+	lastRuntime                      *exec.Cmd
+	openVPNRuntimes                  map[string]*openVPNProcess
+	openVPNTProxySpecs               map[string]openVPNTProxySpec
+	openVPNTProxyStartupReconciled   bool
+	wireGuardRuntimes                map[string]wireGuardRuntimeState
+	wireGuardDynamicSuppressedPeers  map[string]struct{}
+	openVPNUsageMu                   sync.Mutex
+	openVPNUsageBaseline             map[string]uint64
+	openVPNUsagePending              *openVPNUsagePendingBatch
+	openVPNUsageLoaded               bool
+	openVPNUsageLastAckedBatchID     string
+	wireGuardUsageMu                 sync.Mutex
+	wireGuardUsageBaseline           map[string]uint64
+	wireGuardUsagePending            *wireGuardUsagePendingBatch
+	wireGuardUsageCarry              map[string]wireGuardUsageCarry
+	wireGuardUsageAwaitingReflection []wireGuardUsageAwaitingReflectionBatch
+	wireGuardUsageLoaded             bool
+	wireGuardUsageLastAckedBatchID   string
+	xrayUsageMu                      sync.Mutex
+	xrayUsageBaseline                map[string]uint64
+	xrayUsagePending                 *xrayUsagePendingBatch
+	xrayUsageLoaded                  bool
+	xrayUsageLastAckedBatchID        string
+	xrayOutboundUsageMu              sync.Mutex
+	xrayOutboundUsageBaseline        map[string]uint64
+	xrayOutboundUsagePending         *xrayOutboundUsagePendingBatch
+	xrayOutboundUsageLoaded          bool
+	mergedUsageMu                    sync.Mutex
+	mergedUsagePending               *mergedUsagePendingBatch
+	mergedUsageLoaded                bool
+	mergedUsageLastAckedBatchID      string
+	combinedUsageMu                  sync.Mutex
+	combinedUsagePending             *combinedUsagePendingBatch
+	combinedUsageLoaded              bool
+	combinedUsageLastAckedBatchID    string
+	torProxies                       map[uint32]*exec.Cmd
+	appliedRev                       uint64
+	logs                             []string
 }
 
 var (
@@ -80,18 +83,20 @@ var (
 
 func New(cfg Config) *Server {
 	return &Server{
-		cfg:                       cfg,
-		xrayAPIPortFallback:       cfg.XrayAPIPort,
-		startedAt:                 time.Now(),
-		openVPNRuntimes:           make(map[string]*openVPNProcess),
-		openVPNTProxySpecs:        make(map[string]openVPNTProxySpec),
-		wireGuardRuntimes:         make(map[string]wireGuardRuntimeState),
-		openVPNUsageBaseline:      make(map[string]uint64),
-		wireGuardUsageBaseline:    make(map[string]uint64),
-		xrayUsageBaseline:         make(map[string]uint64),
-		xrayOutboundUsageBaseline: make(map[string]uint64),
-		torProxies:                make(map[uint32]*exec.Cmd),
-		logs:                      []string{"AntiMage-node agent initialized"},
+		cfg:                             cfg,
+		xrayAPIPortFallback:             cfg.XrayAPIPort,
+		startedAt:                       time.Now(),
+		openVPNRuntimes:                 make(map[string]*openVPNProcess),
+		openVPNTProxySpecs:              make(map[string]openVPNTProxySpec),
+		wireGuardRuntimes:               make(map[string]wireGuardRuntimeState),
+		wireGuardDynamicSuppressedPeers: make(map[string]struct{}),
+		openVPNUsageBaseline:            make(map[string]uint64),
+		wireGuardUsageBaseline:          make(map[string]uint64),
+		wireGuardUsageCarry:             make(map[string]wireGuardUsageCarry),
+		xrayUsageBaseline:               make(map[string]uint64),
+		xrayOutboundUsageBaseline:       make(map[string]uint64),
+		torProxies:                      make(map[uint32]*exec.Cmd),
+		logs:                            []string{"AntiMage-node agent initialized"},
 	}
 }
 

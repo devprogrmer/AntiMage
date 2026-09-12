@@ -1,6 +1,7 @@
 package nodeagent
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,6 +20,9 @@ func TestParseWireGuardDump(t *testing.T) {
 	}
 	if peers[0].PublicKey != "peer-a" {
 		t.Fatalf("public key = %q", peers[0].PublicKey)
+	}
+	if peers[0].Endpoint != "198.51.100.4:20000" {
+		t.Fatalf("endpoint = %q", peers[0].Endpoint)
 	}
 	total, err := wireGuardPeerTotalBytes(peers[0])
 	if err != nil {
@@ -70,6 +74,9 @@ func TestParseWireGuardAllDump(t *testing.T) {
 	if len(got.Peers) != 1 || got.Peers[0].PublicKey != "peer-a" {
 		t.Fatalf("unexpected peers: %#v", got.Peers)
 	}
+	if got.Peers[0].Endpoint != "198.51.100.4:20000" {
+		t.Fatalf("endpoint = %q", got.Peers[0].Endpoint)
+	}
 }
 
 func TestSyncWireGuardUsageConfigs(t *testing.T) {
@@ -110,7 +117,15 @@ func TestSyncWireGuardUsageConfigs(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.ReadFile(path); err == nil {
-		t.Fatal("disabled accounting should remove usage helper")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg wireGuardUsageRuntimeConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AccountingEnabled == nil || *cfg.AccountingEnabled {
+		t.Fatal("disabled accounting must persist helper with accounting_enabled=false")
 	}
 }

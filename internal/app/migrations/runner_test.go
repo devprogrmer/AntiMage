@@ -78,6 +78,7 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_configs", []string{"id", "name", "enabled", "settings", "created_at", "updated_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_targets", []string{"config_id", "node_id", "listeners"})
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_templates", []string{"id", "name", "archive", "created_at"})
+	assertTableColumns(t, ctx, db, "sqlite", "node_wireguard_usage_reflection", []string{"node_id", "user_id", "batch_id", "updated_at"})
 	if _, err := db.ExecContext(ctx, `INSERT INTO haproxy_configs (id, name, enabled, settings, created_at, updated_at) VALUES (9101, 'first', 0, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP), (9102, 'second', 0, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
 		t.Fatalf("seed HAProxy configs: %v", err)
 	}
@@ -532,6 +533,27 @@ func TestPreGooseVersion47SchemaStillRunsUsersCreatedIndexMigration(t *testing.T
 		t.Fatal(err)
 	}
 	assertIndex(t, ctx, db, "sqlite", "users", "ix_users_created_id")
+}
+
+func TestPreGooseVersion54SchemaStillRunsWireGuardReflectionMigration(t *testing.T) {
+	ctx := context.Background()
+	db := openSQLiteTestDB(t)
+	if err := RunMigrationsTo(ctx, db, "sqlite", 53); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `DROP TABLE goose_db_version`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE alembic_version (version_num TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO alembic_version (version_num) VALUES (?)`, legacyAlembicFinalRevision); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunMigrations(ctx, db, "sqlite"); err != nil {
+		t.Fatal(err)
+	}
+	assertTableColumns(t, ctx, db, "sqlite", "node_wireguard_usage_reflection", []string{"node_id", "user_id", "batch_id", "updated_at"})
 }
 
 func TestRunMigrationsToSQLite(t *testing.T) {

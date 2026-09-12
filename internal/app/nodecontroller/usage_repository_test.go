@@ -1120,3 +1120,352 @@ func assertString(t *testing.T, db *sql.DB, query string, expected string) {
 		t.Fatalf("%s: expected %q, got %q", query, expected, actual)
 	}
 }
+
+func TestRepositoryFlushStoresWireGuardReflectionMarker(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sql.Open(
+		"sqlite",
+		"file:"+filepath.Join(t.TempDir(), "wg-reflection.db")+"?_pragma=busy_timeout(30000)",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	createUsageTables(t, ctx, db)
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE node_wireguard_usage_reflection (
+node_id INTEGER NOT NULL,
+user_id INTEGER NOT NULL,
+batch_id TEXT NOT NULL,
+updated_at DATETIME NOT NULL,
+PRIMARY KEY (node_id, user_id)
+);
+
+INSERT INTO admins (
+id, users_usage, lifetime_usage
+) VALUES (
+1, 0, 0
+);
+
+INSERT INTO services (
+id, used_traffic, lifetime_used_traffic, users_usage, updated_at
+) VALUES (
+2, 0, 0, 0, CURRENT_TIMESTAMP
+);
+
+INSERT INTO admins_services (
+admin_id, service_id, used_traffic, lifetime_used_traffic, updated_at
+) VALUES (
+1, 2, 0, 0, CURRENT_TIMESTAMP
+);
+
+INSERT INTO users (
+id, status, used_traffic, data_limit, admin_id, service_id
+) VALUES (
+10, 'active', 0, 100000, 1, 2
+);
+
+INSERT INTO nodes (
+id, status, uplink, downlink, data_limit, usage_coefficient
+) VALUES (
+7, 'connected', 0, 0, NULL, 1
+);
+
+INSERT INTO system (
+id, uplink, downlink
+) VALUES (
+1, 0, 0
+);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+
+	if err := repo.StoreCollectedUsageWithInbounds(
+		ctx,
+		NodeRow{
+			ID:               7,
+			UsageCoefficient: 1,
+		},
+		"wireguard-reflection-300",
+		[]UserUsageDelta{{
+			UserID: 10,
+			Value:  50,
+		}},
+		"",
+		nil,
+		nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := repo.FlushStagedUsage(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.UserRows != 1 {
+		t.Fatalf(
+			"flushed user rows = %d, want 1",
+			result.UserRows,
+		)
+	}
+
+	assertInt64(
+		t,
+		db,
+		`SELECT used_traffic FROM users WHERE id = 10`,
+		50,
+	)
+
+	var batchID string
+	err = db.QueryRowContext(
+		ctx,
+		`SELECT batch_id
+FROM node_wireguard_usage_reflection
+WHERE node_id = ? AND user_id = ?`,
+		7,
+		10,
+	).Scan(&batchID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if batchID != "wireguard-reflection-300" {
+		t.Fatalf(
+			"reflected wireguard batch = %q, want %q",
+			batchID,
+			"wireguard-reflection-300",
+		)
+	}
+}
+
+func TestRepositoryFlushStoresCombinedWireGuardReflectionMarker(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sql.Open(
+		"sqlite",
+		"file:"+filepath.Join(t.TempDir(), "combined-wg-reflection.db")+"?_pragma=busy_timeout(30000)",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	createUsageTables(t, ctx, db)
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE node_wireguard_usage_reflection (
+node_id INTEGER NOT NULL,
+user_id INTEGER NOT NULL,
+batch_id TEXT NOT NULL,
+updated_at DATETIME NOT NULL,
+PRIMARY KEY (node_id, user_id)
+);
+
+INSERT INTO admins (
+id, users_usage, lifetime_usage
+) VALUES (
+1, 0, 0
+);
+
+INSERT INTO services (
+id, used_traffic, lifetime_used_traffic, users_usage, updated_at
+) VALUES (
+2, 0, 0, 0, CURRENT_TIMESTAMP
+);
+
+INSERT INTO admins_services (
+admin_id, service_id, used_traffic, lifetime_used_traffic, updated_at
+) VALUES (
+1, 2, 0, 0, CURRENT_TIMESTAMP
+);
+
+INSERT INTO users (
+id, status, used_traffic, data_limit, admin_id, service_id
+) VALUES (
+10, 'active', 0, 100000, 1, 2
+);
+
+INSERT INTO nodes (
+id, status, uplink, downlink, data_limit, usage_coefficient
+) VALUES (
+7, 'connected', 0, 0, NULL, 1
+);
+
+INSERT INTO system (
+id, uplink, downlink
+) VALUES (
+1, 0, 0
+);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+
+	if err := repo.StoreCollectedUsageWithInbounds(
+		ctx,
+		NodeRow{
+			ID:               7,
+			UsageCoefficient: 1,
+		},
+		"combined-reflection-300",
+		[]UserUsageDelta{{
+			UserID: 10,
+			Value:  50,
+		}},
+		"",
+		nil,
+		nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := repo.FlushStagedUsage(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.UserRows != 1 {
+		t.Fatalf(
+			"flushed user rows = %d, want 1",
+			result.UserRows,
+		)
+	}
+
+	assertInt64(
+		t,
+		db,
+		`SELECT used_traffic FROM users WHERE id = 10`,
+		50,
+	)
+
+	var batchID string
+	err = db.QueryRowContext(
+		ctx,
+		`SELECT batch_id
+FROM node_wireguard_usage_reflection
+WHERE node_id = ? AND user_id = ?`,
+		7,
+		10,
+	).Scan(&batchID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if batchID != "combined-reflection-300" {
+		t.Fatalf(
+			"reflected combined batch = %q, want %q",
+			batchID,
+			"combined-reflection-300",
+		)
+	}
+}
+
+func TestRepositoryFlushStoresLatestWireGuardReflectionMarkerByQueueOrder(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sql.Open(
+		"sqlite",
+		"file:"+filepath.Join(t.TempDir(), "wg-reflection-order.db")+"?_pragma=busy_timeout(30000)",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	createUsageTables(t, ctx, db)
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE node_wireguard_usage_reflection (
+node_id INTEGER NOT NULL,
+user_id INTEGER NOT NULL,
+batch_id TEXT NOT NULL,
+updated_at DATETIME NOT NULL,
+PRIMARY KEY (node_id, user_id)
+);
+
+INSERT INTO admins (
+id, users_usage, lifetime_usage
+) VALUES (
+1, 0, 0
+);
+
+INSERT INTO services (
+id, used_traffic, lifetime_used_traffic, users_usage, updated_at
+) VALUES (
+2, 0, 0, 0, CURRENT_TIMESTAMP
+);
+
+INSERT INTO admins_services (
+admin_id, service_id, used_traffic, lifetime_used_traffic, updated_at
+) VALUES (
+1, 2, 0, 0, CURRENT_TIMESTAMP
+);
+
+INSERT INTO users (
+id, status, used_traffic, data_limit, admin_id, service_id
+) VALUES (
+10, 'active', 0, 100000, 1, 2
+);
+
+INSERT INTO nodes (
+id, status, uplink, downlink, data_limit, usage_coefficient
+) VALUES (
+7, 'connected', 0, 0, NULL, 1
+);
+
+INSERT INTO system (
+id, uplink, downlink
+) VALUES (
+1, 0, 0
+);
+
+INSERT INTO node_usage_user_queue (
+node_id, batch_id, user_id, used_traffic, online, created_at
+) VALUES
+(7, 'wireguard-reflection-100', 10, 10, 1, CURRENT_TIMESTAMP),
+(7, 'combined-reflection-200', 10, 20, 1, CURRENT_TIMESTAMP),
+(7, 'wireguard-reflection-300', 10, 30, 1, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+
+	result, err := repo.FlushStagedUsage(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.UserRows != 3 {
+		t.Fatalf(
+			"flushed user rows = %d, want 3",
+			result.UserRows,
+		)
+	}
+
+	assertInt64(
+		t,
+		db,
+		`SELECT used_traffic FROM users WHERE id = 10`,
+		60,
+	)
+
+	assertString(
+		t,
+		db,
+		`SELECT batch_id
+FROM node_wireguard_usage_reflection
+WHERE node_id = 7 AND user_id = 10`,
+		"wireguard-reflection-300",
+	)
+}

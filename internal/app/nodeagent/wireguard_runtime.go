@@ -26,6 +26,7 @@ type preparedWireGuardRuntime struct {
 	MTU               int
 	Routing           wireGuardRoutingSpec
 	Inbound           wireGuardRuntimeInbound
+	SuppressedPeers   []wireGuardRuntimePeer
 }
 
 type wireGuardRuntimeState struct {

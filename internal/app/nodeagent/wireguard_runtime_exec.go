@@ -334,6 +334,15 @@ func (s *Server) applyWireGuardRuntime(
 		)
 	}
 
+	if err := s.snapshotWireGuardSuppressedPeerUsage(ctx, prepared); err != nil {
+		rollbackCreated()
+		return fmt.Errorf(
+			"wireguard %q: snapshot suppressed peer usage: %w",
+			prepared.Tag,
+			err,
+		)
+	}
+
 	if err := runWireGuardRuntimeRequired(
 		ctx,
 		wgPath,

@@ -216,13 +216,20 @@ func (s *Server) ackCombinedUserUsage(
 	if err != nil {
 		return nil, fmt.Errorf("combined core ACK failed: %w", err)
 	}
-	wgAck, err := s.ackUsageChildBatch(
+	wgResp, err := s.ackWireGuardUserUsageWithReflection(
 		ctx,
-		pending.WireGuardBatchID,
+		&nodev1.AckUsageRequest{
+			BatchId: pending.WireGuardBatchID,
+		},
+		batchID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("combined wireguard ACK failed: %w", err)
+		return nil, fmt.Errorf(
+			"combined wireguard ACK failed: %w",
+			err,
+		)
 	}
+	wgAck := wgResp.GetAcknowledged()
 	if !coreAck || !wgAck {
 		return &nodev1.AckUsageResponse{Acknowledged: false}, nil
 	}
