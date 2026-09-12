@@ -191,6 +191,9 @@ func (s *Server) collectNodeUsage(ctx context.Context) {
 		return
 	}
 	s.setLiveUserSpeeds(result.Speeds)
+	if result.UserSamples > 0 || result.OutboundSamples > 0 || result.InboundSamples > 0 {
+		s.flushNodeUsage(ctx)
+	}
 	if result.UserSamples > 0 || result.OutboundSamples > 0 || result.InboundSamples > 0 || len(result.Errors) > 0 {
 		logging.Debugf(
 			logging.ComponentNode,

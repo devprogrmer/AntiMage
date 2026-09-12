@@ -19,12 +19,32 @@ func TestWireGuardRoutingDoesNotCollideWithOpenVPN(t *testing.T) {
 	}
 }
 
-func TestBuildWireGuardRoutingSpecDefaultsToTProxy(t *testing.T) {
+func TestBuildWireGuardRoutingSpecDefaultsToNAT(t *testing.T) {
 	spec, err := buildWireGuardRoutingSpec(
 		wireGuardRuntimeInbound{
 			Tag:        "wg-main",
 			TunnelPort: 41940,
 			Settings:   map[string]any{},
+		},
+		"amwg1234",
+		"10.69.0.0/16",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Mode != wireGuardRoutingNAT {
+		t.Fatalf("mode = %q", spec.Mode)
+	}
+}
+
+func TestBuildWireGuardRoutingSpecUsesTProxyWhenEnabled(t *testing.T) {
+	spec, err := buildWireGuardRoutingSpec(
+		wireGuardRuntimeInbound{
+			Tag:        "wg-main",
+			TunnelPort: 41940,
+			Settings: map[string]any{
+				"tproxy_enabled": true,
+			},
 		},
 		"amwg1234",
 		"10.69.0.0/16",
@@ -40,31 +60,13 @@ func TestBuildWireGuardRoutingSpecDefaultsToTProxy(t *testing.T) {
 	}
 }
 
-func TestBuildWireGuardRoutingSpecUsesNATWhenTProxyDisabled(t *testing.T) {
-	spec, err := buildWireGuardRoutingSpec(
-		wireGuardRuntimeInbound{
-			Tag: "wg-main",
-			Settings: map[string]any{
-				"tproxy_enabled": false,
-				"nat_enabled":    true,
-			},
-		},
-		"amwg1234",
-		"10.69.0.0/16",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if spec.Mode != wireGuardRoutingNAT {
-		t.Fatalf("mode = %q", spec.Mode)
-	}
-}
-
 func TestBuildWireGuardRoutingSpecRejectsMissingTunnelPort(t *testing.T) {
 	_, err := buildWireGuardRoutingSpec(
 		wireGuardRuntimeInbound{
-			Tag:      "wg-main",
-			Settings: map[string]any{},
+			Tag: "wg-main",
+			Settings: map[string]any{
+				"tproxy_enabled": true,
+			},
 		},
 		"amwg1234",
 		"10.69.0.0/16",

@@ -425,6 +425,7 @@ func (s Service) generateSubscriptionConfig(ctx context.Context, user UserDetail
 		return "", err
 	}
 	connectable := connectableConfigLinks(links)
+	connectable = proxyConfigLinks(connectable)
 	raw := connectable.Links
 	switch config.Format {
 	case "v2ray":
@@ -505,6 +506,33 @@ func connectableConfigLinks(response ConfigLinksResponse) ConfigLinksResponse {
 		}
 	}
 	return filtered
+}
+
+func proxyConfigLinks(response ConfigLinksResponse) ConfigLinksResponse {
+	filtered := ConfigLinksResponse{
+		Links:    make([]string, 0, len(response.Links)),
+		Metadata: make([]ConfigLinkMetadata, 0, len(response.Links)),
+	}
+	for i, link := range response.Links {
+		scheme := strings.ToLower(strings.TrimSpace(linkScheme(link)))
+		switch scheme {
+		case "vmess", "vless", "trojan", "ss", "shadowsocks":
+			filtered.Links = append(filtered.Links, link)
+			if i < len(response.Metadata) {
+				filtered.Metadata = append(filtered.Metadata, response.Metadata[i])
+			} else {
+				filtered.Metadata = append(filtered.Metadata, ConfigLinkMetadata{})
+			}
+		}
+	}
+	return filtered
+}
+
+func linkScheme(link string) string {
+	if before, _, ok := strings.Cut(link, "://"); ok {
+		return before
+	}
+	return ""
 }
 
 func configLinksRequireCurrentFinalMask(response ConfigLinksResponse) bool {
@@ -1060,24 +1088,11 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 	if parsed, err := url.Parse(req.URL); err == nil {
 		path = strings.TrimRight(parsed.Path, "/")
 	}
-	rawLinks := append([]string{}, links.Links...)
 	vpnInfo, err := s.subscriptionVPNInfo(ctx, user, req.URL)
 	if err != nil {
 		return "", err
 	}
-	if openvpn, ok := vpnInfo["openvpn"].(map[string]any); ok {
-		if downloadLinks, ok := openvpn["downloads"].([]string); ok {
-			rawLinks = append(rawLinks, downloadLinks...)
-		}
-	}
-	if wireguard, ok := vpnInfo["wireguard"].(map[string]any); ok {
-		if wgLinks, ok := wireguard["links"].([]string); ok {
-			rawLinks = append(rawLinks, wgLinks...)
-		}
-		if downloadLinks, ok := wireguard["downloads"].([]string); ok {
-			rawLinks = append(rawLinks, downloadLinks...)
-		}
-	}
+	rawLinks := proxyConfigLinks(connectableConfigLinks(links)).Links
 	content := fallbackSubscriptionPageTemplate
 	if s.templates != nil {
 		templateContent, err := s.templates.ReadTemplateContent(ctx, "subscription_page_template", user.AdminID)
