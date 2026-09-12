@@ -24,10 +24,11 @@ type nativeSessionHelperConfig struct {
 }
 
 type nativeSessionUserPolicy struct {
-	Status      string `json:"status"`
-	UsedTraffic int64  `json:"used_traffic"`
-	DataLimit   int64  `json:"data_limit"`
-	Expire      int64  `json:"expire"`
+	Status                string `json:"status"`
+	UsedTraffic           int64  `json:"used_traffic"`
+	DataLimit             int64  `json:"data_limit"`
+	Expire                int64  `json:"expire"`
+	ReflectedUsageBatchID string `json:"reflected_usage_batch_id,omitempty"`
 }
 
 func nativeSessionUserPolicyAllowed(

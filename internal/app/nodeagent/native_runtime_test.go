@@ -282,3 +282,71 @@ func TestApplyNativeRuntimeRejectsOverlappingWireGuardPoolsBeforeMutation(
 		)
 	}
 }
+
+func TestWireGuardReflectedUsageBatchIDSurvivesRuntimeJSONToPolicy(
+	t *testing.T,
+) {
+	payload, err := parseNativeRuntimePayload(`{
+"wg_inbounds": [{
+"tag": "wg-main",
+"listen_port": 51820,
+"settings": {
+"accounting_enabled": true,
+"interface_name": "wg-test0"
+},
+"peers": [{
+"user_id": 42,
+"username": "alice",
+"public_key": "peer-a",
+"address": "10.69.0.2",
+"status": "active",
+"used_traffic": 150,
+"reflected_usage_batch_id": "wireguard-reflected-100"
+}]
+}]
+}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(payload.WireGuardInbounds) != 1 {
+		t.Fatalf(
+			"wireguard inbounds = %d, want 1",
+			len(payload.WireGuardInbounds),
+		)
+	}
+
+	if len(payload.WireGuardInbounds[0].Peers) != 1 {
+		t.Fatalf(
+			"wireguard peers = %d, want 1",
+			len(payload.WireGuardInbounds[0].Peers),
+		)
+	}
+
+	peer := payload.WireGuardInbounds[0].Peers[0]
+
+	if peer.ReflectedUsageBatchID != "wireguard-reflected-100" {
+		t.Fatalf(
+			"runtime reflected batch = %q, want %q",
+			peer.ReflectedUsageBatchID,
+			"wireguard-reflected-100",
+		)
+	}
+
+	policy := wireGuardRuntimePeerPolicy(peer)
+
+	if policy.ReflectedUsageBatchID != "wireguard-reflected-100" {
+		t.Fatalf(
+			"policy reflected batch = %q, want %q",
+			policy.ReflectedUsageBatchID,
+			"wireguard-reflected-100",
+		)
+	}
+
+	if policy.UsedTraffic != 150 {
+		t.Fatalf(
+			"policy used traffic = %d, want 150",
+			policy.UsedTraffic,
+		)
+	}
+}

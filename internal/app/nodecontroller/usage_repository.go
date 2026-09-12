@@ -83,6 +83,7 @@ type UsageHistoryFlushResult struct {
 type stagedUserUsageRow struct {
 	ID          int64
 	NodeID      int64
+	BatchID     string
 	UserID      int64
 	UsedTraffic int64
 	Online      bool
@@ -457,6 +458,10 @@ func (r Repository) FlushStagedUsage(ctx context.Context, limit int, optionValue
 			return UsageFlushResult{}, fmt.Errorf("enqueue staged usage operations: %w", err)
 		}
 	}
+	if err := r.markWireGuardUsageReflected(ctx, tx, userRows, now); err != nil {
+		return UsageFlushResult{}, err
+	}
+
 	if err := r.markStagedUserUsageProcessed(ctx, tx, stagedUserIDs(userRows), now); err != nil {
 		return UsageFlushResult{}, err
 	}
@@ -1745,8 +1750,63 @@ VALUES ('sync_config', ?, NULL, ?, 'pending', 0, ?, ?, ?)`,
 	return err
 }
 
+func (r Repository) markWireGuardUsageReflected(
+	ctx context.Context,
+	tx *sql.Tx,
+	rows []stagedUserUsageRow,
+	now time.Time,
+) error {
+	for _, row := range rows {
+		batchID := strings.TrimSpace(row.BatchID)
+		if !isWireGuardReflectionBatchID(batchID) {
+			continue
+		}
+
+		var query string
+		if r.dialect == "sqlite" {
+			query = `INSERT INTO node_wireguard_usage_reflection
+    (node_id, user_id, batch_id, updated_at)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(node_id, user_id) DO UPDATE SET
+    batch_id = excluded.batch_id,
+    updated_at = excluded.updated_at`
+		} else {
+			query = `INSERT INTO node_wireguard_usage_reflection
+    (node_id, user_id, batch_id, updated_at)
+VALUES (?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+    batch_id = VALUES(batch_id),
+    updated_at = VALUES(updated_at)`
+		}
+
+		if _, err := tx.ExecContext(
+			ctx,
+			query,
+			row.NodeID,
+			row.UserID,
+			batchID,
+			r.timeArg(now),
+		); err != nil {
+			return fmt.Errorf(
+				"mark wireguard usage reflected node=%d user=%d batch=%q: %w",
+				row.NodeID,
+				row.UserID,
+				batchID,
+				err,
+			)
+		}
+	}
+
+	return nil
+}
+
+func isWireGuardReflectionBatchID(batchID string) bool {
+	return strings.HasPrefix(batchID, "wireguard-") ||
+		strings.HasPrefix(batchID, "combined-")
+}
+
 func (r Repository) pendingStagedUserUsage(ctx context.Context, limit int) ([]stagedUserUsageRow, error) {
-	return r.queryStagedUserUsage(ctx, `SELECT id, node_id, user_id, used_traffic, online, created_at
+	return r.queryStagedUserUsage(ctx, `SELECT id, node_id, batch_id, user_id, used_traffic, online, created_at
 FROM node_usage_user_queue
 WHERE processed_at IS NULL
 ORDER BY id
@@ -1754,7 +1814,7 @@ LIMIT ?`, limit)
 }
 
 func (r Repository) pendingStagedUserUsageHistory(ctx context.Context, limit int) ([]stagedUserUsageRow, error) {
-	return r.queryStagedUserUsage(ctx, `SELECT id, node_id, user_id, used_traffic, online, created_at
+	return r.queryStagedUserUsage(ctx, `SELECT id, node_id, batch_id, user_id, used_traffic, online, created_at
 FROM node_usage_user_queue
 WHERE processed_at IS NOT NULL AND history_processed_at IS NULL
 ORDER BY id
@@ -1772,7 +1832,7 @@ func (r Repository) queryStagedUserUsage(ctx context.Context, query string, limi
 		var row stagedUserUsageRow
 		var online int
 		var createdAt any
-		if err := rows.Scan(&row.ID, &row.NodeID, &row.UserID, &row.UsedTraffic, &online, &createdAt); err != nil {
+		if err := rows.Scan(&row.ID, &row.NodeID, &row.BatchID, &row.UserID, &row.UsedTraffic, &online, &createdAt); err != nil {
 			return nil, err
 		}
 		parsed := usageDBTime(createdAt)

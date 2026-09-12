@@ -109,10 +109,15 @@ func (s *Server) applyNativeRuntime(raw string) error {
 			return fmt.Errorf("duplicate wireguard runtime tag %q", tag)
 		}
 
-		prepared, err := s.prepareWireGuardInbound(inbound)
+		runtimeInbound, suppressedPeers := filterWireGuardRuntimeInboundByStaticPolicy(inbound)
+		runtimeInbound = s.filterWireGuardRuntimeInboundByDynamicSuppression(
+			runtimeInbound,
+		)
+		prepared, err := s.prepareWireGuardInbound(runtimeInbound)
 		if err != nil {
 			return err
 		}
+		prepared.SuppressedPeers = suppressedPeers
 		if owner, exists := usedWGInterfaces[prepared.InterfaceName]; exists {
 			return fmt.Errorf(
 				"wireguard interface %q is assigned to both %q and %q",
@@ -213,7 +218,10 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		return err
 	}
 
-	if err := s.syncWireGuardUsageConfigs(wgUsageInbounds); err != nil {
+	if err := s.syncWireGuardUsageConfigs(
+		wgUsageInbounds,
+		payload.SessionCallback,
+	); err != nil {
 		return err
 	}
 
