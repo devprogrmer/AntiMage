@@ -596,7 +596,7 @@ func (r Repository) ConnectedNodeIDs(ctx context.Context) ([]int64, error) {
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id
 FROM nodes
-WHERE LOWER(COALESCE(status, '')) = 'connected'
+WHERE LOWER(COALESCE(status, '')) NOT IN ('disabled', 'limited', 'deleted')
 ORDER BY id`)
 	if err != nil {
 		return nil, err
