@@ -598,9 +598,6 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 
 	s.mu.Lock()
 	s.lastConfig = configPath
-	if req.GetDesiredRevision() > s.appliedRev {
-		s.appliedRev = req.GetDesiredRevision()
-	}
 	s.mu.Unlock()
 
 	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
@@ -615,6 +612,12 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	if err := s.applyNativeRuntime(req.GetOvRuntimeJson()); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
+
+	s.mu.Lock()
+	if req.GetDesiredRevision() > s.appliedRev {
+		s.appliedRev = req.GetDesiredRevision()
+	}
+	s.mu.Unlock()
 
 	return s.action(req.GetOperationId(), message), nil
 }
