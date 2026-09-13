@@ -16,6 +16,7 @@ import (
 type nativeSessionHelperConfig struct {
 	Callback          nativeRuntimeSessionCallback       `json:"callback"`
 	InboundTag        string                             `json:"inbound_tag"`
+	Protocol          string                             `json:"protocol,omitempty"`
 	Users             map[string]int64                   `json:"users"`
 	Policies          map[string]nativeSessionUserPolicy `json:"policies,omitempty"`
 	StateDir          string                             `json:"state_dir"`
@@ -87,29 +88,34 @@ func RunNativeSessionEventHelper(args []string) error {
 		return fmt.Errorf("parse session helper config: %w", err)
 	}
 
-	commonName := strings.TrimSpace(os.Getenv("common_name"))
+	protocol := strings.ToLower(strings.TrimSpace(cfg.Protocol))
+	if protocol == "" {
+		protocol = "ov"
+	}
+
+	commonName := firstNonEmptyEnv("common_name", "PEERNAME")
 	if commonName == "" {
-		return fmt.Errorf("openvpn common_name is missing")
+		return fmt.Errorf("%s session username is missing", protocol)
 	}
 
 	userID, ok := cfg.Users[commonName]
 	if !ok || userID <= 0 {
 		return fmt.Errorf(
-			"openvpn user %q is not present in runtime state",
+			"%s user %q is not present in runtime state",
+			protocol,
 			commonName,
 		)
 	}
 
-	assignedIP := strings.TrimSpace(
-		os.Getenv("ifconfig_pool_remote_ip"),
+	assignedIP := firstNonEmptyEnv(
+		"ifconfig_pool_remote_ip",
+		"IPREMOTE",
+		"PPP_REMOTE",
 	)
 
-	clientIP := strings.TrimSpace(os.Getenv("trusted_ip"))
-	if clientIP == "" {
-		clientIP = strings.TrimSpace(os.Getenv("trusted_ip6"))
-	}
+	clientIP := firstNonEmptyEnv("trusted_ip", "trusted_ip6", "CALLING_NUMBER")
 
-	trustedPort := strings.TrimSpace(os.Getenv("trusted_port"))
+	trustedPort := firstNonEmptyEnv("trusted_port")
 
 	stateDir := strings.TrimSpace(cfg.StateDir)
 	if stateDir == "" {
@@ -175,7 +181,7 @@ func RunNativeSessionEventHelper(args []string) error {
 		cfg.Callback,
 		nativeSessionEvent{
 			UserID:     userID,
-			Protocol:   "ov",
+			Protocol:   protocol,
 			InboundTag: strings.TrimSpace(cfg.InboundTag),
 			SessionID:  sessionID,
 			AssignedIP: assignedIP,
@@ -196,6 +202,15 @@ func RunNativeSessionEventHelper(args []string) error {
 	}
 
 	return nil
+}
+
+func firstNonEmptyEnv(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func nativeSessionStateKey(
