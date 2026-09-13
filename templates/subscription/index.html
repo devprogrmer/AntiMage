@@ -1753,8 +1753,16 @@
                                             <span class="am-vpn-name">{% if item.Remark %}{{ item.Remark }}{% else %}{{ item.Filename }}{% endif %}</span>
                                             <span class="am-vpn-meta">{{ item.Filename }}</span>
                                         </div>
-                                        <a class="am-link-button" href="{{ item.DownloadURL }}" target="_blank" rel="noopener noreferrer" data-i18n="downloadButton">Download</a>
+                                        <div class="am-vpn-actions">
+                                            <a class="am-link-button" href="{{ item.DownloadURL }}" target="_blank" rel="noopener noreferrer" data-i18n="downloadButton">Download</a>
+                                            {% if item.Body %}
+                                            <button class="am-link-button" type="button" data-copy-target="ovpn-config-{{ item.HostTag }}" data-i18n="copyConfigButton">Copy config</button>
+                                            {% endif %}
+                                        </div>
                                     </div>
+                                    {% if item.Body %}
+                                    <textarea class="am-wg-config" id="ovpn-config-{{ item.HostTag }}" readonly>{{ item.Body }}</textarea>
+                                    {% endif %}
                                     {% endfor %}
                                 </div>
                                 {% endif %}

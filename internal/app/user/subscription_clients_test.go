@@ -600,6 +600,7 @@ func TestHTMLSubscriptionIncludesProxyOpenVPNAndWireGuardMaterial(t *testing.T) 
 	for _, expected := range []string{
 		"vless://11111111-1111-4111-8111-111111111111@edge.example.com:443",
 		"https://panel.example/sub/" + key + "/ov/ov-edge-2.ovpn",
+		"remote ov.example.com 1194",
 		"https://panel.example/sub/" + key + "/wg/wg-edge.conf",
 		"wireguard://",
 	} {
