@@ -43,6 +43,9 @@ type Server struct {
 	l2TPRuntimes                     map[string]*l2TPProcess
 	l2TPTProxySpecs                  map[string]openVPNTProxySpec
 	l2TPNATSpecs                     map[string]openVPNNATSpec
+	pptpRuntimes                     map[string]*pptpProcess
+	pptpTProxySpecs                  map[string]openVPNTProxySpec
+	pptpNATSpecs                     map[string]openVPNNATSpec
 	openVPNTProxyStartupReconciled   bool
 	wireGuardRuntimes                map[string]wireGuardRuntimeState
 	wireGuardDynamicSuppressedPeers  map[string]struct{}
@@ -105,6 +108,9 @@ func New(cfg Config) *Server {
 		l2TPRuntimes:                    make(map[string]*l2TPProcess),
 		l2TPTProxySpecs:                 make(map[string]openVPNTProxySpec),
 		l2TPNATSpecs:                    make(map[string]openVPNNATSpec),
+		pptpRuntimes:                    make(map[string]*pptpProcess),
+		pptpTProxySpecs:                 make(map[string]openVPNTProxySpec),
+		pptpNATSpecs:                    make(map[string]openVPNNATSpec),
 		wireGuardRuntimes:               make(map[string]wireGuardRuntimeState),
 		wireGuardDynamicSuppressedPeers: make(map[string]struct{}),
 		openVPNUsageBaseline:            make(map[string]uint64),
@@ -136,6 +142,9 @@ func (s *Server) Run(ctx context.Context) error {
 		s.stopAllL2TPRuntimes()
 		s.stopAllL2TPTProxySpecs()
 		s.stopAllL2TPNATSpecs()
+		s.stopAllPPTPRuntimes()
+		s.stopAllPPTPTProxySpecs()
+		s.stopAllPPTPNATSpecs()
 		s.stopAllWireGuardRuntimes()
 		_ = s.stopRuntime()
 	}()
@@ -204,6 +213,9 @@ func (s *Server) RestartRuntime(
 	s.stopAllL2TPRuntimes()
 	s.stopAllL2TPTProxySpecs()
 	s.stopAllL2TPNATSpecs()
+	s.stopAllPPTPRuntimes()
+	s.stopAllPPTPTProxySpecs()
+	s.stopAllPPTPNATSpecs()
 	s.stopAllWireGuardRuntimes()
 	_ = s.stopRuntime()
 
@@ -220,6 +232,9 @@ func (s *Server) StopRuntime(
 	s.stopAllL2TPRuntimes()
 	s.stopAllL2TPTProxySpecs()
 	s.stopAllL2TPNATSpecs()
+	s.stopAllPPTPRuntimes()
+	s.stopAllPPTPTProxySpecs()
+	s.stopAllPPTPNATSpecs()
 	s.stopAllWireGuardRuntimes()
 	_ = s.stopRuntime()
 
