@@ -16,9 +16,11 @@ import (
 func TestApplyTorProxyStartsConfiguredLoopbackSocks(t *testing.T) {
 	previousCommand := torCommandContext
 	previousLookPath := torLookPath
+	previousReadyCheck := torReadyCheck
 	defer func() {
 		torCommandContext = previousCommand
 		torLookPath = previousLookPath
+		torReadyCheck = previousReadyCheck
 	}()
 	torLookPath = func(string) (string, error) {
 		return os.Executable()
@@ -28,6 +30,9 @@ func TestApplyTorProxyStartsConfiguredLoopbackSocks(t *testing.T) {
 		cmd := exec.CommandContext(ctx, name, allArgs...)
 		cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
 		return cmd
+	}
+	torReadyCheck = func(context.Context, uint32, time.Duration) error {
+		return nil
 	}
 
 	dataDir := t.TempDir()
@@ -76,9 +81,11 @@ func TestApplyTorProxyStartsConfiguredLoopbackSocks(t *testing.T) {
 func TestApplyTorProxyDoesNotBindProcessToRequestContext(t *testing.T) {
 	previousCommand := torCommandContext
 	previousLookPath := torLookPath
+	previousReadyCheck := torReadyCheck
 	defer func() {
 		torCommandContext = previousCommand
 		torLookPath = previousLookPath
+		torReadyCheck = previousReadyCheck
 	}()
 	torLookPath = func(string) (string, error) {
 		return os.Executable()
@@ -91,6 +98,9 @@ func TestApplyTorProxyDoesNotBindProcessToRequestContext(t *testing.T) {
 		cmd := exec.CommandContext(ctx, name, allArgs...)
 		cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
 		return cmd
+	}
+	torReadyCheck = func(context.Context, uint32, time.Duration) error {
+		return nil
 	}
 
 	requestContext, cancel := context.WithCancel(context.Background())
@@ -130,6 +140,20 @@ func TestApplyTorProxyRejectsMissingTor(t *testing.T) {
 	_, err := New(Config{DataDir: t.TempDir()}).ApplyTorProxy(context.Background(), &nodev1.TorProxyRequest{SocksPort: 19050})
 	if err == nil || !strings.Contains(err.Error(), "tor is not installed") {
 		t.Fatalf("expected missing tor error, got %v", err)
+	}
+}
+
+func TestRuntimeStateDoesNotAdvertiseTorProxyWhenTorMissing(t *testing.T) {
+	previousLookPath := torLookPath
+	defer func() { torLookPath = previousLookPath }()
+	torLookPath = func(string) (string, error) {
+		return "", exec.ErrNotFound
+	}
+
+	state := New(Config{DataDir: t.TempDir()}).runtimeState("health")
+	if containsString(state.GetCapabilities(), "tor_proxy") ||
+		containsString(state.GetCapabilities(), "tor_proxy_running") {
+		t.Fatalf("unexpected Tor capabilities without tor: %v", state.GetCapabilities())
 	}
 }
 

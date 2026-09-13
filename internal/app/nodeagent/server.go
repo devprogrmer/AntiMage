@@ -39,6 +39,7 @@ type Server struct {
 	lastRuntime                      *exec.Cmd
 	openVPNRuntimes                  map[string]*openVPNProcess
 	openVPNTProxySpecs               map[string]openVPNTProxySpec
+	openVPNNATSpecs                  map[string]openVPNNATSpec
 	openVPNTProxyStartupReconciled   bool
 	wireGuardRuntimes                map[string]wireGuardRuntimeState
 	wireGuardDynamicSuppressedPeers  map[string]struct{}
@@ -86,6 +87,7 @@ type transferSample struct {
 var (
 	torCommandContext  = exec.CommandContext
 	torLookPath        = exec.LookPath
+	torReadyCheck      = waitForTorSOCKSReady
 	xrayCommandContext = exec.CommandContext
 )
 
@@ -96,6 +98,7 @@ func New(cfg Config) *Server {
 		startedAt:                       time.Now(),
 		openVPNRuntimes:                 make(map[string]*openVPNProcess),
 		openVPNTProxySpecs:              make(map[string]openVPNTProxySpec),
+		openVPNNATSpecs:                 make(map[string]openVPNNATSpec),
 		wireGuardRuntimes:               make(map[string]wireGuardRuntimeState),
 		wireGuardDynamicSuppressedPeers: make(map[string]struct{}),
 		openVPNUsageBaseline:            make(map[string]uint64),
@@ -123,6 +126,7 @@ func (s *Server) Run(ctx context.Context) error {
 	defer func() {
 		s.stopAllOpenVPNRuntimes()
 		s.stopAllOpenVPNTProxySpecs()
+		s.stopAllOpenVPNNATSpecs()
 		s.stopAllWireGuardRuntimes()
 		_ = s.stopRuntime()
 	}()
@@ -187,6 +191,7 @@ func (s *Server) RestartRuntime(
 ) (*nodev1.RuntimeActionResponse, error) {
 	s.stopAllOpenVPNRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
+	s.stopAllOpenVPNNATSpecs()
 	s.stopAllWireGuardRuntimes()
 	_ = s.stopRuntime()
 
@@ -199,6 +204,7 @@ func (s *Server) StopRuntime(
 ) (*nodev1.RuntimeActionResponse, error) {
 	s.stopAllOpenVPNRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
+	s.stopAllOpenVPNNATSpecs()
 	s.stopAllWireGuardRuntimes()
 	_ = s.stopRuntime()
 
@@ -270,6 +276,18 @@ func (s *Server) ApplyTorProxy(ctx context.Context, req *nodev1.TorProxyRequest)
 	}
 	s.torProxies[port] = cmd
 	s.mu.Unlock()
+
+	if err := torReadyCheck(ctx, port, 15*time.Second); err != nil {
+		s.mu.Lock()
+		if s.torProxies[port] == cmd {
+			delete(s.torProxies, port)
+		}
+		s.mu.Unlock()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		return nil, status.Error(codes.FailedPrecondition, "tor SOCKS port is not ready: "+err.Error())
+	}
 
 	go func() {
 		err := cmd.Wait()
@@ -673,7 +691,10 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 	applied := s.appliedRev
 	torProxyCount := len(s.torProxies)
 	s.mu.Unlock()
-	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "tor_proxy"}
+	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync"}
+	if _, err := torLookPath("tor"); err == nil {
+		capabilities = append(capabilities, "tor_proxy")
+	}
 	if torProxyCount > 0 {
 		capabilities = append(capabilities, "tor_proxy_running")
 	}
@@ -687,6 +708,27 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 		Message:         message,
 		Capabilities:    capabilities,
 		AppliedRevision: applied,
+	}
+}
+
+func waitForTorSOCKSReady(ctx context.Context, port uint32, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.FormatUint(uint64(port), 10)), 250*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return nil
+		}
+		lastErr = err
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 }
 

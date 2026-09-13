@@ -391,7 +391,9 @@ func (s *Server) stopAllOpenVPNTProxySpecs() {
 			s.appendLog("remove openvpn tproxy failed: " + tag + ": " + err.Error())
 		}
 	}
-	s.cleanupOpenVPNTProxyPolicyIfUnused()
+	if err := s.cleanupOpenVPNTProxyPolicyIfUnused(); err != nil {
+		s.appendLog("cleanup openvpn tproxy policy failed: " + err.Error())
+	}
 }
 
 func cleanupOpenVPNTProxyChain(
@@ -447,18 +449,18 @@ func cleanupOpenVPNTProxyChain(
 	)
 }
 
-func (s *Server) cleanupOpenVPNTProxyPolicyIfUnused() {
+func (s *Server) cleanupOpenVPNTProxyPolicyIfUnused() error {
 	s.mu.Lock()
 	unused := len(s.openVPNTProxySpecs) == 0
 	s.mu.Unlock()
 
 	if !unused || openVPNNetworkGOOS != "linux" {
-		return
+		return nil
 	}
 
 	ipPath, err := openVPNNetworkLookPath("ip")
 	if err != nil {
-		return
+		return nil
 	}
 
 	iptablesPath, iptablesErr :=
@@ -477,16 +479,18 @@ func (s *Server) cleanupOpenVPNTProxyPolicyIfUnused() {
 		)
 	}
 
-	_, _ = openVPNNetworkRun(
+	if err := runOpenVPNNetworkAlreadyCleanOK(
 		ctx,
 		ipPath,
 		"route", "del",
 		"local", "0.0.0.0/0",
 		"dev", "lo",
 		"table", strconv.Itoa(openVPNTProxyTable),
-	)
+	); err != nil {
+		return err
+	}
 
-	_, _ = openVPNNetworkRun(
+	if err := runOpenVPNNetworkAlreadyCleanOK(
 		ctx,
 		ipPath,
 		"rule", "del",
@@ -500,5 +504,44 @@ func (s *Server) cleanupOpenVPNTProxyPolicyIfUnused() {
 		),
 		"table",
 		strconv.Itoa(openVPNTProxyTable),
-	)
+	); err != nil {
+		return err
+	}
+	return nil
+}
+
+func runOpenVPNNetworkAlreadyCleanOK(
+	ctx context.Context,
+	name string,
+	args ...string,
+) error {
+	output, err := openVPNNetworkRun(ctx, name, args...)
+	if err == nil {
+		return nil
+	}
+	detail := strings.ToLower(strings.TrimSpace(string(output)))
+	if detail == "" {
+		detail = strings.ToLower(err.Error())
+	}
+	for _, needle := range []string{
+		"no such process",
+		"no such file or directory",
+		"cannot find",
+		"not found",
+		"fIB table does not exist",
+		"fib table does not exist",
+	} {
+		if strings.Contains(detail, strings.ToLower(needle)) {
+			return nil
+		}
+	}
+	return runOpenVPNNetworkError(name, err, string(output))
+}
+
+func runOpenVPNNetworkError(name string, err error, output string) error {
+	detail := strings.TrimSpace(output)
+	if detail == "" {
+		return fmt.Errorf("openvpn network command %q failed: %w", name, err)
+	}
+	return fmt.Errorf("openvpn network command %q failed: %w: %s", name, err, detail)
 }

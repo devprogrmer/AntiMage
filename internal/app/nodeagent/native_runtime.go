@@ -55,6 +55,7 @@ type preparedOpenVPNRuntime struct {
 	Tag        string
 	ConfigPath string
 	TProxy     openVPNTProxySpec
+	NAT        openVPNNATSpec
 }
 
 func parseNativeRuntimePayload(raw string) (nativeRuntimePayload, error) {
@@ -202,6 +203,10 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		if err != nil {
 			return err
 		}
+		nat, err := buildOpenVPNNATSpec(inbound)
+		if err != nil {
+			return err
+		}
 
 		ovDesired[tag] = struct{}{}
 		ovPrepared = append(
@@ -210,6 +215,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 				Tag:        tag,
 				ConfigPath: configPath,
 				TProxy:     tproxy,
+				NAT:        nat,
 			},
 		)
 	}
@@ -228,6 +234,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 	s.stopRemovedWireGuardRuntimes(wgDesired)
 	s.stopRemovedOpenVPNRuntimes(ovDesired)
 	s.stopRemovedOpenVPNTProxySpecs(ovDesired)
+	s.stopRemovedOpenVPNNATSpecs(ovDesired)
 
 	for _, runtime := range wgPrepared {
 		if err := s.applyWireGuardRuntime(runtime); err != nil {
@@ -243,11 +250,16 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		if err := s.applyOpenVPNTProxy(runtime.Tag, runtime.TProxy); err != nil {
 			return err
 		}
+		if err := s.applyOpenVPNNAT(runtime.Tag, runtime.NAT); err != nil {
+			_ = s.removeOpenVPNTProxyForTag(runtime.Tag)
+			return err
+		}
 		if err := s.startOpenVPNInbound(
 			runtime.Tag,
 			runtime.ConfigPath,
 		); err != nil {
 			_ = s.removeOpenVPNTProxyForTag(runtime.Tag)
+			_ = s.removeOpenVPNNATForTag(runtime.Tag)
 			return err
 		}
 	}
