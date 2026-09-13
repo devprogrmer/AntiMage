@@ -3549,73 +3549,264 @@ func listAny(value any) []any {
 }
 
 const fallbackSubscriptionPageTemplate = `<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Subscription Information</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AntiMage Subscription Workspace</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        h1 { margin-top: 0; }
-        .link-input { margin-bottom: 10px; }
-        .copy-button { margin-left: 10px; }
-        .status { display: inline-block; padding: 3px 8px; border-radius: 3px; font-weight: bold; font-size: 16px; line-height: 1; }
-        .active { background-color: #4CAF50; color: white; }
-        .limited { background-color: #F44336; color: white; }
-        .expired { background-color: #FF9800; color: white; }
-        .disabled { background-color: #9E9E9E; color: white; }
-        .qr-popup { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: white; padding: 10px 25px 25px 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.1); display: none; z-index: 9999; }
-        .qr-close-button { text-align: right; margin-bottom: 5px; margin-right: -15px; }
-        input[type=text] { width: min(900px, 80vw); }
+        :root {
+            --bg: #070a0f;
+            --panel: #0d141d;
+            --panel-2: #121d28;
+            --line: #243447;
+            --line-strong: #39526a;
+            --text: #f4f8fb;
+            --muted: #93a6b8;
+            --red: #ef3f55;
+            --cyan: #56d7ff;
+            --green: #35d39d;
+            --amber: #f6b94b;
+            --shadow: 0 22px 60px rgba(0,0,0,.36);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at 15% -10%, rgba(239,63,85,.24), transparent 28rem),
+                linear-gradient(140deg, #06080d 0%, #0a1018 46%, #111820 100%);
+            color: var(--text);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        a { color: inherit; text-decoration: none; }
+        button, input { font: inherit; }
+        .page { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 42px; }
+        .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+        .brand { display: flex; align-items: center; gap: 12px; font-weight: 800; letter-spacing: .02em; }
+        .mark {
+            width: 42px; height: 42px; display: grid; place-items: center; border-radius: 8px;
+            color: var(--red); border: 1px solid rgba(239,63,85,.58); background: rgba(239,63,85,.08);
+            box-shadow: inset 0 0 18px rgba(239,63,85,.18);
+        }
+        .chip { border: 1px solid var(--line); color: var(--muted); border-radius: 999px; padding: 8px 12px; font-size: 13px; background: rgba(18,29,40,.72); }
+        .hero {
+            display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 18px;
+            align-items: stretch; margin-bottom: 18px;
+        }
+        .workspace, .metric, .client-card, .config-card, .modal-card {
+            border: 1px solid var(--line); background: rgba(13,20,29,.88); box-shadow: var(--shadow); border-radius: 8px;
+        }
+        .workspace { padding: 26px; position: relative; overflow: hidden; }
+        .workspace:before {
+            content: ""; position: absolute; inset: 0 0 auto; height: 4px;
+            background: linear-gradient(90deg, var(--red), var(--cyan), var(--green));
+        }
+        .eyebrow { color: var(--cyan); font-size: 12px; text-transform: uppercase; letter-spacing: .16em; font-weight: 800; margin-bottom: 10px; }
+        h1 { margin: 0; font-size: clamp(32px, 6vw, 64px); line-height: .96; letter-spacing: 0; }
+        .summary { margin: 16px 0 0; color: var(--muted); max-width: 680px; font-size: 16px; line-height: 1.7; }
+        .status-line { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+        .status {
+            display: inline-flex; align-items: center; gap: 8px; padding: 8px 11px; border-radius: 999px;
+            font-size: 13px; font-weight: 800; border: 1px solid var(--line-strong); background: rgba(18,29,40,.78);
+        }
+        .status:before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--muted); }
+        .status.active:before, .status.on_hold:before { background: var(--green); }
+        .status.limited:before, .status.expired:before { background: var(--red); }
+        .metrics { display: grid; gap: 12px; }
+        .metric { padding: 18px; min-height: 105px; }
+        .metric span { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
+        .metric strong { display: block; margin-top: 8px; font-size: 22px; line-height: 1.1; }
+        .metric .bar { height: 8px; border-radius: 999px; background: #1a2734; margin-top: 16px; overflow: hidden; }
+        .metric .bar i { display: block; height: 100%; width: 48%; background: linear-gradient(90deg, var(--cyan), var(--red)); }
+        .section-head { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin: 28px 0 14px; }
+        .section-head h2 { margin: 0; font-size: 22px; }
+        .section-head p { margin: 0; color: var(--muted); font-size: 14px; }
+        .client-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+        .client-card { padding: 16px; display: grid; gap: 14px; }
+        .client-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+        .client-icon {
+            width: 46px; height: 46px; border-radius: 8px; display: grid; place-items: center; flex: 0 0 auto;
+            border: 1px solid var(--line-strong); background: #172331; color: var(--cyan); font-weight: 900;
+        }
+        .client-title { min-width: 0; }
+        .client-title strong { display: block; overflow-wrap: anywhere; }
+        .client-title span { display: block; color: var(--muted); margin-top: 3px; font-size: 13px; }
+        .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .btn {
+            border: 1px solid var(--line-strong); background: rgba(18,29,40,.92); color: var(--text);
+            border-radius: 8px; min-height: 42px; padding: 0 12px; cursor: pointer; display: inline-flex;
+            align-items: center; justify-content: center; gap: 8px; font-weight: 800; white-space: nowrap;
+        }
+        .btn.primary { background: linear-gradient(135deg, #9d0710, #c3182f); border-color: rgba(255,255,255,.12); }
+        .btn:hover { border-color: var(--cyan); }
+        .config-list { display: grid; gap: 10px; }
+        .config-card { padding: 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+        .config-url {
+            width: 100%; color: var(--text); background: #07101a; border: 1px solid var(--line);
+            border-radius: 8px; min-height: 42px; padding: 0 12px; overflow: hidden; text-overflow: ellipsis;
+        }
+        .config-actions { display: flex; gap: 8px; }
+        .footer-links { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+        .modal {
+            position: fixed; inset: 0; display: none; place-items: center; padding: 20px; background: rgba(0,0,0,.62);
+            z-index: 50;
+        }
+        .modal.open { display: grid; }
+        .modal-card { padding: 18px; width: min(360px, 100%); text-align: center; }
+        #qrCodeContainer { display: grid; place-items: center; padding: 16px; background: white; border-radius: 8px; margin: 12px 0; min-height: 288px; }
+        .empty { color: var(--muted); border: 1px dashed var(--line-strong); border-radius: 8px; padding: 18px; background: rgba(18,29,40,.48); }
+        @media (max-width: 860px) {
+            .hero { grid-template-columns: 1fr; }
+            .client-grid { grid-template-columns: 1fr 1fr; }
+            .config-card { grid-template-columns: 1fr; }
+            .config-actions { display: grid; grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 560px) {
+            .page { width: min(100% - 20px, 1120px); padding-top: 16px; }
+            .topbar { align-items: flex-start; flex-direction: column; }
+            .workspace { padding: 20px; }
+            .client-grid, .actions { grid-template-columns: 1fr; }
+            .section-head { align-items: flex-start; flex-direction: column; }
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
-    <h1>User Information</h1>
-    <p>Username: {{ user.username }}</p>
-    <p>Status: <span class="status {{ user.status_class }}">{{ user.status }}</span></p>
-    <p>Data Limit: {% if not user.data_limit %}∞{% else %}{{ user.data_limit | bytesformat }}{% endif %}</p>
-    <p>Data Used: {{ user.used_traffic | bytesformat }}{% if user.data_limit_reset_strategy != 'no_reset' %} (resets every {{ user.data_limit_reset_strategy }}){% endif %}</p>
-    <p>Expiration Date: {% if not user.expire %}∞{% else %}{{ user.expire | datetime }} ({{ remaining_days | int }} days remaining){% endif %}</p>
-    <p><a href="{{ usage_url }}">Usage</a>{% if support_url %} · <a href="{{ support_url }}">Support</a>{% endif %}</p>
-    {% if user.status == 'active' or user.status == 'on_hold' %}
-    <h2>Links:</h2>
-    <ul>
-        {% for link in user.links %}
-        <li class="link-input">
-            <input type="text" value="{{ link }}" readonly>
-            <button class="copy-button" onclick="copyLink(this.previousElementSibling.value, this)">Copy</button>
-            <button class="qr-button" data-link="{{ link }}">QR Code</button>
-        </li>
-        {% endfor %}
-    </ul>
-    <div class="qr-popup" id="qrPopup">
-        <div class="qr-close-button"><button onclick="closeQrPopup()">X</button></div>
-        <div id="qrCodeContainer"></div>
+    <main class="page">
+        <div class="topbar">
+            <div class="brand"><span class="mark">A</span><span>AntiMage</span></div>
+            <div class="chip">Subscription Workspace</div>
+        </div>
+        <section class="hero">
+            <div class="workspace">
+                <div class="eyebrow">AntiMage Subscription Workspace</div>
+                <h1>{{ user.username }}</h1>
+                <p class="summary">Manage every available AntiMage profile for this account from one clean workspace. Copy a link, scan a QR code, or open a supported app directly.</p>
+                <div class="status-line">
+                    <span class="status {{ user.status_class }}">{{ user.status }}</span>
+                    <span class="chip">{% if not user.expire %}No expiration{% else %}Expires {{ user.expire | datetime }}{% endif %}</span>
+                    <span class="chip">{% if not user.data_limit %}Unlimited data{% else %}Limit {{ user.data_limit | bytesformat }}{% endif %}</span>
+                </div>
+            </div>
+            <div class="metrics">
+                <div class="metric">
+                    <span>Used traffic</span>
+                    <strong>{{ user.used_traffic | bytesformat }}</strong>
+                    <div class="bar"><i></i></div>
+                </div>
+                <div class="metric">
+                    <span>Data limit</span>
+                    <strong>{% if not user.data_limit %}Unlimited{% else %}{{ user.data_limit | bytesformat }}{% endif %}</strong>
+                </div>
+            </div>
+        </section>
+
+        {% if user.status == 'active' or user.status == 'on_hold' %}
+        <div class="section-head">
+            <div>
+                <h2>Apps</h2>
+                <p>Choose the app that matches the config type you want to import.</p>
+            </div>
+        </div>
+        <section class="client-grid">
+            <article class="client-card"><div class="client-top"><div class="client-icon">Hi</div><div class="client-title"><strong>Hiddify</strong><span>Android, iOS, desktop</span></div></div><div class="actions"><a class="btn" href="https://github.com/hiddify/hiddify-next/releases">Download</a><button class="btn primary add-current">Add to app</button></div></article>
+            <article class="client-card"><div class="client-top"><div class="client-icon">V2</div><div class="client-title"><strong>v2rayNG</strong><span>VLESS, VMess, Trojan, SS</span></div></div><div class="actions"><a class="btn" href="https://github.com/2dust/v2rayNG/releases">Download</a><button class="btn primary add-current">Add to app</button></div></article>
+            <article class="client-card"><div class="client-top"><div class="client-icon">SB</div><div class="client-title"><strong>sing-box</strong><span>Universal subscription</span></div></div><div class="actions"><a class="btn" href="https://github.com/SagerNet/sing-box/releases">Download</a><button class="btn primary add-current">Add to app</button></div></article>
+            <article class="client-card"><div class="client-top"><div class="client-icon">NB</div><div class="client-title"><strong>NekoBox</strong><span>Android proxy client</span></div></div><div class="actions"><a class="btn" href="https://github.com/MatsuriDayo/NekoBoxForAndroid/releases">Download</a><button class="btn primary add-current">Add to app</button></div></article>
+            <article class="client-card"><div class="client-top"><div class="client-icon">OV</div><div class="client-title"><strong>OpenVPN Connect</strong><span>.ovpn profiles</span></div></div><div class="actions"><a class="btn" href="https://openvpn.net/client/">Download</a><button class="btn primary add-openvpn">Open profile</button></div></article>
+            <article class="client-card"><div class="client-top"><div class="client-icon">WG</div><div class="client-title"><strong>WireGuard</strong><span>.conf and wireguard://</span></div></div><div class="actions"><a class="btn" href="https://www.wireguard.com/install/">Download</a><button class="btn primary add-wireguard">Open profile</button></div></article>
+        </section>
+
+        <div class="section-head">
+            <div>
+                <h2>Configs</h2>
+                <p>{{ user.links | length }} available item{% if user.links | length != 1 %}s{% endif %}</p>
+            </div>
+            <div class="footer-links">
+                <a class="btn" href="{{ usage_url }}">Usage</a>
+                {% if support_url %}<a class="btn" href="{{ support_url }}">Support</a>{% endif %}
+            </div>
+        </div>
+        <section class="config-list">
+            {% for link in user.links %}
+            <article class="config-card" data-config-card>
+                <input class="config-url" type="text" value="{{ link }}" readonly>
+                <div class="config-actions">
+                    <button class="btn copy-button" data-link="{{ link }}">Copy</button>
+                    <button class="btn qr-button" data-link="{{ link }}">QR</button>
+                </div>
+            </article>
+            {% empty %}
+            <div class="empty">No active configs are available for this account.</div>
+            {% endfor %}
+        </section>
+        {% else %}
+        <div class="empty">This subscription is not active right now.</div>
+        {% endif %}
+    </main>
+
+    <div class="modal" id="qrPopup" aria-hidden="true">
+        <div class="modal-card">
+            <strong>Scan QR</strong>
+            <div id="qrCodeContainer"></div>
+            <button class="btn" onclick="closeQrPopup()">Close</button>
+        </div>
     </div>
-    {% endif %}
     <script>
-        function copyLink(link, button) {
-            const tempInput = document.createElement('input');
-            tempInput.setAttribute('value', link);
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            document.execCommand('copy');
-            document.body.removeChild(tempInput);
-            button.textContent = 'Copied!';
-            setTimeout(function () { button.textContent = 'Copy'; }, 1500);
+        const allLinks = Array.from(document.querySelectorAll("[data-config-card] input")).map(function (input) { return input.value; });
+        const subscriptionLink = allLinks[0] || window.location.href;
+        function linkMatching(patterns) {
+            return allLinks.find(function (link) {
+                return patterns.some(function (pattern) { return link.toLowerCase().indexOf(pattern) !== -1; });
+            }) || subscriptionLink;
         }
-        const qrButtons = document.querySelectorAll('.qr-button');
-        const qrPopup = document.getElementById('qrPopup');
-        const qrCodeContainer = document.getElementById('qrCodeContainer');
-        qrButtons.forEach((qrButton) => {
-            qrButton.addEventListener('click', () => {
-                const link = qrButton.dataset.link;
+        function copyLink(link, button) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(link);
+            } else {
+                const tempInput = document.createElement("input");
+                tempInput.setAttribute("value", link);
+                document.body.appendChild(tempInput);
+                tempInput.select();
+                document.execCommand("copy");
+                document.body.removeChild(tempInput);
+            }
+            if (button) {
+                const label = button.textContent;
+                button.textContent = "Copied";
+                setTimeout(function () { button.textContent = label; }, 1400);
+            }
+        }
+        document.querySelectorAll(".copy-button").forEach(function (button) {
+            button.addEventListener("click", function () { copyLink(button.dataset.link, button); });
+        });
+        const qrPopup = document.getElementById("qrPopup");
+        const qrCodeContainer = document.getElementById("qrCodeContainer");
+        document.querySelectorAll(".qr-button").forEach(function (button) {
+            button.addEventListener("click", function () {
                 while (qrCodeContainer.firstChild) qrCodeContainer.removeChild(qrCodeContainer.firstChild);
-                new QRCode(qrCodeContainer, { text: link, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.L });
-                qrPopup.style.display = 'block';
+                new QRCode(qrCodeContainer, { text: button.dataset.link, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.L });
+                qrPopup.classList.add("open");
+                qrPopup.setAttribute("aria-hidden", "false");
             });
         });
-        function closeQrPopup() { document.getElementById('qrPopup').style.display = 'none'; }
+        document.querySelectorAll(".add-current").forEach(function (button) {
+            button.addEventListener("click", function () { window.location.href = subscriptionLink; });
+        });
+        document.querySelectorAll(".add-openvpn").forEach(function (button) {
+            button.addEventListener("click", function () { window.location.href = linkMatching([".ovpn", "openvpn://"]); });
+        });
+        document.querySelectorAll(".add-wireguard").forEach(function (button) {
+            button.addEventListener("click", function () { window.location.href = linkMatching(["wireguard://", ".conf"]); });
+        });
+        function closeQrPopup() {
+            qrPopup.classList.remove("open");
+            qrPopup.setAttribute("aria-hidden", "true");
+        }
+        qrPopup.addEventListener("click", function (event) {
+            if (event.target === qrPopup) closeQrPopup();
+        });
     </script>
 </body>
 </html>`

@@ -30,7 +30,7 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 		SkipNodeUserUsageHistory: req.SkipNodeUserUsageHistory,
 	}
 
-	nodes, err := c.repo.UsageNodes(ctx, req.NodeID, req.Limit)
+	nodes, err := c.repo.UsageCollectionNodes(ctx, req.NodeID, req.Limit)
 	if err != nil {
 		return CollectUsageResult{}, err
 	}
@@ -78,6 +78,7 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 	}
 	wg.Wait()
 	result.Speeds = mergeUserTrafficSpeeds(result.Speeds)
+	result.InboundSpeeds = mergeInboundTrafficSpeeds(result.InboundSpeeds)
 	if len(result.Speeds) > 0 {
 		identities, identityErr := c.repo.UserSpeedIdentities(ctx, speedUserIDs(result.Speeds))
 		if identityErr != nil {
@@ -213,6 +214,7 @@ func (c Controller) collectUsageForNode(
 				continue
 			}
 			inboundDeltas = append(inboundDeltas, InboundUsageDelta{Tag: tag, Up: up, Down: down})
+			result.InboundSpeeds = append(result.InboundSpeeds, InboundTrafficSpeed{Tag: tag, UploadBytes: uint64(up), DownloadBytes: uint64(down)})
 			result.InboundSamples++
 		}
 	}
@@ -268,6 +270,7 @@ func mergeCollectUsageResult(result *CollectUsageResult, next CollectUsageResult
 	result.OutboundAcked += next.OutboundAcked
 	result.Errors = append(result.Errors, next.Errors...)
 	result.Speeds = append(result.Speeds, next.Speeds...)
+	result.InboundSpeeds = append(result.InboundSpeeds, next.InboundSpeeds...)
 }
 
 func mergeUserTrafficSpeeds(speeds []UserTrafficSpeed) []UserTrafficSpeed {
@@ -281,6 +284,26 @@ func mergeUserTrafficSpeeds(speeds []UserTrafficSpeed) []UserTrafficSpeed {
 	}
 	result := make([]UserTrafficSpeed, 0, len(byUser))
 	for _, speed := range byUser {
+		result = append(result, speed)
+	}
+	return result
+}
+
+func mergeInboundTrafficSpeeds(speeds []InboundTrafficSpeed) []InboundTrafficSpeed {
+	byTag := make(map[string]InboundTrafficSpeed, len(speeds))
+	for _, speed := range speeds {
+		tag := strings.TrimSpace(speed.Tag)
+		if tag == "" {
+			continue
+		}
+		item := byTag[tag]
+		item.Tag = tag
+		item.UploadBytes += speed.UploadBytes
+		item.DownloadBytes += speed.DownloadBytes
+		byTag[tag] = item
+	}
+	result := make([]InboundTrafficSpeed, 0, len(byTag))
+	for _, speed := range byTag {
 		result = append(result, speed)
 	}
 	return result

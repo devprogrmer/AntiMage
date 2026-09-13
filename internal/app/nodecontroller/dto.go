@@ -89,16 +89,17 @@ type CollectUsageRequest struct {
 }
 
 type CollectUsageResult struct {
-	Nodes           int                `json:"nodes"`
-	UserBatches     int                `json:"user_batches"`
-	OutboundBatches int                `json:"outbound_batches"`
-	UserSamples     int                `json:"user_samples"`
-	OutboundSamples int                `json:"outbound_samples"`
-	InboundSamples  int                `json:"inbound_samples"`
-	UserAcked       int                `json:"user_acked"`
-	OutboundAcked   int                `json:"outbound_acked"`
-	Errors          []string           `json:"errors,omitempty"`
-	Speeds          []UserTrafficSpeed `json:"-"`
+	Nodes           int                   `json:"nodes"`
+	UserBatches     int                   `json:"user_batches"`
+	OutboundBatches int                   `json:"outbound_batches"`
+	UserSamples     int                   `json:"user_samples"`
+	OutboundSamples int                   `json:"outbound_samples"`
+	InboundSamples  int                   `json:"inbound_samples"`
+	UserAcked       int                   `json:"user_acked"`
+	OutboundAcked   int                   `json:"outbound_acked"`
+	Errors          []string              `json:"errors,omitempty"`
+	Speeds          []UserTrafficSpeed    `json:"-"`
+	InboundSpeeds   []InboundTrafficSpeed `json:"-"`
 }
 
 type UserTrafficSpeed struct {
@@ -108,6 +109,12 @@ type UserTrafficSpeed struct {
 	ServiceID     *int64
 	UploadSpeed   uint64
 	DownloadSpeed uint64
+}
+
+type InboundTrafficSpeed struct {
+	Tag           string
+	UploadBytes   uint64
+	DownloadBytes uint64
 }
 
 type RuntimeResult struct {

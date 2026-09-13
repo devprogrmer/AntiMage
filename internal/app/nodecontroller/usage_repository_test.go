@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -525,7 +526,7 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`); err != nil {
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7`, 0)
 }
 
-func TestRepositoryUsageNodesOnlyReturnsConnectedNodes(t *testing.T) {
+func TestRepositoryUsageNodesSkipsOnlyAdministrativelyInactiveNodes(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-nodes.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
@@ -554,7 +555,11 @@ VALUES
 	(1, 'connected-node', '127.0.0.1', 62051, 62052, 'connected', 1),
 	(2, 'error-node', '127.0.0.1', 62053, 62054, 'error', 1),
 	(3, 'connecting-node', '127.0.0.1', 62055, 62056, 'connecting', 1),
-	(4, 'disabled-node', '127.0.0.1', 62057, 62058, 'disabled', 1);
+	(4, 'disabled-node', '127.0.0.1', 62057, 62058, 'disabled', 1),
+	(5, 'limited-node', '127.0.0.1', 62059, 62060, 'limited', 1),
+	(6, 'deleted-node', '127.0.0.1', 62061, 62062, 'deleted', 1),
+	(7, 'blank-status-node', '127.0.0.1', 62063, 62064, '', 1),
+	(8, 'null-status-node', '127.0.0.1', 62065, 62066, NULL, 1);
 `)
 	if err != nil {
 		t.Fatal(err)
@@ -566,14 +571,34 @@ VALUES
 		t.Fatal(err)
 	}
 	if len(nodes) != 1 || nodes[0].ID != 1 {
-		t.Fatalf("expected only connected node, got %#v", nodes)
+		t.Fatalf("expected runtime operations to target only connected nodes, got %#v", nodes)
 	}
-	nodes, err = repo.UsageNodes(ctx, 2, 0)
+
+	nodes, err = repo.UsageCollectionNodes(ctx, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []int64
+	for _, node := range nodes {
+		got = append(got, node.ID)
+	}
+	want := []int64{1, 2, 3, 7, 8}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected accounting-capable nodes %v, got %v", want, got)
+	}
+	nodes, err = repo.UsageCollectionNodes(ctx, 2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 || nodes[0].ID != 2 {
+		t.Fatalf("expected explicit stale/error node to stay eligible for usage collection, got %#v", nodes)
+	}
+	nodes, err = repo.UsageCollectionNodes(ctx, 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(nodes) != 0 {
-		t.Fatalf("expected explicit error node to be skipped for usage collection, got %#v", nodes)
+		t.Fatalf("expected disabled node to be skipped for usage collection, got %#v", nodes)
 	}
 }
 

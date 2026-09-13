@@ -2199,9 +2199,14 @@ func TestSubscriptionPageTemplateIncludesLinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"Subscription Information", "User Information", "Links:", "vless://id@example.com:443#alice"} {
+	for _, expected := range []string{"AntiMage Subscription Workspace", "Subscription Workspace", "AntiMage", "Copy", "QR", "vless://id@example.com:443#alice"} {
 		if !strings.Contains(html, expected) {
 			t.Fatalf("expected %q in html:\n%s", expected, html)
+		}
+	}
+	for _, forbidden := range []string{"<h1>User Information</h1>", "<h2>Links:</h2>", "font-family: Arial"} {
+		if strings.Contains(html, forbidden) {
+			t.Fatalf("fallback subscription page still contains raw legacy marker %q:\n%s", forbidden, html)
 		}
 	}
 }
