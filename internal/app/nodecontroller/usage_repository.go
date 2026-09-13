@@ -133,13 +133,21 @@ type usageNextPlanRow struct {
 }
 
 func (r Repository) UsageNodes(ctx context.Context, nodeID int64, limit int) ([]NodeRow, error) {
+	return r.usageNodesWhere(ctx, nodeID, limit, `LOWER(COALESCE(status, '')) = 'connected'`)
+}
+
+func (r Repository) UsageCollectionNodes(ctx context.Context, nodeID int64, limit int) ([]NodeRow, error) {
+	return r.usageNodesWhere(ctx, nodeID, limit, `LOWER(COALESCE(status, '')) NOT IN ('disabled', 'limited', 'deleted')`)
+}
+
+func (r Repository) usageNodesWhere(ctx context.Context, nodeID int64, limit int, where string) ([]NodeRow, error) {
 	query := `SELECT
 	id,
 	COALESCE(name, ''),
 	address,
 	port,
 	api_port,
-	status,
+	COALESCE(status, ''),
 	xray_version,
 	message,
 	certificate,
@@ -148,7 +156,7 @@ func (r Repository) UsageNodes(ctx context.Context, nodeID int64, limit int) ([]
 	xray_config,
 	usage_coefficient
 FROM nodes
-WHERE LOWER(COALESCE(status, '')) = 'connected'`
+WHERE ` + where
 	args := []any{}
 	if nodeID > 0 {
 		query += ` AND id = ?`
@@ -1715,7 +1723,7 @@ func (r Repository) enqueueUsageOperations(ctx context.Context, tx *sql.Tx, oper
 	if len(operations) == 0 {
 		return nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) = 'connected' ORDER BY id`)
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) NOT IN ('disabled', 'limited', 'deleted') ORDER BY id`)
 	if err != nil {
 		return err
 	}

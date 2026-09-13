@@ -182,7 +182,6 @@ func (s *Server) collectNodeUsage(ctx context.Context) {
 		SkipNodeUserUsageHistory: !runtimeSettings.RecordNodeUserUsages,
 	})
 	if err != nil {
-		s.setLiveUserSpeeds(nil)
 		if ctx.Err() != nil {
 			logging.Debugf(logging.ComponentNode, "usage collection stopped: %v", err)
 			return
@@ -191,6 +190,7 @@ func (s *Server) collectNodeUsage(ctx context.Context) {
 		return
 	}
 	s.setLiveUserSpeeds(result.Speeds)
+	s.setLiveInboundSpeeds(result.InboundSpeeds, parseNodeUsageCollectionInterval(s.cfg.NodeUsageCollectionInterval))
 	if result.UserSamples > 0 || result.OutboundSamples > 0 || result.InboundSamples > 0 {
 		s.flushNodeUsage(ctx)
 	}

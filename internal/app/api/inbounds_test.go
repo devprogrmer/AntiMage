@@ -9,8 +9,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	adminapp "github.com/antimage/antimage/internal/app/admin"
+	"github.com/antimage/antimage/internal/app/nodecontroller"
 	"github.com/antimage/antimage/internal/app/xrayconfig"
 )
 
@@ -79,6 +81,21 @@ func TestInboundRoutesListFullAndDetail(t *testing.T) {
 	}
 	if targetIDs(full[0]["targets"]) != "master" || targetIDs(full[0]["effective_targets"]) != "master,node:7" {
 		t.Fatalf("unexpected targets: direct=%#v effective=%#v", full[0]["targets"], full[0]["effective_targets"])
+	}
+
+	server.setLiveInboundSpeeds([]nodecontroller.InboundTrafficSpeed{
+		{Tag: "master-vless", UploadBytes: 5000, DownloadBytes: 10000},
+	}, 5*time.Second)
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/inbounds/full", token, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get full inbounds with live speeds status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	full = nil
+	if err := json.Unmarshal(rec.Body.Bytes(), &full); err != nil {
+		t.Fatal(err)
+	}
+	if full[0]["upload_speed"] != float64(1000) || full[0]["download_speed"] != float64(2000) {
+		t.Fatalf("unexpected live inbound speeds: %#v", full[0])
 	}
 
 	rec = adminJSONRequest(t, server, http.MethodGet, "/api/inbounds/master-vless", token, "")

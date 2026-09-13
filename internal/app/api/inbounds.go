@@ -62,7 +62,27 @@ func (s *Server) handleInboundsFull(w http.ResponseWriter, r *http.Request) {
 		writeInboundError(w, err)
 		return
 	}
+	attachLiveInboundSpeeds(inbounds, s.liveInboundSpeedsSnapshot())
 	writeJSON(w, http.StatusOK, inbounds)
+}
+
+func attachLiveInboundSpeeds(inbounds []map[string]any, speeds map[string]liveInboundSpeed) {
+	if len(inbounds) == 0 || len(speeds) == 0 {
+		return
+	}
+	for _, inbound := range inbounds {
+		tag, _ := inbound["tag"].(string)
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			continue
+		}
+		speed, ok := speeds[tag]
+		if !ok {
+			continue
+		}
+		inbound["upload_speed"] = speed.UploadSpeed
+		inbound["download_speed"] = speed.DownloadSpeed
+	}
 }
 
 func (s *Server) handleInboundPath(w http.ResponseWriter, r *http.Request) {

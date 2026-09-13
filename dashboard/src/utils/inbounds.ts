@@ -39,6 +39,8 @@ export type RawInbound = {
 	effective_targets?: string[];
 	uplink?: number;
 	downlink?: number;
+	upload_speed?: number;
+	download_speed?: number;
 	usage_coefficient?: number;
 };
 
@@ -49,7 +51,9 @@ export const getInboundTraffic = (inbound: RawInbound) => {
 	};
 	const upload = normalize(inbound.uplink);
 	const download = normalize(inbound.downlink);
-	return { upload, download, total: upload + download };
+	const uploadSpeed = normalize(inbound.upload_speed);
+	const downloadSpeed = normalize(inbound.download_speed);
+	return { upload, download, total: upload + download, uploadSpeed, downloadSpeed };
 };
 
 type BuildInboundOptions = {

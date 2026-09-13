@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/antimage/antimage/internal/app/nodecontroller"
 	userapp "github.com/antimage/antimage/internal/app/user"
@@ -24,6 +25,11 @@ type liveUserSpeedScope struct {
 type liveUserSpeedTotal struct {
 	Upload   uint64
 	Download uint64
+}
+
+type liveInboundSpeed struct {
+	UploadSpeed   uint64 `json:"upload_speed"`
+	DownloadSpeed uint64 `json:"download_speed"`
 }
 
 func (s *Server) setLiveUserSpeeds(speeds []nodecontroller.UserTrafficSpeed) {
@@ -104,6 +110,37 @@ func (s *Server) liveUserSpeedTotalFor(principal adminPrincipal) liveUserSpeedTo
 		}
 		result.Upload += total.Upload
 		result.Download += total.Download
+	}
+	return result
+}
+
+func (s *Server) setLiveInboundSpeeds(speeds []nodecontroller.InboundTrafficSpeed, interval time.Duration) {
+	next := make(map[string]liveInboundSpeed, len(speeds))
+	seconds := interval.Seconds()
+	if seconds <= 0 {
+		seconds = defaultNodeUsageCollectionInterval.Seconds()
+	}
+	for _, speed := range speeds {
+		tag := strings.TrimSpace(speed.Tag)
+		if tag == "" {
+			continue
+		}
+		next[tag] = liveInboundSpeed{
+			UploadSpeed:   uint64(float64(speed.UploadBytes) / seconds),
+			DownloadSpeed: uint64(float64(speed.DownloadBytes) / seconds),
+		}
+	}
+	s.liveInboundSpeedsMu.Lock()
+	s.liveInboundSpeeds = next
+	s.liveInboundSpeedsMu.Unlock()
+}
+
+func (s *Server) liveInboundSpeedsSnapshot() map[string]liveInboundSpeed {
+	s.liveInboundSpeedsMu.RLock()
+	defer s.liveInboundSpeedsMu.RUnlock()
+	result := make(map[string]liveInboundSpeed, len(s.liveInboundSpeeds))
+	for tag, speed := range s.liveInboundSpeeds {
+		result[tag] = speed
 	}
 	return result
 }

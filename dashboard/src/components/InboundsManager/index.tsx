@@ -9,6 +9,7 @@ import {
 	Tag,
 	Text,
 	Tooltip,
+	VStack,
 	useDisclosure,
 	useToast,
 } from "@chakra-ui/react";
@@ -597,23 +598,35 @@ export const InboundsManager: FC = () => {
 				cell: (inbound) => {
 					const traffic = getInboundTraffic(inbound);
 					return (
-						<HStack
-							spacing={3}
-							whiteSpace="nowrap"
-							fontSize="xs"
-							dir="ltr"
-							sx={{
-								fontVariantNumeric: "tabular-nums",
-								unicodeBidi: "isolate",
-							}}
-						>
-							<Text color="teal.400">
-								↑ {SizeFormatter.sizeFormat(traffic.upload)}
-							</Text>
-							<Text color="blue.400">
-								↓ {SizeFormatter.sizeFormat(traffic.download)}
-							</Text>
-						</HStack>
+						<VStack align="flex-start" spacing={1} fontSize="xs" dir="ltr">
+							<HStack
+								spacing={3}
+								whiteSpace="nowrap"
+								sx={{
+									fontVariantNumeric: "tabular-nums",
+									unicodeBidi: "isolate",
+								}}
+							>
+								<Text color="teal.400">
+									↑ {SizeFormatter.sizeFormat(traffic.upload)}
+								</Text>
+								<Text color="blue.400">
+									↓ {SizeFormatter.sizeFormat(traffic.download)}
+								</Text>
+							</HStack>
+							<HStack
+								spacing={3}
+								whiteSpace="nowrap"
+								color="panel.textMuted"
+								sx={{
+									fontVariantNumeric: "tabular-nums",
+									unicodeBidi: "isolate",
+								}}
+							>
+								<Text>↑ {SizeFormatter.sizeFormat(traffic.uploadSpeed)}/s</Text>
+								<Text>↓ {SizeFormatter.sizeFormat(traffic.downloadSpeed)}/s</Text>
+							</HStack>
+						</VStack>
 					);
 				},
 			},

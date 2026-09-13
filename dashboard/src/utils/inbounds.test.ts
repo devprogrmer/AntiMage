@@ -18,11 +18,30 @@ describe("inbound traffic", () => {
 			upload: 1024,
 			download: 2048,
 			total: 3072,
+			uploadSpeed: 0,
+			downloadSpeed: 0,
 		});
 		expect(getInboundTraffic(base)).toEqual({
 			upload: 0,
 			download: 0,
 			total: 0,
+			uploadSpeed: 0,
+			downloadSpeed: 0,
+		});
+		expect(
+			getInboundTraffic({
+				...base,
+				uplink: 1024,
+				downlink: 2048,
+				upload_speed: 128,
+				download_speed: 256,
+			}),
+		).toEqual({
+			upload: 1024,
+			download: 2048,
+			total: 3072,
+			uploadSpeed: 128,
+			downloadSpeed: 256,
 		});
 	});
 });
