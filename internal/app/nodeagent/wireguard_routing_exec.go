@@ -408,6 +408,7 @@ func wireGuardRoutingDeleteMissing(output []byte) bool {
 	return strings.Contains(detail, "no such process") ||
 		strings.Contains(detail, "no such file or directory") ||
 		strings.Contains(detail, "cannot find device") ||
+		strings.Contains(detail, "fib table does not exist") ||
 		strings.Contains(detail, "not found")
 }
 
