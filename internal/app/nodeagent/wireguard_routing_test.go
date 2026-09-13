@@ -155,3 +155,43 @@ func TestReconcileWireGuardRoutingProgramsTProxyAndNAT(t *testing.T) {
 		}
 	}
 }
+
+func TestCleanupWireGuardTProxyIgnoresMissingFibTable(t *testing.T) {
+	oldLookPath := wireGuardRoutingLookPath
+	oldRun := wireGuardRoutingRun
+	wireGuardRoutingLookPath = func(name string) (string, error) {
+		return name, nil
+	}
+
+	var calls []string
+	wireGuardRoutingRun = func(
+		_ context.Context,
+		name string,
+		args ...string,
+	) ([]byte, error) {
+		call := name + " " + strings.Join(args, " ")
+		calls = append(calls, call)
+		switch {
+		case name == "iptables" && strings.Contains(call, " -C "):
+			return []byte("iptables: Bad rule (does a matching rule exist in that chain?)."), errors.New("exit status 1")
+		case name == "iptables" && (strings.Contains(call, " -F ") || strings.Contains(call, " -X ")):
+			return []byte("iptables: No chain/target/match by that name."), errors.New("exit status 1")
+		case name == "ip" && strings.Contains(call, " route del "):
+			return []byte("Error: FIB table does not exist."), errors.New("exit status 2")
+		}
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		wireGuardRoutingLookPath = oldLookPath
+		wireGuardRoutingRun = oldRun
+	})
+
+	if err := cleanupWireGuardTProxy(context.Background(), "iptables"); err != nil {
+		t.Fatalf("cleanupWireGuardTProxy() error = %v", err)
+	}
+
+	joined := strings.Join(calls, "\n")
+	if !strings.Contains(joined, "ip rule del priority") {
+		t.Fatalf("cleanup stopped before deleting the policy rule:\n%s", joined)
+	}
+}
