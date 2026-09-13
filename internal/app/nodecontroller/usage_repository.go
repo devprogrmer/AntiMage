@@ -1723,7 +1723,7 @@ func (r Repository) enqueueUsageOperations(ctx context.Context, tx *sql.Tx, oper
 	if len(operations) == 0 {
 		return nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) = 'connected' ORDER BY id`)
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) NOT IN ('disabled', 'limited', 'deleted') ORDER BY id`)
 	if err != nil {
 		return err
 	}
