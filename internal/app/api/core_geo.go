@@ -55,7 +55,10 @@ func (s *Server) handleCoreXrayReleases(w http.ResponseWriter, r *http.Request) 
 	}
 	tags, stale, err := fetchXrayCoreReleaseTags(r.Context(), limit)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "Failed to fetch Xray-core releases: "+err.Error())
+		writeJSON(w, http.StatusOK, map[string]any{
+			"tags":    []string{},
+			"warning": "Failed to fetch Xray-core releases: " + err.Error(),
+		})
 		return
 	}
 	payload := map[string]any{"tags": tags}

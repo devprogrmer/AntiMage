@@ -13,6 +13,8 @@ type xrayUsageSample struct {
 	UserID     int64
 	InboundTag string
 	Value      uint64
+	Upload     uint64
+	Download   uint64
 	Online     bool
 }
 

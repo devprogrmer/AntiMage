@@ -1101,13 +1101,20 @@
 
         .am-credential-row {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-columns: minmax(78px, auto) minmax(0, 1fr) auto;
             gap: 10px;
             align-items: center;
             padding: 8px 10px;
             border: 1px solid var(--am-panel-border);
             border-radius: 12px;
             background: var(--am-panel-surface);
+        }
+
+        .am-credential-label {
+            color: var(--am-panel-text-muted);
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-transform: uppercase;
         }
 
         .am-credential-copy {
@@ -1812,18 +1819,21 @@
                                             <p class="am-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
                                             <div class="am-credential-grid">
                                                 <div class="am-credential-row">
+                                                    <span class="am-credential-label" data-i18n="server">Server</span>
                                                     <span class="am-credential-copy" dir="ltr">{{ item.Server }}</span>
                                                     <button class="am-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                                                     </button>
                                                 </div>
                                                 <div class="am-credential-row">
+                                                    <span class="am-credential-label" data-i18n="username">Username</span>
                                                     <span class="am-credential-copy" dir="ltr">{{ item.Username }}</span>
                                                     <button class="am-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                                                     </button>
                                                 </div>
                                                 <div class="am-credential-row">
+                                                    <span class="am-credential-label" data-i18n="password">Password</span>
                                                     <span class="am-credential-copy" dir="ltr">{{ item.Password }}</span>
                                                     <button class="am-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
@@ -1831,6 +1841,7 @@
                                                 </div>
                                                 {% if item.IPSecPSK %}
                                                 <div class="am-credential-row">
+                                                    <span class="am-credential-label" data-i18n="ipsecPSK">IPSec PSK</span>
                                                     <span class="am-credential-copy" dir="ltr">{{ item.IPSecPSK }}</span>
                                                     <button class="am-icon-button" type="button" data-copy-text="{{ item.IPSecPSK }}" data-copy-title="psk">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
@@ -1853,18 +1864,21 @@
                                             <p class="am-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
                                             <div class="am-credential-grid">
                                                 <div class="am-credential-row">
+                                                    <span class="am-credential-label" data-i18n="server">Server</span>
                                                     <span class="am-credential-copy" dir="ltr">{{ item.Server }}</span>
                                                     <button class="am-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                                                     </button>
                                                 </div>
                                                 <div class="am-credential-row">
+                                                    <span class="am-credential-label" data-i18n="username">Username</span>
                                                     <span class="am-credential-copy" dir="ltr">{{ item.Username }}</span>
                                                     <button class="am-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                                                     </button>
                                                 </div>
                                                 <div class="am-credential-row">
+                                                    <span class="am-credential-label" data-i18n="password">Password</span>
                                                     <span class="am-credential-copy" dir="ltr">{{ item.Password }}</span>
                                                     <button class="am-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password">
                                                         <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
@@ -2342,6 +2356,7 @@
                     server: 'Server',
                     username: 'Username',
                     password: 'Password',
+                    ipsecPSK: 'IPSec PSK',
                     psk: 'PSK'
                 },
                 fa: {
@@ -2453,6 +2468,7 @@
                     server: 'سرور',
                     username: 'نام کاربری',
                     password: 'رمز عبور',
+                    ipsecPSK: 'کلید IPSec',
                     psk: 'کلید PSK'
                 },
                 ru: {
@@ -2564,6 +2580,7 @@
                     server: 'Сервер',
                     username: 'Имя пользователя',
                     password: 'Пароль',
+                    ipsecPSK: 'IPSec PSK',
                     psk: 'PSK'
                 },
                 zh: {
@@ -2675,6 +2692,7 @@
                     server: '服务器',
                     username: '用户名',
                     password: '密码',
+                    ipsecPSK: 'IPSec PSK',
                     psk: 'PSK'
                 }
             };

@@ -35,7 +35,7 @@ func TestXrayUsageCollectAndAck(t *testing.T) {
 	server.xrayUsagePending = &xrayUsagePendingBatch{
 		BatchID: "xray-test-123",
 		Samples: []xrayUsageSample{
-			{UserID: 42, InboundTag: "vless-in", Value: 1000, Online: true},
+			{UserID: 42, InboundTag: "vless-in", Value: 1000, Upload: 400, Download: 600, Online: true},
 			{UserID: 99, InboundTag: "vmess-in", Value: 2000, Online: true},
 		},
 		NextBaseline: map[string]uint64{
@@ -110,7 +110,7 @@ func TestXrayUsageAckWrongBatchID(t *testing.T) {
 		xrayUsagePending: &xrayUsagePendingBatch{
 			BatchID: "xray-correct-123",
 			Samples: []xrayUsageSample{
-				{UserID: 42, InboundTag: "vless-in", Value: 1000, Online: true},
+				{UserID: 42, InboundTag: "vless-in", Value: 1000, Upload: 400, Download: 600, Online: true},
 			},
 			NextBaseline: map[string]uint64{
 				"42.alice:uplink": 500,
@@ -208,7 +208,7 @@ func TestXrayUsageBatchProtoFormat(t *testing.T) {
 	pending := &xrayUsagePendingBatch{
 		BatchID: "xray-test-789",
 		Samples: []xrayUsageSample{
-			{UserID: 42, InboundTag: "vless-in", Value: 1000, Online: true},
+			{UserID: 42, InboundTag: "vless-in", Value: 1000, Upload: 400, Download: 600, Online: true},
 			{UserID: 99, InboundTag: "", Value: 2000, Online: true},
 			{UserID: 100, InboundTag: "vmess-in", Value: 0, Online: true},
 		},
@@ -262,6 +262,14 @@ func TestXrayUsageBatchProtoFormat(t *testing.T) {
 		onlineIPs[0].GetIps()[0].GetIp() != "203.0.113.10" ||
 		onlineIPs[0].GetIps()[0].GetLastSeenUnix() != 1234 {
 		t.Fatalf("Unexpected online IP payload: %+v", onlineIPs[0].GetIps())
+	}
+
+	speeds := batch.GetSpeeds()
+	if len(speeds) != 1 {
+		t.Fatalf("expected one live speed sample, got %d", len(speeds))
+	}
+	if speeds[0].GetUid() != "xray:42" || speeds[0].GetUpload() != 400 || speeds[0].GetDownload() != 600 {
+		t.Fatalf("unexpected live speed sample: %+v", speeds[0])
 	}
 }
 

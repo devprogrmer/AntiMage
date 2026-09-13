@@ -321,7 +321,7 @@ func (m *Manager) Issue(ctx context.Context, request IssueRequest) (Record, erro
 		"domains":              strings.Join(domains, " "),
 		"certbot_cert_name":    certName,
 		"certbot_config_group": provider,
-		"serve_tls":            strconv.FormatBool(metadataServesTLS(readMetadata(filepath.Join(m.baseDir, domains[0], ".metadata")))),
+		"serve_tls":            strconv.FormatBool(metadataServesTLSDefault(readMetadata(filepath.Join(m.baseDir, domains[0], ".metadata")), true)),
 		"issued_at":            strconv.FormatInt(now.Unix(), 10),
 		"renewed_at":           strconv.FormatInt(now.Unix(), 10),
 		"status":               "active",
@@ -362,7 +362,7 @@ func (m *Manager) Import(ctx context.Context, request ImportRequest) (Record, er
 	metadata := map[string]string{
 		"provider":   "manual",
 		"domains":    strings.Join(append([]string{domain}, altNames...), " "),
-		"serve_tls":  strconv.FormatBool(metadataServesTLS(readMetadata(filepath.Join(m.baseDir, domain, ".metadata")))),
+		"serve_tls":  strconv.FormatBool(metadataServesTLSDefault(readMetadata(filepath.Join(m.baseDir, domain, ".metadata")), true)),
 		"issued_at":  strconv.FormatInt(now.Unix(), 10),
 		"renewed_at": strconv.FormatInt(now.Unix(), 10),
 		"status":     "active",
@@ -1049,7 +1049,15 @@ func readMetadata(path string) map[string]string {
 }
 
 func metadataServesTLS(metadata map[string]string) bool {
-	return strings.EqualFold(strings.TrimSpace(metadata["serve_tls"]), "true")
+	return metadataServesTLSDefault(metadata, false)
+}
+
+func metadataServesTLSDefault(metadata map[string]string, fallback bool) bool {
+	value, ok := metadata["serve_tls"]
+	if !ok || strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return strings.EqualFold(strings.TrimSpace(value), "true")
 }
 
 func writeMetadata(dir string, metadata map[string]string) error {
