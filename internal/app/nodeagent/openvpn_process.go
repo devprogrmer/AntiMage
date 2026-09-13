@@ -30,6 +30,19 @@ type openVPNProcess struct {
 	waitErr error
 }
 
+func preflightOpenVPNRuntimes(runtimes []preparedOpenVPNRuntime) error {
+	if len(runtimes) == 0 {
+		return nil
+	}
+	if _, err := openVPNLookPath("openvpn"); err != nil {
+		return fmt.Errorf(
+			"openvpn %q: executable not installed",
+			runtimes[0].Tag,
+		)
+	}
+	return nil
+}
+
 func (r *openVPNProcess) setWaitError(err error) {
 	r.waitMu.Lock()
 	r.waitErr = err
