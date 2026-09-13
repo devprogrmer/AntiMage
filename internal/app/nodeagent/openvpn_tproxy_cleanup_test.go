@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -48,7 +49,9 @@ func TestCleanupOpenVPNTProxyPolicyIfUnused(
 		},
 	)
 
-	server.cleanupOpenVPNTProxyPolicyIfUnused()
+	if err := server.cleanupOpenVPNTProxyPolicyIfUnused(); err != nil {
+		t.Fatal(err)
+	}
 
 	expected := []string{
 		"iptables -w 5 -t mangle -C PREROUTING -j " +
@@ -113,12 +116,82 @@ func TestCleanupOpenVPNTProxyPolicyKeepsActiveRuntime(
 			Enabled: true,
 		}
 
-	server.cleanupOpenVPNTProxyPolicyIfUnused()
+	if err := server.cleanupOpenVPNTProxyPolicyIfUnused(); err != nil {
+		t.Fatal(err)
+	}
 
 	if len(commands) != 0 {
 		t.Fatalf(
 			"cleanup ran while tproxy was active:\n%s",
 			strings.Join(commands, "\n"),
 		)
+	}
+}
+
+func TestCleanupOpenVPNTProxyPolicyTreatsMissingRouteAndRuleAsClean(
+	t *testing.T,
+) {
+	oldRun := openVPNNetworkRun
+	oldLookPath := openVPNNetworkLookPath
+	oldGOOS := openVPNNetworkGOOS
+	defer func() {
+		openVPNNetworkRun = oldRun
+		openVPNNetworkLookPath = oldLookPath
+		openVPNNetworkGOOS = oldGOOS
+	}()
+	openVPNNetworkGOOS = "linux"
+	openVPNNetworkLookPath = func(name string) (string, error) {
+		return name, nil
+	}
+	openVPNNetworkRun = func(
+		_ context.Context,
+		name string,
+		args ...string,
+	) ([]byte, error) {
+		command := name + " " + strings.Join(args, " ")
+		if strings.Contains(command, "ip route del") {
+			return []byte("Error: ipv4: FIB table does not exist."), errors.New("exit status 2")
+		}
+		if strings.Contains(command, "ip rule del") {
+			return []byte("RTNETLINK answers: No such file or directory"), errors.New("exit status 2")
+		}
+		return nil, nil
+	}
+	server := New(Config{DataDir: t.TempDir()})
+	if err := server.cleanupOpenVPNTProxyPolicyIfUnused(); err != nil {
+		t.Fatalf("missing route/rule should be already clean: %v", err)
+	}
+}
+
+func TestCleanupOpenVPNTProxyPolicyReturnsRealDeleteError(
+	t *testing.T,
+) {
+	oldRun := openVPNNetworkRun
+	oldLookPath := openVPNNetworkLookPath
+	oldGOOS := openVPNNetworkGOOS
+	defer func() {
+		openVPNNetworkRun = oldRun
+		openVPNNetworkLookPath = oldLookPath
+		openVPNNetworkGOOS = oldGOOS
+	}()
+	openVPNNetworkGOOS = "linux"
+	openVPNNetworkLookPath = func(name string) (string, error) {
+		return name, nil
+	}
+	openVPNNetworkRun = func(
+		_ context.Context,
+		name string,
+		args ...string,
+	) ([]byte, error) {
+		command := name + " " + strings.Join(args, " ")
+		if strings.Contains(command, "ip route del") {
+			return []byte("permission denied"), errors.New("exit status 2")
+		}
+		return nil, nil
+	}
+	server := New(Config{DataDir: t.TempDir()})
+	err := server.cleanupOpenVPNTProxyPolicyIfUnused()
+	if err == nil || !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("expected real cleanup error, got %v", err)
 	}
 }

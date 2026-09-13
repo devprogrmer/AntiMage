@@ -7,6 +7,8 @@ import (
 	"time"
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func (c Controller) UpdateRuntime(ctx context.Context, req Request) (result RuntimeResult, err error) {
@@ -122,6 +124,9 @@ func (c Controller) updateRuntimeNow(ctx context.Context, req Request) (RuntimeR
 		Version:     strings.TrimSpace(req.Version),
 	})
 	if err != nil {
+		if isInstallerManagedOperationError(err) {
+			return installerManagedRuntimeResult(node, "runtime update"), nil
+		}
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("update runtime", req.NodeID, err)
 	}
@@ -143,6 +148,9 @@ func (c Controller) updateGeoNow(ctx context.Context, req Request) (RuntimeResul
 		Files:       files,
 	})
 	if err != nil {
+		if isInstallerManagedOperationError(err) {
+			return installerManagedRuntimeResult(node, "geo update"), nil
+		}
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("update geo", req.NodeID, err)
 	}
@@ -177,6 +185,9 @@ func (c Controller) updateServiceNow(ctx context.Context, req Request) (RuntimeR
 		Version:     strings.TrimSpace(req.Version),
 	})
 	if err != nil {
+		if isInstallerManagedOperationError(err) {
+			return installerManagedRuntimeResult(node, "service update"), nil
+		}
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("update service", req.NodeID, err)
 	}
@@ -184,6 +195,29 @@ func (c Controller) updateServiceNow(ctx context.Context, req Request) (RuntimeR
 		return RuntimeResult{}, fmt.Errorf("node %d update service returned no response", req.NodeID)
 	}
 	return runtimeResult(node, res.GetRuntime(), nil), nil
+}
+
+func isInstallerManagedOperationError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if st, ok := status.FromError(err); ok && st.Code() != codes.Unimplemented {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "managed by the installer")
+}
+
+func installerManagedRuntimeResult(node NodeRow, action string) RuntimeResult {
+	message := action + " is managed by the installer; skipped"
+	result := runtimeResult(node, &nodev1.RuntimeState{
+		Connected:   true,
+		Started:     true,
+		CoreVersion: node.XrayVersion,
+		Message:     message,
+	}, nil)
+	result.Status = "connected"
+	result.Message = message
+	return result
 }
 
 func (c Controller) rebootHostNow(ctx context.Context, req Request) (RuntimeResult, error) {
