@@ -14,7 +14,7 @@ import (
 	"github.com/antimage/antimage/internal/app/nodecontroller"
 )
 
-const geoTemplatesIndexDefault = "https://raw.githubusercontent.com/ppouria/geo-templates/main/index.json"
+const geoTemplatesIndexDefault = "https://raw.githubusercontent.com/devprogrmer/AntiMage-Geo/main/index.json"
 
 var allowedGeoFilenames = map[string]struct{}{
 	"geoip.dat":   {},

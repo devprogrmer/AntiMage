@@ -57,7 +57,7 @@ type GeoUpdateDialogProps = {
 };
 
 const DEFAULT_TEMPLATE_INDEX_URL =
-	"https://raw.githubusercontent.com/ppouria/geo-templates/main/index.json";
+	"https://raw.githubusercontent.com/devprogrmer/AntiMage-Geo/main/index.json";
 
 const IconMinus = chakra(MinusIcon, { baseStyle: { w: 3.5, h: 3.5 } });
 const IconPlus = chakra(PlusIcon, { baseStyle: { w: 3.5, h: 3.5 } });
