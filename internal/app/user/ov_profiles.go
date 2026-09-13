@@ -144,7 +144,7 @@ func (s Service) OVDownloadLinks(ctx context.Context, user UserDetail, subscript
 }
 
 func (s Service) OVDownloadProfiles(ctx context.Context, user UserDetail, subscriptionURL string) ([]OVProfile, error) {
-	profiles, err := s.OVProfiles(ctx, user.ID, "", false)
+	profiles, err := s.OVProfiles(ctx, user.ID, "", true)
 	if err != nil {
 		return nil, err
 	}

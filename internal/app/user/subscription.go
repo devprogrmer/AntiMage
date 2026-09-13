@@ -3646,6 +3646,12 @@ const fallbackSubscriptionPageTemplate = `<!DOCTYPE html>
             width: 100%; color: var(--text); background: #07101a; border: 1px solid var(--line);
             border-radius: 8px; min-height: 42px; padding: 0 12px; overflow: hidden; text-overflow: ellipsis;
         }
+        .config-body {
+            grid-column: 1 / -1; width: 100%; min-height: 160px; resize: vertical; color: var(--text);
+            background: #07101a; border: 1px solid var(--line); border-radius: 8px; padding: 12px;
+            font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            white-space: pre; overflow: auto;
+        }
         .config-actions { display: flex; gap: 8px; }
         .footer-links { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
         .modal {
@@ -3741,6 +3747,27 @@ const fallbackSubscriptionPageTemplate = `<!DOCTYPE html>
             <div class="empty">No active configs are available for this account.</div>
             {% endfor %}
         </section>
+        {% if openvpn.profiles %}
+        <div class="section-head">
+            <div>
+                <h2>OpenVPN profiles</h2>
+                <p>Download or copy the complete .ovpn profile without opening another raw page.</p>
+            </div>
+        </div>
+        <section class="config-list">
+            {% for profile in openvpn.profiles %}
+            <article class="config-card" data-openvpn-profile>
+                <input class="config-url" type="text" value="{{ profile.DownloadURL }}" readonly>
+                <div class="config-actions">
+                    <a class="btn" href="{{ profile.DownloadURL }}">Download</a>
+                    {% if profile.Body %}<button class="btn copy-target-button" data-copy-target="ovpn-profile-{{ profile.HostTag }}">Copy</button>{% endif %}
+                    <button class="btn qr-button" data-link="{{ profile.DownloadURL }}">QR</button>
+                </div>
+                {% if profile.Body %}<textarea class="config-body" id="ovpn-profile-{{ profile.HostTag }}" readonly>{{ profile.Body }}</textarea>{% endif %}
+            </article>
+            {% endfor %}
+        </section>
+        {% endif %}
         {% else %}
         <div class="empty">This subscription is not active right now.</div>
         {% endif %}
@@ -3780,6 +3807,12 @@ const fallbackSubscriptionPageTemplate = `<!DOCTYPE html>
         }
         document.querySelectorAll(".copy-button").forEach(function (button) {
             button.addEventListener("click", function () { copyLink(button.dataset.link, button); });
+        });
+        document.querySelectorAll(".copy-target-button").forEach(function (button) {
+            button.addEventListener("click", function () {
+                const target = document.getElementById(button.dataset.copyTarget || "");
+                copyLink(target ? (target.value || target.textContent || "") : "", button);
+            });
         });
         const qrPopup = document.getElementById("qrPopup");
         const qrCodeContainer = document.getElementById("qrCodeContainer");
