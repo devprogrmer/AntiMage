@@ -22,7 +22,10 @@ type Definition struct {
 	Subscription      bool
 	TrafficAccounting bool
 	Source            string
+	Constructible     *bool `json:"constructible,omitempty"`
 }
+
+var constructibleFalse = false
 
 var definitions = []Definition{
 	{ID: "vmess", DisplayName: "VMess", Family: FamilyXray, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "xray"},
@@ -37,9 +40,9 @@ var definitions = []Definition{
 	{ID: "tunnel", DisplayName: "Tunnel", Family: FamilyXray, Inbound: true, Outbound: false, Subscription: false, TrafficAccounting: true, Source: "xray"},
 	{ID: "openvpn", DisplayName: "OpenVPN", Family: FamilyDaemon, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
 	{ID: "wireguard", DisplayName: "WireGuard", Family: FamilyKernel, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
-	{ID: "wg-c", DisplayName: "WireGuard C", Family: FamilyKernel, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
-	{ID: "amneziawg", DisplayName: "AmneziaWG", Family: FamilyKernel, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
-	{ID: "awg", DisplayName: "AmneziaWG", Family: FamilyKernel, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
+	{ID: "wg-c", DisplayName: "WireGuard C", Family: FamilyKernel, Inbound: false, Outbound: true, Subscription: false, TrafficAccounting: false, Source: "system", Constructible: &constructibleFalse},
+	{ID: "amneziawg", DisplayName: "AmneziaWG", Family: FamilyKernel, Inbound: false, Outbound: true, Subscription: false, TrafficAccounting: false, Source: "system", Constructible: &constructibleFalse},
+	{ID: "awg", DisplayName: "AmneziaWG", Family: FamilyKernel, Inbound: false, Outbound: true, Subscription: false, TrafficAccounting: false, Source: "system", Constructible: &constructibleFalse},
 	{ID: "ikev2", DisplayName: "IKEv2", Family: FamilyDaemon, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
 	{ID: "l2tp", DisplayName: "L2TP/IPsec", Family: FamilyDaemon, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
 	{ID: "pptp", DisplayName: "PPTP", Family: FamilyDaemon, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},

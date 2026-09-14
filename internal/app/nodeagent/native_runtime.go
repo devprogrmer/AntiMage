@@ -342,6 +342,14 @@ func (s *Server) applyNativeRuntime(raw string) error {
 	if err := preflightPPTPRuntimes(pptpPrepared); err != nil {
 		return err
 	}
+	if len(payload.IKEv2Inbounds) > 0 ||
+		len(payload.AnyConnectInbounds) > 0 {
+		return fmt.Errorf(
+			"native runtime contains unsupported daemon inbounds: ikev2=%d anyconnect=%d",
+			len(payload.IKEv2Inbounds),
+			len(payload.AnyConnectInbounds),
+		)
+	}
 
 	if err := s.syncWireGuardUsageConfigs(
 		wgUsageInbounds,

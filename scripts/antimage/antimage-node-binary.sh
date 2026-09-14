@@ -992,6 +992,28 @@ ensure_vpn_binary_prerequisites() {
         fi
     fi
 
+    if ! command -v xl2tpd >/dev/null 2>&1; then
+        packages+=("xl2tpd")
+    fi
+
+    if ! command -v pppd >/dev/null 2>&1; then
+        packages+=("ppp")
+    fi
+
+    if ! command -v pptpd >/dev/null 2>&1; then
+        packages+=("pptpd")
+    fi
+
+    if ! command -v ipsec >/dev/null 2>&1; then
+        packages+=("strongswan" "strongswan-pki")
+    elif ! command -v pki >/dev/null 2>&1; then
+        packages+=("strongswan-pki")
+    fi
+
+    if ! command -v ocserv >/dev/null 2>&1; then
+        packages+=("ocserv")
+    fi
+
     for package in "${packages[@]}"; do
         install_package "$package"
     done
@@ -999,7 +1021,7 @@ ensure_vpn_binary_prerequisites() {
     local missing=()
     local command_name
 
-    for command_name in openvpn wg ip iptables nft sysctl ipsec xl2tpd pppd pptpd; do
+    for command_name in openvpn wg ip iptables nft sysctl xl2tpd pppd pptpd ipsec pki ocserv; do
         if ! command -v "$command_name" >/dev/null 2>&1; then
             missing+=("$command_name")
         fi

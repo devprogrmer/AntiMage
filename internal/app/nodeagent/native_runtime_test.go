@@ -81,6 +81,18 @@ func TestParseNativeRuntimePayloadEmpty(t *testing.T) {
 	}
 }
 
+func TestApplyNativeRuntimeRejectsUnsupportedDaemonPayload(t *testing.T) {
+	server := New(Config{DataDir: t.TempDir()})
+
+	err := server.applyNativeRuntime(`{"ikev2_inbounds":[{"tag":"ikev2-main"}]}`)
+	if err == nil {
+		t.Fatal("expected unsupported daemon runtime error")
+	}
+	if !strings.Contains(err.Error(), "unsupported daemon inbounds") {
+		t.Fatalf("error = %v, want unsupported daemon inbounds", err)
+	}
+}
+
 func TestParseNativeRuntimePayloadRejectsInvalidJSON(t *testing.T) {
 	if _, err := parseNativeRuntimePayload(`{invalid`); err == nil {
 		t.Fatal("expected invalid JSON error")

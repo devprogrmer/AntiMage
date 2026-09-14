@@ -20,6 +20,29 @@ func TestAllReturnsIndependentSlice(t *testing.T) {
 	}
 }
 
+func TestRegistryMarksNonConstructibleWireGuardVariants(t *testing.T) {
+	for _, id := range []string{"wg-c", "amneziawg", "awg"} {
+		definition, ok := Find(id)
+		if !ok {
+			t.Fatalf("protocol %q is missing from the AntiMage registry", id)
+		}
+		if definition.Constructible == nil || *definition.Constructible {
+			t.Fatalf("protocol %q should be explicitly non-constructible", id)
+		}
+		if definition.Inbound || definition.Subscription || definition.TrafficAccounting {
+			t.Fatalf("protocol %q exposes constructible inbound capabilities: %#v", id, definition)
+		}
+	}
+
+	definition, ok := Find("wireguard")
+	if !ok {
+		t.Fatal("wireguard is missing from the AntiMage registry")
+	}
+	if definition.Constructible != nil {
+		t.Fatalf("wireguard should use the default constructible capability, got %#v", definition.Constructible)
+	}
+}
+
 func TestCanonicalIDAcceptsUpstreamAliases(t *testing.T) {
 	for alias, want := range map[string]string{
 		"naive": "naiveproxy",
