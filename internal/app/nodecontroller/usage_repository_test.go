@@ -861,6 +861,58 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	assertInt64(t, db, `SELECT used_traffic FROM admins_services WHERE admin_id = 1 AND service_id = 2`, expected)
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_user_usages WHERE node_id = 7`, int64(count))
 	assertInt64(t, db, `SELECT COALESCE(SUM(used_traffic), 0) FROM node_user_usages WHERE node_id = 7`, expected)
+	assertInt64(t, db, `SELECT uplink FROM nodes WHERE id = 7`, 0)
+	assertInt64(t, db, `SELECT downlink FROM nodes WHERE id = 7`, expected)
+	assertInt64(t, db, `SELECT downlink FROM system WHERE id = 1`, expected)
+	assertInt64(t, db, `SELECT COALESCE(SUM(downlink), 0) FROM node_usages WHERE node_id = 7`, expected)
+}
+
+func TestRepositoryCountsUserOnlyUsageTowardNodeTotals(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-user-node-total.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+
+	_, err = db.ExecContext(ctx, `
+INSERT INTO admins (id, users_usage, lifetime_usage) VALUES (1, 0, 0);
+INSERT INTO services (id, used_traffic, lifetime_used_traffic, users_usage, updated_at) VALUES (2, 0, 0, 0, CURRENT_TIMESTAMP);
+INSERT INTO admins_services (admin_id, service_id, used_traffic, lifetime_used_traffic, updated_at) VALUES (1, 2, 0, 0, CURRENT_TIMESTAMP);
+INSERT INTO users (id, status, used_traffic, data_limit, admin_id, service_id) VALUES (10, 'active', 0, 100000, 1, 2);
+INSERT INTO nodes (id, status, uplink, downlink, data_limit, usage_coefficient) VALUES (7, 'connected', 0, 0, NULL, 1);
+INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	if err := repo.StoreCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, "users-only-batch", []UserUsageDelta{{UserID: 10, Value: 512, Online: true}}, "", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := repo.FlushStagedUsage(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.UserRows != 1 || result.OutboundRows != 0 {
+		t.Fatalf("unexpected flush result: %#v", result)
+	}
+	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id = 10`, 512)
+	assertInt64(t, db, `SELECT uplink FROM nodes WHERE id = 7`, 0)
+	assertInt64(t, db, `SELECT downlink FROM nodes WHERE id = 7`, 512)
+	assertInt64(t, db, `SELECT downlink FROM system WHERE id = 1`, 512)
+
+	historyResult, err := repo.FlushStagedUsageHistory(ctx, 100, UsagePersistOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if historyResult.UserRows != 1 || historyResult.OutboundRows != 0 {
+		t.Fatalf("unexpected history flush result: %#v", historyResult)
+	}
+	assertInt64(t, db, `SELECT used_traffic FROM node_user_usages WHERE user_id = 10 AND node_id = 7`, 512)
+	assertInt64(t, db, `SELECT downlink FROM node_usages WHERE node_id = 7`, 512)
 }
 
 func TestRepositoryStagesAndFlushesCollectedUsageIdempotently(t *testing.T) {
