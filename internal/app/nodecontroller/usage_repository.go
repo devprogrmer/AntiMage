@@ -307,6 +307,11 @@ func (r Repository) PersistCollectedUsage(ctx context.Context, node NodeRow, use
 	if err := r.persistOutboundUsage(ctx, tx, node, outboundDeltas, bucket, now, options); err != nil {
 		return fmt.Errorf("persist outbound usage: %w", err)
 	}
+	if len(outboundDeltas) == 0 {
+		if err := r.persistNodeTotalsFromUserUsage(ctx, tx, node.ID, filteredUsers, bucket, now, options); err != nil {
+			return fmt.Errorf("persist user-only node usage: %w", err)
+		}
+	}
 	if len(operations) > 0 {
 		if err := r.enqueueUsageOperations(ctx, tx, operations, now); err != nil {
 			return fmt.Errorf("enqueue usage operations: %w", err)
@@ -372,6 +377,11 @@ func (r Repository) StoreCollectedUsageWithInbounds(ctx context.Context, node No
 				return fmt.Errorf("persist unbatched user usage: %w", err)
 			}
 			operations = append(operations, ops...)
+			if len(normalizedOutbound) == 0 && len(normalizedInbound) == 0 {
+				if err := r.persistNodeTotalsFromUserUsage(ctx, tx, node.ID, normalizedUsers, now.Truncate(time.Hour), now, options); err != nil {
+					return fmt.Errorf("persist unbatched user-only node usage: %w", err)
+				}
+			}
 		}
 	}
 	if len(normalizedOutbound) > 0 || len(normalizedInbound) > 0 {
@@ -435,17 +445,26 @@ func (r Repository) FlushStagedUsage(ctx context.Context, limit int, optionValue
 	now := time.Now().UTC()
 	bucket := now.Truncate(time.Hour)
 	var operations []usageQueuedOperation
+	nodesWithOutboundUsage := map[int64]struct{}{}
+	for nodeID := range groupStagedOutboundsByNode(outboundRows) {
+		nodesWithOutboundUsage[nodeID] = struct{}{}
+	}
 
 	for nodeID, rows := range groupStagedUsersByNode(userRows) {
 		deltas := make([]UserUsageDelta, 0, len(rows))
 		for _, row := range rows {
 			deltas = append(deltas, UserUsageDelta{UserID: row.UserID, Value: row.UsedTraffic, Online: row.Online})
 		}
-		_, ops, err := r.persistUserUsage(ctx, tx, NodeRow{ID: nodeID, UsageCoefficient: 1}, deltas, bucket, now, accountingOptions)
+		filteredUsers, ops, err := r.persistUserUsage(ctx, tx, NodeRow{ID: nodeID, UsageCoefficient: 1}, deltas, bucket, now, accountingOptions)
 		if err != nil {
 			return UsageFlushResult{}, fmt.Errorf("flush staged user usage node=%d: %w", nodeID, err)
 		}
 		operations = append(operations, ops...)
+		if _, hasOutboundUsage := nodesWithOutboundUsage[nodeID]; !hasOutboundUsage {
+			if err := r.persistNodeTotalsFromUserUsage(ctx, tx, nodeID, filteredUsers, bucket, now, options); err != nil {
+				return UsageFlushResult{}, fmt.Errorf("flush staged user-only node usage node=%d: %w", nodeID, err)
+			}
+		}
 	}
 	for nodeID, rows := range groupStagedOutboundsByNode(outboundRows) {
 		outboundByTag := map[string]OutboundUsageDelta{}
@@ -1255,6 +1274,22 @@ func (r Repository) persistNodeTotalsFromInboundUsage(ctx context.Context, tx *s
 		totalDown = addUsageDelta(totalDown, delta.Down)
 	}
 	return r.incrementNodeUsageTotals(ctx, tx, node.ID, totalUp, totalDown, bucket, now, options)
+}
+
+func (r Repository) persistNodeTotalsFromUserUsage(ctx context.Context, tx *sql.Tx, nodeID int64, usageByUser map[int64]int64, bucket time.Time, now time.Time, options UsagePersistOptions) error {
+	total := sumUsageByUser(usageByUser)
+	if total <= 0 {
+		return nil
+	}
+	return r.incrementNodeUsageTotals(ctx, tx, nodeID, 0, total, bucket, now, options)
+}
+
+func sumUsageByUser(usageByUser map[int64]int64) int64 {
+	var total int64
+	for _, value := range usageByUser {
+		total = addUsageDelta(total, value)
+	}
+	return total
 }
 
 func (r Repository) inboundTagExists(ctx context.Context, tx *sql.Tx, tag string) (bool, error) {
