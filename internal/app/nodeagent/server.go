@@ -40,6 +40,9 @@ type Server struct {
 	openVPNRuntimes                  map[string]*openVPNProcess
 	openVPNTProxySpecs               map[string]openVPNTProxySpec
 	openVPNNATSpecs                  map[string]openVPNNATSpec
+	l2TPRuntimes                     map[string]*l2TPProcess
+	l2TPTProxySpecs                  map[string]openVPNTProxySpec
+	l2TPNATSpecs                     map[string]openVPNNATSpec
 	openVPNTProxyStartupReconciled   bool
 	wireGuardRuntimes                map[string]wireGuardRuntimeState
 	wireGuardDynamicSuppressedPeers  map[string]struct{}
@@ -99,6 +102,9 @@ func New(cfg Config) *Server {
 		openVPNRuntimes:                 make(map[string]*openVPNProcess),
 		openVPNTProxySpecs:              make(map[string]openVPNTProxySpec),
 		openVPNNATSpecs:                 make(map[string]openVPNNATSpec),
+		l2TPRuntimes:                    make(map[string]*l2TPProcess),
+		l2TPTProxySpecs:                 make(map[string]openVPNTProxySpec),
+		l2TPNATSpecs:                    make(map[string]openVPNNATSpec),
 		wireGuardRuntimes:               make(map[string]wireGuardRuntimeState),
 		wireGuardDynamicSuppressedPeers: make(map[string]struct{}),
 		openVPNUsageBaseline:            make(map[string]uint64),
@@ -127,6 +133,9 @@ func (s *Server) Run(ctx context.Context) error {
 		s.stopAllOpenVPNRuntimes()
 		s.stopAllOpenVPNTProxySpecs()
 		s.stopAllOpenVPNNATSpecs()
+		s.stopAllL2TPRuntimes()
+		s.stopAllL2TPTProxySpecs()
+		s.stopAllL2TPNATSpecs()
 		s.stopAllWireGuardRuntimes()
 		_ = s.stopRuntime()
 	}()
@@ -192,6 +201,9 @@ func (s *Server) RestartRuntime(
 	s.stopAllOpenVPNRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
 	s.stopAllOpenVPNNATSpecs()
+	s.stopAllL2TPRuntimes()
+	s.stopAllL2TPTProxySpecs()
+	s.stopAllL2TPNATSpecs()
 	s.stopAllWireGuardRuntimes()
 	_ = s.stopRuntime()
 
@@ -205,6 +217,9 @@ func (s *Server) StopRuntime(
 	s.stopAllOpenVPNRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
 	s.stopAllOpenVPNNATSpecs()
+	s.stopAllL2TPRuntimes()
+	s.stopAllL2TPTProxySpecs()
+	s.stopAllL2TPNATSpecs()
 	s.stopAllWireGuardRuntimes()
 	_ = s.stopRuntime()
 

@@ -19,7 +19,7 @@ type nativeRuntimePayload struct {
 	SessionCallback nativeRuntimeSessionCallback `json:"session_callback,omitempty"`
 
 	OpenVPNInbounds    []openVPNRuntimeInbound   `json:"inbounds"`
-	L2TPInbounds       []json.RawMessage         `json:"l2tp_inbounds"`
+	L2TPInbounds       []l2TPRuntimeInbound      `json:"l2tp_inbounds"`
 	PPTPInbounds       []json.RawMessage         `json:"pptp_inbounds"`
 	WireGuardInbounds  []wireGuardRuntimeInbound `json:"wg_inbounds"`
 	IKEv2Inbounds      []json.RawMessage         `json:"ikev2_inbounds"`
@@ -56,6 +56,14 @@ type preparedOpenVPNRuntime struct {
 	ConfigPath string
 	TProxy     openVPNTProxySpec
 	NAT        openVPNNATSpec
+}
+
+type preparedL2TPRuntime struct {
+	Tag         string
+	IPSecConfig string
+	XL2TPConfig string
+	TProxy      openVPNTProxySpec
+	NAT         openVPNNATSpec
 }
 
 func parseNativeRuntimePayload(raw string) (nativeRuntimePayload, error) {
@@ -220,10 +228,61 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		)
 	}
 
+	l2tpDesired := make(
+		map[string]struct{},
+		len(payload.L2TPInbounds),
+	)
+	l2tpPrepared := make(
+		[]preparedL2TPRuntime,
+		0,
+		len(payload.L2TPInbounds),
+	)
+
+	for _, inbound := range payload.L2TPInbounds {
+		tag := strings.TrimSpace(inbound.Tag)
+		if tag == "" {
+			return fmt.Errorf("l2tp inbound tag is required")
+		}
+		if _, exists := l2tpDesired[tag]; exists {
+			return fmt.Errorf("duplicate l2tp runtime tag %q", tag)
+		}
+		if len(l2tpDesired) > 0 {
+			return fmt.Errorf("only one l2tp runtime inbound is supported")
+		}
+
+		files, err := s.prepareL2TPInbound(inbound, payload.SessionCallback)
+		if err != nil {
+			return err
+		}
+		tproxy, err := buildL2TPTProxySpec(inbound)
+		if err != nil {
+			return err
+		}
+		nat, err := buildL2TPNATSpec(inbound)
+		if err != nil {
+			return err
+		}
+
+		l2tpDesired[tag] = struct{}{}
+		l2tpPrepared = append(
+			l2tpPrepared,
+			preparedL2TPRuntime{
+				Tag:         tag,
+				IPSecConfig: files.IPSecConfig,
+				XL2TPConfig: files.XL2TPConfig,
+				TProxy:      tproxy,
+				NAT:         nat,
+			},
+		)
+	}
+
 	if err := s.preflightWireGuardRuntimes(wgPrepared); err != nil {
 		return err
 	}
 	if err := preflightOpenVPNRuntimes(ovPrepared); err != nil {
+		return err
+	}
+	if err := preflightL2TPRuntimes(l2tpPrepared); err != nil {
 		return err
 	}
 
@@ -238,6 +297,9 @@ func (s *Server) applyNativeRuntime(raw string) error {
 	s.stopRemovedOpenVPNRuntimes(ovDesired)
 	s.stopRemovedOpenVPNTProxySpecs(ovDesired)
 	s.stopRemovedOpenVPNNATSpecs(ovDesired)
+	s.stopRemovedL2TPRuntimes(l2tpDesired)
+	s.stopRemovedL2TPTProxySpecs(l2tpDesired)
+	s.stopRemovedL2TPNATSpecs(l2tpDesired)
 
 	for _, runtime := range wgPrepared {
 		if err := s.applyWireGuardRuntime(runtime); err != nil {
@@ -267,11 +329,31 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		}
 	}
 
-	if len(ovPrepared) > 0 || len(wgPrepared) > 0 {
+	for _, runtime := range l2tpPrepared {
+		if err := s.applyL2TPTProxy(runtime.Tag, runtime.TProxy); err != nil {
+			return err
+		}
+		if err := s.applyL2TPNAT(runtime.Tag, runtime.NAT); err != nil {
+			_ = s.removeL2TPTProxyForTag(runtime.Tag)
+			return err
+		}
+		if err := s.startL2TPInbound(
+			runtime.Tag,
+			runtime.IPSecConfig,
+			runtime.XL2TPConfig,
+		); err != nil {
+			_ = s.removeL2TPTProxyForTag(runtime.Tag)
+			_ = s.removeL2TPNATForTag(runtime.Tag)
+			return err
+		}
+	}
+
+	if len(ovPrepared) > 0 || len(wgPrepared) > 0 || len(l2tpPrepared) > 0 {
 		s.appendLog(fmt.Sprintf(
-			"native runtime applied: openvpn=%d wireguard=%d",
+			"native runtime applied: openvpn=%d wireguard=%d l2tp=%d",
 			len(ovPrepared),
 			len(wgPrepared),
+			len(l2tpPrepared),
 		))
 	}
 	return nil

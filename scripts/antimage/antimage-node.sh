@@ -975,6 +975,18 @@ ensure_vpn_binary_prerequisites() {
         packages+=("iptables")
     fi
 
+    if ! command -v ipsec >/dev/null 2>&1; then
+        packages+=("strongswan")
+    fi
+
+    if ! command -v xl2tpd >/dev/null 2>&1; then
+        packages+=("xl2tpd")
+    fi
+
+    if ! command -v pppd >/dev/null 2>&1; then
+        packages+=("ppp")
+    fi
+
     if ! command -v ip >/dev/null 2>&1; then
         if [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]] || [[ "$OS" == "Fedora"* ]]; then
             packages+=("iproute")
@@ -990,7 +1002,7 @@ ensure_vpn_binary_prerequisites() {
     local missing=()
     local command_name
 
-    for command_name in openvpn wg ip iptables nft sysctl; do
+    for command_name in openvpn wg ip iptables nft sysctl ipsec xl2tpd pppd; do
         if ! command -v "$command_name" >/dev/null 2>&1; then
             missing+=("$command_name")
         fi
