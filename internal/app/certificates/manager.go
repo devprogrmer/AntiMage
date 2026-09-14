@@ -321,7 +321,10 @@ func (m *Manager) Issue(ctx context.Context, request IssueRequest) (Record, erro
 		"domains":              strings.Join(domains, " "),
 		"certbot_cert_name":    certName,
 		"certbot_config_group": provider,
-		"serve_tls":            strconv.FormatBool(metadataServesTLSDefault(readMetadata(filepath.Join(m.baseDir, domains[0], ".metadata")), true)),
+		// Newly issued managed certificates are SNI candidates by default. The
+		// ENV certificate remains the fallback; an explicit disable can still be
+		// applied afterwards through SetServeTLS.
+		"serve_tls":            "true",
 		"issued_at":            strconv.FormatInt(now.Unix(), 10),
 		"renewed_at":           strconv.FormatInt(now.Unix(), 10),
 		"status":               "active",
@@ -362,7 +365,9 @@ func (m *Manager) Import(ctx context.Context, request ImportRequest) (Record, er
 	metadata := map[string]string{
 		"provider":   "manual",
 		"domains":    strings.Join(append([]string{domain}, altNames...), " "),
-		"serve_tls":  strconv.FormatBool(metadataServesTLSDefault(readMetadata(filepath.Join(m.baseDir, domain, ".metadata")), true)),
+		// Imported domain certificates are also managed SNI candidates by
+		// default, without changing the ENV fallback certificate.
+		"serve_tls":  "true",
 		"issued_at":  strconv.FormatInt(now.Unix(), 10),
 		"renewed_at": strconv.FormatInt(now.Unix(), 10),
 		"status":     "active",
