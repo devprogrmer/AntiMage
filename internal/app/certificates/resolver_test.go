@@ -266,25 +266,17 @@ func TestManagerKeepsLegacyENVCertificateSeparate(t *testing.T) {
 	if current, err := os.ReadFile(fallbackCert); err != nil || !bytes.Equal(current, originalFallback) {
 		t.Fatalf("ENV certificate changed: err=%v", err)
 	}
+	if record, err := manager.Get(context.Background(), domain); err != nil || !record.ServeTLS {
+		t.Fatalf("new managed certificate should be served by SNI without changing ENV fallback: record=%#v err=%v", record, err)
+	}
 
 	resolver, err := NewResolver(base, fallbackCert, fallbackKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	selected, err := resolver.GetCertificate(clientHello(domain))
-	if err != nil || !bytes.Equal(selected.Certificate[0], mustLoadCertificate(t, fallbackCert, fallbackKey).Certificate[0]) {
-		t.Fatalf("disabled managed certificate replaced ENV fallback: %v", err)
-	}
-	if _, err := manager.SetServeTLS(context.Background(), domain, true); err != nil {
-		t.Fatal(err)
-	}
-	resolver, err = NewResolver(base, fallbackCert, fallbackKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	selected, err = resolver.GetCertificate(clientHello(domain))
 	if err != nil || !bytes.Equal(selected.Certificate[0], mustLoadCertificate(t, replacementCert, replacementKey).Certificate[0]) {
-		t.Fatalf("enabled managed certificate was not selected: %v", err)
+		t.Fatalf("managed SNI certificate was not selected: %v", err)
 	}
 }
 
@@ -331,12 +323,8 @@ func TestManagerImportsListsAndDeletesManualCertificate(t *testing.T) {
 	if record.Status == "invalid" || record.Status == "missing" || record.Provider == nil || *record.Provider != "manual" || record.AutoRenew {
 		t.Fatalf("unexpected imported record: %#v", record)
 	}
-	if record.ServeTLS {
-		t.Fatal("new certificate unexpectedly replaced the ENV fallback")
-	}
-	record, err = manager.SetServeTLS(context.Background(), record.Domain, true)
-	if err != nil || !record.ServeTLS {
-		t.Fatalf("enable TLS serving: record=%#v err=%v", record, err)
+	if !record.ServeTLS {
+		t.Fatal("new managed certificate should be served by SNI by default")
 	}
 	originalFullchain, err := os.ReadFile(filepath.Join(ManagedBaseDir(base), record.Domain, "fullchain.pem"))
 	if err != nil {

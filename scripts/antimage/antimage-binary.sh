@@ -1027,6 +1027,7 @@ issue_ssl_with_acme() {
     echo "email=$email" >> "$SSL_CERT_DIR/.metadata"
     echo "domains=${domains[*]}" >> "$SSL_CERT_DIR/.metadata"
     echo "issued_at=$(date -u +%s)" >> "$SSL_CERT_DIR/.metadata"
+    echo "serve_tls=true" >> "$SSL_CERT_DIR/.metadata"
     return 0
 }
 
@@ -1053,6 +1054,7 @@ issue_ssl_with_certbot() {
     echo "email=$email" >> "$SSL_CERT_DIR/.metadata"
     echo "domains=${domains[*]}" >> "$SSL_CERT_DIR/.metadata"
     echo "issued_at=$(date -u +%s)" >> "$SSL_CERT_DIR/.metadata"
+    echo "serve_tls=true" >> "$SSL_CERT_DIR/.metadata"
     return 0
 }
 
@@ -1103,6 +1105,7 @@ issue_ssl_public_ip() {
     echo "certbot_cert_name=$cert_id" >> "$SSL_CERT_DIR/.metadata"
     echo "validity=shortlived" >> "$SSL_CERT_DIR/.metadata"
     echo "issued_at=$(date -u +%s)" >> "$SSL_CERT_DIR/.metadata"
+    echo "serve_tls=true" >> "$SSL_CERT_DIR/.metadata"
     return 0
 }
 
@@ -1165,6 +1168,7 @@ issue_ssl_self_signed_ip() {
     echo "email=$email" >> "$SSL_CERT_DIR/.metadata"
     echo "domains=${ips[*]}" >> "$SSL_CERT_DIR/.metadata"
     echo "issued_at=$(date -u +%s)" >> "$SSL_CERT_DIR/.metadata"
+    echo "serve_tls=true" >> "$SSL_CERT_DIR/.metadata"
     return 0
 }
 
@@ -1867,8 +1871,13 @@ perform_ssl_issue() {
         fi
     fi
 
-    sync_ssl_env_paths "$SSL_CERT_DIR"
-    colorized_echo green "SSL certificate installed at $SSL_CERT_DIR using $provider_used"
+    if [ "$has_domain" -eq 1 ]; then
+        colorized_echo green "Managed SNI SSL certificate installed at $SSL_CERT_DIR using $provider_used"
+        colorized_echo blue "ENV fallback certificate paths were left unchanged. This domain is served through .managed SNI metadata."
+    else
+        sync_ssl_env_paths "$SSL_CERT_DIR"
+        colorized_echo green "Fallback SSL certificate installed at $SSL_CERT_DIR using $provider_used"
+    fi
     
     # Check if AntiMage is installed and running, then restart to apply SSL changes
     if is_antimage_installed; then

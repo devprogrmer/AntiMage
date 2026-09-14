@@ -45,7 +45,7 @@ func TestHandleCoreXrayReleasesUsesGitHubShape(t *testing.T) {
 	}
 }
 
-func TestHandleCoreXrayReleasesReturnsCleanUpstreamError(t *testing.T) {
+func TestHandleCoreXrayReleasesReturnsCleanWarningOnUpstreamError(t *testing.T) {
 	server, _ := testAdminServer(t)
 	resetXrayCoreReleaseCache()
 	t.Cleanup(resetXrayCoreReleaseCache)
@@ -61,7 +61,7 @@ func TestHandleCoreXrayReleasesReturnsCleanUpstreamError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/core/xray/releases?limit=2", nil)
 	rec := httptest.NewRecorder()
 	server.handleCoreXrayReleases(rec, req)
-	if rec.Code != http.StatusBadGateway {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	if strings.Contains(rec.Body.String(), "<!DOCTYPE") {
@@ -69,6 +69,16 @@ func TestHandleCoreXrayReleasesReturnsCleanUpstreamError(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "HTML error page") {
 		t.Fatalf("expected sanitized HTML error, got %s", rec.Body.String())
+	}
+	var body struct {
+		Tags    []string `json:"tags"`
+		Warning string   `json:"warning"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Tags) != 0 || body.Warning == "" {
+		t.Fatalf("expected empty tags with warning, got %#v", body)
 	}
 }
 

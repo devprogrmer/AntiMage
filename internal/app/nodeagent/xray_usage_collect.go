@@ -195,6 +195,16 @@ func (s *Server) collectXrayUserUsage(
 		if ^uint64(0)-sample.Value >= delta {
 			sample.Value += delta
 		}
+		switch statName.Direction {
+		case "uplink":
+			if ^uint64(0)-sample.Upload >= delta {
+				sample.Upload += delta
+			}
+		case "downlink":
+			if ^uint64(0)-sample.Download >= delta {
+				sample.Download += delta
+			}
+		}
 
 		aggregated[key] = sample
 	}
@@ -420,6 +430,22 @@ func xrayUsageBatchProto(
 		)
 	}
 
+	speeds := make(
+		[]*nodev1.UserTrafficSpeed,
+		0,
+		len(pending.Samples),
+	)
+	for _, sample := range pending.Samples {
+		if sample.Upload == 0 && sample.Download == 0 {
+			continue
+		}
+		speeds = append(speeds, &nodev1.UserTrafficSpeed{
+			Uid:      "xray:" + strconv.FormatInt(sample.UserID, 10),
+			Upload:   sample.Upload,
+			Download: sample.Download,
+		})
+	}
+
 	onlineIPs := make(
 		[]*nodev1.OnlineUserIP,
 		0,
@@ -446,6 +472,7 @@ func xrayUsageBatchProto(
 	return &nodev1.UserUsageBatch{
 		BatchId:   pending.BatchID,
 		Stats:     stats,
+		Speeds:    speeds,
 		OnlineIps: onlineIPs,
 	}
 }
