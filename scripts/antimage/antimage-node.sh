@@ -894,6 +894,27 @@ install_package () {
     ui_spinner_run "Installing $PACKAGE" install_package_impl "$PACKAGE"
 }
 
+package_available() {
+    if [ -z "$PKG_MANAGER" ]; then
+        detect_and_update_package_manager
+    fi
+
+    local PACKAGE="$1"
+    if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
+        apt-cache show "$PACKAGE" >/dev/null 2>&1
+    elif [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]]; then
+        yum info "$PACKAGE" >/dev/null 2>&1
+    elif [[ "$OS" == "Fedora"* ]]; then
+        dnf info "$PACKAGE" >/dev/null 2>&1
+    elif [[ "$OS" == "Arch"* ]]; then
+        pacman -Si "$PACKAGE" >/dev/null 2>&1
+    elif [[ "$OS" == "openSUSE"* ]]; then
+        zypper --quiet info "$PACKAGE" >/dev/null 2>&1
+    else
+        return 1
+    fi
+}
+
 ensure_vpn_host_prerequisites() {
     detect_os
     local packages=()
@@ -975,22 +996,6 @@ ensure_vpn_binary_prerequisites() {
         packages+=("iptables")
     fi
 
-    if ! command -v ipsec >/dev/null 2>&1; then
-        packages+=("strongswan")
-    fi
-
-    if ! command -v xl2tpd >/dev/null 2>&1; then
-        packages+=("xl2tpd")
-    fi
-
-    if ! command -v pppd >/dev/null 2>&1; then
-        packages+=("ppp")
-    fi
-
-    if ! command -v pptpd >/dev/null 2>&1; then
-        packages+=("pptpd")
-    fi
-
     if ! command -v ip >/dev/null 2>&1; then
         if [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]] || [[ "$OS" == "Fedora"* ]]; then
             packages+=("iproute")
@@ -1007,8 +1012,12 @@ ensure_vpn_binary_prerequisites() {
         packages+=("ppp")
     fi
 
-    if ! command -v pptpd >/dev/null 2>&1; then
+    pptp_required=true
+    if ! command -v pptpd >/dev/null 2>&1 && package_available "pptpd"; then
         packages+=("pptpd")
+    elif ! command -v pptpd >/dev/null 2>&1; then
+        pptp_required=false
+        colorized_echo yellow "Package pptpd is not available for this distribution; PPTP runtime will remain unavailable on this node."
     fi
 
     if ! command -v ipsec >/dev/null 2>&1; then
@@ -1028,11 +1037,14 @@ ensure_vpn_binary_prerequisites() {
     local missing=()
     local command_name
 
-    for command_name in openvpn wg ip iptables nft sysctl xl2tpd pppd pptpd ipsec pki ocserv; do
+    for command_name in openvpn wg ip iptables nft sysctl xl2tpd pppd ipsec pki ocserv; do
         if ! command -v "$command_name" >/dev/null 2>&1; then
             missing+=("$command_name")
         fi
     done
+    if [ "$pptp_required" = true ] && ! command -v pptpd >/dev/null 2>&1; then
+        missing+=("pptpd")
+    fi
 
     if [ "${#missing[@]}" -ne 0 ]; then
         colorized_echo red "VPN runtime prerequisites are still missing: ${missing[*]}"
