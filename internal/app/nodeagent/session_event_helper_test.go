@@ -105,6 +105,19 @@ func TestRunNativeSessionEventHelperStartStop(t *testing.T) {
 }
 
 func TestRunNativeSessionEventHelperL2TPEnvironment(t *testing.T) {
+	testRunNativeSessionEventHelperPPPEnvironment(t, "l2tp", "l2tp-main")
+}
+
+func TestRunNativeSessionEventHelperPPTPEnvironment(t *testing.T) {
+	testRunNativeSessionEventHelperPPPEnvironment(t, "pptp", "pptp-main")
+}
+
+func testRunNativeSessionEventHelperPPPEnvironment(
+	t *testing.T,
+	protocol,
+	inboundTag string,
+) {
+	t.Helper()
 	var events []nativeSessionEvent
 
 	server := httptest.NewServer(http.HandlerFunc(
@@ -127,8 +140,8 @@ func TestRunNativeSessionEventHelperL2TPEnvironment(t *testing.T) {
 			Token:  "test-token",
 			NodeID: 7,
 		},
-		InboundTag: "l2tp-main",
-		Protocol:   "l2tp",
+		InboundTag: inboundTag,
+		Protocol:   protocol,
 		Users: map[string]int64{
 			"alice-vpn": 42,
 		},
@@ -153,10 +166,10 @@ func TestRunNativeSessionEventHelperL2TPEnvironment(t *testing.T) {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
 	event := events[0]
-	if event.Protocol != "l2tp" {
-		t.Fatalf("protocol = %q, want l2tp", event.Protocol)
+	if event.Protocol != protocol {
+		t.Fatalf("protocol = %q, want %s", event.Protocol, protocol)
 	}
-	if event.InboundTag != "l2tp-main" || event.UserID != 42 {
+	if event.InboundTag != inboundTag || event.UserID != 42 {
 		t.Fatalf("unexpected event identity: %#v", event)
 	}
 	if event.AssignedIP != "10.67.0.10" || event.ClientIP != "203.0.113.10" {

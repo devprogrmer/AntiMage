@@ -235,6 +235,8 @@ func (s *Server) cleanupTaggedTProxyPolicyIfUnused(specs *map[string]openVPNTPro
 	switch chain {
 	case l2TPTProxyChain:
 		spec = openVPNTProxySpec{Mark: l2TPTProxyMark, Mask: l2TPTProxyMask, Table: l2TPTProxyTable, Priority: l2TPTProxyRulePriority}
+	case pptpTProxyChain:
+		spec = openVPNTProxySpec{Mark: pptpTProxyMark, Mask: pptpTProxyMask, Table: pptpTProxyTable, Priority: pptpTProxyRulePriority}
 	default:
 		return nil
 	}
