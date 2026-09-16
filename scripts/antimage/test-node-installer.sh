@@ -54,8 +54,8 @@ for package in openvpn wireguard-tools iproute2 iptables nftables procps; do
 done
 
 for installer in \
-    "$ROOT/antimage/antimage-node.sh" \
-    "$ROOT/antimage/antimage-node-binary.sh"; do
+    "$ROOT/antimage-node.sh" \
+    "$ROOT/antimage-node-binary.sh"; do
 
     grep -q 'ensure_l2tp_kernel_modules()' "$installer"
     grep -q 'ensure_l2tp_kernel_modules' "$installer"
