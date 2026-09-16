@@ -13,11 +13,14 @@ const (
 	l2TPIPSecConfigPath  = "/etc/ipsec.conf"
 	l2TPIPSecSecretsPath = "/etc/ipsec.secrets"
 	l2TPXL2TPConfigPath  = "/etc/xl2tpd/xl2tpd.conf"
+	l2TPCHAPSecretsPath  = "/etc/ppp/chap-secrets"
 
 	l2TPIPSecBlockStart = "# BEGIN ANTIMAGE L2TP IPSEC"
 	l2TPIPSecBlockEnd   = "# END ANTIMAGE L2TP IPSEC"
 
 	l2TPSecretBlockStart = "# BEGIN ANTIMAGE L2TP IPSEC SECRET"
+	l2TPCHAPBlockStart   = "# BEGIN ANTIMAGE L2TP CHAP"
+	l2TPCHAPBlockEnd     = "# END ANTIMAGE L2TP CHAP"
 	l2TPSecretBlockEnd   = "# END ANTIMAGE L2TP IPSEC SECRET"
 )
 
@@ -131,6 +134,7 @@ func installL2TPSystemConfig(
 	ipsecConfig string,
 	ipsecSecrets string,
 	xl2tpConfig string,
+	chapSecrets string,
 ) error {
 	rawIPSec, err := os.ReadFile(ipsecConfig)
 	if err != nil {
@@ -145,6 +149,11 @@ func installL2TPSystemConfig(
 	rawXL2TP, err := os.ReadFile(xl2tpConfig)
 	if err != nil {
 		return fmt.Errorf("read L2TP xl2tpd config: %w", err)
+	}
+
+	rawCHAP, err := os.ReadFile(chapSecrets)
+	if err != nil {
+		return fmt.Errorf("read L2TP chap secrets: %w", err)
 	}
 
 	if err := updateL2TPManagedBlock(
@@ -163,6 +172,19 @@ func installL2TPSystemConfig(
 		string(rawSecrets),
 	); err != nil {
 		return fmt.Errorf("update %s: %w", l2TPIPSecSecretsPath, err)
+	}
+
+	if err := os.MkdirAll("/etc/ppp", 0755); err != nil {
+		return fmt.Errorf("create /etc/ppp: %w", err)
+	}
+
+	if err := updateL2TPManagedBlock(
+		l2TPCHAPSecretsPath,
+		l2TPCHAPBlockStart,
+		l2TPCHAPBlockEnd,
+		string(rawCHAP),
+	); err != nil {
+		return fmt.Errorf("update %s: %w", l2TPCHAPSecretsPath, err)
 	}
 
 	if err := os.MkdirAll("/etc/xl2tpd", 0755); err != nil {
@@ -301,6 +323,7 @@ func (s *Server) startL2TPInbound(
 	ipsecConfig string,
 	ipsecSecrets string,
 	xl2tpConfig string,
+	chapSecrets string,
 ) error {
 	tag = strings.TrimSpace(tag)
 	if tag == "" {
@@ -311,6 +334,7 @@ func (s *Server) startL2TPInbound(
 		ipsecConfig,
 		ipsecSecrets,
 		xl2tpConfig,
+		chapSecrets,
 	); err != nil {
 		return fmt.Errorf(
 			"l2tp %q: install system config: %w",
@@ -358,6 +382,15 @@ func clearL2TPSystemConfig(s *Server) {
 		"",
 	); err != nil {
 		s.appendLog("clear L2TP ipsec secrets failed: " + err.Error())
+	}
+
+	if err := updateL2TPManagedBlock(
+		l2TPCHAPSecretsPath,
+		l2TPCHAPBlockStart,
+		l2TPCHAPBlockEnd,
+		"",
+	); err != nil {
+		s.appendLog("clear L2TP chap secrets failed: " + err.Error())
 	}
 
 	if _, err := l2TPLookPath("ipsec"); err == nil {

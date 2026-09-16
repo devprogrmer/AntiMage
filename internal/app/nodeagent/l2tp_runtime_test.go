@@ -92,7 +92,11 @@ func TestPrepareL2TPInboundRendersDaemonConfigs(t *testing.T) {
 		}
 	}
 	for _, expected := range []string{
-		"chap-secrets " + filepath.ToSlash(files.CHAPSecrets),
+		"require-mschap-v2",
+		"refuse-eap",
+		"refuse-mschap",
+		"refuse-chap",
+		"refuse-pap",
 		"ms-dns 1.1.1.1",
 		"ms-dns 8.8.8.8",
 		"mtu 1410",
@@ -214,34 +218,34 @@ func TestApplyL2TPNATUsesRuntimePoolCIDR(t *testing.T) {
 }
 
 func TestStopRemovedL2TPRuntimesKeepsSystemServiceForReplacement(t *testing.T) {
-oldLookPath := l2TPLookPath
-defer func() {
-l2TPLookPath = oldLookPath
-}()
+	oldLookPath := l2TPLookPath
+	defer func() {
+		l2TPLookPath = oldLookPath
+	}()
 
-lookPathCalls := 0
-l2TPLookPath = func(name string) (string, error) {
-lookPathCalls++
-return "", exec.ErrNotFound
-}
+	lookPathCalls := 0
+	l2TPLookPath = func(name string) (string, error) {
+		lookPathCalls++
+		return "", exec.ErrNotFound
+	}
 
-server := New(Config{DataDir: t.TempDir()})
-server.l2TPRuntimes["old-l2tp"] = &l2TPProcess{
-tag: "old-l2tp",
-}
+	server := New(Config{DataDir: t.TempDir()})
+	server.l2TPRuntimes["old-l2tp"] = &l2TPProcess{
+		tag: "old-l2tp",
+	}
 
-server.stopRemovedL2TPRuntimes(map[string]struct{}{
-"new-l2tp": {},
-})
+	server.stopRemovedL2TPRuntimes(map[string]struct{}{
+		"new-l2tp": {},
+	})
 
-if lookPathCalls != 0 {
-t.Fatalf(
-"system L2TP service/config touched during replacement: lookPath calls = %d",
-lookPathCalls,
-)
-}
+	if lookPathCalls != 0 {
+		t.Fatalf(
+			"system L2TP service/config touched during replacement: lookPath calls = %d",
+			lookPathCalls,
+		)
+	}
 
-if _, ok := server.l2TPRuntimes["old-l2tp"]; ok {
-t.Fatal("old L2TP runtime was not removed from runtime registry")
-}
+	if _, ok := server.l2TPRuntimes["old-l2tp"]; ok {
+		t.Fatal("old L2TP runtime was not removed from runtime registry")
+	}
 }
