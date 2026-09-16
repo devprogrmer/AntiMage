@@ -411,6 +411,10 @@ func (s *Server) stopRemovedL2TPRuntimes(
 		return
 	}
 
+	if len(desired) > 0 {
+		return
+	}
+
 	stopL2TPSystemService(s)
 	clearL2TPSystemConfig(s)
 
