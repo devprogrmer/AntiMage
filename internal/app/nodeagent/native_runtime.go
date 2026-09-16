@@ -63,6 +63,7 @@ type preparedL2TPRuntime struct {
 	IPSecConfig  string
 	IPSecSecrets string
 	XL2TPConfig  string
+	CHAPSecrets  string
 	TProxy       openVPNTProxySpec
 	NAT          openVPNNATSpec
 }
@@ -279,6 +280,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 				IPSecConfig:  files.IPSecConfig,
 				IPSecSecrets: files.IPSecSecrets,
 				XL2TPConfig:  files.XL2TPConfig,
+				CHAPSecrets:  files.CHAPSecrets,
 				TProxy:       tproxy,
 				NAT:          nat,
 			},
@@ -412,6 +414,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 			runtime.IPSecConfig,
 			runtime.IPSecSecrets,
 			runtime.XL2TPConfig,
+			runtime.CHAPSecrets,
 		); err != nil {
 			_ = s.removeL2TPTProxyForTag(runtime.Tag)
 			_ = s.removeL2TPNATForTag(runtime.Tag)
