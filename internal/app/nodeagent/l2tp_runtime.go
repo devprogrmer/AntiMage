@@ -42,6 +42,7 @@ type l2TPRuntimeUser struct {
 type l2TPRuntimeFiles struct {
 	IPSecConfig   string
 	IPSecSecrets  string
+	SwanctlConfig string
 	XL2TPConfig   string
 	PPPOptions    string
 	CHAPSecrets   string
@@ -80,6 +81,7 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 	files := l2TPRuntimeFiles{
 		IPSecConfig:   filepath.Join(root, "ipsec.conf"),
 		IPSecSecrets:  filepath.Join(root, "ipsec.secrets"),
+		SwanctlConfig: filepath.Join(root, "swanctl.conf"),
 		XL2TPConfig:   filepath.Join(root, "xl2tpd.conf"),
 		PPPOptions:    filepath.Join(root, "ppp-options"),
 		CHAPSecrets:   filepath.Join(root, "chap-secrets"),
@@ -97,6 +99,13 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 	if err := os.WriteFile(files.CHAPSecrets, []byte(renderL2TPCHAPSecrets(inbound.Users)), 0600); err != nil {
 		return l2TPRuntimeFiles{}, err
 	}
+
+	if strings.TrimSpace(callback.URL) == "" {
+		files.IPUpScript = ""
+		files.IPDownScript = ""
+		files.SessionConfig = ""
+	}
+
 	if err := os.WriteFile(files.PPPOptions, []byte(renderL2TPPPPOptions(inbound, files, localIP)), 0600); err != nil {
 		return l2TPRuntimeFiles{}, err
 	}
@@ -150,10 +159,6 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 		if err := os.WriteFile(files.IPDownScript, []byte(disconnect), 0700); err != nil {
 			return l2TPRuntimeFiles{}, err
 		}
-	} else {
-		_ = os.Remove(files.IPUpScript)
-		_ = os.Remove(files.IPDownScript)
-		_ = os.Remove(files.SessionConfig)
 	}
 
 	return files, nil
@@ -181,6 +186,43 @@ conn antimage-l2tp
 
 func renderL2TPIPSecSecrets(psk string) string {
 	return `%any %any : PSK ` + l2TPConfigQuote(strings.TrimSpace(psk)) + "\n"
+}
+
+func renderL2TPSwanctlConfig(psk string) string {
+	return fmt.Sprintf(`connections {
+    antimage-l2tp {
+        version = 1
+        local_addrs = %%any
+        remote_addrs = %%any
+
+        dpd_delay = 30s
+        dpd_timeout = 120s
+
+        local {
+            auth = psk
+        }
+
+        remote {
+            auth = psk
+        }
+
+        children {
+            antimage-l2tp {
+                mode = transport
+                local_ts = dynamic[udp/1701]
+                remote_ts = dynamic[udp]
+                dpd_action = clear
+            }
+        }
+    }
+}
+
+secrets {
+    ike-antimage-l2tp {
+        secret = %s
+    }
+}
+`, l2TPConfigQuote(strings.TrimSpace(psk)))
 }
 
 func renderL2TPXL2TPDConfig(files l2TPRuntimeFiles, localIP, remoteRange string) string {

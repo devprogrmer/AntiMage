@@ -168,7 +168,7 @@ func TestApplyNativeRuntimeL2TPPreflightBeforeNetworkMutation(t *testing.T) {
 			}]
 		}]
 	}`)
-	if err == nil || !strings.Contains(err.Error(), `executable "ipsec" not installed`) {
+	if err == nil || !strings.Contains(err.Error(), `executable "swanctl" not installed`) {
 		t.Fatalf("error = %v", err)
 	}
 	if len(commands) != 0 {
