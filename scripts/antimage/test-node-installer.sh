@@ -52,3 +52,25 @@ NODE_DOCKERFILE="$ROOT/../../Dockerfile.node"
 for package in openvpn wireguard-tools iproute2 iptables nftables procps; do
     grep -Eq "^[[:space:]]+${package}[[:space:]]*\\\\$" "$NODE_DOCKERFILE"
 done
+
+for installer in \
+    "$ROOT/antimage/antimage-node.sh" \
+    "$ROOT/antimage/antimage-node-binary.sh"; do
+
+    grep -q 'ensure_l2tp_kernel_modules()' "$installer"
+    grep -q 'ensure_l2tp_kernel_modules' "$installer"
+
+    grep -q 'ppp_generic' "$installer"
+    grep -q 'pppox' "$installer"
+    grep -q 'l2tp_ppp' "$installer"
+
+    grep -q 'linux-modules-extra-${kernel_release}' "$installer"
+
+    grep -q 'packages+=("xl2tpd")' "$installer"
+    grep -q 'packages+=("ppp")' "$installer"
+    grep -q 'packages+=("strongswan" "strongswan-pki")' "$installer"
+
+    grep -q 'command -v xl2tpd' "$installer"
+    grep -q 'command -v pppd' "$installer"
+    grep -q 'command -v ipsec' "$installer"
+done
