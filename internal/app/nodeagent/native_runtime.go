@@ -59,11 +59,12 @@ type preparedOpenVPNRuntime struct {
 }
 
 type preparedL2TPRuntime struct {
-	Tag         string
-	IPSecConfig string
-	XL2TPConfig string
-	TProxy      openVPNTProxySpec
-	NAT         openVPNNATSpec
+	Tag          string
+	IPSecConfig  string
+	IPSecSecrets string
+	XL2TPConfig  string
+	TProxy       openVPNTProxySpec
+	NAT          openVPNNATSpec
 }
 
 type preparedPPTPRuntime struct {
@@ -274,11 +275,12 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		l2tpPrepared = append(
 			l2tpPrepared,
 			preparedL2TPRuntime{
-				Tag:         tag,
-				IPSecConfig: files.IPSecConfig,
-				XL2TPConfig: files.XL2TPConfig,
-				TProxy:      tproxy,
-				NAT:         nat,
+				Tag:          tag,
+				IPSecConfig:  files.IPSecConfig,
+				IPSecSecrets: files.IPSecSecrets,
+				XL2TPConfig:  files.XL2TPConfig,
+				TProxy:       tproxy,
+				NAT:          nat,
 			},
 		)
 	}
@@ -408,6 +410,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		if err := s.startL2TPInbound(
 			runtime.Tag,
 			runtime.IPSecConfig,
+			runtime.IPSecSecrets,
 			runtime.XL2TPConfig,
 		); err != nil {
 			_ = s.removeL2TPTProxyForTag(runtime.Tag)

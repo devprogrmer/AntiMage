@@ -97,6 +97,13 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 	if err := os.WriteFile(files.CHAPSecrets, []byte(renderL2TPCHAPSecrets(inbound.Users)), 0600); err != nil {
 		return l2TPRuntimeFiles{}, err
 	}
+
+	if strings.TrimSpace(callback.URL) == "" {
+		files.IPUpScript = ""
+		files.IPDownScript = ""
+		files.SessionConfig = ""
+	}
+
 	if err := os.WriteFile(files.PPPOptions, []byte(renderL2TPPPPOptions(inbound, files, localIP)), 0600); err != nil {
 		return l2TPRuntimeFiles{}, err
 	}
@@ -150,10 +157,6 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 		if err := os.WriteFile(files.IPDownScript, []byte(disconnect), 0700); err != nil {
 			return l2TPRuntimeFiles{}, err
 		}
-	} else {
-		_ = os.Remove(files.IPUpScript)
-		_ = os.Remove(files.IPDownScript)
-		_ = os.Remove(files.SessionConfig)
 	}
 
 	return files, nil
@@ -161,24 +164,23 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 
 func renderL2TPIPSecConfig() string {
 	return strings.TrimLeft(`
-config setup
-    uniqueids=no
-
 conn antimage-l2tp
     auto=add
-    type=transport
-    authby=secret
     keyexchange=ikev1
+    authby=secret
+    type=transport
     left=%any
     leftprotoport=17/1701
     right=%any
     rightprotoport=17/%any
+    rekey=no
+    forceencaps=yes
+    fragmentation=yes
     dpddelay=30
     dpdtimeout=120
     dpdaction=clear
 `, "\n")
 }
-
 func renderL2TPIPSecSecrets(psk string) string {
 	return `%any %any : PSK ` + l2TPConfigQuote(strings.TrimSpace(psk)) + "\n"
 }

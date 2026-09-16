@@ -221,7 +221,7 @@ ui_color() {
 }
 
 ui_line() {
-    ui_color "38;5;39" "────────────────────────────────────────────────────────────"
+    ui_color "38;5;39" "â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€"
     printf "\n"
 }
 
@@ -229,7 +229,7 @@ ui_header() {
     local title="$1"
     local subtitle="${2:-}"
     printf "\n"
-    ui_color "38;5;45;1" "╭──────────────────────────────────────────────────────────╮"
+    ui_color "38;5;45;1" "â•­â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â•®"
     printf "\n  "
     ui_color "38;5;231;1" "$title"
     printf "\n"
@@ -238,13 +238,13 @@ ui_header() {
         ui_color "38;5;117" "$subtitle"
         printf "\n"
     fi
-    ui_color "38;5;45;1" "╰──────────────────────────────────────────────────────────╯"
+    ui_color "38;5;45;1" "â•°â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â•¯"
     printf "\n"
 }
 
 ui_section() {
     printf "\n"
-    ui_color "38;5;45;1" "◆ $1"
+    ui_color "38;5;45;1" "â—† $1"
     printf "\n"
     ui_line
 }
@@ -378,7 +378,7 @@ ui_spinner_run() {
     log_file=$(mktemp)
     "$@" >"$log_file" 2>&1 &
     local pid=$!
-    local frames=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+    local frames=("â ‹" "â ™" "â ¹" "â ¸" "â ¼" "â ´" "â ¦" "â §" "â ‡" "â ")
     local i=0
     while kill -0 "$pid" >/dev/null 2>&1; do
         printf "\r"
@@ -392,13 +392,13 @@ ui_spinner_run() {
     wait "$pid" || status=$?
     printf "\r\033[K"
     if [ "$status" -eq 0 ]; then
-        ui_color "38;5;82;1" "✓"
+        ui_color "38;5;82;1" "âœ“"
         printf " %s\n" "$message"
         rm -f "$log_file"
         return 0
     fi
 
-    ui_color "38;5;196;1" "✗"
+    ui_color "38;5;196;1" "âœ—"
     printf " %s\n" "$message"
     tail -n 80 "$log_file" >&2 || true
     rm -f "$log_file"
@@ -968,6 +968,55 @@ ensure_vpn_host_prerequisites() {
     fi
 }
 
+ensure_l2tp_kernel_modules() {
+    if ! command -v modprobe >/dev/null 2>&1; then
+        colorized_echo red "modprobe is required for L2TP kernel support."
+        return 1
+    fi
+
+    local required_modules=(ppp_generic pppox l2tp_ppp)
+    local optional_modules=(pppol2tp af_key nf_tproxy_ipv4)
+    local module
+    local load_failed=false
+
+    for module in "${required_modules[@]}"; do
+        if ! modprobe "$module" >/dev/null 2>&1; then
+            load_failed=true
+            break
+        fi
+    done
+
+    if [ "$load_failed" = true ] && { [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; }; then
+        local kernel_release
+        kernel_release="$(uname -r)"
+
+        if [ -n "$kernel_release" ] && package_available "linux-modules-extra-${kernel_release}"; then
+            colorized_echo yellow "Installing L2TP kernel modules for ${kernel_release}..."
+            install_package "linux-modules-extra-${kernel_release}"
+        fi
+    fi
+
+    for module in "${required_modules[@]}"; do
+        if ! modprobe "$module" >/dev/null 2>&1; then
+            colorized_echo red "Unable to load required L2TP kernel module: ${module}"
+            return 1
+        fi
+    done
+
+    for module in "${optional_modules[@]}"; do
+        modprobe "$module" >/dev/null 2>&1 || true
+    done
+
+    mkdir -p /etc/modules-load.d
+    printf '%s\n' \
+        ppp_generic \
+        pppox \
+        l2tp_ppp \
+        pppol2tp \
+        > /etc/modules-load.d/99-antimage-l2tp.conf
+
+    return 0
+}
 ensure_vpn_binary_prerequisites() {
     ensure_vpn_host_prerequisites
 
@@ -1026,6 +1075,8 @@ ensure_vpn_binary_prerequisites() {
     for package in "${packages[@]}"; do
         install_package "$package"
     done
+
+    ensure_l2tp_kernel_modules
 
     local missing=()
     local command_name
@@ -2538,11 +2589,11 @@ usage() {
     echo
 
     colorized_echo cyan "Commands:"
-    colorized_echo yellow "  up              – Start services"
-    colorized_echo yellow "  down            – Stop services"
-    colorized_echo yellow "  restart         – Restart services"
-    colorized_echo yellow "  status          – Show status"
-    colorized_echo yellow "  logs            – Show logs"
+    colorized_echo yellow "  up              â€“ Start services"
+    colorized_echo yellow "  down            â€“ Stop services"
+    colorized_echo yellow "  restart         â€“ Restart services"
+    colorized_echo yellow "  status          â€“ Show status"
+    colorized_echo yellow "  logs            â€“ Show logs"
     colorized_echo yellow "  install         - Install/reinstall AntiMage-node"
     colorized_echo yellow "  update          - Update to latest/dev or a specific version"
     colorized_echo yellow "  uninstall       - Uninstall AntiMage-node"
@@ -2550,7 +2601,7 @@ usage() {
     colorized_echo blue "  script-update   - Update AntiMage-node CLI script"
     colorized_echo blue "  script-uninstall  - Uninstall AntiMage-node script"
     colorized_echo yellow "  edit            - Edit docker-compose.yml or binary .env (via nano or vi)"
-    colorized_echo yellow "  core-update     – Update/Change Xray core"
+    colorized_echo yellow "  core-update     â€“ Update/Change Xray core"
     
     echo
     colorized_echo cyan "Node Information:"
