@@ -48,6 +48,7 @@ type l2TPRuntimeFiles struct {
 	IPUpScript    string
 	IPDownScript  string
 	SessionConfig string
+	UsageConfig   string
 }
 
 func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeRuntimeSessionCallback) (l2TPRuntimeFiles, error) {
@@ -86,6 +87,7 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 		IPUpScript:    filepath.Join(root, "ip-up.sh"),
 		IPDownScript:  filepath.Join(root, "ip-down.sh"),
 		SessionConfig: filepath.Join(root, "session-helper.json"),
+		UsageConfig:   filepath.Join(root, "usage-helper.json"),
 	}
 
 	if err := os.WriteFile(files.IPSecConfig, []byte(renderL2TPIPSecConfig()), 0600); err != nil {
@@ -96,6 +98,41 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 	}
 	if err := os.WriteFile(files.CHAPSecrets, []byte(renderL2TPCHAPSecrets(inbound.Users)), 0600); err != nil {
 		return l2TPRuntimeFiles{}, err
+	}
+
+	usageUsers := make(map[string]int64)
+	for _, user := range inbound.Users {
+		if !l2TPUserAllowed(user) || user.UserID <= 0 {
+			continue
+		}
+		rawIP := strings.TrimSpace(user.IPv4Address)
+		if rawIP == "" {
+			continue
+		}
+		addr, err := netip.ParseAddr(rawIP)
+		if err != nil || !addr.Is4() {
+			continue
+		}
+		usageUsers[addr.String()] = user.UserID
+	}
+	usageConfig := l2TPUsageRuntimeConfig{
+		InboundTag: tag,
+		Users:      usageUsers,
+	}
+	rawUsageConfig, err := json.Marshal(usageConfig)
+	if err != nil {
+		return l2TPRuntimeFiles{}, fmt.Errorf(
+			"l2tp %q: marshal usage config: %w",
+			tag,
+			err,
+		)
+	}
+	if err := os.WriteFile(files.UsageConfig, rawUsageConfig, 0600); err != nil {
+		return l2TPRuntimeFiles{}, fmt.Errorf(
+			"l2tp %q: write usage config: %w",
+			tag,
+			err,
+		)
 	}
 
 	if strings.TrimSpace(callback.URL) == "" {
