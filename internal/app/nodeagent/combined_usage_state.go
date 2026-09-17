@@ -16,6 +16,7 @@ type combinedUsagePendingBatch struct {
 	BatchID          string    `json:"batch_id"`
 	CoreBatchID      string    `json:"core_batch_id"`
 	WireGuardBatchID string    `json:"wireguard_batch_id"`
+	L2TPBatchID      string    `json:"l2tp_batch_id,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 }
 
@@ -102,7 +103,12 @@ func (s *Server) persistCombinedUsageStateLocked() error {
 func (s *Server) combineUserUsageBatches(
 	coreBatch *nodev1.UserUsageBatch,
 	wireGuardBatch *nodev1.UserUsageBatch,
+	optionalL2TP ...*nodev1.UserUsageBatch,
 ) (*nodev1.UserUsageBatch, error) {
+	var l2tpBatch *nodev1.UserUsageBatch
+	if len(optionalL2TP) > 0 {
+		l2tpBatch = optionalL2TP[0]
+	}
 	coreID := ""
 	if coreBatch != nil {
 		coreID = strings.TrimSpace(coreBatch.GetBatchId())
@@ -111,15 +117,32 @@ func (s *Server) combineUserUsageBatches(
 	if wireGuardBatch != nil {
 		wgID = strings.TrimSpace(wireGuardBatch.GetBatchId())
 	}
+	l2tpID := ""
+	if l2tpBatch != nil {
+		l2tpID = strings.TrimSpace(l2tpBatch.GetBatchId())
+	}
 
-	if coreID == "" && wgID == "" {
+	nonEmpty := 0
+	if coreID != "" {
+		nonEmpty++
+	}
+	if wgID != "" {
+		nonEmpty++
+	}
+	if l2tpID != "" {
+		nonEmpty++
+	}
+	if nonEmpty == 0 {
 		return &nodev1.UserUsageBatch{}, nil
 	}
-	if coreID == "" {
-		return wireGuardBatch, nil
-	}
-	if wgID == "" {
-		return coreBatch, nil
+	if nonEmpty == 1 {
+		if coreID != "" {
+			return coreBatch, nil
+		}
+		if wgID != "" {
+			return wireGuardBatch, nil
+		}
+		return l2tpBatch, nil
 	}
 
 	s.combinedUsageMu.Lock()
@@ -135,10 +158,22 @@ func (s *Server) combineUserUsageBatches(
 				"combined usage child batch changed before ACK",
 			)
 		}
+
+		// Backward compatibility with a state written before L2TP
+		// was included in the combined usage batch.
+		if pending.L2TPBatchID == "" {
+			l2tpBatch = nil
+		} else if pending.L2TPBatchID != l2tpID {
+			return nil, fmt.Errorf(
+				"combined L2TP child batch changed before ACK",
+			)
+		}
+
 		return buildCombinedUsageBatch(
 			pending.BatchID,
 			coreBatch,
 			wireGuardBatch,
+			l2tpBatch,
 		), nil
 	}
 
@@ -149,6 +184,7 @@ func (s *Server) combineUserUsageBatches(
 		),
 		CoreBatchID:      coreID,
 		WireGuardBatchID: wgID,
+		L2TPBatchID:      l2tpID,
 		CreatedAt:        time.Now().UTC(),
 	}
 	s.combinedUsagePending = pending
@@ -160,6 +196,7 @@ func (s *Server) combineUserUsageBatches(
 		pending.BatchID,
 		coreBatch,
 		wireGuardBatch,
+		l2tpBatch,
 	), nil
 }
 
@@ -167,21 +204,35 @@ func buildCombinedUsageBatch(
 	batchID string,
 	coreBatch *nodev1.UserUsageBatch,
 	wireGuardBatch *nodev1.UserUsageBatch,
+	optionalL2TP ...*nodev1.UserUsageBatch,
 ) *nodev1.UserUsageBatch {
+	var l2tpBatch *nodev1.UserUsageBatch
+	if len(optionalL2TP) > 0 {
+		l2tpBatch = optionalL2TP[0]
+	}
 	stats := make([]*nodev1.UserUsageSample, 0,
-		len(coreBatch.GetStats())+len(wireGuardBatch.GetStats()))
+		len(coreBatch.GetStats())+
+			len(wireGuardBatch.GetStats())+
+			len(l2tpBatch.GetStats()))
 	stats = append(stats, coreBatch.GetStats()...)
 	stats = append(stats, wireGuardBatch.GetStats()...)
+	stats = append(stats, l2tpBatch.GetStats()...)
 
 	onlineIPs := make([]*nodev1.OnlineUserIP, 0,
-		len(coreBatch.GetOnlineIps())+len(wireGuardBatch.GetOnlineIps()))
+		len(coreBatch.GetOnlineIps())+
+			len(wireGuardBatch.GetOnlineIps())+
+			len(l2tpBatch.GetOnlineIps()))
 	onlineIPs = append(onlineIPs, coreBatch.GetOnlineIps()...)
 	onlineIPs = append(onlineIPs, wireGuardBatch.GetOnlineIps()...)
+	onlineIPs = append(onlineIPs, l2tpBatch.GetOnlineIps()...)
 
 	speeds := make([]*nodev1.UserTrafficSpeed, 0,
-		len(coreBatch.GetSpeeds())+len(wireGuardBatch.GetSpeeds()))
+		len(coreBatch.GetSpeeds())+
+			len(wireGuardBatch.GetSpeeds())+
+			len(l2tpBatch.GetSpeeds()))
 	speeds = append(speeds, coreBatch.GetSpeeds()...)
 	speeds = append(speeds, wireGuardBatch.GetSpeeds()...)
+	speeds = append(speeds, l2tpBatch.GetSpeeds()...)
 
 	return &nodev1.UserUsageBatch{
 		BatchId:   batchID,
@@ -212,25 +263,48 @@ func (s *Server) ackCombinedUserUsage(
 		return &nodev1.AckUsageResponse{Acknowledged: false}, nil
 	}
 
-	coreAck, err := s.ackUsageChildBatch(ctx, pending.CoreBatchID)
-	if err != nil {
-		return nil, fmt.Errorf("combined core ACK failed: %w", err)
+	coreAck := true
+	if strings.TrimSpace(pending.CoreBatchID) != "" {
+		var err error
+		coreAck, err = s.ackUsageChildBatch(ctx, pending.CoreBatchID)
+		if err != nil {
+			return nil, fmt.Errorf("combined core ACK failed: %w", err)
+		}
 	}
-	wgResp, err := s.ackWireGuardUserUsageWithReflection(
-		ctx,
-		&nodev1.AckUsageRequest{
-			BatchId: pending.WireGuardBatchID,
-		},
-		batchID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"combined wireguard ACK failed: %w",
-			err,
+
+	wgAck := true
+	if strings.TrimSpace(pending.WireGuardBatchID) != "" {
+		wgResp, err := s.ackWireGuardUserUsageWithReflection(
+			ctx,
+			&nodev1.AckUsageRequest{
+				BatchId: pending.WireGuardBatchID,
+			},
+			batchID,
 		)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"combined wireguard ACK failed: %w",
+				err,
+			)
+		}
+		wgAck = wgResp.GetAcknowledged()
 	}
-	wgAck := wgResp.GetAcknowledged()
-	if !coreAck || !wgAck {
+
+	l2tpAck := true
+	if strings.TrimSpace(pending.L2TPBatchID) != "" {
+		resp, err := s.ackL2TPUserUsage(
+			ctx,
+			&nodev1.AckUsageRequest{
+				BatchId: pending.L2TPBatchID,
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("combined l2tp ACK failed: %w", err)
+		}
+		l2tpAck = resp.GetAcknowledged()
+	}
+
+	if !coreAck || !wgAck || !l2tpAck {
 		return &nodev1.AckUsageResponse{Acknowledged: false}, nil
 	}
 
@@ -255,6 +329,9 @@ func (s *Server) ackUsageChildBatch(
 	switch {
 	case strings.HasPrefix(batchID, "openvpn-"):
 		resp, err := s.ackOpenVPNUserUsage(ctx, req)
+		return resp.GetAcknowledged(), err
+	case strings.HasPrefix(batchID, "l2tp-"):
+		resp, err := s.ackL2TPUserUsage(ctx, req)
 		return resp.GetAcknowledged(), err
 	case strings.HasPrefix(batchID, "xray-"):
 		resp, err := s.ackXrayUserUsage(ctx, req)

@@ -54,6 +54,11 @@ type Server struct {
 	openVPNUsagePending              *openVPNUsagePendingBatch
 	openVPNUsageLoaded               bool
 	openVPNUsageLastAckedBatchID     string
+	l2TPUsageMu                      sync.Mutex
+	l2TPUsageBaseline                map[string]uint64
+	l2TPUsagePending                 *l2TPUsagePendingBatch
+	l2TPUsageLoaded                  bool
+	l2TPUsageLastAckedBatchID        string
 	wireGuardUsageMu                 sync.Mutex
 	wireGuardUsageBaseline           map[string]uint64
 	wireGuardUsagePending            *wireGuardUsagePendingBatch
@@ -114,6 +119,7 @@ func New(cfg Config) *Server {
 		wireGuardRuntimes:               make(map[string]wireGuardRuntimeState),
 		wireGuardDynamicSuppressedPeers: make(map[string]struct{}),
 		openVPNUsageBaseline:            make(map[string]uint64),
+		l2TPUsageBaseline:               make(map[string]uint64),
 		wireGuardUsageBaseline:          make(map[string]uint64),
 		wireGuardUsageCarry:             make(map[string]wireGuardUsageCarry),
 		xrayUsageBaseline:               make(map[string]uint64),
@@ -379,6 +385,11 @@ func (s *Server) AckUserUsage(
 	// Try OpenVPN ACK
 	if strings.HasPrefix(batchID, "openvpn-") {
 		return s.ackOpenVPNUserUsage(ctx, req)
+	}
+
+	// Try L2TP ACK
+	if strings.HasPrefix(batchID, "l2tp-") {
+		return s.ackL2TPUserUsage(ctx, req)
 	}
 
 	// Try Xray ACK

@@ -12,17 +12,21 @@ func (s *Server) collectUserUsageWithWireGuard(
 ) (*nodev1.UserUsageBatch, error) {
 	coreBatch, coreErr := s.collectCoreUserUsage(ctx, req)
 	wgBatch, wgErr := s.collectWireGuardUserUsage(ctx, req)
+	l2tpBatch, l2tpErr := s.collectL2TPUserUsage(ctx, req)
 
-	if coreErr != nil && wgErr != nil {
+	if coreErr != nil && wgErr != nil && l2tpErr != nil {
 		return nil, coreErr
 	}
 	if coreErr != nil {
-		return wgBatch, nil
+		coreBatch = &nodev1.UserUsageBatch{}
 	}
 	if wgErr != nil {
-		return coreBatch, nil
+		wgBatch = &nodev1.UserUsageBatch{}
 	}
-	return s.combineUserUsageBatches(coreBatch, wgBatch)
+	if l2tpErr != nil {
+		l2tpBatch = &nodev1.UserUsageBatch{}
+	}
+	return s.combineUserUsageBatches(coreBatch, wgBatch, l2tpBatch)
 }
 
 func (s *Server) collectCoreUserUsage(
