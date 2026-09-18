@@ -46,6 +46,7 @@ type pptpRuntimeFiles struct {
 	IPUpScript    string
 	IPDownScript  string
 	SessionConfig string
+	UsageConfig   string
 }
 
 func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeRuntimeSessionCallback) (string, error) {
@@ -77,11 +78,56 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 		IPUpScript:    filepath.Join(root, "ip-up.sh"),
 		IPDownScript:  filepath.Join(root, "ip-down.sh"),
 		SessionConfig: filepath.Join(root, "session-helper.json"),
+		UsageConfig:   filepath.Join(root, "usage-helper.json"),
 	}
 
 	if err := os.WriteFile(files.CHAPSecrets, []byte(renderPPTPCHAPSecrets(inbound.Users)), 0600); err != nil {
 		return "", err
 	}
+
+	usageUsers := make(map[string]int64)
+	for _, user := range inbound.Users {
+		if !pptpUserAllowed(user) || user.UserID <= 0 {
+			continue
+		}
+		rawIP := strings.TrimSpace(user.IPv4Address)
+		if rawIP == "" {
+			continue
+		}
+		addr, err := netip.ParseAddr(rawIP)
+		if err != nil || !addr.Is4() {
+			continue
+		}
+		usageUsers[addr.String()] = user.UserID
+	}
+	usageConfig := pptpUsageRuntimeConfig{
+		InboundTag: tag,
+		Users:      usageUsers,
+	}
+	rawUsageConfig, err := json.Marshal(usageConfig)
+	if err != nil {
+		return "", fmt.Errorf(
+			"pptp %q: marshal usage config: %w",
+			tag,
+			err,
+		)
+	}
+	if err := os.WriteFile(files.UsageConfig, rawUsageConfig, 0600); err != nil {
+		return "", fmt.Errorf(
+			"pptp %q: write usage config: %w",
+			tag,
+			err,
+		)
+	}
+
+	// Accounting/online detection no longer depends on PPP callbacks.
+	// Do not render callback scripts into PPP options when callback is absent.
+	if strings.TrimSpace(callback.URL) == "" {
+		files.IPUpScript = ""
+		files.IPDownScript = ""
+		files.SessionConfig = ""
+	}
+
 	if err := os.WriteFile(files.PPPOptions, []byte(renderPPTPPPPOptions(inbound, files, localIP)), 0600); err != nil {
 		return "", err
 	}
@@ -135,10 +181,6 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 		if err := os.WriteFile(files.IPDownScript, []byte(disconnect), 0700); err != nil {
 			return "", err
 		}
-	} else {
-		_ = os.Remove(files.IPUpScript)
-		_ = os.Remove(files.IPDownScript)
-		_ = os.Remove(files.SessionConfig)
 	}
 
 	return files.Config, nil
