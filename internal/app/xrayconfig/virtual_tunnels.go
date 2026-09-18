@@ -420,16 +420,80 @@ func normalizeL2TPSettings(settings map[string]any) map[string]any {
 }
 
 func normalizePPTPSettings(settings map[string]any) map[string]any {
-	out := normalizeL2TPSettings(settings)
-	pool := strings.TrimSpace(firstNonEmptyString(settings["ipv4_pool_cidr"], settings["ipv4PoolCidr"]))
+	out := make(map[string]any, len(settings)+10)
+	for key, value := range settings {
+		out[key] = value
+	}
+
+	pool := strings.TrimSpace(firstNonEmptyString(
+		out["ipv4_pool_cidr"],
+		out["ipv4PoolCidr"],
+	))
 	if pool == "" {
 		pool = defaultPPTPPoolCIDR
 	}
 	out["ipv4_pool_cidr"] = pool
+	delete(out, "ipv4PoolCidr")
+
+	out["dns_servers"] = normalizeStringAnyList(
+		firstNonEmptyAny(
+			out["dns_servers"],
+			out["dnsServers"],
+		),
+	)
+	delete(out, "dnsServers")
+
+	if _, ok := out["redirect_gateway"]; !ok {
+		out["redirect_gateway"] = true
+	}
+	if _, ok := out["accounting_enabled"]; !ok {
+		out["accounting_enabled"] = true
+	}
+	if _, ok := out["tproxy_enabled"]; !ok {
+		out["tproxy_enabled"] = true
+	} else {
+		out["tproxy_enabled"] = boolValue(out["tproxy_enabled"])
+	}
+
+	if port, ok := normalizedOptionalPort(out["tunnel_port"]); ok {
+		out["tunnel_port"] = port
+	} else if boolValue(out["tproxy_enabled"]) {
+		out["tunnel_port"] = 41942
+	} else {
+		delete(out, "tunnel_port")
+	}
+
+	for _, item := range []struct {
+		key      string
+		fallback int
+		min      int
+		max      int
+	}{
+		{"mtu", 1410, 576, 1500},
+		{"mru", 1410, 576, 1500},
+		{"lcp_echo_interval", 30, 1, 3600},
+		{"lcp_echo_failure", 4, 1, 20},
+	} {
+		if value, ok := normalizedOptionalInt(
+			out[item.key],
+			item.min,
+			item.max,
+		); ok {
+			out[item.key] = value
+		} else {
+			out[item.key] = item.fallback
+		}
+	}
+
 	delete(out, "ipsec_psk")
 	delete(out, "ipsec_ike_port")
 	delete(out, "ipsec_nat_port")
 	delete(out, "l2tp_port")
+	delete(out, "xray_tunnel_port")
+	delete(out, "tproxy_port")
+	delete(out, "management_port")
+	delete(out, "clients")
+
 	out["pptp_port"] = 1723
 	return out
 }

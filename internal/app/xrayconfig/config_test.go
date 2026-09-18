@@ -1795,3 +1795,34 @@ func hasAPIInbound(payload map[string]any) bool {
 	}
 	return false
 }
+
+func TestNormalizePPTPSettingsPreservesTunnelPort(t *testing.T) {
+	settings := normalizePPTPSettings(map[string]any{
+		"ipv4_pool_cidr": "10.68.0.0/24",
+		"tunnel_port":    1703,
+		"tproxy_enabled": true,
+	})
+
+	got, ok := normalizedOptionalPort(settings["tunnel_port"])
+	if !ok {
+		t.Fatal("expected PPTP tunnel_port")
+	}
+	if got != 1703 {
+		t.Fatalf("PPTP tunnel_port = %d, want 1703", got)
+	}
+}
+
+func TestNormalizePPTPSettingsDefaultTunnelPort(t *testing.T) {
+	settings := normalizePPTPSettings(map[string]any{
+		"ipv4_pool_cidr": "10.68.0.0/24",
+		"tproxy_enabled": true,
+	})
+
+	got, ok := normalizedOptionalPort(settings["tunnel_port"])
+	if !ok {
+		t.Fatal("expected default PPTP tunnel_port")
+	}
+	if got != 41942 {
+		t.Fatalf("PPTP default tunnel_port = %d, want 41942", got)
+	}
+}
