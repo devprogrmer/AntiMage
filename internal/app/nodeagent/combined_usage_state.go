@@ -17,6 +17,7 @@ type combinedUsagePendingBatch struct {
 	CoreBatchID      string    `json:"core_batch_id"`
 	WireGuardBatchID string    `json:"wireguard_batch_id"`
 	L2TPBatchID      string    `json:"l2tp_batch_id,omitempty"`
+	PPTPBatchID      string    `json:"pptp_batch_id,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 }
 
@@ -103,11 +104,15 @@ func (s *Server) persistCombinedUsageStateLocked() error {
 func (s *Server) combineUserUsageBatches(
 	coreBatch *nodev1.UserUsageBatch,
 	wireGuardBatch *nodev1.UserUsageBatch,
-	optionalL2TP ...*nodev1.UserUsageBatch,
+	optionalNative ...*nodev1.UserUsageBatch,
 ) (*nodev1.UserUsageBatch, error) {
 	var l2tpBatch *nodev1.UserUsageBatch
-	if len(optionalL2TP) > 0 {
-		l2tpBatch = optionalL2TP[0]
+	var pptpBatch *nodev1.UserUsageBatch
+	if len(optionalNative) > 0 {
+		l2tpBatch = optionalNative[0]
+	}
+	if len(optionalNative) > 1 {
+		pptpBatch = optionalNative[1]
 	}
 	coreID := ""
 	if coreBatch != nil {
@@ -121,6 +126,10 @@ func (s *Server) combineUserUsageBatches(
 	if l2tpBatch != nil {
 		l2tpID = strings.TrimSpace(l2tpBatch.GetBatchId())
 	}
+	pptpID := ""
+	if pptpBatch != nil {
+		pptpID = strings.TrimSpace(pptpBatch.GetBatchId())
+	}
 
 	nonEmpty := 0
 	if coreID != "" {
@@ -130,6 +139,9 @@ func (s *Server) combineUserUsageBatches(
 		nonEmpty++
 	}
 	if l2tpID != "" {
+		nonEmpty++
+	}
+	if pptpID != "" {
 		nonEmpty++
 	}
 	if nonEmpty == 0 {
@@ -142,7 +154,10 @@ func (s *Server) combineUserUsageBatches(
 		if wgID != "" {
 			return wireGuardBatch, nil
 		}
-		return l2tpBatch, nil
+		if l2tpID != "" {
+			return l2tpBatch, nil
+		}
+		return pptpBatch, nil
 	}
 
 	s.combinedUsageMu.Lock()
@@ -169,11 +184,20 @@ func (s *Server) combineUserUsageBatches(
 			)
 		}
 
+		if pending.PPTPBatchID == "" {
+			pptpBatch = nil
+		} else if pending.PPTPBatchID != pptpID {
+			return nil, fmt.Errorf(
+				"combined PPTP child batch changed before ACK",
+			)
+		}
+
 		return buildCombinedUsageBatch(
 			pending.BatchID,
 			coreBatch,
 			wireGuardBatch,
 			l2tpBatch,
+			pptpBatch,
 		), nil
 	}
 
@@ -185,6 +209,7 @@ func (s *Server) combineUserUsageBatches(
 		CoreBatchID:      coreID,
 		WireGuardBatchID: wgID,
 		L2TPBatchID:      l2tpID,
+		PPTPBatchID:      pptpID,
 		CreatedAt:        time.Now().UTC(),
 	}
 	s.combinedUsagePending = pending
@@ -197,6 +222,7 @@ func (s *Server) combineUserUsageBatches(
 		coreBatch,
 		wireGuardBatch,
 		l2tpBatch,
+		pptpBatch,
 	), nil
 }
 
@@ -204,35 +230,45 @@ func buildCombinedUsageBatch(
 	batchID string,
 	coreBatch *nodev1.UserUsageBatch,
 	wireGuardBatch *nodev1.UserUsageBatch,
-	optionalL2TP ...*nodev1.UserUsageBatch,
+	optionalNative ...*nodev1.UserUsageBatch,
 ) *nodev1.UserUsageBatch {
 	var l2tpBatch *nodev1.UserUsageBatch
-	if len(optionalL2TP) > 0 {
-		l2tpBatch = optionalL2TP[0]
+	var pptpBatch *nodev1.UserUsageBatch
+	if len(optionalNative) > 0 {
+		l2tpBatch = optionalNative[0]
+	}
+	if len(optionalNative) > 1 {
+		pptpBatch = optionalNative[1]
 	}
 	stats := make([]*nodev1.UserUsageSample, 0,
 		len(coreBatch.GetStats())+
 			len(wireGuardBatch.GetStats())+
-			len(l2tpBatch.GetStats()))
+			len(l2tpBatch.GetStats())+
+			len(pptpBatch.GetStats()))
 	stats = append(stats, coreBatch.GetStats()...)
 	stats = append(stats, wireGuardBatch.GetStats()...)
 	stats = append(stats, l2tpBatch.GetStats()...)
+	stats = append(stats, pptpBatch.GetStats()...)
 
 	onlineIPs := make([]*nodev1.OnlineUserIP, 0,
 		len(coreBatch.GetOnlineIps())+
 			len(wireGuardBatch.GetOnlineIps())+
-			len(l2tpBatch.GetOnlineIps()))
+			len(l2tpBatch.GetOnlineIps())+
+			len(pptpBatch.GetOnlineIps()))
 	onlineIPs = append(onlineIPs, coreBatch.GetOnlineIps()...)
 	onlineIPs = append(onlineIPs, wireGuardBatch.GetOnlineIps()...)
 	onlineIPs = append(onlineIPs, l2tpBatch.GetOnlineIps()...)
+	onlineIPs = append(onlineIPs, pptpBatch.GetOnlineIps()...)
 
 	speeds := make([]*nodev1.UserTrafficSpeed, 0,
 		len(coreBatch.GetSpeeds())+
 			len(wireGuardBatch.GetSpeeds())+
-			len(l2tpBatch.GetSpeeds()))
+			len(l2tpBatch.GetSpeeds())+
+			len(pptpBatch.GetSpeeds()))
 	speeds = append(speeds, coreBatch.GetSpeeds()...)
 	speeds = append(speeds, wireGuardBatch.GetSpeeds()...)
 	speeds = append(speeds, l2tpBatch.GetSpeeds()...)
+	speeds = append(speeds, pptpBatch.GetSpeeds()...)
 
 	return &nodev1.UserUsageBatch{
 		BatchId:   batchID,
@@ -304,7 +340,21 @@ func (s *Server) ackCombinedUserUsage(
 		l2tpAck = resp.GetAcknowledged()
 	}
 
-	if !coreAck || !wgAck || !l2tpAck {
+	pptpAck := true
+	if strings.TrimSpace(pending.PPTPBatchID) != "" {
+		resp, err := s.ackPPTPUserUsage(
+			ctx,
+			&nodev1.AckUsageRequest{
+				BatchId: pending.PPTPBatchID,
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("combined pptp ACK failed: %w", err)
+		}
+		pptpAck = resp.GetAcknowledged()
+	}
+
+	if !coreAck || !wgAck || !l2tpAck || !pptpAck {
 		return &nodev1.AckUsageResponse{Acknowledged: false}, nil
 	}
 
@@ -332,6 +382,9 @@ func (s *Server) ackUsageChildBatch(
 		return resp.GetAcknowledged(), err
 	case strings.HasPrefix(batchID, "l2tp-"):
 		resp, err := s.ackL2TPUserUsage(ctx, req)
+		return resp.GetAcknowledged(), err
+	case strings.HasPrefix(batchID, "pptp-"):
+		resp, err := s.ackPPTPUserUsage(ctx, req)
 		return resp.GetAcknowledged(), err
 	case strings.HasPrefix(batchID, "xray-"):
 		resp, err := s.ackXrayUserUsage(ctx, req)

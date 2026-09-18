@@ -59,6 +59,11 @@ type Server struct {
 	l2TPUsagePending                 *l2TPUsagePendingBatch
 	l2TPUsageLoaded                  bool
 	l2TPUsageLastAckedBatchID        string
+	pptpUsageMu                      sync.Mutex
+	pptpUsageBaseline                map[string]uint64
+	pptpUsagePending                 *pptpUsagePendingBatch
+	pptpUsageLoaded                  bool
+	pptpUsageLastAckedBatchID        string
 	wireGuardUsageMu                 sync.Mutex
 	wireGuardUsageBaseline           map[string]uint64
 	wireGuardUsagePending            *wireGuardUsagePendingBatch
@@ -120,6 +125,7 @@ func New(cfg Config) *Server {
 		wireGuardDynamicSuppressedPeers: make(map[string]struct{}),
 		openVPNUsageBaseline:            make(map[string]uint64),
 		l2TPUsageBaseline:               make(map[string]uint64),
+		pptpUsageBaseline:               make(map[string]uint64),
 		wireGuardUsageBaseline:          make(map[string]uint64),
 		wireGuardUsageCarry:             make(map[string]wireGuardUsageCarry),
 		xrayUsageBaseline:               make(map[string]uint64),
@@ -390,6 +396,11 @@ func (s *Server) AckUserUsage(
 	// Try L2TP ACK
 	if strings.HasPrefix(batchID, "l2tp-") {
 		return s.ackL2TPUserUsage(ctx, req)
+	}
+
+	// Try PPTP ACK
+	if strings.HasPrefix(batchID, "pptp-") {
+		return s.ackPPTPUserUsage(ctx, req)
 	}
 
 	// Try Xray ACK
