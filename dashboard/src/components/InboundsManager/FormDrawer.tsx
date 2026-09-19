@@ -193,18 +193,8 @@ const XHTTP_PADDING_PLACEMENT_OPTIONS = [
 	"cookie",
 ];
 const XHTTP_PADDING_METHOD_OPTIONS = ["repeat-x", "tokenish"];
-const XHTTP_SESSION_PLACEMENT_OPTIONS = [
-	"path",
-	"query",
-	"header",
-	"cookie",
-];
-const XHTTP_SEQ_PLACEMENT_OPTIONS = [
-	"path",
-	"query",
-	"header",
-	"cookie"
-];
+const XHTTP_SESSION_PLACEMENT_OPTIONS = ["path", "query", "header", "cookie"];
+const XHTTP_SEQ_PLACEMENT_OPTIONS = ["path", "query", "header", "cookie"];
 const XHTTP_UPLINK_DATA_PLACEMENT_OPTIONS = [
 	"auto",
 	"body",
@@ -307,6 +297,17 @@ const generateRandomShortIds = (): string =>
 	shuffleArray(REALITY_SHORT_ID_LENGTHS)
 		.map((length) => randomHex(length))
 		.join(",");
+
+const generateAWGHeaders = (): [string, string, string, string] => {
+	const values = new Set<number>();
+	while (values.size < 4) {
+		const bytes = new Uint8Array(4);
+		fillRandomValues(bytes);
+		const value = new DataView(bytes.buffer).getUint32(0, false);
+		values.add(4 + (value % 2147483643));
+	}
+	return [...values].map(String) as [string, string, string, string];
+};
 
 const getRandomRealityTarget = () => {
 	if (!REALITY_TARGETS.length) {
@@ -534,6 +535,7 @@ export const InboundFormModal: FC<Props> = ({
 		currentProtocol !== "socks" &&
 		currentProtocol !== "openvpn" &&
 		currentProtocol !== "wireguard" &&
+		currentProtocol !== "amneziawg" &&
 		currentProtocol !== "l2tp" &&
 		currentProtocol !== "pptp" &&
 		currentProtocol !== "ikev2" &&
@@ -722,7 +724,7 @@ export const InboundFormModal: FC<Props> = ({
 	]);
 
 	useEffect(() => {
-		if (currentProtocol !== "wireguard") {
+		if (currentProtocol !== "wireguard" && currentProtocol !== "amneziawg") {
 			autoWGTunnelPortRef.current = "";
 			return;
 		}
@@ -744,10 +746,14 @@ export const InboundFormModal: FC<Props> = ({
 			}
 		}
 		if (!String(form.getValues("wgServerAddress") || "").trim()) {
-			form.setValue("wgServerAddress", "10.69.0.1/16", {
-				shouldDirty: true,
-				shouldValidate: true,
-			});
+			form.setValue(
+				"wgServerAddress",
+				currentProtocol === "amneziawg" ? "10.72.0.1/16" : "10.69.0.1/16",
+				{
+					shouldDirty: true,
+					shouldValidate: true,
+				},
+			);
 		}
 		if (streamSecurity !== "none") {
 			form.setValue("streamSecurity", "none", {
@@ -912,9 +918,7 @@ export const InboundFormModal: FC<Props> = ({
 		}
 		const numeric = Number(portValue);
 		if (Number.isFinite(numeric) && BLOCKED_PORTS.has(numeric)) {
-			setPortWarning(
-				t("inbounds.portWarningBlocked"),
-			);
+			setPortWarning(t("inbounds.portWarningBlocked"));
 		} else {
 			setPortWarning(null);
 		}
@@ -956,9 +960,7 @@ export const InboundFormModal: FC<Props> = ({
 				);
 			})
 		) {
-			setPortError(
-				t("inbounds.error.portExists"),
-			);
+			setPortError(t("inbounds.error.portExists"));
 		} else {
 			setPortError(null);
 		}
@@ -1234,6 +1236,16 @@ export const InboundFormModal: FC<Props> = ({
 		}
 	}, [form, t, toast]);
 
+	const handleGenerateAWGHeaders = useCallback(() => {
+		const headers = generateAWGHeaders();
+		(["awgH1", "awgH2", "awgH3", "awgH4"] as const).forEach((field, index) => {
+			form.setValue(field, headers[index], {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		});
+	}, [form]);
+
 	const handleGenerateMldsa65 = useCallback(async () => {
 		try {
 			const { seed, verify } = await generateMldsa65();
@@ -1433,9 +1445,7 @@ export const InboundFormModal: FC<Props> = ({
 					name="vlessSelectedAuth"
 					render={({ field }) => (
 						<FormControl>
-							<FormLabel>
-								{t("inbounds.vless.authentication")}
-							</FormLabel>
+							<FormLabel>{t("inbounds.vless.authentication")}</FormLabel>
 							<SearchableTagSelect
 								value={field.value || ""}
 								options={[
@@ -1457,15 +1467,11 @@ export const InboundFormModal: FC<Props> = ({
 				/>
 				<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 					<FormControl>
-						<FormLabel>
-							{t("inbounds.vless.decryption")}
-						</FormLabel>
+						<FormLabel>{t("inbounds.vless.decryption")}</FormLabel>
 						<Input {...register("vlessDecryption")} />
 					</FormControl>
 					<FormControl>
-						<FormLabel>
-							{t("inbounds.vless.encryption")}
-						</FormLabel>
+						<FormLabel>{t("inbounds.vless.encryption")}</FormLabel>
 						<Input {...register("vlessEncryption")} />
 					</FormControl>
 				</SimpleGrid>
@@ -1544,9 +1550,7 @@ export const InboundFormModal: FC<Props> = ({
 												)}
 											</FormControl>
 											<FormControl>
-												<FormLabel>
-													{t("inbounds.listen")}
-												</FormLabel>
+												<FormLabel>{t("inbounds.listen")}</FormLabel>
 												<Input placeholder="::" {...register("listen")} />
 											</FormControl>
 											<FormControl
@@ -1640,9 +1644,7 @@ export const InboundFormModal: FC<Props> = ({
 												)}
 											</FormControl>
 											<FormControl isRequired>
-												<FormLabel>
-													{t("protocol")}
-												</FormLabel>
+												<FormLabel>{t("protocol")}</FormLabel>
 												<SearchableTagSelect
 													value={currentProtocol}
 													isDisabled={mode === "edit"}
@@ -1698,6 +1700,7 @@ export const InboundFormModal: FC<Props> = ({
 														if (
 															nextProtocol === "openvpn" ||
 															nextProtocol === "wireguard" ||
+															nextProtocol === "amneziawg" ||
 															nextProtocol === "l2tp" ||
 															nextProtocol === "pptp" ||
 															nextProtocol === "ikev2" ||
@@ -1763,17 +1766,33 @@ export const InboundFormModal: FC<Props> = ({
 																		shouldDirty: true,
 																	});
 															}
-															if (nextProtocol === "wireguard") {
-																if (!form.getValues("wgIPv4Pool")) {
-																	form.setValue("wgIPv4Pool", "10.69.0.0/16", {
+															if (
+																nextProtocol === "wireguard" ||
+																nextProtocol === "amneziawg"
+															) {
+																const isAWG = nextProtocol === "amneziawg";
+																form.setValue(
+																	"port",
+																	isAWG ? "51821" : "51820",
+																	{
 																		shouldDirty: true,
 																		shouldValidate: true,
-																	});
+																	},
+																);
+																if (!form.getValues("wgIPv4Pool")) {
+																	form.setValue(
+																		"wgIPv4Pool",
+																		isAWG ? "10.72.0.0/16" : "10.69.0.0/16",
+																		{
+																			shouldDirty: true,
+																			shouldValidate: true,
+																		},
+																	);
 																}
 																if (!form.getValues("wgServerAddress")) {
 																	form.setValue(
 																		"wgServerAddress",
-																		"10.69.0.1/16",
+																		isAWG ? "10.72.0.1/16" : "10.69.0.1/16",
 																		{
 																			shouldDirty: true,
 																			shouldValidate: true,
@@ -1808,9 +1827,7 @@ export const InboundFormModal: FC<Props> = ({
 										)}
 										{currentProtocol === "vless" && (
 											<FormControl>
-												<FormLabel>
-													{t("inbounds.vless.flow")}
-												</FormLabel>
+												<FormLabel>{t("inbounds.vless.flow")}</FormLabel>
 												<SearchableTagSelect
 													value={formValues.vlessFlow || ""}
 													options={[
@@ -1824,9 +1841,7 @@ export const InboundFormModal: FC<Props> = ({
 													onChange={(value) =>
 														form.setValue(
 															"vlessFlow",
-															String(
-																value,
-															) as InboundFormValues["vlessFlow"],
+															String(value) as InboundFormValues["vlessFlow"],
 															{
 																shouldDirty: true,
 																shouldValidate: true,
@@ -1839,9 +1854,7 @@ export const InboundFormModal: FC<Props> = ({
 										{currentProtocol === "shadowsocks" && (
 											<Stack spacing={3}>
 												<FormControl>
-													<FormLabel>
-														{t("password")}
-													</FormLabel>
+													<FormLabel>{t("password")}</FormLabel>
 													<Input
 														type="text"
 														autoComplete="off"
@@ -1930,8 +1943,7 @@ export const InboundFormModal: FC<Props> = ({
 																mb={3}
 															>
 																<Text fontWeight="semibold">
-																	{t("inbounds.accounts.label")} #
-																	{index + 1}
+																	{t("inbounds.accounts.label")} #{index + 1}
 																</Text>
 																<Button
 																	size="xs"
@@ -1947,9 +1959,7 @@ export const InboundFormModal: FC<Props> = ({
 																spacing={3}
 															>
 																<FormControl>
-																	<FormLabel>
-																		{t("username")}
-																	</FormLabel>
+																	<FormLabel>{t("username")}</FormLabel>
 																	<Input
 																		{...register(
 																			`httpAccounts.${index}.user` as const,
@@ -1957,9 +1967,7 @@ export const InboundFormModal: FC<Props> = ({
 																	/>
 																</FormControl>
 																<FormControl>
-																	<FormLabel>
-																		{t("password")}
-																	</FormLabel>
+																	<FormLabel>{t("password")}</FormLabel>
 																	<Input
 																		{...register(
 																			`httpAccounts.${index}.pass` as const,
@@ -1993,9 +2001,7 @@ export const InboundFormModal: FC<Props> = ({
 												</FormControl>
 												{socksUdpEnabled && (
 													<FormControl>
-														<FormLabel>
-															{t("inbounds.socks.udpIp")}
-														</FormLabel>
+														<FormLabel>{t("inbounds.socks.udpIp")}</FormLabel>
 														<Input
 															{...register("socksUdpIp")}
 															placeholder="127.0.0.1"
@@ -2052,8 +2058,7 @@ export const InboundFormModal: FC<Props> = ({
 																	mb={3}
 																>
 																	<Text fontWeight="semibold">
-																		{t("inbounds.accounts.label")} #
-																		{index + 1}
+																		{t("inbounds.accounts.label")} #{index + 1}
 																	</Text>
 																	<Button
 																		size="xs"
@@ -2069,9 +2074,7 @@ export const InboundFormModal: FC<Props> = ({
 																	spacing={3}
 																>
 																	<FormControl>
-																		<FormLabel>
-																			{t("username")}
-																		</FormLabel>
+																		<FormLabel>{t("username")}</FormLabel>
 																		<Input
 																			{...register(
 																				`socksAccounts.${index}.user` as const,
@@ -2079,9 +2082,7 @@ export const InboundFormModal: FC<Props> = ({
 																		/>
 																	</FormControl>
 																	<FormControl>
-																		<FormLabel>
-																			{t("password")}
-																		</FormLabel>
+																		<FormLabel>{t("password")}</FormLabel>
 																		<Input
 																			{...register(
 																				`socksAccounts.${index}.pass` as const,
@@ -2460,7 +2461,8 @@ export const InboundFormModal: FC<Props> = ({
 												</FormControl>
 											</Stack>
 										)}
-										{currentProtocol === "wireguard" && (
+										{(currentProtocol === "wireguard" ||
+											currentProtocol === "amneziawg") && (
 											<Stack spacing={3}>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl
@@ -2583,6 +2585,16 @@ export const InboundFormModal: FC<Props> = ({
 													</FormControl>
 													<FormControl display="flex" alignItems="center">
 														{ovLabel(
+															"inbounds.wireguard.nat",
+															"Enable NAT",
+															"inbounds.wireguard.help.nat",
+															"Masquerade tunnel traffic for direct node egress. It remains enabled automatically when Xray routing is off.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("wgNatEnabled")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
 															"inbounds.wireguard.accounting",
 															"Enable accounting",
 															"inbounds.wireguard.help.accounting",
@@ -2630,6 +2642,92 @@ export const InboundFormModal: FC<Props> = ({
 													)}
 													<Input {...register("wgPublicKey")} isReadOnly />
 												</FormControl>
+												{currentProtocol === "amneziawg" && (
+													<>
+														<FormControl>
+															{ovLabel(
+																"inbounds.amneziawg.dns",
+																"DNS servers",
+																"inbounds.amneziawg.help.dns",
+																"DNS resolvers written to every AmneziaWG device profile.",
+															)}
+															<Textarea
+																rows={2}
+																{...register("awgDNSServers")}
+																placeholder={"1.1.1.1\n8.8.8.8"}
+															/>
+														</FormControl>
+														<FormControl display="flex" alignItems="center">
+															{ovLabel(
+																"inbounds.amneziawg.psk",
+																"Per-device PSK",
+																"inbounds.amneziawg.help.psk",
+																"Generate a distinct preshared key for each device in addition to its key pair.",
+																{ mb: 0 },
+															)}
+															<Switch {...register("awgPSKEnabled")} />
+														</FormControl>
+														<SimpleGrid
+															columns={{ base: 2, md: 5 }}
+															spacing={3}
+														>
+															{(
+																[
+																	"awgJc",
+																	"awgJmin",
+																	"awgJmax",
+																	"awgS1",
+																	"awgS2",
+																] as const
+															).map((field) => (
+																<FormControl
+																	key={field}
+																	isRequired
+																	isInvalid={Boolean(
+																		fieldValidationErrors[field],
+																	)}
+																>
+																	<FormLabel>{field.slice(3)}</FormLabel>
+																	<Input
+																		{...register(field)}
+																		inputMode="numeric"
+																	/>
+																</FormControl>
+															))}
+														</SimpleGrid>
+														<SimpleGrid
+															columns={{ base: 2, md: 4 }}
+															spacing={3}
+														>
+															{(
+																["awgH1", "awgH2", "awgH3", "awgH4"] as const
+															).map((field) => (
+																<FormControl
+																	key={field}
+																	isRequired
+																	isInvalid={Boolean(
+																		fieldValidationErrors[field],
+																	)}
+																>
+																	<FormLabel>{field.slice(3)}</FormLabel>
+																	<Input
+																		{...register(field)}
+																		inputMode="numeric"
+																	/>
+																</FormControl>
+															))}
+														</SimpleGrid>
+														<Box>
+															<Button
+																size="sm"
+																leftIcon={<ArrowPathIcon width={16} />}
+																onClick={handleGenerateAWGHeaders}
+															>
+																Regenerate H values
+															</Button>
+														</Box>
+													</>
+												)}
 											</Stack>
 										)}
 										{(currentProtocol === "ikev2" ||
@@ -2658,19 +2756,27 @@ export const InboundFormModal: FC<Props> = ({
 																<SearchableTagSelect
 																	value={field.value}
 																	onChange={field.onChange}
-																	placeholder={t("inbounds.remoteAccess.authMode")}
+																	placeholder={t(
+																		"inbounds.remoteAccess.authMode",
+																	)}
 																	options={[
 																		{
 																			value: "password",
-																			label: t("inbounds.remoteAccess.password"),
+																			label: t(
+																				"inbounds.remoteAccess.password",
+																			),
 																		},
 																		{
 																			value: "certificate",
-																			label: t("inbounds.remoteAccess.certificate"),
+																			label: t(
+																				"inbounds.remoteAccess.certificate",
+																			),
 																		},
 																		{
 																			value: "password+certificate",
-																			label: t("inbounds.remoteAccess.passwordCertificate"),
+																			label: t(
+																				"inbounds.remoteAccess.passwordCertificate",
+																			),
 																		},
 																	]}
 																/>
@@ -3030,7 +3136,9 @@ export const InboundFormModal: FC<Props> = ({
 																	<SearchableTagSelect
 																		value={field.value}
 																		onChange={field.onChange}
-																		placeholder={t("inbounds.ikev2.fragmentation")}
+																		placeholder={t(
+																			"inbounds.ikev2.fragmentation",
+																		)}
 																		options={[
 																			{
 																				value: "yes",
@@ -3038,7 +3146,9 @@ export const InboundFormModal: FC<Props> = ({
 																			},
 																			{
 																				value: "accept",
-																				label: t("inbounds.ikev2.acceptFragments"),
+																				label: t(
+																					"inbounds.ikev2.acceptFragments",
+																				),
 																			},
 																			{
 																				value: "no",
@@ -3072,18 +3182,24 @@ export const InboundFormModal: FC<Props> = ({
 																	render={({ field }) => (
 																		<SearchableTagSelect
 																			value={field.value ? "tcp-udp" : "tcp"}
-																			placeholder={t("inbounds.anyconnect.transport")}
+																			placeholder={t(
+																				"inbounds.anyconnect.transport",
+																			)}
 																			onChange={(value) =>
 																				field.onChange(value === "tcp-udp")
 																			}
 																			options={[
 																				{
 																					value: "tcp-udp",
-																					label: t("inbounds.anyconnect.tcpUdp"),
+																					label: t(
+																						"inbounds.anyconnect.tcpUdp",
+																					),
 																				},
 																				{
 																					value: "tcp",
-																					label: t("inbounds.anyconnect.tcpOnly"),
+																					label: t(
+																						"inbounds.anyconnect.tcpOnly",
+																					),
 																				},
 																			]}
 																		/>
@@ -3304,13 +3420,17 @@ export const InboundFormModal: FC<Props> = ({
 																render={({ field }) => (
 																	<SearchableTagSelect
 																		value={field.value}
-																		placeholder={t("inbounds.anyconnect.rekeyMethod")}
+																		placeholder={t(
+																			"inbounds.anyconnect.rekeyMethod",
+																		)}
 																		onChange={field.onChange}
 																		options={[
 																			{ value: "ssl", label: "SSL" },
 																			{
 																				value: "new-tunnel",
-																				label: t("inbounds.anyconnect.newTunnel"),
+																				label: t(
+																					"inbounds.anyconnect.newTunnel",
+																				),
 																			},
 																		]}
 																	/>
@@ -3860,9 +3980,7 @@ export const InboundFormModal: FC<Props> = ({
 											) : (
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl>
-														<FormLabel>
-															{t("inbounds.network")}
-														</FormLabel>
+														<FormLabel>{t("inbounds.network")}</FormLabel>
 														<SearchableTagSelect
 															value={streamNetwork}
 															options={ALL_NETWORK_OPTIONS}
@@ -3882,9 +4000,7 @@ export const InboundFormModal: FC<Props> = ({
 														/>
 													</FormControl>
 													<FormControl>
-														<FormLabel>
-															{t("inbounds.security")}
-														</FormLabel>
+														<FormLabel>{t("inbounds.security")}</FormLabel>
 														<Controller
 															control={control}
 															name="streamSecurity"
@@ -3946,9 +4062,7 @@ export const InboundFormModal: FC<Props> = ({
 														<FormControl
 															isInvalid={!!fieldValidationErrors.wsPath}
 														>
-															<FormLabel>
-																{t("inbounds.ws.path")}
-															</FormLabel>
+															<FormLabel>{t("inbounds.ws.path")}</FormLabel>
 															<Input
 																{...register("wsPath")}
 																placeholder="/ws"
@@ -3960,9 +4074,7 @@ export const InboundFormModal: FC<Props> = ({
 															)}
 														</FormControl>
 														<FormControl>
-															<FormLabel>
-																{t("inbounds.ws.host")}
-															</FormLabel>
+															<FormLabel>{t("inbounds.ws.host")}</FormLabel>
 															<Input
 																{...register("wsHost")}
 																placeholder="example.com"
@@ -3986,7 +4098,9 @@ export const InboundFormModal: FC<Props> = ({
 															)}
 														</FormControl>
 														<FormControl display="flex" alignItems="center">
-															<FormLabel mb={0}>Accept PROXY protocol</FormLabel>
+															<FormLabel mb={0}>
+																Accept PROXY protocol
+															</FormLabel>
 															<Switch {...register("wsAcceptProxyProtocol")} />
 														</FormControl>
 													</SimpleGrid>
@@ -4070,18 +4184,14 @@ export const InboundFormModal: FC<Props> = ({
 															spacing={3}
 														>
 															<FormControl>
-																<FormLabel>
-																	{t("inbounds.tcp.host")}
-																</FormLabel>
+																<FormLabel>{t("inbounds.tcp.host")}</FormLabel>
 																<Textarea
 																	{...register("tcpHttpHosts")}
 																	placeholder="example.com"
 																/>
 															</FormControl>
 															<FormControl>
-																<FormLabel>
-																	{t("inbounds.tcp.path")}
-																</FormLabel>
+																<FormLabel>{t("inbounds.tcp.path")}</FormLabel>
 																<Input {...register("tcpHttpPath")} />
 															</FormControl>
 														</SimpleGrid>
@@ -4089,125 +4199,160 @@ export const InboundFormModal: FC<Props> = ({
 												</Stack>
 											)}
 
-										{streamNetwork === "grpc" && (
-											<Stack spacing={3}>
-												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-												<FormControl>
-														<FormLabel>
-															{t("serviceName")}
-														</FormLabel>
-														<Input {...register("grpcServiceName")} />
-													</FormControl>
-													<FormControl>
-														<FormLabel>
-															{t("inbounds.grpc.authority")}
-														</FormLabel>
-														<Input {...register("grpcAuthority")} />
-													</FormControl>
+											{streamNetwork === "grpc" && (
+												<Stack spacing={3}>
+													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+														<FormControl>
+															<FormLabel>{t("serviceName")}</FormLabel>
+															<Input {...register("grpcServiceName")} />
+														</FormControl>
+														<FormControl>
+															<FormLabel>
+																{t("inbounds.grpc.authority")}
+															</FormLabel>
+															<Input {...register("grpcAuthority")} />
+														</FormControl>
+														<FormControl display="flex" alignItems="center">
+															<FormLabel mb={0}>
+																{t("inbounds.grpc.multiMode")}
+															</FormLabel>
+															<Switch {...register("grpcMultiMode")} />
+														</FormControl>
+														<FormControl display="flex" alignItems="center">
+															<FormLabel mb={0}>
+																Permit without stream
+															</FormLabel>
+															<Switch
+																{...register("grpcPermitWithoutStream")}
+															/>
+														</FormControl>
+													</SimpleGrid>
+													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+														{(
+															[
+																["grpcIdleTimeout", "Idle timeout (seconds)"],
+																[
+																	"grpcHealthCheckTimeout",
+																	"Health-check timeout (seconds)",
+																],
+																[
+																	"grpcInitialWindowsSize",
+																	"Initial window size",
+																],
+															] as const
+														).map(([name, label]) => (
+															<FormControl
+																key={name}
+																isInvalid={!!fieldValidationErrors[name]}
+															>
+																<FormLabel>{label}</FormLabel>
+																<Input
+																	{...register(name)}
+																	inputMode="numeric"
+																/>
+																{fieldValidationErrors[name] && (
+																	<FormErrorMessage>
+																		{fieldValidationErrors[name]}
+																	</FormErrorMessage>
+																)}
+															</FormControl>
+														))}
+														<FormControl>
+															<FormLabel>User-Agent</FormLabel>
+															<Input {...register("grpcUserAgent")} />
+														</FormControl>
+													</SimpleGrid>
+												</Stack>
+											)}
+
+											{streamNetwork === "kcp" && (
+												<Stack spacing={3}>
+													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+														<FormControl>
+															<FormLabel>
+																{t("inbounds.kcp.headerType")} (legacy)
+															</FormLabel>
+															<Input {...register("kcpHeaderType")} />
+														</FormControl>
+														<FormControl>
+															<FormLabel>
+																{t("inbounds.kcp.seed")} (legacy)
+															</FormLabel>
+															<Input {...register("kcpSeed")} />
+														</FormControl>
+													</SimpleGrid>
+													<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
+														{(
+															[
+																["kcpMtu", "MTU", "1350"],
+																["kcpTti", "TTI (ms)", "50"],
+																[
+																	"kcpUplinkCapacity",
+																	"Uplink capacity (MB/s)",
+																	"5",
+																],
+																[
+																	"kcpDownlinkCapacity",
+																	"Downlink capacity (MB/s)",
+																	"20",
+																],
+																[
+																	"kcpCwndMultiplier",
+																	"Congestion window multiplier",
+																	"1",
+																],
+																[
+																	"kcpMaxSendingWindow",
+																	"Maximum sending window",
+																	"2097152",
+																],
+																[
+																	"kcpReadBufferSize",
+																	"Read buffer (MB, legacy)",
+																	"2",
+																],
+																[
+																	"kcpWriteBufferSize",
+																	"Write buffer (MB, legacy)",
+																	"2",
+																],
+															] as const
+														).map(([name, label, placeholder]) => (
+															<FormControl
+																key={name}
+																isInvalid={!!fieldValidationErrors[name]}
+															>
+																<FormLabel>{label}</FormLabel>
+																<Input
+																	{...register(name as keyof InboundFormValues)}
+																	inputMode="numeric"
+																	placeholder={placeholder}
+																/>
+																{fieldValidationErrors[name] && (
+																	<FormErrorMessage>
+																		{fieldValidationErrors[name]}
+																	</FormErrorMessage>
+																)}
+															</FormControl>
+														))}
+													</SimpleGrid>
 													<FormControl display="flex" alignItems="center">
 														<FormLabel mb={0}>
-															{t("inbounds.grpc.multiMode")}
+															Congestion control (legacy)
 														</FormLabel>
-													<Switch {...register("grpcMultiMode")} />
-												</FormControl>
-													<FormControl display="flex" alignItems="center">
-														<FormLabel mb={0}>Permit without stream</FormLabel>
-														<Switch {...register("grpcPermitWithoutStream")} />
+														<Switch {...register("kcpCongestion")} />
 													</FormControl>
-												</SimpleGrid>
-												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-													{(
-														[
-															["grpcIdleTimeout", "Idle timeout (seconds)"],
-															["grpcHealthCheckTimeout", "Health-check timeout (seconds)"],
-															["grpcInitialWindowsSize", "Initial window size"],
-														] as const
-													).map(([name, label]) => (
-														<FormControl
-															key={name}
-															isInvalid={!!fieldValidationErrors[name]}
-														>
-															<FormLabel>{label}</FormLabel>
-															<Input {...register(name)} inputMode="numeric" />
-															{fieldValidationErrors[name] && (
-																<FormErrorMessage>{fieldValidationErrors[name]}</FormErrorMessage>
-															)}
-														</FormControl>
-													))}
-													<FormControl>
-														<FormLabel>User-Agent</FormLabel>
-														<Input {...register("grpcUserAgent")} />
-													</FormControl>
-												</SimpleGrid>
-											</Stack>
-										)}
-
-										{streamNetwork === "kcp" && (
-											<Stack spacing={3}>
-												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-													<FormControl>
-														<FormLabel>
-															{t("inbounds.kcp.headerType")} (legacy)
-														</FormLabel>
-														<Input {...register("kcpHeaderType")} />
-													</FormControl>
-													<FormControl>
-														<FormLabel>
-															{t("inbounds.kcp.seed")} (legacy)
-														</FormLabel>
-														<Input {...register("kcpSeed")} />
-													</FormControl>
-												</SimpleGrid>
-												<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
-													{(
-														[
-															["kcpMtu", "MTU", "1350"],
-															["kcpTti", "TTI (ms)", "50"],
-															["kcpUplinkCapacity", "Uplink capacity (MB/s)", "5"],
-															["kcpDownlinkCapacity", "Downlink capacity (MB/s)", "20"],
-															["kcpCwndMultiplier", "Congestion window multiplier", "1"],
-															["kcpMaxSendingWindow", "Maximum sending window", "2097152"],
-															["kcpReadBufferSize", "Read buffer (MB, legacy)", "2"],
-															["kcpWriteBufferSize", "Write buffer (MB, legacy)", "2"],
-														] as const
-													).map(([name, label, placeholder]) => (
-														<FormControl
-															key={name}
-															isInvalid={!!fieldValidationErrors[name]}
-														>
-															<FormLabel>{label}</FormLabel>
-															<Input
-																{...register(name as keyof InboundFormValues)}
-																inputMode="numeric"
-																placeholder={placeholder}
-															/>
-															{fieldValidationErrors[name] && (
-																<FormErrorMessage>
-																	{fieldValidationErrors[name]}
-																</FormErrorMessage>
-															)}
-														</FormControl>
-													))}
-												</SimpleGrid>
-												<FormControl display="flex" alignItems="center">
-													<FormLabel mb={0}>Congestion control (legacy)</FormLabel>
-													<Switch {...register("kcpCongestion")} />
-												</FormControl>
-											</Stack>
-										)}
+												</Stack>
+											)}
 
 											{streamNetwork === "quic" && (
 												<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
 													<FormControl>
-														<FormLabel>
-															{t("inbounds.quic.security")}
-														</FormLabel>
+														<FormLabel>{t("inbounds.quic.security")}</FormLabel>
 														<Input {...register("quicSecurity")} />
 													</FormControl>
 													<FormControl>
-														<FormLabel>
-															{t("inbounds.quic.key")}
-														</FormLabel>
+														<FormLabel>{t("inbounds.quic.key")}</FormLabel>
 														<Input {...register("quicKey")} />
 													</FormControl>
 													<FormControl>
@@ -4219,52 +4364,85 @@ export const InboundFormModal: FC<Props> = ({
 												</SimpleGrid>
 											)}
 
-										{streamNetwork === "httpupgrade" && (
-											<Stack spacing={3}>
-												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-													<FormControl
-														isInvalid={!!fieldValidationErrors.httpupgradePath}
-													>
-														<FormLabel>
-															{t("inbounds.httpUpgrade.path")}
-														</FormLabel>
-														<Input {...register("httpupgradePath")} />
-														{fieldValidationErrors.httpupgradePath && (
-															<Text fontSize="xs" color="red.500" mt={1}>
-																{fieldValidationErrors.httpupgradePath}
-															</Text>
-														)}
-													</FormControl>
-													<FormControl>
-														<FormLabel>
-															{t("inbounds.httpUpgrade.host")}
-														</FormLabel>
-													<Input {...register("httpupgradeHost")} />
-												</FormControl>
-													<FormControl display="flex" alignItems="center">
-														<FormLabel mb={0}>Accept PROXY protocol</FormLabel>
-														<Switch {...register("httpupgradeAcceptProxyProtocol")} />
-													</FormControl>
-												</SimpleGrid>
-												<Stack spacing={2}>
-													<Flex justify="space-between" align="center">
-														<Text fontWeight="medium">Headers</Text>
-														<Button size="xs" onClick={() => appendHttpupgradeHeader({ name: "", value: "" })}>
-															{t("inbounds.accounts.add")}
-														</Button>
-													</Flex>
-													{httpupgradeHeaderFields.map((field, index) => (
-														<HStack key={field.id} spacing={2} align="flex-start">
-															<Input {...register(`httpupgradeHeaders.${index}.name` as const)} placeholder={t("inbounds.ws.headerName")} />
-															<Input {...register(`httpupgradeHeaders.${index}.value` as const)} placeholder={t("inbounds.ws.headerValue")} />
-															<Button size="xs" variant="ghost" colorScheme="red" onClick={() => removeHttpupgradeHeader(index)}>
-																{t("delete")}
+											{streamNetwork === "httpupgrade" && (
+												<Stack spacing={3}>
+													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+														<FormControl
+															isInvalid={
+																!!fieldValidationErrors.httpupgradePath
+															}
+														>
+															<FormLabel>
+																{t("inbounds.httpUpgrade.path")}
+															</FormLabel>
+															<Input {...register("httpupgradePath")} />
+															{fieldValidationErrors.httpupgradePath && (
+																<Text fontSize="xs" color="red.500" mt={1}>
+																	{fieldValidationErrors.httpupgradePath}
+																</Text>
+															)}
+														</FormControl>
+														<FormControl>
+															<FormLabel>
+																{t("inbounds.httpUpgrade.host")}
+															</FormLabel>
+															<Input {...register("httpupgradeHost")} />
+														</FormControl>
+														<FormControl display="flex" alignItems="center">
+															<FormLabel mb={0}>
+																Accept PROXY protocol
+															</FormLabel>
+															<Switch
+																{...register("httpupgradeAcceptProxyProtocol")}
+															/>
+														</FormControl>
+													</SimpleGrid>
+													<Stack spacing={2}>
+														<Flex justify="space-between" align="center">
+															<Text fontWeight="medium">Headers</Text>
+															<Button
+																size="xs"
+																onClick={() =>
+																	appendHttpupgradeHeader({
+																		name: "",
+																		value: "",
+																	})
+																}
+															>
+																{t("inbounds.accounts.add")}
 															</Button>
-														</HStack>
-													))}
+														</Flex>
+														{httpupgradeHeaderFields.map((field, index) => (
+															<HStack
+																key={field.id}
+																spacing={2}
+																align="flex-start"
+															>
+																<Input
+																	{...register(
+																		`httpupgradeHeaders.${index}.name` as const,
+																	)}
+																	placeholder={t("inbounds.ws.headerName")}
+																/>
+																<Input
+																	{...register(
+																		`httpupgradeHeaders.${index}.value` as const,
+																	)}
+																	placeholder={t("inbounds.ws.headerValue")}
+																/>
+																<Button
+																	size="xs"
+																	variant="ghost"
+																	colorScheme="red"
+																	onClick={() => removeHttpupgradeHeader(index)}
+																>
+																	{t("delete")}
+																</Button>
+															</HStack>
+														))}
+													</Stack>
 												</Stack>
-											</Stack>
-										)}
+											)}
 
 											{streamNetwork === "splithttp" && (
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
@@ -4294,9 +4472,7 @@ export const InboundFormModal: FC<Props> = ({
 												<Stack spacing={3}>
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 														<FormControl>
-															<FormLabel>
-																{t("hostsPage.host")}
-															</FormLabel>
+															<FormLabel>{t("hostsPage.host")}</FormLabel>
 															<Input
 																{...register("xhttpHost")}
 																placeholder="example.com"
@@ -4305,9 +4481,7 @@ export const InboundFormModal: FC<Props> = ({
 														<FormControl
 															isInvalid={!!fieldValidationErrors.xhttpPath}
 														>
-															<FormLabel>
-																{t("path")}
-															</FormLabel>
+															<FormLabel>{t("path")}</FormLabel>
 															<Input
 																{...register("xhttpPath")}
 																placeholder="/"
@@ -4368,9 +4542,7 @@ export const InboundFormModal: FC<Props> = ({
 													</Stack>
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 														<FormControl>
-															<FormLabel>
-																{t("inbounds.xhttp.mode")}
-															</FormLabel>
+															<FormLabel>{t("inbounds.xhttp.mode")}</FormLabel>
 															<SearchableTagSelect
 																value={formValues.xhttpMode || ""}
 																options={[
@@ -4556,382 +4728,403 @@ export const InboundFormModal: FC<Props> = ({
 														</FormLabel>
 														<Switch {...register("xhttpPaddingObfsMode")} />
 													</FormControl>
-														<Stack
-															className="xray-dialog-section"
+													<Stack
+														className="xray-dialog-section"
+														spacing={3}
+														mt={2}
+													>
+														<Text fontSize="sm" fontWeight="semibold">
+															{t("inbounds.xhttp.obfsOptions")}
+														</Text>
+														<SimpleGrid
+															columns={{ base: 1, md: 2 }}
 															spacing={3}
-															mt={2}
 														>
-															<Text fontSize="sm" fontWeight="semibold">
-																{t("inbounds.xhttp.obfsOptions")}
-															</Text>
-															<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-																<FormControl
-																	isInvalid={
-																		!!fieldValidationErrors.xhttpPaddingKey
-																	}
-																>
-																	<FormLabel>
-																		{t("inbounds.xhttp.paddingKey")}
-																	</FormLabel>
-																	<Input
-																		{...register("xhttpPaddingKey")}
-																		placeholder="_dc"
-																	/>
-																	{fieldValidationErrors.xhttpPaddingKey && (
-																		<Text fontSize="xs" color="red.500" mt={1}>
-																			{fieldValidationErrors.xhttpPaddingKey}
-																		</Text>
-																	)}
-																</FormControl>
+															<FormControl
+																isInvalid={
+																	!!fieldValidationErrors.xhttpPaddingKey
+																}
+															>
+																<FormLabel>
+																	{t("inbounds.xhttp.paddingKey")}
+																</FormLabel>
+																<Input
+																	{...register("xhttpPaddingKey")}
+																	placeholder="_dc"
+																/>
+																{fieldValidationErrors.xhttpPaddingKey && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{fieldValidationErrors.xhttpPaddingKey}
+																	</Text>
+																)}
+															</FormControl>
 
-																<FormControl
-																	isInvalid={
-																		!!fieldValidationErrors.xhttpPaddingHeader
-																	}
-																>
-																	<FormLabel>
-																		{t("inbounds.xhttp.paddingHeader")}
-																	</FormLabel>
-																	<Input
-																		{...register("xhttpPaddingHeader")}
-																		placeholder="Referer"
-																	/>
-																	{fieldValidationErrors.xhttpPaddingHeader && (
-																		<Text fontSize="xs" color="red.500" mt={1}>
-																			{fieldValidationErrors.xhttpPaddingHeader}
-																		</Text>
-																	)}
-																</FormControl>
+															<FormControl
+																isInvalid={
+																	!!fieldValidationErrors.xhttpPaddingHeader
+																}
+															>
+																<FormLabel>
+																	{t("inbounds.xhttp.paddingHeader")}
+																</FormLabel>
+																<Input
+																	{...register("xhttpPaddingHeader")}
+																	placeholder="Referer"
+																/>
+																{fieldValidationErrors.xhttpPaddingHeader && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{fieldValidationErrors.xhttpPaddingHeader}
+																	</Text>
+																)}
+															</FormControl>
 
-																<FormControl
-																	isInvalid={
-																		!!fieldValidationErrors.xhttpPaddingPlacement
-																	}
-																>
-																	<FormLabel>
-																		{t("inbounds.xhttp.paddingPlacement")}
-																	</FormLabel>
-																	<Controller
-																		control={control}
-																		name="xhttpPaddingPlacement"
-																		render={({ field }) => (
-																			<SearchableTagSelect
-																				value={field.value || ""}
-																				options={[
+															<FormControl
+																isInvalid={
+																	!!fieldValidationErrors.xhttpPaddingPlacement
+																}
+															>
+																<FormLabel>
+																	{t("inbounds.xhttp.paddingPlacement")}
+																</FormLabel>
+																<Controller
+																	control={control}
+																	name="xhttpPaddingPlacement"
+																	render={({ field }) => (
+																		<SearchableTagSelect
+																			value={field.value || ""}
+																			options={[
+																				{
+																					value: "",
+																					label: t("common.default"),
+																				},
+																				...XHTTP_PADDING_PLACEMENT_OPTIONS,
+																			]}
+																			placeholder={t(
+																				"inbounds.xhttp.paddingPlacement",
+																			)}
+																			onChange={(value) =>
+																				form.setValue(
+																					"xhttpPaddingPlacement",
+																					String(
+																						value,
+																					) as InboundFormValues["xhttpPaddingPlacement"],
 																					{
-																						value: "",
-																						label: t("common.default"),
+																						shouldDirty: true,
+																						shouldValidate: true,
 																					},
-																					...XHTTP_PADDING_PLACEMENT_OPTIONS,
-																				]}
-																				placeholder={t("inbounds.xhttp.paddingPlacement")}
-																				onChange={(value) =>
-																					form.setValue(
-																						"xhttpPaddingPlacement",
-																						String(
-																							value,
-																						) as InboundFormValues["xhttpPaddingPlacement"],
-																						{
-																							shouldDirty: true,
-																							shouldValidate: true,
-																						},
-																					)
-																				}
-																			/>
-																		)}
-																	/>
-																	{fieldValidationErrors.xhttpPaddingPlacement && (
-																		<Text fontSize="xs" color="red.500" mt={1}>
-																			{fieldValidationErrors.xhttpPaddingPlacement}
-																		</Text>
+																				)
+																			}
+																		/>
 																	)}
-																</FormControl>
+																/>
+																{fieldValidationErrors.xhttpPaddingPlacement && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{
+																			fieldValidationErrors.xhttpPaddingPlacement
+																		}
+																	</Text>
+																)}
+															</FormControl>
 
-																<FormControl
-																	isInvalid={
-																		!!fieldValidationErrors.xhttpPaddingMethod
-																	}
-																>
-																	<FormLabel>
-																		{t("inbounds.xhttp.paddingMethod")}
-																	</FormLabel>
-																	<Controller
-																		control={control}
-																		name="xhttpPaddingMethod"
-																		render={({ field }) => (
-																			<SearchableTagSelect
-																				value={field.value || ""}
-																				options={[
+															<FormControl
+																isInvalid={
+																	!!fieldValidationErrors.xhttpPaddingMethod
+																}
+															>
+																<FormLabel>
+																	{t("inbounds.xhttp.paddingMethod")}
+																</FormLabel>
+																<Controller
+																	control={control}
+																	name="xhttpPaddingMethod"
+																	render={({ field }) => (
+																		<SearchableTagSelect
+																			value={field.value || ""}
+																			options={[
+																				{
+																					value: "",
+																					label: t("common.default"),
+																				},
+																				...XHTTP_PADDING_METHOD_OPTIONS,
+																			]}
+																			placeholder={t(
+																				"inbounds.xhttp.paddingMethod",
+																			)}
+																			onChange={(value) =>
+																				form.setValue(
+																					"xhttpPaddingMethod",
+																					String(
+																						value,
+																					) as InboundFormValues["xhttpPaddingMethod"],
 																					{
-																						value: "",
-																						label: t("common.default"),
+																						shouldDirty: true,
+																						shouldValidate: true,
 																					},
-																					...XHTTP_PADDING_METHOD_OPTIONS,
-																				]}
-																				placeholder={t("inbounds.xhttp.paddingMethod")}
-																				onChange={(value) =>
-																					form.setValue(
-																						"xhttpPaddingMethod",
-																						String(
-																							value,
-																						) as InboundFormValues["xhttpPaddingMethod"],
-																						{
-																							shouldDirty: true,
-																							shouldValidate: true,
-																						},
-																					)
-																				}
-																			/>
-																		)}
-																	/>
-																	{fieldValidationErrors.xhttpPaddingMethod && (
-																		<Text fontSize="xs" color="red.500" mt={1}>
-																			{fieldValidationErrors.xhttpPaddingMethod}
-																		</Text>
+																				)
+																			}
+																		/>
 																	)}
-																</FormControl>
+																/>
+																{fieldValidationErrors.xhttpPaddingMethod && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{fieldValidationErrors.xhttpPaddingMethod}
+																	</Text>
+																)}
+															</FormControl>
 
-																<FormControl
-																	isInvalid={
-																		!!fieldValidationErrors.xhttpUplinkHTTPMethod
-																	}
-																>
-																	<FormLabel>
-																		{t("inbounds.xhttp.uplinkHTTPMethod")}
-																	</FormLabel>
-																	<Input
-																		{...register("xhttpUplinkHTTPMethod")}
-																		placeholder="POST"
-																	/>
-																	{fieldValidationErrors.xhttpUplinkHTTPMethod && (
-																		<Text fontSize="xs" color="red.500" mt={1}>
-																			{fieldValidationErrors.xhttpUplinkHTTPMethod}
-																		</Text>
-																	)}
-																</FormControl>
+															<FormControl
+																isInvalid={
+																	!!fieldValidationErrors.xhttpUplinkHTTPMethod
+																}
+															>
+																<FormLabel>
+																	{t("inbounds.xhttp.uplinkHTTPMethod")}
+																</FormLabel>
+																<Input
+																	{...register("xhttpUplinkHTTPMethod")}
+																	placeholder="POST"
+																/>
+																{fieldValidationErrors.xhttpUplinkHTTPMethod && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{
+																			fieldValidationErrors.xhttpUplinkHTTPMethod
+																		}
+																	</Text>
+																)}
+															</FormControl>
 
-																<FormControl
-																	isInvalid={
-																		!!fieldValidationErrors.xhttpSessionPlacement
-																	}
-																>
-																	<FormLabel>
-																		{t("inbounds.xhttp.sessionPlacement")}
-																	</FormLabel>
-																	<Controller
-																		control={control}
-																		name="xhttpSessionPlacement"
-																		render={({ field }) => (
-																			<SearchableTagSelect
-																				value={field.value || ""}
-																				options={[
+															<FormControl
+																isInvalid={
+																	!!fieldValidationErrors.xhttpSessionPlacement
+																}
+															>
+																<FormLabel>
+																	{t("inbounds.xhttp.sessionPlacement")}
+																</FormLabel>
+																<Controller
+																	control={control}
+																	name="xhttpSessionPlacement"
+																	render={({ field }) => (
+																		<SearchableTagSelect
+																			value={field.value || ""}
+																			options={[
+																				{
+																					value: "",
+																					label: t("common.default"),
+																				},
+																				...XHTTP_SESSION_PLACEMENT_OPTIONS,
+																			]}
+																			placeholder={t(
+																				"inbounds.xhttp.sessionPlacement",
+																			)}
+																			onChange={(value) =>
+																				form.setValue(
+																					"xhttpSessionPlacement",
+																					String(
+																						value,
+																					) as InboundFormValues["xhttpSessionPlacement"],
 																					{
-																						value: "",
-																						label: t("common.default"),
+																						shouldDirty: true,
+																						shouldValidate: true,
 																					},
-																					...XHTTP_SESSION_PLACEMENT_OPTIONS,
-																				]}
-																				placeholder={t("inbounds.xhttp.sessionPlacement")}
-																				onChange={(value) =>
-																					form.setValue(
-																						"xhttpSessionPlacement",
-																						String(
-																							value,
-																						) as InboundFormValues["xhttpSessionPlacement"],
-																						{
-																							shouldDirty: true,
-																							shouldValidate: true,
-																						},
-																					)
-																				}
-																			/>
-																		)}
-																	/>
-																	{fieldValidationErrors.xhttpSessionPlacement && (
-																		<Text fontSize="xs" color="red.500" mt={1}>
-																			{fieldValidationErrors.xhttpSessionPlacement}
-																		</Text>
+																				)
+																			}
+																		/>
 																	)}
-																</FormControl>
+																/>
+																{fieldValidationErrors.xhttpSessionPlacement && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{
+																			fieldValidationErrors.xhttpSessionPlacement
+																		}
+																	</Text>
+																)}
+															</FormControl>
 
-																<FormControl
-																	isInvalid={
-																		!!fieldValidationErrors.xhttpSessionKey
-																	}
-																>
-																	<FormLabel>
-																		{t("inbounds.xhttp.sessionKey")}
-																	</FormLabel>
-																	<Input {...register("xhttpSessionKey")} />
-																	{fieldValidationErrors.xhttpSessionKey && (
-																		<Text fontSize="xs" color="red.500" mt={1}>
-																			{fieldValidationErrors.xhttpSessionKey}
-																		</Text>
-																	)}
-																</FormControl>
+															<FormControl
+																isInvalid={
+																	!!fieldValidationErrors.xhttpSessionKey
+																}
+															>
+																<FormLabel>
+																	{t("inbounds.xhttp.sessionKey")}
+																</FormLabel>
+																<Input {...register("xhttpSessionKey")} />
+																{fieldValidationErrors.xhttpSessionKey && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{fieldValidationErrors.xhttpSessionKey}
+																	</Text>
+																)}
+															</FormControl>
 
-																<FormControl
-																	isInvalid={
-																		!!fieldValidationErrors.xhttpSeqPlacement
-																	}
-																>
-																	<FormLabel>
-																		{t("inbounds.xhttp.seqPlacement")}
-																	</FormLabel>
-																	<Controller
-																		control={control}
-																		name="xhttpSeqPlacement"
-																		render={({ field }) => (
-																			<SearchableTagSelect
-																				value={field.value || ""}
-																				options={[
+															<FormControl
+																isInvalid={
+																	!!fieldValidationErrors.xhttpSeqPlacement
+																}
+															>
+																<FormLabel>
+																	{t("inbounds.xhttp.seqPlacement")}
+																</FormLabel>
+																<Controller
+																	control={control}
+																	name="xhttpSeqPlacement"
+																	render={({ field }) => (
+																		<SearchableTagSelect
+																			value={field.value || ""}
+																			options={[
+																				{
+																					value: "",
+																					label: t("common.default"),
+																				},
+																				...XHTTP_SEQ_PLACEMENT_OPTIONS,
+																			]}
+																			placeholder={t(
+																				"inbounds.xhttp.seqPlacement",
+																			)}
+																			onChange={(value) =>
+																				form.setValue(
+																					"xhttpSeqPlacement",
+																					String(
+																						value,
+																					) as InboundFormValues["xhttpSeqPlacement"],
 																					{
-																						value: "",
-																						label: t("common.default"),
+																						shouldDirty: true,
+																						shouldValidate: true,
 																					},
-																					...XHTTP_SEQ_PLACEMENT_OPTIONS,
-																				]}
-																				placeholder={t("inbounds.xhttp.seqPlacement")}
-																				onChange={(value) =>
-																					form.setValue(
-																						"xhttpSeqPlacement",
-																						String(
-																							value,
-																						) as InboundFormValues["xhttpSeqPlacement"],
-																						{
-																							shouldDirty: true,
-																							shouldValidate: true,
-																						},
-																					)
-																				}
-																			/>
-																		)}
-																	/>
-																	{fieldValidationErrors.xhttpSeqPlacement && (
-																		<Text fontSize="xs" color="red.500" mt={1}>
-																			{fieldValidationErrors.xhttpSeqPlacement}
-																		</Text>
+																				)
+																			}
+																		/>
 																	)}
-																</FormControl>
+																/>
+																{fieldValidationErrors.xhttpSeqPlacement && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{fieldValidationErrors.xhttpSeqPlacement}
+																	</Text>
+																)}
+															</FormControl>
 
-																<FormControl
-																	isInvalid={
-																		!!fieldValidationErrors.xhttpSeqKey
-																	}
-																>
-																	<FormLabel>
-																		{t("inbounds.xhttp.seqKey")}
-																	</FormLabel>
-																	<Input {...register("xhttpSeqKey")} />
-																	{fieldValidationErrors.xhttpSeqKey && (
-																		<Text fontSize="xs" color="red.500" mt={1}>
-																			{fieldValidationErrors.xhttpSeqKey}
-																		</Text>
-																	)}
-																</FormControl>
+															<FormControl
+																isInvalid={!!fieldValidationErrors.xhttpSeqKey}
+															>
+																<FormLabel>
+																	{t("inbounds.xhttp.seqKey")}
+																</FormLabel>
+																<Input {...register("xhttpSeqKey")} />
+																{fieldValidationErrors.xhttpSeqKey && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{fieldValidationErrors.xhttpSeqKey}
+																	</Text>
+																)}
+															</FormControl>
 
-																<FormControl
-																	isInvalid={
-																		!!fieldValidationErrors.xhttpUplinkDataPlacement
-																	}
-																>
-																	<FormLabel>
-																		{t("inbounds.xhttp.uplinkDataPlacement")}
-																	</FormLabel>
-																	<Controller
-																		control={control}
-																		name="xhttpUplinkDataPlacement"
-																		render={({ field }) => (
-																			<SearchableTagSelect
-																				value={field.value || ""}
-																				options={[
+															<FormControl
+																isInvalid={
+																	!!fieldValidationErrors.xhttpUplinkDataPlacement
+																}
+															>
+																<FormLabel>
+																	{t("inbounds.xhttp.uplinkDataPlacement")}
+																</FormLabel>
+																<Controller
+																	control={control}
+																	name="xhttpUplinkDataPlacement"
+																	render={({ field }) => (
+																		<SearchableTagSelect
+																			value={field.value || ""}
+																			options={[
+																				{
+																					value: "",
+																					label: t("common.default"),
+																				},
+																				...XHTTP_UPLINK_DATA_PLACEMENT_OPTIONS,
+																			]}
+																			placeholder={t(
+																				"inbounds.xhttp.uplinkDataPlacement",
+																			)}
+																			onChange={(value) =>
+																				form.setValue(
+																					"xhttpUplinkDataPlacement",
+																					String(
+																						value,
+																					) as InboundFormValues["xhttpUplinkDataPlacement"],
 																					{
-																						value: "",
-																						label: t("common.default"),
+																						shouldDirty: true,
+																						shouldValidate: true,
 																					},
-																					...XHTTP_UPLINK_DATA_PLACEMENT_OPTIONS,
-																				]}
-																				placeholder={t("inbounds.xhttp.uplinkDataPlacement")}
-																				onChange={(value) =>
-																					form.setValue(
-																						"xhttpUplinkDataPlacement",
-																						String(
-																							value,
-																						) as InboundFormValues["xhttpUplinkDataPlacement"],
-																						{
-																							shouldDirty: true,
-																							shouldValidate: true,
-																						},
-																					)
-																				}
-																			/>
-																		)}
-																	/>
-																	{fieldValidationErrors.xhttpUplinkDataPlacement && (
-																		<Text fontSize="xs" color="red.500" mt={1}>
-																			{fieldValidationErrors.xhttpUplinkDataPlacement}
-																		</Text>
+																				)
+																			}
+																		/>
 																	)}
-																</FormControl>
+																/>
+																{fieldValidationErrors.xhttpUplinkDataPlacement && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{
+																			fieldValidationErrors.xhttpUplinkDataPlacement
+																		}
+																	</Text>
+																)}
+															</FormControl>
 
-																<FormControl
-																	isInvalid={
-																		!!fieldValidationErrors.xhttpUplinkDataKey
-																	}
-																>
-																	<FormLabel>
-																		{t("inbounds.xhttp.uplinkDataKey")}
-																	</FormLabel>
-																	<Input
-																		{...register("xhttpUplinkDataKey")}
-																		placeholder="X-Data"
-																	/>
-																	{fieldValidationErrors.xhttpUplinkDataKey && (
-																		<Text fontSize="xs" color="red.500" mt={1}>
-																			{fieldValidationErrors.xhttpUplinkDataKey}
-																		</Text>
-																	)}
-																</FormControl>
+															<FormControl
+																isInvalid={
+																	!!fieldValidationErrors.xhttpUplinkDataKey
+																}
+															>
+																<FormLabel>
+																	{t("inbounds.xhttp.uplinkDataKey")}
+																</FormLabel>
+																<Input
+																	{...register("xhttpUplinkDataKey")}
+																	placeholder="X-Data"
+																/>
+																{fieldValidationErrors.xhttpUplinkDataKey && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{fieldValidationErrors.xhttpUplinkDataKey}
+																	</Text>
+																)}
+															</FormControl>
 
-																<FormControl
-																	isInvalid={
-																		!!fieldValidationErrors.xhttpUplinkChunkSize
-																	}
-																>
-																	<FormLabel>
-																		{t("inbounds.xhttp.uplinkChunkSize")}
-																	</FormLabel>
-																	<Input
-																		{...register("xhttpUplinkChunkSize")}
-																		placeholder="3000-4000"
-																	/>
-																	{fieldValidationErrors.xhttpUplinkChunkSize && (
-																		<Text fontSize="xs" color="red.500" mt={1}>
-																			{fieldValidationErrors.xhttpUplinkChunkSize}
-																		</Text>
-																	)}
-																</FormControl>
+															<FormControl
+																isInvalid={
+																	!!fieldValidationErrors.xhttpUplinkChunkSize
+																}
+															>
+																<FormLabel>
+																	{t("inbounds.xhttp.uplinkChunkSize")}
+																</FormLabel>
+																<Input
+																	{...register("xhttpUplinkChunkSize")}
+																	placeholder="3000-4000"
+																/>
+																{fieldValidationErrors.xhttpUplinkChunkSize && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{fieldValidationErrors.xhttpUplinkChunkSize}
+																	</Text>
+																)}
+															</FormControl>
 
-																<FormControl
-																	isInvalid={
-														!!fieldValidationErrors.xhttpServerMaxHeaderBytes
-																	}
-																>
-																	<FormLabel>
-													{t("inbounds.xhttp.serverMaxHeaderBytes")}
-																	</FormLabel>
-																	<Input
-													{...register("xhttpServerMaxHeaderBytes")}
-																		placeholder="0"
-																	/>
-													{fieldValidationErrors.xhttpServerMaxHeaderBytes && (
-																		<Text fontSize="xs" color="red.500" mt={1}>
-															{fieldValidationErrors.xhttpServerMaxHeaderBytes}
-																		</Text>
-																	)}
-																</FormControl>
-															</SimpleGrid>
-														</Stack>
+															<FormControl
+																isInvalid={
+																	!!fieldValidationErrors.xhttpServerMaxHeaderBytes
+																}
+															>
+																<FormLabel>
+																	{t("inbounds.xhttp.serverMaxHeaderBytes")}
+																</FormLabel>
+																<Input
+																	{...register("xhttpServerMaxHeaderBytes")}
+																	placeholder="0"
+																/>
+																{fieldValidationErrors.xhttpServerMaxHeaderBytes && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{
+																			fieldValidationErrors.xhttpServerMaxHeaderBytes
+																		}
+																	</Text>
+																)}
+															</FormControl>
+														</SimpleGrid>
+													</Stack>
 												</Stack>
 											)}
 
@@ -4998,7 +5191,9 @@ export const InboundFormModal: FC<Props> = ({
 																		options={[
 																			{
 																				value: "",
-																				label: t("inbounds.hysteria.defaultMasquerade"),
+																				label: t(
+																					"inbounds.hysteria.defaultMasquerade",
+																				),
 																			},
 																			{
 																				value: "proxy",
@@ -5013,7 +5208,9 @@ export const InboundFormModal: FC<Props> = ({
 																				label: "string (fixed body)",
 																			},
 																		]}
-																		placeholder={t("inbounds.hysteria.masqueradeType")}
+																		placeholder={t(
+																			"inbounds.hysteria.masqueradeType",
+																		)}
 																		onChange={(value) =>
 																			form.setValue(
 																				"hysteriaMasqueradeType",
@@ -5173,7 +5370,9 @@ export const InboundFormModal: FC<Props> = ({
 																					{...register(
 																						`hysteriaMasqueradeHeaders.${index}.name` as const,
 																					)}
-																					placeholder={t("inbounds.ws.headerName")}
+																					placeholder={t(
+																						"inbounds.ws.headerName",
+																					)}
 																				/>
 																			</FormControl>
 																			<FormControl>
@@ -5181,7 +5380,9 @@ export const InboundFormModal: FC<Props> = ({
 																					{...register(
 																						`hysteriaMasqueradeHeaders.${index}.value` as const,
 																					)}
-																					placeholder={t("inbounds.ws.headerValue")}
+																					placeholder={t(
+																						"inbounds.ws.headerValue",
+																					)}
 																				/>
 																			</FormControl>
 																			<Button
@@ -5254,7 +5455,9 @@ export const InboundFormModal: FC<Props> = ({
 																>
 																	<Flex justify="space-between" align="center">
 																		<Text fontSize="sm" fontWeight="semibold">
-																			{t("inbounds.hysteria.udpMaskTitle", { index: index + 1 })}
+																			{t("inbounds.hysteria.udpMaskTitle", {
+																				index: index + 1,
+																			})}
 																		</Text>
 																		<Button
 																			size="xs"
@@ -5312,7 +5515,9 @@ export const InboundFormModal: FC<Props> = ({
 																								label: "Gecko experimental",
 																							},
 																						]}
-																						placeholder={t("inbounds.xhttp.mode")}
+																						placeholder={t(
+																							"inbounds.xhttp.mode",
+																						)}
 																						onChange={(value) =>
 																							modeField.onChange(String(value))
 																						}
@@ -5326,13 +5531,13 @@ export const InboundFormModal: FC<Props> = ({
 																			>
 																				{maskMode === "gecko"
 																					? t("inbounds.hysteria.geckoHint")
-																					: t("inbounds.hysteria.salamanderHint")}
+																					: t(
+																							"inbounds.hysteria.salamanderHint",
+																						)}
 																			</Text>
 																		</FormControl>
 																		<FormControl>
-																			<FormLabel>
-																				{t("password")}
-																			</FormLabel>
+																			<FormLabel>{t("password")}</FormLabel>
 																			<HStack>
 																				<Input
 																					{...register(
@@ -5341,7 +5546,9 @@ export const InboundFormModal: FC<Props> = ({
 																					placeholder="Obfuscation password"
 																				/>
 																				<IconButton
-																					aria-label={t("inbounds.hysteria.generatePassword")}
+																					aria-label={t(
+																						"inbounds.hysteria.generatePassword",
+																					)}
 																					icon={
 																						<ArrowPathIcon
 																							width={16}
@@ -5379,7 +5586,9 @@ export const InboundFormModal: FC<Props> = ({
 																					color="gray.500"
 																					mt={1}
 																				>
-																					{t("inbounds.hysteria.packetSizeHint")}
+																					{t(
+																						"inbounds.hysteria.packetSizeHint",
+																					)}
 																				</Text>
 																			</FormControl>
 																		)}
@@ -5425,7 +5634,9 @@ export const InboundFormModal: FC<Props> = ({
 																						"brutal",
 																						"force-brutal",
 																					]}
-																					placeholder={t("inbounds.hysteria.congestion")}
+																					placeholder={t(
+																						"inbounds.hysteria.congestion",
+																					)}
 																					onChange={(value) =>
 																						field.onChange(String(value))
 																					}
@@ -5675,7 +5886,9 @@ export const InboundFormModal: FC<Props> = ({
 																			},
 																			...DOMAIN_STRATEGY_OPTIONS,
 																		]}
-																		placeholder={t("inbounds.sockopt.domainStrategy")}
+																		placeholder={t(
+																			"inbounds.sockopt.domainStrategy",
+																		)}
 																		onChange={(value) =>
 																			field.onChange(String(value))
 																		}
@@ -5700,7 +5913,9 @@ export const InboundFormModal: FC<Props> = ({
 																			},
 																			...TCP_CONGESTION_OPTIONS,
 																		]}
-																		placeholder={t("inbounds.sockopt.tcpCongestion")}
+																		placeholder={t(
+																			"inbounds.sockopt.tcpCongestion",
+																		)}
 																		onChange={(value) =>
 																			field.onChange(String(value))
 																		}
@@ -5720,7 +5935,8 @@ export const InboundFormModal: FC<Props> = ({
 																		value={field.value || ""}
 																		options={TPROXY_OPTIONS.map((option) => ({
 																			value: option,
-																			label: option || t("userDialog.flow.none"),
+																			label:
+																				option || t("userDialog.flow.none"),
 																		}))}
 																		placeholder={t("inbounds.sockopt.tproxy")}
 																		onChange={(value) =>
@@ -5769,9 +5985,7 @@ export const InboundFormModal: FC<Props> = ({
 											</Text>
 											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 												<FormControl>
-													<FormLabel>
-														{t("inbounds.tls.serverName")}
-													</FormLabel>
+													<FormLabel>{t("inbounds.tls.serverName")}</FormLabel>
 													<Input
 														{...register("tlsServerName")}
 														placeholder="example.com"
@@ -5816,9 +6030,7 @@ export const InboundFormModal: FC<Props> = ({
 											</SimpleGrid>
 											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 												<FormControl>
-													<FormLabel>
-														{t("inbounds.tls.minVersion")}
-													</FormLabel>
+													<FormLabel>{t("inbounds.tls.minVersion")}</FormLabel>
 													<SearchableTagSelect
 														value={formValues.tlsMinVersion || ""}
 														options={tlsVersionOptions}
@@ -5832,9 +6044,7 @@ export const InboundFormModal: FC<Props> = ({
 													/>
 												</FormControl>
 												<FormControl>
-													<FormLabel>
-														{t("inbounds.tls.maxVersion")}
-													</FormLabel>
+													<FormLabel>{t("inbounds.tls.maxVersion")}</FormLabel>
 													<SearchableTagSelect
 														value={formValues.tlsMaxVersion || ""}
 														options={tlsVersionOptions}
@@ -5849,11 +6059,11 @@ export const InboundFormModal: FC<Props> = ({
 												</FormControl>
 											</SimpleGrid>
 											<FormControl
-												isInvalid={Boolean(fieldValidationErrors.tlsFingerprint)}
+												isInvalid={Boolean(
+													fieldValidationErrors.tlsFingerprint,
+												)}
 											>
-												<FormLabel>
-													{t("inbounds.tls.fingerprint")}
-												</FormLabel>
+												<FormLabel>{t("inbounds.tls.fingerprint")}</FormLabel>
 												<SearchableTagSelect
 													value={formValues.tlsFingerprint || ""}
 													options={[
@@ -5992,8 +6202,7 @@ export const InboundFormModal: FC<Props> = ({
 																mb={3}
 															>
 																<Text fontWeight="semibold">
-																	{t("nodes.certificate")}{" "}
-																	#{index + 1}
+																	{t("nodes.certificate")} #{index + 1}
 																</Text>
 																{tlsCertificateFields.length > 1 && (
 																	<Button
@@ -6023,9 +6232,7 @@ export const InboundFormModal: FC<Props> = ({
 																			}
 																		>
 																			<HStack spacing={4}>
-																				<Radio value="file">
-																					{t("path")}
-																				</Radio>
+																				<Radio value="file">{t("path")}</Radio>
 																				<Radio value="content">
 																					{t("inbounds.tls.certificateContent")}
 																				</Radio>
@@ -6155,15 +6362,11 @@ export const InboundFormModal: FC<Props> = ({
 											<Divider />
 											<Stack spacing={3}>
 												<FormControl>
-													<FormLabel>
-														{t("inbounds.tls.echKey")}
-													</FormLabel>
+													<FormLabel>{t("inbounds.tls.echKey")}</FormLabel>
 													<Input {...register("tlsEchServerKeys")} />
 												</FormControl>
 												<FormControl>
-													<FormLabel>
-														{t("inbounds.tls.echConfig")}
-													</FormLabel>
+													<FormLabel>{t("inbounds.tls.echConfig")}</FormLabel>
 													<Input {...register("tlsEchConfigList")} />
 												</FormControl>
 												<HStack spacing={3}>
@@ -6190,15 +6393,11 @@ export const InboundFormModal: FC<Props> = ({
 												{t("inbounds.reality.title")}
 											</Text>
 											<FormControl display="flex" alignItems="center">
-												<FormLabel mb={0}>
-													{t("show")}
-												</FormLabel>
+												<FormLabel mb={0}>{t("show")}</FormLabel>
 												<Switch {...register("realityShow")} />
 											</FormControl>
 											<FormControl>
-												<FormLabel>
-													{t("inbounds.reality.xver")}
-												</FormLabel>
+												<FormLabel>{t("inbounds.reality.xver")}</FormLabel>
 												<Controller
 													control={control}
 													name="realityXver"
@@ -6212,9 +6411,7 @@ export const InboundFormModal: FC<Props> = ({
 												/>
 											</FormControl>
 											<FormControl>
-												<FormLabel>
-													{t("inbounds.tls.fingerprint")}
-												</FormLabel>
+												<FormLabel>{t("inbounds.tls.fingerprint")}</FormLabel>
 												<SearchableTagSelect
 													value={formValues.realityFingerprint || ""}
 													options={tlsFingerprintOptions}
@@ -6236,9 +6433,7 @@ export const InboundFormModal: FC<Props> = ({
 											>
 												<FormLabel>
 													<HStack spacing={2}>
-														<Text>
-															{t("pages.xray.routeTester.target")}
-														</Text>
+														<Text>{t("pages.xray.routeTester.target")}</Text>
 														<Tooltip label={t("common.randomize")}>
 															<IconButton
 																aria-label={t("common.randomize")}
@@ -6271,9 +6466,7 @@ export const InboundFormModal: FC<Props> = ({
 											>
 												<FormLabel>
 													<HStack spacing={2}>
-														<Text>
-															{t("inbounds.reality.serverNames")}
-														</Text>
+														<Text>{t("inbounds.reality.serverNames")}</Text>
 														<Tooltip label={t("common.randomize")}>
 															<IconButton
 																aria-label={t("common.randomize")}
@@ -6347,9 +6540,7 @@ export const InboundFormModal: FC<Props> = ({
 											>
 												<FormLabel>
 													<HStack spacing={2}>
-														<Text>
-															{t("inbounds.reality.shortIds")}
-														</Text>
+														<Text>{t("inbounds.reality.shortIds")}</Text>
 														<Tooltip label={t("common.randomize")}>
 															<IconButton
 																aria-label={t("common.randomize")}
@@ -6383,15 +6574,11 @@ export const InboundFormModal: FC<Props> = ({
 												)}
 											</FormControl>
 											<FormControl>
-												<FormLabel>
-													{t("inbounds.reality.spiderX")}
-												</FormLabel>
+												<FormLabel>{t("inbounds.reality.spiderX")}</FormLabel>
 												<Input {...register("realitySpiderX")} />
 											</FormControl>
 											<FormControl>
-												<FormLabel>
-													{t("inbounds.reality.publicKey")}
-												</FormLabel>
+												<FormLabel>{t("inbounds.reality.publicKey")}</FormLabel>
 												<Input {...register("realityPublicKey")} />
 											</FormControl>
 											<FormControl
@@ -6514,9 +6701,7 @@ export const InboundFormModal: FC<Props> = ({
 									{supportsFallback && (
 										<Stack className="xray-dialog-section" spacing={3}>
 											<Flex align="center" justify="space-between">
-												<Box fontWeight="medium">
-													{t("inbounds.fallbacks")}
-												</Box>
+												<Box fontWeight="medium">{t("inbounds.fallbacks")}</Box>
 												<Button size="xs" onClick={handleAddFallback}>
 													{t("inbounds.fallbacks.add")}
 												</Button>
@@ -6536,8 +6721,7 @@ export const InboundFormModal: FC<Props> = ({
 													>
 														<Flex justify="space-between" align="center" mb={3}>
 															<Text fontWeight="semibold">
-																{t("inbounds.fallbacks.type")} #
-																{index + 1}
+																{t("inbounds.fallbacks.type")} #{index + 1}
 															</Text>
 															<Button
 																size="xs"
@@ -6564,9 +6748,7 @@ export const InboundFormModal: FC<Props> = ({
 																/>
 															</FormControl>
 															<FormControl>
-																<FormLabel>
-																	{t("path")}
-																</FormLabel>
+																<FormLabel>{t("path")}</FormLabel>
 																<Input
 																	{...register(
 																		`fallbacks.${index}.path` as const,
@@ -6614,6 +6796,7 @@ export const InboundFormModal: FC<Props> = ({
 
 									{currentProtocol !== "openvpn" &&
 										currentProtocol !== "wireguard" &&
+										currentProtocol !== "amneziawg" &&
 										currentProtocol !== "l2tp" &&
 										currentProtocol !== "pptp" &&
 										currentProtocol !== "ikev2" &&
@@ -6624,9 +6807,7 @@ export const InboundFormModal: FC<Props> = ({
 														<Box fontWeight="medium">
 															{t("inbounds.sniffing")}
 														</Box>
-														<Tooltip
-															label={t("inbounds.sniffingHint")}
-														>
+														<Tooltip label={t("inbounds.sniffingHint")}>
 															<QuestionMarkCircleIcon width={16} height={16} />
 														</Tooltip>
 													</HStack>
@@ -6824,9 +7005,7 @@ export const InboundFormModal: FC<Props> = ({
 									isDisabled={hasBlockingErrorsWithJson}
 									onClick={handleSubmit(submitForm)}
 								>
-									{isCloneMode
-										? t("inbounds.cloneSubmit")
-										: t("create")}
+									{isCloneMode ? t("inbounds.cloneSubmit") : t("create")}
 								</Button>
 							</>
 						)}

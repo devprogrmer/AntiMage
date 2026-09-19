@@ -48,6 +48,7 @@ type Server struct {
 	pptpNATSpecs                     map[string]openVPNNATSpec
 	openVPNTProxyStartupReconciled   bool
 	wireGuardRuntimes                map[string]wireGuardRuntimeState
+	amneziaWGRuntimes                map[string]amneziaWGRuntimeState
 	wireGuardDynamicSuppressedPeers  map[string]struct{}
 	openVPNUsageMu                   sync.Mutex
 	openVPNUsageBaseline             map[string]uint64
@@ -71,6 +72,11 @@ type Server struct {
 	wireGuardUsageAwaitingReflection []wireGuardUsageAwaitingReflectionBatch
 	wireGuardUsageLoaded             bool
 	wireGuardUsageLastAckedBatchID   string
+	amneziaWGUsageMu                 sync.Mutex
+	amneziaWGUsageBaseline           map[string]uint64
+	amneziaWGUsagePending            *amneziaWGUsagePendingBatch
+	amneziaWGUsageLoaded             bool
+	amneziaWGUsageLastAckedBatchID   string
 	xrayUsageMu                      sync.Mutex
 	xrayUsageBaseline                map[string]uint64
 	xrayUsagePending                 *xrayUsagePendingBatch
@@ -122,12 +128,14 @@ func New(cfg Config) *Server {
 		pptpTProxySpecs:                 make(map[string]openVPNTProxySpec),
 		pptpNATSpecs:                    make(map[string]openVPNNATSpec),
 		wireGuardRuntimes:               make(map[string]wireGuardRuntimeState),
+		amneziaWGRuntimes:               make(map[string]amneziaWGRuntimeState),
 		wireGuardDynamicSuppressedPeers: make(map[string]struct{}),
 		openVPNUsageBaseline:            make(map[string]uint64),
 		l2TPUsageBaseline:               make(map[string]uint64),
 		pptpUsageBaseline:               make(map[string]uint64),
 		wireGuardUsageBaseline:          make(map[string]uint64),
 		wireGuardUsageCarry:             make(map[string]wireGuardUsageCarry),
+		amneziaWGUsageBaseline:          make(map[string]uint64),
 		xrayUsageBaseline:               make(map[string]uint64),
 		xrayOutboundUsageBaseline:       make(map[string]uint64),
 		torProxies:                      make(map[uint32]*exec.Cmd),
@@ -158,6 +166,7 @@ func (s *Server) Run(ctx context.Context) error {
 		s.stopAllPPTPTProxySpecs()
 		s.stopAllPPTPNATSpecs()
 		s.stopAllWireGuardRuntimes()
+		s.stopAllAmneziaWGRuntimes()
 		_ = s.stopRuntime()
 	}()
 
@@ -229,6 +238,7 @@ func (s *Server) RestartRuntime(
 	s.stopAllPPTPTProxySpecs()
 	s.stopAllPPTPNATSpecs()
 	s.stopAllWireGuardRuntimes()
+	s.stopAllAmneziaWGRuntimes()
 	_ = s.stopRuntime()
 
 	return s.applyConfig(ctx, req, "restarted")
@@ -248,6 +258,7 @@ func (s *Server) StopRuntime(
 	s.stopAllPPTPTProxySpecs()
 	s.stopAllPPTPNATSpecs()
 	s.stopAllWireGuardRuntimes()
+	s.stopAllAmneziaWGRuntimes()
 	_ = s.stopRuntime()
 
 	return s.action("", "stopped"), nil

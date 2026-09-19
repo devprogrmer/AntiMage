@@ -83,6 +83,7 @@ var subscriptionClientConfigs = map[string]SubscriptionClientConfig{
 	"nekobox":      {Format: "v2ray", Media: "text/plain", Base64: true},
 	"openvpn":      {Format: "openvpn", Media: "application/x-openvpn-profile"},
 	"wireguard":    {Format: "wireguard", Media: "application/x-wireguard-profile"},
+	"amneziawg":    {Format: "amneziawg", Media: "application/x-amneziawg-profile"},
 }
 
 func NormalizeSubscriptionClientType(value string) (string, bool) {
@@ -109,6 +110,8 @@ func NormalizeSubscriptionClientType(value string) (string, bool) {
 		value = "passwall"
 	case "wg":
 		value = "wireguard"
+	case "awg", "amnezia-wg":
+		value = "amneziawg"
 	}
 	_, ok := subscriptionClientConfigs[value]
 	return value, ok
@@ -139,6 +142,9 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	}
 	if req.ClientType == "wireguard" {
 		return s.generateWGProfile(ctx, user, req)
+	}
+	if req.ClientType == "amneziawg" {
+		return s.generateAWGProfile(ctx, user, req)
 	}
 	clientType := req.ClientType
 	if clientType == "" {
@@ -221,6 +227,16 @@ func (s Service) subscriptionVPNInfo(ctx context.Context, user UserDetail, subsc
 			wgLinks = append(wgLinks, profile.Link)
 		}
 	}
+	awgProfiles, err := s.AWGDownloadProfiles(ctx, user, subscriptionURL)
+	if err != nil {
+		return nil, err
+	}
+	awgDownloads := make([]string, 0, len(awgProfiles))
+	for _, profile := range awgProfiles {
+		if strings.TrimSpace(profile.DownloadURL) != "" {
+			awgDownloads = append(awgDownloads, profile.DownloadURL)
+		}
+	}
 	l2tpItems, err := s.L2TPInfos(ctx, user, subscriptionURL)
 	if err != nil {
 		return nil, err
@@ -246,6 +262,10 @@ func (s Service) subscriptionVPNInfo(ctx context.Context, user UserDetail, subsc
 			"downloads": wgDownloads,
 			"links":     wgLinks,
 			"profiles":  wgProfiles,
+		},
+		"amneziawg": map[string]any{
+			"downloads": awgDownloads,
+			"profiles":  awgProfiles,
 		},
 		"l2tp":       l2tpItems,
 		"pptp":       pptpItems,
@@ -933,6 +953,9 @@ func resolvePrefixedSubscriptionPath(path string, prefix string) (SubscriptionRe
 				HostTag:    strings.TrimSuffix(segments[2], ".conf"),
 			}, true
 		}
+		if segments[1] == "awg" || segments[1] == "amneziawg" {
+			return SubscriptionRenderRequest{Identifier: segments[0], ClientType: "amneziawg", HostTag: strings.TrimSuffix(segments[2], ".conf")}, true
+		}
 		if segments[2] == "info" || segments[2] == "usage" {
 			return SubscriptionRenderRequest{Username: segments[0], Key: segments[1], ClientType: segments[2]}, true
 		}
@@ -955,6 +978,9 @@ func resolvePrefixedSubscriptionPath(path string, prefix string) (SubscriptionRe
 			ClientType: "wireguard",
 			HostTag:    strings.TrimSuffix(segments[3], ".conf"),
 		}, true
+	}
+	if len(segments) == 4 && (segments[2] == "awg" || segments[2] == "amneziawg") {
+		return SubscriptionRenderRequest{Username: segments[0], Key: segments[1], ClientType: "amneziawg", HostTag: strings.TrimSuffix(segments[3], ".conf")}, true
 	}
 	return SubscriptionRenderRequest{}, false
 }
@@ -1114,6 +1140,11 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 			rawLinks = append(rawLinks, wgLinks...)
 		}
 		if downloadLinks, ok := wireguard["downloads"].([]string); ok {
+			rawLinks = append(rawLinks, downloadLinks...)
+		}
+	}
+	if amneziawg, ok := vpnInfo["amneziawg"].(map[string]any); ok {
+		if downloadLinks, ok := amneziawg["downloads"].([]string); ok {
 			rawLinks = append(rawLinks, downloadLinks...)
 		}
 	}
@@ -3722,6 +3753,7 @@ const fallbackSubscriptionPageTemplate = `<!DOCTYPE html>
             <article class="client-card"><div class="client-top"><div class="client-icon">NB</div><div class="client-title"><strong>NekoBox</strong><span>Android proxy client</span></div></div><div class="actions"><a class="btn" href="https://github.com/MatsuriDayo/NekoBoxForAndroid/releases">Download</a><button class="btn primary add-current">Add to app</button></div></article>
             <article class="client-card"><div class="client-top"><div class="client-icon">OV</div><div class="client-title"><strong>OpenVPN Connect</strong><span>.ovpn profiles</span></div></div><div class="actions"><a class="btn" href="https://openvpn.net/client/">Download</a><button class="btn primary add-openvpn">Open profile</button></div></article>
             <article class="client-card"><div class="client-top"><div class="client-icon">WG</div><div class="client-title"><strong>WireGuard</strong><span>.conf and wireguard://</span></div></div><div class="actions"><a class="btn" href="https://www.wireguard.com/install/">Download</a><button class="btn primary add-wireguard">Open profile</button></div></article>
+            {% if amneziawg.profiles %}<article class="client-card"><div class="client-top"><div class="client-icon">AWG</div><div class="client-title"><strong>AmneziaWG</strong><span>Per-device AWG 1.0 profiles</span></div></div><div class="actions"><a class="btn" href="https://docs.amnezia.org/documentation/instructions/install-vpn-client/">Download</a><button class="btn primary add-amneziawg">Open profile</button></div></article>{% endif %}
         </section>
 
         <div class="section-head">
@@ -3764,6 +3796,27 @@ const fallbackSubscriptionPageTemplate = `<!DOCTYPE html>
                     <button class="btn qr-button" data-link="{{ profile.DownloadURL }}">QR</button>
                 </div>
                 {% if profile.Body %}<textarea class="config-body" id="ovpn-profile-{{ profile.HostTag }}" readonly>{{ profile.Body }}</textarea>{% endif %}
+            </article>
+            {% endfor %}
+        </section>
+        {% endif %}
+        {% if amneziawg.profiles %}
+        <div class="section-head">
+            <div>
+                <h2>AmneziaWG profiles</h2>
+                <p>Each device has an independent key, address, and revocable profile.</p>
+            </div>
+        </div>
+        <section class="config-list">
+            {% for profile in amneziawg.profiles %}
+            <article class="config-card" data-amneziawg-profile>
+                <input class="config-url" type="text" value="{{ profile.DownloadURL }}" readonly>
+                <div class="config-actions">
+                    <a class="btn" href="{{ profile.DownloadURL }}">Download</a>
+                    {% if profile.Body %}<button class="btn copy-target-button" data-copy-target="awg-profile-{{ profile.DeviceIndex }}">Copy</button>{% endif %}
+                    {% if profile.Body %}<button class="btn qr-button" data-link="{{ profile.Body }}">QR</button>{% endif %}
+                </div>
+                {% if profile.Body %}<textarea class="config-body" id="awg-profile-{{ profile.DeviceIndex }}" readonly>{{ profile.Body }}</textarea>{% endif %}
             </article>
             {% endfor %}
         </section>
@@ -3832,6 +3885,12 @@ const fallbackSubscriptionPageTemplate = `<!DOCTYPE html>
         });
         document.querySelectorAll(".add-wireguard").forEach(function (button) {
             button.addEventListener("click", function () { window.location.href = linkMatching(["wireguard://", ".conf"]); });
+        });
+        document.querySelectorAll(".add-amneziawg").forEach(function (button) {
+            button.addEventListener("click", function () {
+                const profile = document.querySelector("[data-amneziawg-profile] .config-url");
+                window.location.href = profile ? profile.value : subscriptionLink;
+            });
         });
         function closeQrPopup() {
             qrPopup.classList.remove("open");
@@ -3955,7 +4014,7 @@ func subscriptionTemplateContext(user UserDetail, links []string, usageURL strin
 		"current_timestamp": time.Now().UTC().Unix(),
 		"remaining_days":    subscriptionRemainingDaysInt(user.Expire),
 	}
-	for _, key := range []string{"openvpn", "wireguard", "l2tp", "pptp", "ikev2", "anyconnect"} {
+	for _, key := range []string{"openvpn", "wireguard", "amneziawg", "l2tp", "pptp", "ikev2", "anyconnect"} {
 		if value, ok := vpn[key]; ok {
 			context[key] = value
 		}

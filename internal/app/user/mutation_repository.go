@@ -377,6 +377,11 @@ func (r Repository) updateUserMutation(ctx context.Context, admin adminapp.Admin
 	}
 
 	operationType := operationForStatusChange(existing.Status, UserStatus(newStatus))
+	if serviceFieldPresent && !sameInt64Ptr(existing.ServiceID, targetServiceID) {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM amneziawg_devices WHERE user_id = ?`, existing.ID); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") && !strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
+			return MutationResult{}, err
+		}
+	}
 	if operationType != "" {
 		if err := r.enqueueUserOperationForNodesTx(ctx, tx, operationType, existing.ID, time.Now().UTC(), existing.ServiceID, targetServiceID); err != nil {
 			return MutationResult{}, err
@@ -415,6 +420,9 @@ func (r Repository) deleteUserMutation(ctx context.Context, admin adminapp.Admin
 		return MutationResult{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE users SET status = ?, last_status_change = ? WHERE id = ?`, string(UserStatusDeleted), dbTime(time.Now().UTC()), existing.ID); err != nil {
+		return MutationResult{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM amneziawg_devices WHERE user_id = ?`, existing.ID); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") && !strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
 		return MutationResult{}, err
 	}
 	if err := r.enqueueUserOperationForNodesTx(ctx, tx, NodeOperationRemoveUser, existing.ID, time.Now().UTC()); err != nil {

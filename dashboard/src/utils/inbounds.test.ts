@@ -70,6 +70,38 @@ describe("inbound usage coefficient", () => {
 	});
 });
 
+describe("AmneziaWG inbound form", () => {
+	it("round-trips independent AWG 1.0 settings without becoming WireGuard", () => {
+		const values = createDefaultInboundForm("amneziawg");
+		values.tag = "awg-main";
+		values.wgPrivateKey = "server-private";
+		values.wgPublicKey = "server-public";
+		values.awgH1 = "101";
+		values.awgH2 = "102";
+		values.awgH3 = "103";
+		values.awgH4 = "104";
+		const payload = buildInboundPayload(values);
+		expect(payload.protocol).toBe("amneziawg");
+		expect(payload.port).toBe(51821);
+		expect(payload.settings).toMatchObject({
+			address_pool: "10.72.0.0/16",
+			server_address: "10.72.0.1/16",
+			jc: 4,
+			jmin: 8,
+			jmax: 80,
+			s1: 77,
+			s2: 90,
+			h1: "101",
+			h4: "104",
+			psk_enabled: true,
+		});
+		const roundTrip = rawInboundToFormValues(payload);
+		expect(roundTrip.protocol).toBe("amneziawg");
+		expect(roundTrip.awgH3).toBe("103");
+		expect(roundTrip.awgPSKEnabled).toBe(true);
+	});
+});
+
 describe("VLESS inbound default flow", () => {
 	it("round-trips the supported inbound value and drops outbound-only values", () => {
 		const raw: RawInbound = {

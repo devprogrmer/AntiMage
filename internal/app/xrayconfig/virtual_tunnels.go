@@ -4,18 +4,21 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/netip"
+	"strconv"
 	"strings"
 )
 
 const (
 	OVProtocol                = "openvpn"
 	WGProtocol                = "wireguard"
+	AWGProtocol               = "amneziawg"
 	L2TPProtocol              = "l2tp"
 	PPTPProtocol              = "pptp"
 	IKEv2Protocol             = "ikev2"
 	AnyConnectProtocol        = "anyconnect"
 	defaultOVPoolCIDR         = "10.66.0.0/16"
 	defaultWGPoolCIDR         = "10.69.0.0/16"
+	defaultAWGPoolCIDR        = "10.72.0.0/16"
 	defaultL2TPPoolCIDR       = "10.67.0.0/16"
 	defaultPPTPPoolCIDR       = "10.68.0.0/24"
 	defaultIKEv2PoolCIDR      = "10.70.0.0/16"
@@ -47,7 +50,7 @@ func normalizeVirtualTunnelInbound(inbound map[string]any) map[string]any {
 	normalized := deepCopyMap(inbound)
 	protocol := normalizeProxyProtocol(stringValue(normalized["protocol"]))
 	normalized["protocol"] = protocol
-	if protocol != OVProtocol && protocol != WGProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol && protocol != IKEv2Protocol && protocol != AnyConnectProtocol {
+	if protocol != OVProtocol && protocol != WGProtocol && protocol != AWGProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol && protocol != IKEv2Protocol && protocol != AnyConnectProtocol {
 		return normalized
 	}
 	settings := normalizeVirtualTunnelSettings(protocol, mapValue(normalized["settings"]))
@@ -59,6 +62,8 @@ func normalizeVirtualTunnelInbound(inbound map[string]any) map[string]any {
 
 func normalizeVirtualTunnelSettings(protocol string, settings map[string]any) map[string]any {
 	switch protocol {
+	case AWGProtocol:
+		return normalizeAWGSettings(settings)
 	case WGProtocol:
 		return normalizeWGSettings(settings)
 	case L2TPProtocol:
@@ -72,6 +77,59 @@ func normalizeVirtualTunnelSettings(protocol string, settings map[string]any) ma
 	default:
 		return normalizeOVSettings(settings)
 	}
+}
+
+func normalizeAWGSettings(settings map[string]any) map[string]any {
+	out := make(map[string]any, len(settings)+18)
+	for key, value := range settings {
+		out[key] = value
+	}
+	pool := strings.TrimSpace(firstNonEmptyString(out["ipv4_pool_cidr"], out["address_pool"], out["ipv4PoolCidr"], out["addressPool"]))
+	if pool == "" {
+		pool = defaultAWGPoolCIDR
+	}
+	out["ipv4_pool_cidr"] = pool
+	out["address_pool"] = pool
+	out["server_address"] = strings.TrimSpace(firstNonEmptyString(out["server_address"], out["serverAddress"]))
+	out["private_key"] = strings.TrimSpace(firstNonEmptyString(out["private_key"], out["privateKey"]))
+	out["public_key"] = strings.TrimSpace(firstNonEmptyString(out["public_key"], out["publicKey"]))
+	out["dns_servers"] = normalizeStringAnyList(firstNonEmptyAny(out["dns_servers"], out["dnsServers"]))
+	for _, key := range []string{"ipv4PoolCidr", "addressPool", "serverAddress", "privateKey", "publicKey", "dnsServers"} {
+		delete(out, key)
+	}
+	for key, fallback := range map[string]int{
+		"jc": 4, "jmin": 8, "jmax": 80, "s1": 77, "s2": 90,
+		"mtu": 1420, "persistent_keepalive": 25,
+	} {
+		if value, ok := normalizedOptionalInt(out[key], 0, 65535); ok {
+			out[key] = value
+		} else {
+			out[key] = fallback
+		}
+	}
+	for _, key := range []string{"h1", "h2", "h3", "h4"} {
+		if value := strings.TrimSpace(stringValue(out[key])); value != "" {
+			out[key] = value
+		} else {
+			delete(out, key)
+		}
+	}
+	for key, fallback := range map[string]bool{"tproxy_enabled": true, "nat_enabled": false, "accounting_enabled": true, "psk_enabled": false} {
+		if _, ok := out[key]; !ok {
+			out[key] = fallback
+		} else {
+			out[key] = boolValue(out[key])
+		}
+	}
+	for _, key := range []string{"tunnel_port", "xray_tunnel_port", "tproxy_port"} {
+		if port, ok := normalizedOptionalPort(out[key]); ok {
+			out[key] = port
+		} else {
+			delete(out, key)
+		}
+	}
+	delete(out, "clients")
+	return out
 }
 
 func normalizeIKEv2Settings(settings map[string]any) map[string]any {
@@ -510,7 +568,7 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		return fmt.Errorf("invalid inbound %q: port must be between 1 and 65535", tag)
 	}
 	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
-	if protocol != OVProtocol && protocol != WGProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol && protocol != IKEv2Protocol && protocol != AnyConnectProtocol {
+	if protocol != OVProtocol && protocol != WGProtocol && protocol != AWGProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol && protocol != IKEv2Protocol && protocol != AnyConnectProtocol {
 		return fmt.Errorf("invalid inbound %q: unsupported virtual tunnel protocol %q", tag, protocol)
 	}
 	rawSettings := mapValue(inbound["settings"])
@@ -611,6 +669,58 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 			if !ok || value < item.min || value > item.max {
 				return fmt.Errorf("invalid inbound %q: WireGuard %s must be between %d and %d", tag, item.key, item.min, item.max)
 			}
+		}
+	}
+	if protocol == AWGProtocol {
+		if strings.TrimSpace(stringValue(settings["private_key"])) == "" {
+			return fmt.Errorf("invalid inbound %q: AmneziaWG private_key is required", tag)
+		}
+		if privateKey, err := base64.StdEncoding.DecodeString(strings.TrimSpace(stringValue(settings["private_key"]))); err != nil || len(privateKey) != 32 {
+			return fmt.Errorf("invalid inbound %q: AmneziaWG private_key must be a 32-byte base64 key", tag)
+		}
+		serverAddress, err := netip.ParsePrefix(strings.TrimSpace(stringValue(settings["server_address"])))
+		if err != nil || !serverAddress.Addr().Is4() {
+			return fmt.Errorf("invalid inbound %q: AmneziaWG server_address must be an IPv4 CIDR", tag)
+		}
+		if !poolPrefix.Contains(serverAddress.Addr()) {
+			return fmt.Errorf("invalid inbound %q: AmneziaWG server_address must be inside ipv4_pool_cidr", tag)
+		}
+		jc, jcOK := normalizedOptionalInt(rawSettings["jc"], 0, 128)
+		jmin, jminOK := normalizedOptionalInt(rawSettings["jmin"], 0, 1280)
+		jmax, jmaxOK := normalizedOptionalInt(rawSettings["jmax"], 0, 1280)
+		if !jcOK && rawSettings["jc"] != nil || !jminOK && rawSettings["jmin"] != nil || !jmaxOK && rawSettings["jmax"] != nil {
+			return fmt.Errorf("invalid inbound %q: AmneziaWG jc/jmin/jmax are out of range", tag)
+		}
+		_ = jc
+		if jminOK && jmaxOK && jmin > jmax {
+			return fmt.Errorf("invalid inbound %q: AmneziaWG jmin must not exceed jmax", tag)
+		}
+		for _, key := range []string{"s1", "s2"} {
+			if raw, exists := rawSettings[key]; exists {
+				if _, ok := normalizedOptionalInt(raw, 0, 1280); !ok {
+					return fmt.Errorf("invalid inbound %q: AmneziaWG %s is out of range", tag, key)
+				}
+			}
+		}
+		headers := make(map[uint64]struct{}, 4)
+		provided := 0
+		for _, key := range []string{"h1", "h2", "h3", "h4"} {
+			raw := strings.TrimSpace(stringValue(settings[key]))
+			if raw == "" {
+				continue
+			}
+			provided++
+			value, err := strconv.ParseUint(raw, 10, 32)
+			if err != nil || value <= 3 {
+				return fmt.Errorf("invalid inbound %q: AmneziaWG %s must be a decimal header greater than 3", tag, key)
+			}
+			headers[value] = struct{}{}
+		}
+		if provided != 0 && provided != 4 {
+			return fmt.Errorf("invalid inbound %q: AmneziaWG h1-h4 must all be provided", tag)
+		}
+		if provided == 4 && len(headers) != 4 {
+			return fmt.Errorf("invalid inbound %q: AmneziaWG h1-h4 must be distinct", tag)
 		}
 	}
 	if protocol == L2TPProtocol {

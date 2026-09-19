@@ -1220,6 +1220,10 @@ func TestParseUserUsageSampleUID(t *testing.T) {
 	if !ok || userID != 42 || !onlineOnly {
 		t.Fatalf("unexpected online OV marker parse: id=%d onlineOnly=%v ok=%v", userID, onlineOnly, ok)
 	}
+	userID, onlineOnly, ok = parseUserUsageSampleUID("online:amneziawg:42")
+	if !ok || userID != 42 || !onlineOnly {
+		t.Fatalf("AWG online uid parsed as user=%d online=%v ok=%v", userID, onlineOnly, ok)
+	}
 }
 
 func TestUsageUint64ToInt64RejectsOverflow(t *testing.T) {

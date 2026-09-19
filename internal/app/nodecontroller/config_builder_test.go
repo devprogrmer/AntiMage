@@ -49,7 +49,7 @@ func TestRuntimeConfigRequestUsesProvidedInbounds(t *testing.T) {
 	if err := json.Unmarshal([]byte(req.GetOvRuntimeJson()), &runtime); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"inbounds", "l2tp_inbounds", "pptp_inbounds", "wg_inbounds", "ikev2_inbounds", "anyconnect_inbounds"} {
+	for _, key := range []string{"inbounds", "l2tp_inbounds", "pptp_inbounds", "wg_inbounds", "awg_inbounds", "ikev2_inbounds", "anyconnect_inbounds"} {
 		if got := interfaceSlice(runtime[key]); len(got) != 0 {
 			t.Fatalf("%s = %#v, want empty", key, got)
 		}

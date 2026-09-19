@@ -2401,7 +2401,7 @@ func TestSubscriptionPageTemplateRendersDirectUserLinksForLegacyJavascript(t *te
 }
 
 func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
-	template := `{% for link in openvpn.downloads %}{{ link }}{% endfor %} {% for link in wireguard.downloads %}{{ link }}{% endfor %} {% for link in wireguard.links %}{{ link }}{% endfor %} {% for item in wireguard.profiles %}{{ item.Body }}{% endfor %} {% for item in l2tp %}{{ item.Server }} {{ item.Username }}{% endfor %} {% for item in pptp %}{{ item.Server }}{% endfor %}`
+	template := `{% for link in openvpn.downloads %}{{ link }}{% endfor %} {% for link in wireguard.downloads %}{{ link }}{% endfor %} {% for link in wireguard.links %}{{ link }}{% endfor %} {% for item in wireguard.profiles %}{{ item.Body }}{% endfor %} {% for item in amneziawg.profiles %}{{ item.DownloadURL }} {{ item.Body }}{% endfor %} {% for item in l2tp %}{{ item.Server }} {{ item.Username }}{% endfor %} {% for item in pptp %}{{ item.Server }}{% endfor %}`
 	html, err := renderSubscriptionPageTemplate(template, UserDetail{
 		Username:               "alice",
 		Status:                 "active",
@@ -2415,6 +2415,12 @@ func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
 			"links":     []string{"wireguard://client@vpn.example:51820?address=10.70.0.2%2F32&publickey=server&reserved=0%2C0%2C0#edge"},
 			"profiles": []WGProfile{{
 				Body: "[Interface]\nPrivateKey = key\n",
+			}},
+		},
+		"amneziawg": map[string]any{
+			"profiles": []AWGProfile{{
+				DownloadURL: "https://vpn.example/sub/token/awg/edge-device-1.conf",
+				Body:        "[Interface]\nJc = 4\nH1 = 101\n",
 			}},
 		},
 		"l2tp": []L2TPInfo{{
@@ -2433,6 +2439,8 @@ func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
 		"https://vpn.example/sub/token/wg/edge.conf",
 		"wireguard://client@vpn.example:51820?address=10.70.0.2%2F32&amp;publickey=server&amp;reserved=0%2C0%2C0#edge",
 		"PrivateKey = key",
+		"https://vpn.example/sub/token/awg/edge-device-1.conf",
+		"Jc = 4",
 		"l2tp.example.com",
 		"alice",
 		"pptp.example.com",

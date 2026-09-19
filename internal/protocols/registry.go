@@ -22,7 +22,9 @@ type Definition struct {
 	Subscription      bool
 	TrafficAccounting bool
 	Source            string
-	Constructible     *bool `json:"constructible,omitempty"`
+	DefaultPort       int    `json:"default_port,omitempty"`
+	Network           string `json:"network,omitempty"`
+	Constructible     *bool  `json:"constructible,omitempty"`
 }
 
 var constructibleFalse = false
@@ -41,8 +43,7 @@ var definitions = []Definition{
 	{ID: "openvpn", DisplayName: "OpenVPN", Family: FamilyDaemon, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
 	{ID: "wireguard", DisplayName: "WireGuard", Family: FamilyKernel, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
 	{ID: "wg-c", DisplayName: "WireGuard C", Family: FamilyKernel, Inbound: false, Outbound: true, Subscription: false, TrafficAccounting: false, Source: "system", Constructible: &constructibleFalse},
-	{ID: "amneziawg", DisplayName: "AmneziaWG", Family: FamilyKernel, Inbound: false, Outbound: true, Subscription: false, TrafficAccounting: false, Source: "system", Constructible: &constructibleFalse},
-	{ID: "awg", DisplayName: "AmneziaWG", Family: FamilyKernel, Inbound: false, Outbound: true, Subscription: false, TrafficAccounting: false, Source: "system", Constructible: &constructibleFalse},
+	{ID: "amneziawg", DisplayName: "AmneziaWG", Family: FamilyKernel, Inbound: true, Outbound: false, Subscription: true, TrafficAccounting: true, Source: "system", DefaultPort: 51821, Network: "udp"},
 	{ID: "ikev2", DisplayName: "IKEv2", Family: FamilyDaemon, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
 	{ID: "l2tp", DisplayName: "L2TP/IPsec", Family: FamilyDaemon, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
 	{ID: "pptp", DisplayName: "PPTP", Family: FamilyDaemon, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
