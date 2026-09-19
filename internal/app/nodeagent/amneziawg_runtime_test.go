@@ -2,6 +2,8 @@ package nodeagent
 
 import (
 	"encoding/base64"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +26,52 @@ func TestFilterAmneziaWGRuntimeInboundEnforcesDisableExpireAndQuota(t *testing.T
 	filtered := filterAmneziaWGRuntimeInboundByPolicy(inbound, now)
 	if len(filtered.Peers) != 1 || filtered.Peers[0].UserID != 1 {
 		t.Fatalf("filtered peers=%#v", filtered.Peers)
+	}
+}
+
+func TestAmneziaWGObfuscationPreservesExplicitZeroJunkCount(t *testing.T) {
+	settings, err := amneziaWGObfuscationSettings(map[string]any{"jc": 0, "jmin": 0, "jmax": 0, "s1": 0, "s2": 0, "h1": "101", "h2": "102", "h3": "103", "h4": "104"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Jc != 0 || settings.Jmin != 0 || settings.Jmax != 0 || settings.S1 != 0 || settings.S2 != 0 {
+		t.Fatalf("explicit zeros changed: %#v", settings)
+	}
+}
+
+func TestStopRemovedAmneziaWGRuntimesRetriesPersistedInterface(t *testing.T) {
+	s := New(Config{DataDir: t.TempDir()})
+	state := amneziaWGRuntimeState{Tag: "stale", InterfaceName: "awgdeadbeef"}
+	s.amneziaWGRuntimes["stale"] = state
+	if err := s.persistAmneziaWGRuntimeStates(); err != nil {
+		t.Fatal(err)
+	}
+	s.amneziaWGRuntimes = map[string]amneziaWGRuntimeState{}
+
+	originalRemove := amneziaWGRemoveRuntime
+	t.Cleanup(func() { amneziaWGRemoveRuntime = originalRemove })
+	var removed string
+	amneziaWGRemoveRuntime = func(interfaceName string) error {
+		removed = interfaceName
+		return nil
+	}
+	s.stopRemovedAmneziaWGRuntimes(map[string]preparedAmneziaWGRuntime{})
+	if removed != state.InterfaceName {
+		t.Fatalf("removed interface = %q, want %q", removed, state.InterfaceName)
+	}
+	loaded, err := s.loadAmneziaWGRuntimeStates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 0 {
+		t.Fatalf("runtime state after removal = %#v, want empty", loaded)
+	}
+	info, err := os.Stat(s.amneziaWGRuntimeStatePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+		t.Fatalf("runtime state permissions = %o, want 600", info.Mode().Perm())
 	}
 }
 

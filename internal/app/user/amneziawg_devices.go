@@ -5,6 +5,7 @@ import (
 	cryptorand "crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"net/netip"
 	"sort"
 	"strings"
 
@@ -98,7 +99,10 @@ func (r Repository) ReconcileAmneziaWGDevices(ctx context.Context, inboundTag st
 			allRows.Close()
 			return nil, err
 		}
-		used[address] = struct{}{}
+		parsed, parseErr := netip.ParseAddr(strings.TrimSpace(address))
+		if parseErr == nil && addressPool.prefix.Contains(parsed) && parsed.String() != addressPool.serverAddress() {
+			used[parsed.String()] = struct{}{}
+		}
 	}
 	if err := allRows.Close(); err != nil {
 		return nil, err
@@ -118,6 +122,16 @@ func (r Repository) ReconcileAmneziaWGDevices(ctx context.Context, inboundTag st
 	devices := make([]AWGDevice, 0, limit)
 	for index := 0; index < limit; index++ {
 		if item, ok := existing[index]; ok {
+			parsed, parseErr := netip.ParseAddr(strings.TrimSpace(item.Address))
+			if parseErr != nil || !addressPool.prefix.Contains(parsed) || parsed.String() == addressPool.serverAddress() {
+				item.Address, err = nextAddress()
+				if err != nil {
+					return nil, err
+				}
+				if _, err := tx.ExecContext(ctx, `UPDATE amneziawg_devices SET address = ? WHERE inbound_tag = ? AND user_id = ? AND device_index = ?`, item.Address, inboundTag, userID, index); err != nil {
+					return nil, err
+				}
+			}
 			if pskEnabled && item.PresharedKey == "" {
 				item.PresharedKey, err = newAWGPSK()
 				if err != nil {

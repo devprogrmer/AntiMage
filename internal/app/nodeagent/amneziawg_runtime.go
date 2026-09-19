@@ -65,6 +65,9 @@ type amneziaWGRuntimeState struct {
 	MTU           int    `json:"mtu"`
 }
 
+var amneziaWGApplyRuntime = amneziaWGPlatformApply
+var amneziaWGRemoveRuntime = amneziaWGPlatformRemove
+
 func amneziaWGGeneratedInterfaceName(tag string) (string, error) {
 	tag = strings.TrimSpace(tag)
 	if tag == "" {
@@ -229,8 +232,10 @@ func amneziaWGRuntimeAddressing(settings map[string]any) (netip.Prefix, string, 
 func amneziaWGObfuscationSettings(settings map[string]any) (amneziaWGObfuscation, error) {
 	obfs := amneziaWGObfuscation{Jc: 4, Jmin: 8, Jmax: 80, S1: 77, S2: 90}
 	for key, target := range map[string]*int{"jc": &obfs.Jc, "jmin": &obfs.Jmin, "jmax": &obfs.Jmax, "s1": &obfs.S1, "s2": &obfs.S2} {
-		if value := wireGuardIntSetting(settings, key); value != 0 {
-			*target = value
+		if raw, exists := settings[key]; exists && raw != nil {
+			if value, err := strconv.Atoi(strings.TrimSpace(fmt.Sprint(raw))); err == nil {
+				*target = value
+			}
 		}
 	}
 	obfs.H1 = wireGuardStringSetting(settings, "h1")
@@ -332,7 +337,7 @@ func (s *Server) preflightAmneziaWGRuntimes(prepared []preparedAmneziaWGRuntime)
 }
 
 func (s *Server) applyAmneziaWGRuntime(prepared preparedAmneziaWGRuntime) error {
-	if err := amneziaWGPlatformApply(prepared); err != nil {
+	if err := amneziaWGApplyRuntime(prepared); err != nil {
 		return fmt.Errorf("amneziawg %q: %w", prepared.Tag, err)
 	}
 	s.mu.Lock()
@@ -341,11 +346,28 @@ func (s *Server) applyAmneziaWGRuntime(prepared preparedAmneziaWGRuntime) error 
 		ServerCIDR: prepared.ServerCIDR, SourceCIDR: prepared.SourceCIDR, MTU: prepared.MTU,
 	}
 	s.mu.Unlock()
+	if err := s.persistAmneziaWGRuntimeStates(); err != nil {
+		return fmt.Errorf("amneziawg %q: persist runtime state: %w", prepared.Tag, err)
+	}
 	s.appendLog(fmt.Sprintf("amneziawg runtime applied: tag=%s interface=%s listen=%d peers=%d", prepared.Tag, prepared.InterfaceName, prepared.Inbound.ListenPort, len(prepared.Inbound.Peers)))
 	return nil
 }
 
 func (s *Server) stopRemovedAmneziaWGRuntimes(desired map[string]preparedAmneziaWGRuntime) {
+	s.mu.Lock()
+	s.mu.Unlock()
+	persisted, err := s.loadAmneziaWGRuntimeStates()
+	if err != nil {
+		s.appendLog("load persisted amneziawg runtimes failed: " + err.Error())
+	} else {
+		s.mu.Lock()
+		for tag, state := range persisted {
+			if _, exists := s.amneziaWGRuntimes[tag]; !exists {
+				s.amneziaWGRuntimes[tag] = state
+			}
+		}
+		s.mu.Unlock()
+	}
 	s.mu.Lock()
 	states := make(map[string]amneziaWGRuntimeState, len(s.amneziaWGRuntimes))
 	for tag, state := range s.amneziaWGRuntimes {
@@ -356,7 +378,7 @@ func (s *Server) stopRemovedAmneziaWGRuntimes(desired map[string]preparedAmnezia
 		if _, keep := desired[tag]; keep {
 			continue
 		}
-		if err := amneziaWGPlatformRemove(state.InterfaceName); err != nil {
+		if err := amneziaWGRemoveRuntime(state.InterfaceName); err != nil {
 			s.appendLog("remove amneziawg interface failed: " + err.Error())
 			continue
 		}
@@ -364,8 +386,47 @@ func (s *Server) stopRemovedAmneziaWGRuntimes(desired map[string]preparedAmnezia
 		delete(s.amneziaWGRuntimes, tag)
 		s.mu.Unlock()
 	}
+	if err := s.persistAmneziaWGRuntimeStates(); err != nil {
+		s.appendLog("persist amneziawg runtime state failed: " + err.Error())
+	}
 }
 
 func (s *Server) stopAllAmneziaWGRuntimes() {
 	s.stopRemovedAmneziaWGRuntimes(map[string]preparedAmneziaWGRuntime{})
+}
+
+func (s *Server) amneziaWGRuntimeStatePath() string {
+	return filepath.Join(s.cfg.DataDir, "amneziawg", "runtime-state.json")
+}
+
+func (s *Server) loadAmneziaWGRuntimeStates() (map[string]amneziaWGRuntimeState, error) {
+	states := map[string]amneziaWGRuntimeState{}
+	raw, err := os.ReadFile(s.amneziaWGRuntimeStatePath())
+	if os.IsNotExist(err) {
+		return states, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(raw, &states); err != nil {
+		return nil, err
+	}
+	return states, nil
+}
+
+func (s *Server) persistAmneziaWGRuntimeStates() error {
+	s.mu.Lock()
+	states := make(map[string]amneziaWGRuntimeState, len(s.amneziaWGRuntimes))
+	for tag, state := range s.amneziaWGRuntimes {
+		states[tag] = state
+	}
+	s.mu.Unlock()
+	raw, err := json.Marshal(states)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(s.amneziaWGRuntimeStatePath()), 0700); err != nil {
+		return err
+	}
+	return atomicWriteFile(s.amneziaWGRuntimeStatePath(), raw, 0600)
 }

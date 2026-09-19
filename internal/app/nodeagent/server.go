@@ -238,6 +238,7 @@ func (s *Server) RestartRuntime(
 	s.stopAllPPTPTProxySpecs()
 	s.stopAllPPTPNATSpecs()
 	s.stopAllWireGuardRuntimes()
+	s.stopAllAmneziaWGRuntimes()
 	_ = s.stopRuntime()
 
 	return s.applyConfig(ctx, req, "restarted")
@@ -257,6 +258,7 @@ func (s *Server) StopRuntime(
 	s.stopAllPPTPTProxySpecs()
 	s.stopAllPPTPNATSpecs()
 	s.stopAllWireGuardRuntimes()
+	s.stopAllAmneziaWGRuntimes()
 	_ = s.stopRuntime()
 
 	return s.action("", "stopped"), nil

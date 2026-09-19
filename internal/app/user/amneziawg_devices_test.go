@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -80,6 +81,27 @@ func TestReconcileAmneziaWGDevicesRevokesTrimmedSlots(t *testing.T) {
 	}
 	if rows != 1 {
 		t.Fatalf("persisted devices=%d want 1", rows)
+	}
+}
+
+func TestReconcileAmneziaWGDevicesMovesAddressesWhenPoolChanges(t *testing.T) {
+	db := openAWGDeviceTestDB(t)
+	repo := NewRepository(db, "sqlite")
+	before, err := repo.ReconcileAmneziaWGDevices(context.Background(), "awg-main", 12, 2, "10.72.0.0/24", "10.72.0.1/24", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := repo.ReconcileAmneziaWGDevices(context.Background(), "awg-main", 12, 2, "10.73.0.0/24", "10.73.0.1/24", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range after {
+		if after[index].PrivateKey != before[index].PrivateKey || after[index].PublicKey != before[index].PublicKey || after[index].PresharedKey != before[index].PresharedKey {
+			t.Fatalf("device %d keys changed during pool migration", index)
+		}
+		if !strings.HasPrefix(after[index].Address, "10.73.0.") {
+			t.Fatalf("device %d address = %q, want new pool", index, after[index].Address)
+		}
 	}
 }
 
