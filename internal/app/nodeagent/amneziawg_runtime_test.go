@@ -1,0 +1,98 @@
+package nodeagent
+
+import (
+	"encoding/base64"
+	"strings"
+	"testing"
+)
+
+func awgTestKey(fill byte) string {
+	return base64.StdEncoding.EncodeToString([]byte(strings.Repeat(string(fill), 32)))
+}
+
+func TestParseNativeRuntimePayloadIncludesAmneziaWG(t *testing.T) {
+	raw := `{"awg_inbounds":[{"tag":"awg-main","listen_port":51821,"settings":{"private_key":"` + awgTestKey('a') + `"},"peers":[]}]}`
+	payload, err := parseNativeRuntimePayload(raw)
+	if err != nil {
+		t.Fatalf("parse native runtime payload: %v", err)
+	}
+	if len(payload.AmneziaWGInbounds) != 1 {
+		t.Fatalf("AWG inbounds = %d, want 1", len(payload.AmneziaWGInbounds))
+	}
+	if payload.AmneziaWGInbounds[0].Tag != "awg-main" {
+		t.Fatalf("AWG tag = %q", payload.AmneziaWGInbounds[0].Tag)
+	}
+}
+
+func TestAmneziaWGGeneratedInterfaceNameIsStableAndIndependent(t *testing.T) {
+	first, err := amneziaWGGeneratedInterfaceName("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := amneziaWGGeneratedInterfaceName("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wg, err := wireGuardGeneratedInterfaceName("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("interface name is unstable: %q != %q", first, second)
+	}
+	if first == wg || !strings.HasPrefix(first, "awg") || len(first) > 15 {
+		t.Fatalf("AWG interface %q is not independent from WireGuard %q", first, wg)
+	}
+}
+
+func TestPrepareAmneziaWGInboundPreservesObfuscationAndDevices(t *testing.T) {
+	s := New(Config{DataDir: t.TempDir()})
+	inbound := amneziaWGRuntimeInbound{
+		Tag:        "awg-main",
+		ListenPort: 51821,
+		Settings: map[string]any{
+			"private_key":    awgTestKey('s'),
+			"address_pool":   "10.72.0.0/24",
+			"server_address": "10.72.0.1/24",
+			"mtu":            1420,
+			"jc":             4, "jmin": 8, "jmax": 80, "s1": 77, "s2": 90,
+			"h1": "101", "h2": "102", "h3": "103", "h4": "104",
+		},
+		Peers: []amneziaWGRuntimePeer{
+			{UserID: 7, DeviceIndex: 0, PublicKey: awgTestKey('p'), Address: "10.72.0.2", Status: "active"},
+			{UserID: 7, DeviceIndex: 1, PublicKey: awgTestKey('q'), Address: "10.72.0.3", Status: "active"},
+		},
+	}
+
+	prepared, err := s.prepareAmneziaWGInbound(inbound)
+	if err != nil {
+		t.Fatalf("prepare AWG inbound: %v", err)
+	}
+	if prepared.Obfuscation.H1 != "101" || prepared.Obfuscation.Jmax != 80 {
+		t.Fatalf("obfuscation was not preserved: %#v", prepared.Obfuscation)
+	}
+	if len(prepared.Inbound.Peers) != 2 || prepared.Inbound.Peers[1].DeviceIndex != 1 {
+		t.Fatalf("device peers were not preserved: %#v", prepared.Inbound.Peers)
+	}
+	if !strings.Contains(prepared.ConfigText, "Jc = 4") || !strings.Contains(prepared.ConfigText, "H4 = 104") {
+		t.Fatalf("AWG audit config misses obfuscation:\n%s", prepared.ConfigText)
+	}
+}
+
+func TestPrepareAmneziaWGInboundRejectsDuplicatePeerAddress(t *testing.T) {
+	s := New(Config{DataDir: t.TempDir()})
+	inbound := amneziaWGRuntimeInbound{
+		Tag: "duplicate", ListenPort: 51821,
+		Settings: map[string]any{
+			"private_key": awgTestKey('s'), "address_pool": "10.72.0.0/24",
+			"server_address": "10.72.0.1/24", "h1": "101", "h2": "102", "h3": "103", "h4": "104",
+		},
+		Peers: []amneziaWGRuntimePeer{
+			{UserID: 1, PublicKey: awgTestKey('a'), Address: "10.72.0.2"},
+			{UserID: 2, PublicKey: awgTestKey('b'), Address: "10.72.0.2"},
+		},
+	}
+	if _, err := s.prepareAmneziaWGInbound(inbound); err == nil || !strings.Contains(err.Error(), "duplicate peer address") {
+		t.Fatalf("error = %v, want duplicate peer address", err)
+	}
+}

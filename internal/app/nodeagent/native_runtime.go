@@ -22,6 +22,7 @@ type nativeRuntimePayload struct {
 	L2TPInbounds       []l2TPRuntimeInbound      `json:"l2tp_inbounds"`
 	PPTPInbounds       []pptpRuntimeInbound      `json:"pptp_inbounds"`
 	WireGuardInbounds  []wireGuardRuntimeInbound `json:"wg_inbounds"`
+	AmneziaWGInbounds  []amneziaWGRuntimeInbound `json:"awg_inbounds"`
 	IKEv2Inbounds      []json.RawMessage         `json:"ikev2_inbounds"`
 	AnyConnectInbounds []json.RawMessage         `json:"anyconnect_inbounds"`
 
@@ -190,6 +191,45 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		)
 	}
 
+	awgDesired := make(map[string]preparedAmneziaWGRuntime, len(payload.AmneziaWGInbounds))
+	awgPrepared := make([]preparedAmneziaWGRuntime, 0, len(payload.AmneziaWGInbounds))
+	usedListenPorts := make(map[int]string, len(payload.WireGuardInbounds)+len(payload.AmneziaWGInbounds))
+	for _, inbound := range payload.WireGuardInbounds {
+		usedListenPorts[inbound.ListenPort] = "wireguard:" + strings.TrimSpace(inbound.Tag)
+	}
+	for _, inbound := range payload.AmneziaWGInbounds {
+		tag := strings.TrimSpace(inbound.Tag)
+		if _, exists := awgDesired[tag]; exists {
+			return fmt.Errorf("duplicate amneziawg runtime tag %q", tag)
+		}
+		if owner, exists := usedListenPorts[inbound.ListenPort]; exists {
+			return fmt.Errorf("amneziawg listen port %d for %q conflicts with %s", inbound.ListenPort, tag, owner)
+		}
+		prepared, err := s.prepareAmneziaWGInbound(inbound)
+		if err != nil {
+			return err
+		}
+		if owner, exists := usedWGInterfaces[prepared.InterfaceName]; exists {
+			return fmt.Errorf("amneziawg interface %q for %q conflicts with wireguard %q", prepared.InterfaceName, tag, owner)
+		}
+		pool, _ := netip.ParsePrefix(prepared.SourceCIDR)
+		for rawOtherPool, owner := range usedWGPools {
+			otherPool, _ := netip.ParsePrefix(rawOtherPool)
+			if pool.Contains(otherPool.Addr()) || otherPool.Contains(pool.Addr()) {
+				return fmt.Errorf("amneziawg address pool %q for %q overlaps wireguard pool %q used by %q", pool, tag, otherPool, owner)
+			}
+		}
+		for _, other := range awgPrepared {
+			otherPool, _ := netip.ParsePrefix(other.SourceCIDR)
+			if pool.Contains(otherPool.Addr()) || otherPool.Contains(pool.Addr()) {
+				return fmt.Errorf("amneziawg address pool %q for %q overlaps pool %q used by %q", pool, tag, otherPool, other.Tag)
+			}
+		}
+		usedListenPorts[inbound.ListenPort] = "amneziawg:" + tag
+		awgDesired[tag] = prepared
+		awgPrepared = append(awgPrepared, prepared)
+	}
+
 	ovDesired := make(
 		map[string]struct{},
 		len(payload.OpenVPNInbounds),
@@ -337,6 +377,9 @@ func (s *Server) applyNativeRuntime(raw string) error {
 	if err := s.preflightWireGuardRuntimes(wgPrepared); err != nil {
 		return err
 	}
+	if err := s.preflightAmneziaWGRuntimes(awgPrepared); err != nil {
+		return err
+	}
 	if err := preflightOpenVPNRuntimes(ovPrepared); err != nil {
 		return err
 	}
@@ -363,6 +406,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 	}
 
 	s.stopRemovedWireGuardRuntimes(wgDesired)
+	s.stopRemovedAmneziaWGRuntimes(awgDesired)
 	s.stopRemovedOpenVPNRuntimes(ovDesired)
 	s.stopRemovedOpenVPNTProxySpecs(ovDesired)
 	s.stopRemovedOpenVPNNATSpecs(ovDesired)
@@ -375,6 +419,11 @@ func (s *Server) applyNativeRuntime(raw string) error {
 
 	for _, runtime := range wgPrepared {
 		if err := s.applyWireGuardRuntime(runtime); err != nil {
+			return err
+		}
+	}
+	for _, runtime := range awgPrepared {
+		if err := s.applyAmneziaWGRuntime(runtime); err != nil {
 			return err
 		}
 	}
@@ -437,11 +486,12 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		}
 	}
 
-	if len(ovPrepared) > 0 || len(wgPrepared) > 0 || len(l2tpPrepared) > 0 || len(pptpPrepared) > 0 {
+	if len(ovPrepared) > 0 || len(wgPrepared) > 0 || len(awgPrepared) > 0 || len(l2tpPrepared) > 0 || len(pptpPrepared) > 0 {
 		s.appendLog(fmt.Sprintf(
-			"native runtime applied: openvpn=%d wireguard=%d l2tp=%d pptp=%d",
+			"native runtime applied: openvpn=%d wireguard=%d amneziawg=%d l2tp=%d pptp=%d",
 			len(ovPrepared),
 			len(wgPrepared),
+			len(awgPrepared),
 			len(l2tpPrepared),
 			len(pptpPrepared),
 		))

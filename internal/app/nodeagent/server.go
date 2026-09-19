@@ -48,6 +48,7 @@ type Server struct {
 	pptpNATSpecs                     map[string]openVPNNATSpec
 	openVPNTProxyStartupReconciled   bool
 	wireGuardRuntimes                map[string]wireGuardRuntimeState
+	amneziaWGRuntimes                map[string]amneziaWGRuntimeState
 	wireGuardDynamicSuppressedPeers  map[string]struct{}
 	openVPNUsageMu                   sync.Mutex
 	openVPNUsageBaseline             map[string]uint64
@@ -122,6 +123,7 @@ func New(cfg Config) *Server {
 		pptpTProxySpecs:                 make(map[string]openVPNTProxySpec),
 		pptpNATSpecs:                    make(map[string]openVPNNATSpec),
 		wireGuardRuntimes:               make(map[string]wireGuardRuntimeState),
+		amneziaWGRuntimes:               make(map[string]amneziaWGRuntimeState),
 		wireGuardDynamicSuppressedPeers: make(map[string]struct{}),
 		openVPNUsageBaseline:            make(map[string]uint64),
 		l2TPUsageBaseline:               make(map[string]uint64),
@@ -158,6 +160,7 @@ func (s *Server) Run(ctx context.Context) error {
 		s.stopAllPPTPTProxySpecs()
 		s.stopAllPPTPNATSpecs()
 		s.stopAllWireGuardRuntimes()
+		s.stopAllAmneziaWGRuntimes()
 		_ = s.stopRuntime()
 	}()
 
