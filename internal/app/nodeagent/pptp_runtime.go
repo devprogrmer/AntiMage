@@ -62,7 +62,7 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 		return "", err
 	}
 	localIP := prefix.Addr().Next().String()
-	remoteRange, err := l2TPRemoteIPRange(prefix)
+	remoteRange, err := pptpRemoteIPRange(prefix)
 	if err != nil {
 		return "", fmt.Errorf("pptp %q: %w", tag, err)
 	}
@@ -191,6 +191,46 @@ func renderPPTPDConfig(files pptpRuntimeFiles, localIP, remoteRange string) stri
 localip %s
 remoteip %s
 `, filepath.ToSlash(files.PPPOptions), localIP, remoteRange)
+}
+
+func pptpRemoteIPRange(prefix netip.Prefix) (string, error) {
+	prefix = prefix.Masked()
+	if !prefix.Addr().Is4() {
+		return "", fmt.Errorf("PPTP pool must be IPv4")
+	}
+	if prefix.Bits() < 24 {
+		return "", fmt.Errorf("PPTP pool must be /24 or narrower")
+	}
+
+	base := prefix.Addr().As4()
+
+	start := prefix.Addr().Next().Next()
+	if !prefix.Contains(start) {
+		return "", fmt.Errorf("PPTP pool has no usable remote addresses")
+	}
+
+	last := netip.AddrFrom4([4]byte{
+		base[0],
+		base[1],
+		base[2],
+		254,
+	})
+
+	if !prefix.Contains(last) || start.Compare(last) > 0 {
+		return "", fmt.Errorf("PPTP pool has no usable remote range")
+	}
+
+	start4 := start.As4()
+	last4 := last.As4()
+
+	return fmt.Sprintf(
+		"%d.%d.%d.%d-%d",
+		start4[0],
+		start4[1],
+		start4[2],
+		start4[3],
+		last4[3],
+	), nil
 }
 
 func renderPPTPPPPOptions(inbound pptpRuntimeInbound, files pptpRuntimeFiles, localIP string) string {
