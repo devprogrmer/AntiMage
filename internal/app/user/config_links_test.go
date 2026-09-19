@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1429,6 +1430,44 @@ func TestResolveInboundKeepsL2TPSettings(t *testing.T) {
 	}
 	if got := intValue(settings["tunnel_port"]); got != 1702 {
 		t.Fatalf("tunnel_port = %d, want 1702", got)
+	}
+}
+
+func TestResolveInboundKeepsAmneziaWGSettings(t *testing.T) {
+	settings := map[string]any{
+		"private_key":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		"public_key":           "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+		"address_pool":         "10.72.0.0/24",
+		"server_address":       "10.72.0.1/24",
+		"dns":                  []string{"1.1.1.1", "8.8.8.8"},
+		"persistent_keepalive": 25,
+		"jc":                   4,
+		"jmin":                 8,
+		"jmax":                 80,
+		"s1":                   77,
+		"s2":                   90,
+		"h1":                   "101",
+		"h2":                   "102",
+		"h3":                   "103",
+		"h4":                   "104",
+	}
+	resolved, err := resolveInbound(map[string]any{
+		"tag":      "awg-live",
+		"protocol": "amneziawg",
+		"port":     51821,
+		"settings": settings,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := normalizeProxyProtocol(stringValue(resolved["protocol"])); got != "amneziawg" {
+		t.Fatalf("protocol = %q, want amneziawg", got)
+	}
+	resolvedSettings := mapValue(resolved["settings"])
+	for key, want := range settings {
+		if !reflect.DeepEqual(resolvedSettings[key], want) {
+			t.Fatalf("setting %s = %#v, want %#v", key, resolvedSettings[key], want)
+		}
 	}
 }
 
