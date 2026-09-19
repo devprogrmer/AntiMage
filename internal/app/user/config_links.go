@@ -1671,7 +1671,7 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 		applyOVResolvedSettings(resolved, inbound)
 		return resolved, nil
 	}
-	if protocol == "wireguard" {
+	if protocol == "wireguard" || protocol == "amneziawg" {
 		resolved["settings"] = settings
 		return resolved, nil
 	}
