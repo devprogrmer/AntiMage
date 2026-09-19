@@ -158,6 +158,13 @@ func (r Repository) bulkUsersActionMutation(ctx context.Context, requester admin
 	default:
 		return BulkUsersActionResult{}, clientError(400, "Unsupported action")
 	}
+	if payload.Action == AdvancedUserActionDeleteUsers || payload.Action == AdvancedUserActionChangeService {
+		for _, userID := range affectedUserIDs {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM amneziawg_devices WHERE user_id = ?`, userID); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") && !strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
+				return BulkUsersActionResult{}, err
+			}
+		}
+	}
 
 	if payload.Action != AdvancedUserActionDeleteUsers {
 		now := time.Now().UTC()

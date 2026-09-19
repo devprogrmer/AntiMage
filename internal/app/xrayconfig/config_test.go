@@ -3,6 +3,7 @@ package xrayconfig
 import (
 	"encoding/base64"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -101,6 +102,24 @@ func TestValidateAmneziaWGRejectsInvalidObfuscationAndHeaders(t *testing.T) {
 	settings["jmin"], settings["jmax"] = 8, 80
 	if err := validateVirtualTunnelInbound("awg-main", base); err == nil || !strings.Contains(err.Error(), "distinct") {
 		t.Fatalf("expected distinct header validation error, got %v", err)
+	}
+}
+
+func TestGenerateAWGHeadersReturnsDistinctClientCompatibleValues(t *testing.T) {
+	headers, err := generateAWGHeaders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]struct{}{}
+	for _, header := range headers {
+		value, err := strconv.ParseUint(header, 10, 32)
+		if err != nil || value < 4 {
+			t.Fatalf("invalid header %q", header)
+		}
+		if _, exists := seen[header]; exists {
+			t.Fatalf("duplicate header %q", header)
+		}
+		seen[header] = struct{}{}
 	}
 }
 
