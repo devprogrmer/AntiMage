@@ -1578,6 +1578,1829 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        /* ============================================================
+           AntiMage Premium Screenshot Layout v2
+           Subscription Workspace only.
+           ============================================================ */
+
+        :root {
+            --am-premium-pink: #ef3f98;
+            --am-premium-pink-soft: #ff78bd;
+            --am-premium-purple: #9855ff;
+            --am-premium-green: #43d18c;
+
+            --am-premium-bg: #070b12;
+            --am-premium-surface: #0d1722;
+            --am-premium-surface-2: #111d29;
+
+            --am-premium-border: rgba(139, 157, 184, .18);
+            --am-premium-border-hot: rgba(239, 63, 152, .35);
+
+            --am-premium-muted: #8390a5;
+            --am-premium-text-soft: #b7c0cf;
+
+            --am-premium-shadow:
+                0 18px 55px rgba(0, 0, 0, .28),
+                inset 0 1px 0 rgba(255, 255, 255, .025);
+        }
+
+        body.am-theme-dark {
+            background:
+                radial-gradient(
+                    circle at 2% 2%,
+                    rgba(221, 40, 134, .18),
+                    transparent 25rem
+                ),
+                radial-gradient(
+                    circle at 95% 8%,
+                    rgba(150, 42, 115, .17),
+                    transparent 30rem
+                ),
+                radial-gradient(
+                    circle at 92% 88%,
+                    rgba(224, 38, 129, .14),
+                    transparent 26rem
+                ),
+                linear-gradient(
+                    145deg,
+                    #080a11 0%,
+                    #07111b 46%,
+                    #080b13 100%
+                );
+            background-attachment: fixed;
+        }
+
+        body.am-theme-dark::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: -5;
+            pointer-events: none;
+
+            background-image:
+                radial-gradient(
+                    circle at 15% 15%,
+                    rgba(255,255,255,.55) 0 1px,
+                    transparent 1.5px
+                ),
+                radial-gradient(
+                    circle at 72% 45%,
+                    rgba(239,63,152,.72) 0 1px,
+                    transparent 1.5px
+                ),
+                radial-gradient(
+                    circle at 40% 75%,
+                    rgba(152,85,255,.48) 0 1px,
+                    transparent 1.5px
+                );
+
+            background-size:
+                240px 220px,
+                320px 280px,
+                380px 350px;
+
+            opacity: .34;
+        }
+
+        .am-shell {
+            width: min(1390px, calc(100% - 32px));
+            max-width: 1390px;
+            margin-inline: auto;
+
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ------------------------------------------------------------
+           TOP NAV
+           ------------------------------------------------------------ */
+
+        .am-premium-topbar {
+            order: 0;
+
+            min-height: 68px;
+
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            align-items: center;
+            gap: 20px;
+
+            position: sticky;
+            top: 0;
+            z-index: 90;
+
+            border-bottom: 1px solid rgba(255,255,255,.07);
+
+            background:
+                linear-gradient(
+                    90deg,
+                    rgba(7,11,18,.92),
+                    rgba(8,14,24,.85),
+                    rgba(14,10,19,.91)
+                );
+
+            backdrop-filter: blur(20px);
+        }
+
+        .am-premium-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+
+            width: max-content;
+
+            color: var(--am-panel-text);
+            text-decoration: none;
+
+            font-weight: 850;
+            font-size: 17px;
+            letter-spacing: -.025em;
+        }
+
+        .am-premium-logo {
+            position: relative;
+
+            width: 29px;
+            height: 29px;
+
+            flex: 0 0 29px;
+
+            filter:
+                drop-shadow(
+                    0 0 13px rgba(239,63,152,.33)
+                );
+        }
+
+        .am-premium-logo::before {
+            content: "";
+            position: absolute;
+            inset: 1px;
+
+            clip-path:
+                polygon(
+                    50% 0,
+                    100% 88%,
+                    69% 77%,
+                    50% 42%,
+                    28% 77%,
+                    0 88%
+                );
+
+            background:
+                linear-gradient(
+                    145deg,
+                    #ff77bf,
+                    #e52a87 55%,
+                    #9149ea
+                );
+        }
+
+        .am-premium-navigation {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .am-premium-navigation a {
+            min-height: 38px;
+
+            display: inline-flex;
+            align-items: center;
+
+            padding-inline: 17px;
+
+            border: 1px solid transparent;
+            border-radius: 999px;
+
+            color: var(--am-premium-text-soft);
+            text-decoration: none;
+
+            font-size: 12px;
+            font-weight: 650;
+
+            transition: .16s ease;
+        }
+
+        .am-premium-navigation a:hover,
+        .am-premium-navigation a:first-child {
+            color: #ffc4e1;
+
+            border-color:
+                rgba(239,63,152,.34);
+
+            background:
+                rgba(239,63,152,.11);
+
+            box-shadow:
+                inset 0 0 18px
+                rgba(239,63,152,.05);
+        }
+
+        .am-premium-topbar-actions {
+            justify-self: end;
+
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .am-premium-circle-button {
+            width: 37px;
+            height: 37px;
+
+            display: grid;
+            place-items: center;
+
+            border-radius: 50%;
+
+            border:
+                1px solid
+                rgba(143,158,181,.22);
+
+            background:
+                rgba(15,23,34,.72);
+
+            color:
+                var(--am-panel-text);
+
+            cursor: pointer;
+
+            font-size: 11px;
+            font-weight: 800;
+
+            transition: .15s ease;
+        }
+
+        .am-premium-circle-button:hover {
+            border-color:
+                rgba(239,63,152,.36);
+
+            color: #ffa1d0;
+
+            background:
+                rgba(239,63,152,.08);
+        }
+
+        .am-premium-user-chip {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+
+            margin-inline-start: 3px;
+
+            color:
+                var(--am-premium-text-soft);
+
+            font-size: 12px;
+            font-weight: 650;
+        }
+
+        .am-premium-avatar {
+            width: 36px;
+            height: 36px;
+
+            display: grid;
+            place-items: center;
+
+            border-radius: 50%;
+
+            border:
+                1px solid
+                rgba(255,255,255,.1);
+
+            background:
+                linear-gradient(
+                    145deg,
+                    #9e356f,
+                    #6f2c62
+                );
+
+            color: #fff;
+
+            box-shadow:
+                0 0 18px
+                rgba(239,63,152,.12);
+
+            font-weight: 800;
+        }
+
+        /* Old toolbar remains for compatibility but is not duplicated. */
+        .am-overview-header {
+            display: none !important;
+        }
+
+        /* ------------------------------------------------------------
+           HERO
+           ------------------------------------------------------------ */
+
+        .am-premium-hero {
+            order: 1;
+
+            position: relative;
+
+            min-height: 282px;
+
+            display: grid;
+            grid-template-columns:
+                minmax(0, 1.52fr)
+                minmax(340px, .72fr);
+
+            gap: 44px;
+
+            align-items: center;
+
+            overflow: hidden;
+        }
+
+        .am-premium-hero-copy {
+            position: relative;
+            z-index: 3;
+
+            max-width: 690px;
+
+            padding:
+                26px 0
+                30px;
+        }
+
+        .am-premium-eyebrow {
+            margin: 0 0 13px;
+
+            color:
+                #a6afbf;
+
+            font-size: 10px;
+            font-weight: 850;
+
+            letter-spacing: .17em;
+            text-transform: uppercase;
+        }
+
+        .am-premium-headline {
+            margin: 0;
+
+            max-width: 680px;
+
+            color: #f5f3f8;
+
+            font-size:
+                clamp(
+                    41px,
+                    4.25vw,
+                    66px
+                );
+
+            line-height: .99;
+
+            letter-spacing: -.055em;
+
+            font-weight: 900;
+        }
+
+        .am-premium-headline span {
+            color: transparent;
+
+            background:
+                linear-gradient(
+                    90deg,
+                    #fff 0%,
+                    #ffb1d5 38%,
+                    #ed489d 100%
+                );
+
+            background-clip: text;
+            -webkit-background-clip: text;
+        }
+
+        .am-premium-description {
+            max-width: 590px;
+
+            margin:
+                14px 0
+                20px;
+
+            color:
+                var(--am-premium-text-soft);
+
+            line-height: 1.6;
+            font-size: 13px;
+        }
+
+        .am-premium-benefits {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+        }
+
+        .am-premium-benefit {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+
+            color: #c1c9d6;
+
+            font-size: 11px;
+        }
+
+        .am-premium-benefit-icon {
+            width: 34px;
+            height: 34px;
+
+            display: grid;
+            place-items: center;
+
+            border-radius: 50%;
+
+            color: #ff96c9;
+
+            border:
+                1px solid
+                rgba(239,63,152,.28);
+
+            background:
+                rgba(239,63,152,.1);
+
+            box-shadow:
+                inset 0 0 16px
+                rgba(239,63,152,.04);
+
+            font-size: 14px;
+            font-weight: 800;
+        }
+
+        .am-premium-orb {
+            position: absolute;
+            z-index: 1;
+
+            width: 285px;
+            height: 285px;
+
+            top: 3px;
+            right: 270px;
+
+            border-radius: 50%;
+
+            opacity: .7;
+
+            border:
+                1px solid
+                rgba(239,63,152,.26);
+
+            background:
+                radial-gradient(
+                    circle at 55% 45%,
+                    transparent 0 31%,
+                    rgba(239,63,152,.07) 32% 33%,
+                    transparent 34%
+                ),
+                repeating-radial-gradient(
+                    circle at 45% 50%,
+                    rgba(255,75,162,.26) 0 1px,
+                    transparent 1px 4px
+                );
+
+            box-shadow:
+                inset -38px -20px 65px rgba(7,9,17,.95),
+                inset 24px 0 65px rgba(239,63,152,.16),
+                0 0 90px rgba(239,63,152,.15);
+        }
+
+        .am-premium-orb::before {
+            content: "";
+
+            position: absolute;
+
+            inset: -73px;
+
+            border-radius: 50%;
+
+            border-top:
+                1px solid
+                rgba(239,63,152,.29);
+
+            transform:
+                rotate(-17deg);
+
+            filter:
+                drop-shadow(
+                    0 0 7px
+                    rgba(239,63,152,.32)
+                );
+        }
+
+        .am-premium-identity {
+            position: relative;
+            z-index: 4;
+
+            min-height: 196px;
+
+            padding: 21px;
+
+            border-radius: 16px;
+
+            border:
+                1px solid
+                rgba(206,93,164,.2);
+
+            background:
+                linear-gradient(
+                    145deg,
+                    rgba(38,23,40,.82),
+                    rgba(15,24,37,.91)
+                );
+
+            box-shadow:
+                var(--am-premium-shadow),
+                0 0 34px
+                rgba(239,63,152,.055);
+        }
+
+        .am-premium-identity-label {
+            display: block;
+
+            color:
+                var(--am-premium-muted);
+
+            font-size: 9px;
+            font-weight: 800;
+
+            text-transform: uppercase;
+            letter-spacing: .13em;
+        }
+
+        .am-premium-identity-title {
+            margin:
+                5px 0
+                16px;
+
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 9px;
+        }
+
+        .am-premium-identity-title strong {
+            font-size: 20px;
+            letter-spacing: -.035em;
+        }
+
+        .am-premium-state {
+            min-height: 23px;
+
+            display: inline-flex;
+            align-items: center;
+
+            padding-inline: 8px;
+
+            border-radius: 999px;
+
+            font-size: 9px;
+            font-weight: 800;
+
+            color: #73efae;
+
+            background:
+                rgba(34,179,111,.14);
+
+            border:
+                1px solid
+                rgba(34,179,111,.22);
+        }
+
+        .am-premium-state[data-state="expired"],
+        .am-premium-state[data-state="disabled"] {
+            color: #ff8da7;
+
+            background:
+                rgba(225,62,101,.12);
+
+            border-color:
+                rgba(225,62,101,.23);
+        }
+
+        .am-premium-identity-grid {
+            display: grid;
+
+            grid-template-columns:
+                repeat(2, minmax(0,1fr));
+
+            gap: 13px 17px;
+
+            padding-top: 14px;
+
+            border-top:
+                1px solid
+                rgba(255,255,255,.065);
+        }
+
+        .am-premium-identity-grid small {
+            display: block;
+
+            color:
+                var(--am-premium-muted);
+
+            font-size: 8px;
+            font-weight: 750;
+
+            letter-spacing: .09em;
+            text-transform: uppercase;
+        }
+
+        .am-premium-identity-grid strong {
+            display: block;
+
+            margin-top: 5px;
+
+            color: #f2eff5;
+
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        /* ------------------------------------------------------------
+           THREE OVERVIEW CARDS
+           ------------------------------------------------------------ */
+
+        .am-overview {
+            order: 2;
+
+            display: grid !important;
+
+            grid-template-columns:
+                minmax(0, 1fr)
+                minmax(0, 1.05fr)
+                minmax(280px, .82fr);
+
+            gap: 13px;
+
+            padding: 0 !important;
+
+            border: 0 !important;
+
+            background:
+                transparent !important;
+
+            box-shadow:
+                none !important;
+        }
+
+        .am-metrics {
+            display: none !important;
+        }
+
+        .am-usage-block,
+        .am-account-block,
+        .am-premium-quick-actions {
+            min-width: 0;
+
+            padding: 17px !important;
+
+            border-radius: 15px;
+
+            border:
+                1px solid
+                var(--am-premium-border);
+
+            background:
+                linear-gradient(
+                    145deg,
+                    rgba(14,25,38,.94),
+                    rgba(9,19,30,.96)
+                );
+
+            box-shadow:
+                var(--am-premium-shadow);
+        }
+
+        .am-usage-block {
+            background:
+                radial-gradient(
+                    circle at 2% 5%,
+                    rgba(239,63,152,.08),
+                    transparent 13rem
+                ),
+                linear-gradient(
+                    145deg,
+                    rgba(14,25,38,.94),
+                    rgba(9,19,30,.96)
+                );
+        }
+
+        .am-premium-card-heading {
+            display: flex;
+
+            align-items: center;
+            gap: 9px;
+
+            margin-bottom: 14px;
+        }
+
+        .am-premium-card-heading-icon {
+            width: 29px;
+            height: 29px;
+
+            display: grid;
+            place-items: center;
+
+            border-radius: 9px;
+
+            color: #ff99c9;
+
+            border:
+                1px solid
+                rgba(239,63,152,.26);
+
+            background:
+                rgba(239,63,152,.09);
+
+            font-size: 13px;
+        }
+
+        .am-premium-card-heading strong {
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .am-premium-usage-layout {
+            display: grid;
+
+            grid-template-columns:
+                145px
+                minmax(0,1fr);
+
+            gap: 18px;
+
+            align-items: center;
+        }
+
+        .am-premium-usage-ring {
+            --am-usage-percent: 0;
+
+            width: 132px;
+            height: 132px;
+
+            display: grid;
+            place-items: center;
+
+            position: relative;
+
+            margin-inline: auto;
+
+            border-radius: 50%;
+
+            background:
+                conic-gradient(
+                    var(--am-premium-pink)
+                    calc(
+                        var(--am-usage-percent) * 1%
+                    ),
+                    #435062 0
+                );
+
+            box-shadow:
+                0 0 30px
+                rgba(239,63,152,.07);
+        }
+
+        .am-premium-usage-ring::after {
+            content: "";
+
+            position: absolute;
+
+            inset: 11px;
+
+            border-radius: 50%;
+
+            background:
+                #0b1520;
+
+            box-shadow:
+                inset 0 0 25px
+                rgba(0,0,0,.24);
+        }
+
+        .am-premium-usage-ring-content {
+            position: relative;
+            z-index: 2;
+
+            text-align: center;
+        }
+
+        .am-premium-usage-ring-content strong {
+            display: block;
+
+            color: #fff;
+
+            font-size: 26px;
+            line-height: 1;
+
+            letter-spacing: -.04em;
+        }
+
+        .am-premium-usage-ring-content span {
+            display: block;
+
+            margin-top: 5px;
+
+            color:
+                var(--am-premium-muted);
+
+            font-size: 9px;
+        }
+
+        .am-usage-row {
+            margin-bottom: 8px;
+        }
+
+        .am-usage-summary {
+            min-height: 39px;
+        }
+
+        .am-progress {
+            height: 7px;
+
+            border-radius: 999px;
+
+            background:
+                rgba(92,107,129,.25);
+        }
+
+        .am-progress-fill {
+            border-radius: inherit;
+
+            background:
+                linear-gradient(
+                    90deg,
+                    #d93188,
+                    #fa53a6 60%,
+                    #a14fe5
+                );
+
+            box-shadow:
+                0 0 15px
+                rgba(239,63,152,.31);
+        }
+
+        .am-account-block > .am-label {
+            margin-bottom: 14px;
+        }
+
+        .am-detail-list {
+            gap: 0;
+        }
+
+        .am-detail-row {
+            min-height: 39px;
+
+            padding:
+                9px 0;
+
+            border-bottom:
+                1px solid
+                rgba(255,255,255,.055);
+        }
+
+        .am-detail-row:last-child {
+            border-bottom: 0;
+        }
+
+        .am-detail-row--actions {
+            display: none;
+        }
+
+        /* ------------------------------------------------------------
+           QUICK ACTIONS
+           ------------------------------------------------------------ */
+
+        .am-premium-quick-actions {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .am-premium-action-list {
+            display: grid;
+            gap: 7px;
+        }
+
+        .am-premium-action {
+            width: 100%;
+
+            min-height: 45px;
+
+            display: grid;
+            grid-template-columns:
+                31px
+                minmax(0,1fr)
+                auto;
+
+            align-items: center;
+
+            gap: 9px;
+
+            padding: 7px;
+
+            border:
+                1px solid
+                rgba(129,147,173,.16);
+
+            border-radius: 11px;
+
+            background:
+                rgba(255,255,255,.018);
+
+            color:
+                var(--am-panel-text);
+
+            text-decoration: none;
+
+            cursor: pointer;
+
+            transition: .14s ease;
+
+            text-align: start;
+        }
+
+        .am-premium-action:hover {
+            border-color:
+                rgba(239,63,152,.3);
+
+            background:
+                rgba(239,63,152,.045);
+        }
+
+        .am-premium-action-icon {
+            width: 30px;
+            height: 30px;
+
+            display: grid;
+            place-items: center;
+
+            border-radius: 8px;
+
+            color: #ffc1de;
+
+            background:
+                linear-gradient(
+                    145deg,
+                    rgba(78,91,108,.3),
+                    rgba(42,53,69,.32)
+                );
+
+            font-size: 12px;
+        }
+
+        .am-premium-action-copy strong {
+            display: block;
+
+            font-size: 10px;
+        }
+
+        .am-premium-action-copy small {
+            display: block;
+
+            margin-top: 2px;
+
+            color:
+                var(--am-premium-muted);
+
+            font-size: 8px;
+        }
+
+        .am-premium-action-label {
+            min-width: 52px;
+
+            padding:
+                6px 9px;
+
+            border-radius: 8px;
+
+            border:
+                1px solid
+                rgba(239,63,152,.25);
+
+            color: #ffb4d8;
+
+            font-size: 9px;
+            font-weight: 750;
+
+            text-align: center;
+        }
+
+        /* ------------------------------------------------------------
+           APPLICATIONS BEFORE CONFIGURATIONS
+           ------------------------------------------------------------ */
+
+        .am-app-downloads {
+            order: 3;
+
+            margin-top: 14px;
+        }
+
+        .am-app-downloads.am-panel-card {
+            border-color:
+                var(--am-premium-border);
+
+            background:
+                linear-gradient(
+                    145deg,
+                    rgba(14,24,36,.94),
+                    rgba(9,18,29,.96)
+                );
+
+            box-shadow:
+                var(--am-premium-shadow);
+        }
+
+        .am-app-list {
+            grid-template-columns:
+                repeat(
+                    4,
+                    minmax(0,1fr)
+                ) !important;
+
+            gap: 11px !important;
+        }
+
+        .am-app-item {
+            min-height: 128px;
+
+            border-radius: 13px !important;
+
+            border-color:
+                var(--am-premium-border) !important;
+
+            background:
+                linear-gradient(
+                    145deg,
+                    rgba(16,27,40,.88),
+                    rgba(9,18,28,.94)
+                ) !important;
+        }
+
+        .am-app-item:hover {
+            border-color:
+                rgba(239,63,152,.32)
+                !important;
+
+            transform:
+                translateY(-1px);
+        }
+
+        /* ------------------------------------------------------------
+           CONFIGURATION SECTION
+           ------------------------------------------------------------ */
+
+        .am-main-grid {
+            order: 4;
+
+            margin-top: 14px;
+
+            grid-template-columns:
+                minmax(0,1fr)
+                !important;
+        }
+
+        .am-main-grid >
+        .am-stack:last-child:not(:first-child) {
+            display: none;
+        }
+
+        .am-main-grid
+        > .am-stack:first-child
+        > .am-panel-card {
+            border-color:
+                var(--am-premium-border);
+
+            background:
+                linear-gradient(
+                    145deg,
+                    rgba(14,24,36,.95),
+                    rgba(9,18,29,.97)
+                );
+
+            box-shadow:
+                var(--am-premium-shadow);
+        }
+
+        .am-protocol-tabs-wrap {
+            overflow: visible !important;
+        }
+
+        .am-protocol-tabs {
+            width: 100%;
+
+            display: grid !important;
+
+            grid-template-columns:
+                repeat(
+                    6,
+                    minmax(0,1fr)
+                );
+
+            gap: 10px;
+        }
+
+        .am-protocol-tab {
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 96px !important;
+
+            flex:
+                unset !important;
+
+            display: flex !important;
+            flex-direction: column;
+            align-items: flex-start !important;
+            justify-content: center;
+
+            gap: 7px;
+
+            padding:
+                12px !important;
+
+            border-radius:
+                13px !important;
+
+            border:
+                1px solid
+                var(--am-premium-border)
+                !important;
+
+            background:
+                linear-gradient(
+                    145deg,
+                    rgba(17,29,43,.86),
+                    rgba(10,20,30,.94)
+                ) !important;
+
+            color:
+                var(--am-premium-text-soft)
+                !important;
+
+            text-align: start;
+
+            transition:
+                .14s ease;
+        }
+
+        .am-protocol-tab:hover,
+        .am-protocol-tab.is-active {
+            border-color:
+                rgba(239,63,152,.39)
+                !important;
+
+            color:
+                #fff !important;
+
+            box-shadow:
+                0 0 26px
+                rgba(239,63,152,.055);
+        }
+
+        .am-protocol-tab.is-active {
+            background:
+                linear-gradient(
+                    145deg,
+                    rgba(53,26,48,.91),
+                    rgba(13,25,37,.94)
+                ) !important;
+        }
+
+        .am-vpn-download,
+        .am-credential-card {
+            border-radius:
+                12px !important;
+
+            border-color:
+                rgba(132,150,177,.16)
+                !important;
+
+            background:
+                rgba(255,255,255,.017)
+                !important;
+        }
+
+        .am-link-button {
+            border-radius:
+                8px !important;
+        }
+
+        .am-link-button:hover {
+            border-color:
+                rgba(239,63,152,.35)
+                !important;
+
+            color:
+                #ffaad3
+                !important;
+        }
+
+        .am-button--primary {
+            background:
+                linear-gradient(
+                    100deg,
+                    #d82e83,
+                    #ed4299 55%,
+                    #a549dd
+                ) !important;
+
+            border-color:
+                rgba(255,140,199,.3)
+                !important;
+        }
+
+        /* ------------------------------------------------------------
+           LIGHT THEME
+           ------------------------------------------------------------ */
+
+        body.am-theme-light
+        .am-premium-topbar {
+            background:
+                rgba(247,248,252,.91);
+        }
+
+        body.am-theme-light
+        .am-premium-headline {
+            color: #151824;
+        }
+
+        body.am-theme-light
+        .am-premium-description,
+        body.am-theme-light
+        .am-premium-benefit {
+            color: #596477;
+        }
+
+        body.am-theme-light
+        .am-premium-identity,
+        body.am-theme-light
+        .am-usage-block,
+        body.am-theme-light
+        .am-account-block,
+        body.am-theme-light
+        .am-premium-quick-actions {
+            background:
+                rgba(255,255,255,.86);
+        }
+
+        body.am-theme-light
+        .am-premium-identity-grid strong {
+            color: #1b2130;
+        }
+
+        body.am-theme-light
+        .am-premium-usage-ring::after {
+            background: #fff;
+        }
+
+        body.am-theme-light
+        .am-premium-usage-ring-content strong {
+            color: #1b2130;
+        }
+
+        /* ------------------------------------------------------------
+           RESPONSIVE
+           ------------------------------------------------------------ */
+
+        @media (max-width: 1180px) {
+            .am-premium-hero {
+                grid-template-columns:
+                    minmax(0,1.25fr)
+                    minmax(300px,.75fr);
+            }
+
+            .am-premium-orb {
+                right: 180px;
+                opacity: .46;
+            }
+
+            .am-overview {
+                grid-template-columns:
+                    repeat(
+                        2,
+                        minmax(0,1fr)
+                    );
+            }
+
+            .am-premium-quick-actions {
+                grid-column: 1 / -1;
+            }
+
+            .am-protocol-tabs {
+                grid-template-columns:
+                    repeat(
+                        3,
+                        minmax(0,1fr)
+                    );
+            }
+
+            .am-app-list {
+                grid-template-columns:
+                    repeat(
+                        2,
+                        minmax(0,1fr)
+                    ) !important;
+            }
+        }
+
+        @media (max-width: 850px) {
+            .am-premium-topbar {
+                grid-template-columns:
+                    1fr auto;
+            }
+
+            .am-premium-navigation {
+                display: none;
+            }
+
+            .am-premium-hero {
+                grid-template-columns:
+                    1fr;
+            }
+
+            .am-premium-orb {
+                right: -80px;
+                top: 28px;
+                opacity: .25;
+            }
+
+            .am-overview {
+                grid-template-columns:
+                    1fr;
+            }
+
+            .am-premium-quick-actions {
+                grid-column: auto;
+            }
+
+            .am-premium-user-chip > span:last-child {
+                display: none;
+            }
+        }
+
+        @media (max-width: 620px) {
+            .am-shell {
+                width:
+                    calc(100% - 18px);
+            }
+
+            .am-premium-topbar {
+                min-height: 60px;
+            }
+
+            .am-premium-headline {
+                font-size: 39px;
+            }
+
+            .am-premium-hero {
+                gap: 6px;
+            }
+
+            .am-premium-benefits {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .am-premium-usage-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .am-premium-usage-ring {
+                width: 120px;
+                height: 120px;
+            }
+
+            .am-protocol-tabs {
+                grid-template-columns:
+                    repeat(
+                        2,
+                        minmax(0,1fr)
+                    );
+            }
+
+            .am-app-list {
+                grid-template-columns:
+                    1fr !important;
+            }
+
+            .am-premium-identity-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+
+        /* ============================================================
+           AntiMage Premium Protocol Cards v3
+           ============================================================ */
+
+        .am-premium-config-overview {
+            margin-bottom: 18px;
+        }
+
+        .am-premium-config-overview-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 18px;
+            margin-bottom: 13px;
+        }
+
+        .am-premium-config-overview-head h3 {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 850;
+            color: var(--am-panel-text);
+        }
+
+        .am-premium-config-overview-head p {
+            margin: 4px 0 0;
+            color: var(--am-premium-muted);
+            font-size: 9px;
+            line-height: 1.5;
+        }
+
+        .am-premium-config-total {
+            flex: 0 0 auto;
+            padding: 7px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(139,157,184,.18);
+            background: rgba(255,255,255,.025);
+            color: var(--am-premium-text-soft);
+            font-size: 9px;
+            font-weight: 700;
+        }
+
+        .am-premium-protocol-cards {
+            display: grid;
+            grid-template-columns:
+                repeat(6, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .am-premium-protocol-card {
+            min-width: 0;
+            min-height: 142px;
+
+            display: flex;
+            flex-direction: column;
+
+            padding: 12px;
+
+            border-radius: 13px;
+
+            border:
+                1px solid
+                var(--am-premium-border);
+
+            background:
+                linear-gradient(
+                    145deg,
+                    rgba(17,29,43,.88),
+                    rgba(9,19,29,.95)
+                );
+
+            box-shadow:
+                inset 0 1px 0
+                rgba(255,255,255,.018);
+
+            transition:
+                transform .15s ease,
+                border-color .15s ease,
+                box-shadow .15s ease;
+        }
+
+        .am-premium-protocol-card:hover {
+            transform: translateY(-2px);
+
+            border-color:
+                rgba(239,63,152,.34);
+
+            box-shadow:
+                0 12px 30px rgba(0,0,0,.18),
+                0 0 26px rgba(239,63,152,.05);
+        }
+
+        .am-premium-protocol-card.is-active {
+            border-color:
+                rgba(239,63,152,.46);
+
+            background:
+                linear-gradient(
+                    145deg,
+                    rgba(49,25,46,.92),
+                    rgba(12,25,37,.96)
+                );
+        }
+
+        .am-premium-protocol-top {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+
+        .am-premium-protocol-icon {
+            width: 34px;
+            height: 34px;
+
+            flex: 0 0 34px;
+
+            display: grid;
+            place-items: center;
+
+            border-radius: 50%;
+
+            border:
+                1px solid
+                rgba(239,63,152,.24);
+
+            background:
+                rgba(239,63,152,.09);
+
+            color: #ff9dcb;
+
+            font-size: 10px;
+            font-weight: 900;
+        }
+
+        .am-premium-protocol-meta {
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .am-premium-protocol-name {
+            display: block;
+
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+
+            color: #f3f0f5;
+
+            font-size: 10px;
+            font-weight: 800;
+        }
+
+        .am-premium-protocol-count {
+            display: block;
+
+            margin-top: 3px;
+
+            color:
+                var(--am-premium-muted);
+
+            font-size: 8px;
+        }
+
+        .am-premium-protocol-ready {
+            flex: 0 0 auto;
+
+            padding: 4px 6px;
+
+            border-radius: 999px;
+
+            color: #70edab;
+
+            border:
+                1px solid
+                rgba(43,189,120,.22);
+
+            background:
+                rgba(43,189,120,.11);
+
+            font-size: 7px;
+            font-weight: 800;
+        }
+
+        .am-premium-protocol-actions {
+            display: grid;
+            grid-template-columns:
+                repeat(3, minmax(0,1fr));
+
+            gap: 5px;
+
+            margin-top: auto;
+            padding-top: 11px;
+        }
+
+        .am-premium-protocol-action {
+            min-width: 0;
+            min-height: 29px;
+
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+
+            padding: 5px 6px;
+
+            border-radius: 7px;
+
+            border:
+                1px solid
+                rgba(136,154,180,.2);
+
+            background:
+                rgba(255,255,255,.025);
+
+            color:
+                var(--am-premium-text-soft);
+
+            font-size: 7px;
+            font-weight: 700;
+
+            cursor: pointer;
+            text-decoration: none;
+
+            transition: .14s ease;
+        }
+
+        .am-premium-protocol-action:hover {
+            color: #ffabd4;
+
+            border-color:
+                rgba(239,63,152,.35);
+
+            background:
+                rgba(239,63,152,.05);
+        }
+
+        .am-premium-protocol-details {
+            width: 100%;
+
+            margin-top: 6px;
+
+            border: 0;
+            background: transparent;
+
+            color: #ef5aa3;
+
+            font-size: 8px;
+            font-weight: 700;
+
+            cursor: pointer;
+
+            text-align: end;
+        }
+
+        .am-premium-protocol-details:hover {
+            color: #ff8bc4;
+        }
+
+        .am-premium-protocol-cards-empty {
+            grid-column: 1 / -1;
+
+            padding: 24px;
+
+            border-radius: 13px;
+
+            border:
+                1px dashed
+                rgba(139,157,184,.2);
+
+            color:
+                var(--am-premium-muted);
+
+            text-align: center;
+
+            font-size: 10px;
+        }
+
+        /*
+         * The rich premium cards are now the top-level protocol
+         * selector. Keep the old tab strip as a compact secondary
+         * navigation inside the details area.
+         */
+        .am-protocol-tabs-wrap {
+            margin-top: 3px;
+        }
+
+        .am-protocol-tabs {
+            grid-template-columns:
+                repeat(
+                    auto-fit,
+                    minmax(115px,1fr)
+                ) !important;
+        }
+
+        .am-protocol-tab {
+            min-height: 48px !important;
+        }
+
+        @media (max-width: 1200px) {
+            .am-premium-protocol-cards {
+                grid-template-columns:
+                    repeat(3, minmax(0,1fr));
+            }
+        }
+
+        @media (max-width: 700px) {
+            .am-premium-config-overview-head {
+                display: grid;
+            }
+
+            .am-premium-config-total {
+                width: max-content;
+            }
+
+            .am-premium-protocol-cards {
+                grid-template-columns:
+                    repeat(2, minmax(0,1fr));
+            }
+        }
+
+        @media (max-width: 430px) {
+            .am-premium-protocol-cards {
+                grid-template-columns: 1fr;
+            }
+        }
+
+
+        /* ============================================================
+           AntiMage Smart Applications v4
+           ============================================================ */
+
+        .am-app-platform-lock {
+            cursor: default !important;
+            pointer-events: none;
+        }
+
+        .am-smart-app-item {
+            position: relative;
+        }
+
+        .am-smart-app-item::before {
+            content: "";
+
+            position: absolute;
+
+            inset-inline-start: 0;
+            top: 14px;
+            bottom: 14px;
+
+            width: 2px;
+
+            border-radius: 99px;
+
+            background:
+                linear-gradient(
+                    180deg,
+                    #f14a9e,
+                    #914ee8
+                );
+
+            opacity: .55;
+        }
+
+        .am-app-compat {
+            display: block;
+
+            margin-top: 5px;
+
+            color: #ef73ae;
+
+            font-size: 8px;
+            font-weight: 700;
+
+            line-height: 1.45;
+        }
+
+        .am-app-item--warning {
+            border-color:
+                rgba(238, 176, 63, .24)
+                !important;
+        }
+
+        .am-app-item--warning::before {
+            background:
+                linear-gradient(
+                    180deg,
+                    #efb03f,
+                    #ec6b45
+                );
+        }
+
+        .am-app-item--warning
+        .am-app-compat {
+            color: #e9b75d;
+        }
+
+        @media (max-width: 700px) {
+            .am-smart-app-item
+            .am-app-actions {
+                width: 100%;
+
+                display: grid;
+
+                grid-template-columns:
+                    repeat(
+                        auto-fit,
+                        minmax(92px, 1fr)
+                    );
+            }
+        }
+
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
@@ -1596,7 +3419,186 @@
     data-service-name="{% if user.service_name %}{{ user.service_name }}{% endif %}"
 >
     <main class="am-shell">
-        <section class="am-overview am-panel-card">
+
+        <header class="am-premium-topbar">
+            <a
+                class="am-premium-brand"
+                href="#overview"
+            >
+                <span
+                    class="am-premium-logo"
+                    aria-hidden="true"
+                ></span>
+
+                <span>AntiMage</span>
+            </a>
+
+            <nav
+                class="am-premium-navigation"
+                aria-label="Subscription workspace"
+            >
+                <a href="#overview">
+                    Overview
+                </a>
+
+                <a href="#applications">
+                    Applications
+                </a>
+
+                <a href="#configurations">
+                    Configurations
+                </a>
+            </nav>
+
+            <div class="am-premium-topbar-actions">
+                <button
+                    class="am-premium-circle-button"
+                    id="premiumLanguageButton"
+                    type="button"
+                    title="Language"
+                >
+                    EN
+                </button>
+
+                <button
+                    class="am-premium-circle-button"
+                    id="premiumThemeButton"
+                    type="button"
+                    title="Theme"
+                >
+                    ?
+                </button>
+
+                <div class="am-premium-user-chip">
+                    <span class="am-premium-avatar">
+                        A
+                    </span>
+
+                    <span>
+                        {{ user.username }}
+                    </span>
+                </div>
+            </div>
+        </header>
+
+        <section class="am-premium-hero">
+            <div
+                class="am-premium-orb"
+                aria-hidden="true"
+            ></div>
+
+            <div class="am-premium-hero-copy">
+                <p class="am-premium-eyebrow">
+                    Your Subscription Workspace
+                </p>
+
+                <h1 class="am-premium-headline">
+                    Private connection<br>
+                    for a
+                    <span>freer internet.</span>
+                </h1>
+
+                <p class="am-premium-description">
+                    Manage your subscription,
+                    get configuration files
+                    and connect on all your devices ?
+                    fast, secure and simple.
+                </p>
+
+                <div class="am-premium-benefits">
+                    <span class="am-premium-benefit">
+                        <span
+                            class="am-premium-benefit-icon"
+                        >
+                            ?
+                        </span>
+
+                        Secure and private
+                    </span>
+
+                    <span class="am-premium-benefit">
+                        <span
+                            class="am-premium-benefit-icon"
+                        >
+                            ?
+                        </span>
+
+                        High speed global servers
+                    </span>
+
+                    <span class="am-premium-benefit">
+                        <span
+                            class="am-premium-benefit-icon"
+                        >
+                            ?
+                        </span>
+
+                        One subscription,
+                        all your devices
+                    </span>
+                </div>
+            </div>
+
+            <aside class="am-premium-identity">
+                <span class="am-premium-identity-label">
+                    Username
+                </span>
+
+                <div class="am-premium-identity-title">
+                    <strong>
+                        {{ user.username }}
+                    </strong>
+
+                    <span
+                        class="am-premium-state"
+                        id="premiumStatusText"
+                        data-state="{{ user.status }}"
+                    >
+                        {{ user.status }}
+                    </span>
+                </div>
+
+                <div class="am-premium-identity-grid">
+                    <div>
+                        <small>Service</small>
+
+                        <strong>
+                            {% if user.service_name %}
+                                {{ user.service_name }}
+                            {% else %}
+                                AntiMage
+                            {% endif %}
+                        </strong>
+                    </div>
+
+                    <div>
+                        <small>Member since</small>
+
+                        <strong id="premiumCreatedAt">
+                            ?
+                        </strong>
+                    </div>
+
+                    <div>
+                        <small>Expiry</small>
+
+                        <strong id="premiumExpiry">
+                            ?
+                        </strong>
+                    </div>
+
+                    <div>
+                        <small>Connection</small>
+
+                        <strong>
+                            AntiMage Network
+                        </strong>
+                    </div>
+                </div>
+            </aside>
+        </section>
+
+        <section class="am-overview am-panel-card" id="overview">
             <div class="am-overview-header">
                 <div class="am-overview-meta">
                     <div class="am-username-row">
@@ -1670,13 +3672,55 @@
             </div>
 
             <div class="am-usage-block">
-                <div class="am-usage-row">
-                    <p class="am-label" data-i18n="usageOverviewLabel">Usage overview</p>
-                    <span class="am-badge" id="resetStrategyBadge"></span>
+                <div class="am-premium-card-heading">
+                    <span class="am-premium-card-heading-icon">
+                        ?
+                    </span>
+
+                    <strong data-i18n="usageOverviewLabel">
+                        Usage overview
+                    </strong>
                 </div>
-                <p class="am-usage-summary" id="usageSummaryText"></p>
-                <div class="am-progress" aria-hidden="true">
-                    <div class="am-progress-fill" id="usageProgressFill"></div>
+
+                <div class="am-premium-usage-layout">
+                    <div
+                        class="am-premium-usage-ring"
+                        id="premiumUsageRing"
+                    >
+                        <div class="am-premium-usage-ring-content">
+                            <strong id="premiumUsagePercent">
+                                0%
+                            </strong>
+
+                            <span>
+                                used
+                            </span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="am-usage-row">
+                            <span
+                                class="am-badge"
+                                id="resetStrategyBadge"
+                            ></span>
+                        </div>
+
+                        <p
+                            class="am-usage-summary"
+                            id="usageSummaryText"
+                        ></p>
+
+                        <div
+                            class="am-progress"
+                            aria-hidden="true"
+                        >
+                            <div
+                                class="am-progress-fill"
+                                id="usageProgressFill"
+                            ></div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1714,9 +3758,123 @@
                 </div>
             </div>
 
+            <section class="am-premium-quick-actions">
+                <div class="am-premium-card-heading">
+                    <span class="am-premium-card-heading-icon">
+                        ?
+                    </span>
+
+                    <strong>
+                        Quick actions
+                    </strong>
+                </div>
+
+                <div class="am-premium-action-list">
+                    <button
+                        class="am-premium-action"
+                        id="premiumCopySubscriptionButton"
+                        type="button"
+                    >
+                        <span class="am-premium-action-icon">
+                            ?
+                        </span>
+
+                        <span class="am-premium-action-copy">
+                            <strong>
+                                Subscription link
+                            </strong>
+
+                            <small>
+                                Share or import your subscription
+                            </small>
+                        </span>
+
+                        <span class="am-premium-action-label">
+                            Copy
+                        </span>
+                    </button>
+
+                    <button
+                        class="am-premium-action"
+                        id="premiumSubscriptionQrButton"
+                        type="button"
+                    >
+                        <span class="am-premium-action-icon">
+                            ?
+                        </span>
+
+                        <span class="am-premium-action-copy">
+                            <strong>
+                                Subscription QR
+                            </strong>
+
+                            <small>
+                                Generated locally in your browser
+                            </small>
+                        </span>
+
+                        <span class="am-premium-action-label">
+                            Show
+                        </span>
+                    </button>
+
+                    <a
+                        class="am-premium-action"
+                        href="{{ usage_url }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <span class="am-premium-action-icon">
+                            ?
+                        </span>
+
+                        <span class="am-premium-action-copy">
+                            <strong>
+                                Usage API
+                            </strong>
+
+                            <small>
+                                View real usage data
+                            </small>
+                        </span>
+
+                        <span class="am-premium-action-label">
+                            View
+                        </span>
+                    </a>
+
+                    {% if support_url %}
+                    <a
+                        class="am-premium-action"
+                        href="{{ support_url }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <span class="am-premium-action-icon">
+                            ?
+                        </span>
+
+                        <span class="am-premium-action-copy">
+                            <strong>
+                                Get help
+                            </strong>
+
+                            <small>
+                                Guides and support
+                            </small>
+                        </span>
+
+                        <span class="am-premium-action-label">
+                            Open
+                        </span>
+                    </a>
+                    {% endif %}
+                </div>
+            </section>
+
         </section>
 
-        <div class="am-main-grid">
+        <div class="am-main-grid" id="configurations">
             <div class="am-stack">
                 <section class="am-panel-card">
                     <div class="am-card-body">
@@ -1734,6 +3892,32 @@
                                 </button>
                             </div>
                         </div>
+
+                        <!-- AntiMage Premium Protocol Cards v3 -->
+                        <div class="am-premium-config-overview">
+                            <div class="am-premium-config-overview-head">
+                                <div>
+                                    <h3>Configurations</h3>
+                                    <p>
+                                        Available protocols and profiles
+                                        for this subscription.
+                                    </p>
+                                </div>
+
+                                <span
+                                    class="am-premium-config-total"
+                                    id="premiumTotalConfigCount"
+                                >
+                                    Loading configurations...
+                                </span>
+                            </div>
+
+                            <div
+                                class="am-premium-protocol-cards"
+                                id="premiumProtocolCards"
+                            ></div>
+                        </div>
+
                         <div class="am-protocol-tabs-wrap" id="protocolTabsWrap" hidden>
                             <div class="am-protocol-tabs" id="protocolTabs"></div>
                         </div>
@@ -1806,6 +3990,91 @@
                                 {% endif %}
                             </div>
                             <p class="am-empty" id="wgEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
+                        </div>
+
+
+                        <div class="am-protocol-panel" id="awgProtocolPanel" hidden>
+                            <div class="am-vpn-block">
+                                {% if amneziawg.profiles %}
+                                <div class="am-vpn-group">
+                                    <h4 class="am-vpn-title" data-i18n="amneziawgTitle">
+                                        AmneziaWG configs
+                                    </h4>
+
+                                    {% for item in amneziawg.profiles %}
+                                    <div class="am-vpn-download" data-awg-profile>
+                                        <div>
+                                            <span class="am-vpn-name">
+                                                {% if item.Remark %}
+                                                    {{ item.Remark }}
+                                                {% elif item.Filename %}
+                                                    {{ item.Filename }}
+                                                {% else %}
+                                                    AmneziaWG Device {{ item.DeviceIndex }}
+                                                {% endif %}
+                                            </span>
+
+                                            {% if item.Filename %}
+                                            <span class="am-vpn-meta">
+                                                {{ item.Filename }}
+                                            </span>
+                                            {% endif %}
+                                        </div>
+
+                                        <div class="am-vpn-actions">
+                                            {% if item.DownloadURL %}
+                                            <a
+                                                class="am-link-button"
+                                                href="{{ item.DownloadURL }}"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                data-i18n="downloadButton"
+                                            >
+                                                Download
+                                            </a>
+                                            {% endif %}
+
+                                            {% if item.Body %}
+                                            <button
+                                                class="am-link-button"
+                                                type="button"
+                                                data-copy-target="awg-config-{{ item.HostTag }}-{{ item.DeviceIndex }}"
+                                                data-i18n="copyConfigButton"
+                                            >
+                                                Copy config
+                                            </button>
+
+                                            <button
+                                                class="am-link-button"
+                                                type="button"
+                                                data-qr-target="awg-config-{{ item.HostTag }}-{{ item.DeviceIndex }}"
+                                            >
+                                                QR
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
+                                    {% if item.Body %}
+                                    <textarea
+                                        class="am-wg-config"
+                                        id="awg-config-{{ item.HostTag }}-{{ item.DeviceIndex }}"
+                                        readonly
+                                    >{{ item.Body }}</textarea>
+                                    {% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+
+                            <p
+                                class="am-empty"
+                                id="awgEmptyState"
+                                hidden
+                                data-i18n="noConfigs"
+                            >
+                                No configurations available.
+                            </p>
                         </div>
 
                         <div class="am-protocol-panel" id="l2tpProtocolPanel" hidden>
@@ -1901,7 +4170,7 @@
                                     <h4 class="am-vpn-title" data-i18n="ikev2Title">IKEv2</h4>
                                     <div class="am-credential-list">
                                         {% for item in ikev2 %}
-                                        <div class="am-credential-card" data-remote-access-card>
+                                        <div class="am-credential-card" data-remote-access-card data-ikev2-card>
                                             <p class="am-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
                                             <div class="am-credential-grid">
                                                 <div class="am-credential-row"><span class="am-credential-copy" dir="ltr">{{ item.Server }}:{{ item.Port }}</span><button class="am-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>
@@ -1919,7 +4188,7 @@
                                     <h4 class="am-vpn-title" data-i18n="anyconnectTitle">Cisco AnyConnect</h4>
                                     <div class="am-credential-list">
                                         {% for item in anyconnect %}
-                                        <div class="am-credential-card" data-remote-access-card>
+                                        <div class="am-credential-card" data-remote-access-card data-anyconnect-card>
                                             <p class="am-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
                                             <div class="am-credential-grid">
                                                 <div class="am-credential-row"><span class="am-credential-copy" dir="ltr">{{ item.Server }}:{{ item.Port }}</span><button class="am-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>
@@ -1958,7 +4227,7 @@
             </div>
         </div>
 
-        <section class="am-panel-card am-app-downloads">
+        <section class="am-panel-card am-app-downloads" id="applications">
             <div class="am-card-body">
                 <div class="am-card-head">
                     <div>
@@ -2269,6 +4538,7 @@
                     configsTitle: 'Configurations',
                     v2Title: 'links',
                     wireguardTitle: 'WireGuard configs',
+                    amneziawgTitle: 'AmneziaWG configs',
                     copyAllButton: 'Copy all',
                     copyLinkButton: 'Copy link',
                     copyConfigButton: 'Copy config',
@@ -2277,10 +4547,12 @@
                     protocolTabV2: 'v2',
                     protocolTabOVPN: 'ovpn',
                     protocolTabWireGuard: 'wireguard',
+                    protocolTabAmneziaWG: 'amneziawg',
                     protocolTabL2TP: 'l2tp/ipsec',
                     protocolTabRemoteAccess: 'ikev2 / anyconnect',
                     openvpnCount: '[[count]] profile ready',
                     wireguardCount: '[[count]] config ready',
+                    amneziawgCount: '[[count]] config ready',
                     credentialCount: '[[count]] credential card ready',
                     usageChartTitle: 'Usage history',
                     usageChartCopy: 'Your daily data usage over time.',
@@ -2381,6 +4653,7 @@
                     configsTitle: 'کانفیگ‌ها',
                     v2Title: 'links',
                     wireguardTitle: 'کانفیگ‌های WireGuard',
+                    amneziawgTitle: 'AmneziaWG',
                     copyAllButton: 'کپی همه',
                     copyLinkButton: 'کپی لینک',
                     copyConfigButton: 'کپی کانفیگ',
@@ -2389,10 +4662,12 @@
                     protocolTabV2: 'v2',
                     protocolTabOVPN: 'ovpn',
                     protocolTabWireGuard: 'wireguard',
+                    protocolTabAmneziaWG: 'amneziawg',
                     protocolTabL2TP: 'l2tp/ipsec',
                     protocolTabRemoteAccess: 'ikev2 / anyconnect',
                     openvpnCount: '[[count]] پروفایل آماده است',
                     wireguardCount: '[[count]] کانفیگ آماده است',
+                    amneziawgCount: 'AmneziaWG: [[count]]',
                     credentialCount: '[[count]] کارت اطلاعاتی آماده است',
                     usageChartTitle: 'تاریخچه مصرف',
                     usageChartCopy: 'روند مصرف روزانه‌ی شما در طول زمان.',
@@ -2493,6 +4768,7 @@
                     configsTitle: 'Конфиги',
                     v2Title: 'links',
                     wireguardTitle: 'Конфиги WireGuard',
+                    amneziawgTitle: 'AmneziaWG',
                     copyAllButton: 'Копировать все',
                     copyLinkButton: 'Копировать ссылку',
                     copyConfigButton: 'Копировать конфиг',
@@ -2501,10 +4777,12 @@
                     protocolTabV2: 'v2',
                     protocolTabOVPN: 'ovpn',
                     protocolTabWireGuard: 'wireguard',
+                    protocolTabAmneziaWG: 'amneziawg',
                     protocolTabL2TP: 'l2tp/ipsec',
                     protocolTabRemoteAccess: 'ikev2 / anyconnect',
                     openvpnCount: 'Готово профилей: [[count]]',
                     wireguardCount: 'Готово конфигов: [[count]]',
+                    amneziawgCount: 'AmneziaWG: [[count]]',
                     credentialCount: 'Готово карточек доступа: [[count]]',
                     usageChartTitle: 'История трафика',
                     usageChartCopy: 'Ваш ежедневный расход трафика.',
@@ -2605,6 +4883,7 @@
                     configsTitle: '配置列表',
                     v2Title: 'links',
                     wireguardTitle: 'WireGuard 配置',
+                    amneziawgTitle: 'AmneziaWG',
                     copyAllButton: '复制全部',
                     copyLinkButton: '复制链接',
                     copyConfigButton: '复制配置',
@@ -2613,10 +4892,12 @@
                     protocolTabV2: 'v2',
                     protocolTabOVPN: 'ovpn',
                     protocolTabWireGuard: 'wireguard',
+                    protocolTabAmneziaWG: 'amneziawg',
                     protocolTabL2TP: 'l2tp/ipsec',
                     protocolTabRemoteAccess: 'ikev2 / anyconnect',
                     openvpnCount: '已准备 [[count]] 个配置文件',
                     wireguardCount: '已准备 [[count]] 个配置',
+                    amneziawgCount: 'AmneziaWG: [[count]]',
                     credentialCount: '已准备 [[count]] 张凭据卡',
                     usageChartTitle: '流量历史',
                     usageChartCopy: '您每日的流量使用趋势。',
@@ -2734,40 +5015,529 @@
             var v2ConfigLinks = [];
             var wireguardConfigLinks = [];
             var availableTabs = [];
+            // AntiMage Smart Applications v4
             var appCatalog = [
-                { platform: 'ios', name: 'Happ', meta: 'iOS', download: 'https://apps.apple.com/app/happ-proxy-utility/id6504287215', scheme: 'happ', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/60/8c/43/608c4326-9d15-bee3-f0d0-683a290b8b8c/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/100x100bb.jpg', short: 'HP' },
-                { platform: 'ios', name: 'Hiddify', meta: 'iOS', download: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532', scheme: 'hiddify', icon: 'https://raw.githubusercontent.com/hiddify/hiddify-next/main/android/app/src/main/ic_launcher-playstore.png', short: 'HD' },
-                { platform: 'ios', name: 'Streisand', meta: 'iOS 14+', download: 'https://apps.apple.com/app/streisand/id6450534064', scheme: 'streisand', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/6b/e0/93/6be09364-a713-c26e-a089-e21bcadc14de/AppIcon-0-0-1x_U007epad-0-0-0-1-0-85-220.png/100x100bb.jpg', short: 'ST' },
-                { platform: 'ios', name: 'Shadowrocket', meta: 'iOS', download: 'https://apps.apple.com/app/shadowrocket/id932747118', scheme: 'shadowrocket', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/44/d3/df/44d3df14-cf72-37d1-6e61-582f7023b90e/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/100x100bb.jpg', short: 'SR' },
-                { platform: 'ios', name: 'sing-box', meta: 'iOS', download: 'https://apps.apple.com/app/sing-box-vt/id6673731168', scheme: 'singbox', icon: 'https://raw.githubusercontent.com/SagerNet/sing-box/testing/docs/assets/icon.svg', short: 'SB' },
-                { platform: 'ios', name: 'V2Box', meta: 'iOS 14+', download: 'https://apps.apple.com/app/v2box-v2ray-client/id6446814690', scheme: 'v2box', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/a4/0c/ed/a40ced0f-f168-b7ae-ff71-5bc94c65f5a7/V2BoxIcon-0-0-1x_U007epad-0-1-P3-85-220.png/100x100bb.jpg', short: 'V2' },
-                { platform: 'ios', name: 'OpenVPN Connect', meta: 'iOS', download: 'https://apps.apple.com/app/openvpn-connect-openvpn-app/id590379981', scheme: 'openvpn', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/51/16/6b/51166b12-3136-6063-98a6-b595c5824ae2/AppIcon-0-0-1x_U007epad-0-1-85-220.png/100x100bb.jpg', short: 'OV' },
-                { platform: 'android', name: 'Happ', meta: 'Android', download: 'https://play.google.com/store/apps/details?id=com.happproxy', scheme: 'happ', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/60/8c/43/608c4326-9d15-bee3-f0d0-683a290b8b8c/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/100x100bb.jpg', short: 'HP' },
-                { platform: 'android', name: 'Hiddify', meta: 'Android', download: 'https://github.com/hiddify/hiddify-next/releases/latest', scheme: 'hiddify', icon: 'https://raw.githubusercontent.com/hiddify/hiddify-next/main/android/app/src/main/ic_launcher-playstore.png', short: 'HD' },
-                { platform: 'android', name: 'v2rayNG', meta: 'Android', download: 'https://github.com/2dust/v2rayNG/releases/latest', scheme: 'v2rayng', icon: 'https://raw.githubusercontent.com/2dust/v2rayNG/master/V2rayNG/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png', short: 'NG' },
-                { platform: 'android', name: 'sing-box', meta: 'Android', download: 'https://github.com/SagerNet/sing-box/releases/latest', scheme: 'singbox', icon: 'https://raw.githubusercontent.com/SagerNet/sing-box/testing/docs/assets/icon.svg', short: 'SB' },
-                { platform: 'android', name: 'NekoBox', meta: 'Android', download: 'https://github.com/MatsuriDayo/NekoBoxForAndroid/releases/latest', scheme: 'nekobox', icon: 'https://raw.githubusercontent.com/MatsuriDayo/NekoBoxForAndroid/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png', short: 'NB' },
-                { platform: 'android', name: 'OpenVPN Connect', meta: 'Android', download: 'https://play.google.com/store/apps/details?id=net.openvpn.openvpn', scheme: 'openvpn', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/51/16/6b/51166b12-3136-6063-98a6-b595c5824ae2/AppIcon-0-0-1x_U007epad-0-1-85-220.png/100x100bb.jpg', short: 'OV' },
-                { platform: 'windows', name: 'Happ', meta: 'Windows', download: 'https://happ.su/main/download', scheme: 'happ', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/60/8c/43/608c4326-9d15-bee3-f0d0-683a290b8b8c/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/100x100bb.jpg', short: 'HP' },
-                { platform: 'windows', name: 'Hiddify', meta: 'Windows', download: 'https://github.com/hiddify/hiddify-next/releases/latest', scheme: 'hiddify', icon: 'https://raw.githubusercontent.com/hiddify/hiddify-next/main/android/app/src/main/ic_launcher-playstore.png', short: 'HD' },
-                { platform: 'windows', name: 'sing-box', meta: 'Windows', download: 'https://github.com/SagerNet/sing-box/releases/latest', scheme: 'singbox', icon: 'https://raw.githubusercontent.com/SagerNet/sing-box/testing/docs/assets/icon.svg', short: 'SB' },
-                { platform: 'windows', name: 'v2rayN', meta: 'Windows', download: 'https://github.com/2dust/v2rayN/releases/latest', scheme: 'v2rayn', icon: 'https://raw.githubusercontent.com/2dust/v2rayN/master/v2rayN/v2rayN.Desktop/v2rayN.png', short: 'VN' },
-                { platform: 'windows', name: 'NekoRay', meta: 'Windows', download: 'https://github.com/MatsuriDayo/nekoray/releases/latest', scheme: 'nekoray', icon: 'https://raw.githubusercontent.com/MatsuriDayo/nekoray/main/res/public/nekobox.png', short: 'NR' },
-                { platform: 'windows', name: 'OpenVPN Connect', meta: 'Windows', download: 'https://openvpn.net/client/', scheme: 'openvpn', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/51/16/6b/51166b12-3136-6063-98a6-b595c5824ae2/AppIcon-0-0-1x_U007epad-0-1-85-220.png/100x100bb.jpg', short: 'OV' },
-                { platform: 'windows', name: 'Clash Verge Rev', meta: 'Windows', download: 'https://github.com/clash-verge-rev/clash-verge-rev/releases/latest', scheme: 'clash', icon: 'https://raw.githubusercontent.com/clash-verge-rev/clash-verge-rev/main/src-tauri/icons/128x128.png', short: 'CV' },
-                { platform: 'macos', name: 'Happ', meta: 'macOS', download: 'https://apps.apple.com/app/happ-proxy-utility/id6504287215', scheme: 'happ', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/60/8c/43/608c4326-9d15-bee3-f0d0-683a290b8b8c/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/100x100bb.jpg', short: 'HP' },
-                { platform: 'macos', name: 'Hiddify', meta: 'macOS', download: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532', scheme: 'hiddify', icon: 'https://raw.githubusercontent.com/hiddify/hiddify-next/main/android/app/src/main/ic_launcher-playstore.png', short: 'HD' },
-                { platform: 'macos', name: 'Streisand', meta: 'macOS / iOS', download: 'https://apps.apple.com/app/streisand/id6450534064', scheme: 'streisand', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/6b/e0/93/6be09364-a713-c26e-a089-e21bcadc14de/AppIcon-0-0-1x_U007epad-0-0-0-1-0-85-220.png/100x100bb.jpg', short: 'ST' },
-                { platform: 'macos', name: 'V2Box', meta: 'macOS', download: 'https://apps.apple.com/app/v2box-v2ray-client/id6446814690', scheme: 'v2box', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/a4/0c/ed/a40ced0f-f168-b7ae-ff71-5bc94c65f5a7/V2BoxIcon-0-0-1x_U007epad-0-1-P3-85-220.png/100x100bb.jpg', short: 'V2' },
-                { platform: 'macos', name: 'OpenVPN Connect', meta: 'macOS', download: 'https://openvpn.net/client/', scheme: 'openvpn', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/51/16/6b/51166b12-3136-6063-98a6-b595c5824ae2/AppIcon-0-0-1x_U007epad-0-1-85-220.png/100x100bb.jpg', short: 'OV' },
-                { platform: 'macos', name: 'Clash Verge Rev', meta: 'macOS', download: 'https://github.com/clash-verge-rev/clash-verge-rev/releases/latest', scheme: 'clash', icon: 'https://raw.githubusercontent.com/clash-verge-rev/clash-verge-rev/main/src-tauri/icons/128x128.png', short: 'CV' },
-                { platform: 'linux', name: 'Happ', meta: 'Linux', download: 'https://happ.su/main/download', scheme: 'happ', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/60/8c/43/608c4326-9d15-bee3-f0d0-683a290b8b8c/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/100x100bb.jpg', short: 'HP' },
-                { platform: 'linux', name: 'Hiddify', meta: 'Linux', download: 'https://github.com/hiddify/hiddify-next/releases/latest', scheme: 'hiddify', icon: 'https://raw.githubusercontent.com/hiddify/hiddify-next/main/android/app/src/main/ic_launcher-playstore.png', short: 'HD' },
-                { platform: 'linux', name: 'sing-box', meta: 'Linux', download: 'https://github.com/SagerNet/sing-box/releases/latest', scheme: 'singbox', icon: 'https://raw.githubusercontent.com/SagerNet/sing-box/testing/docs/assets/icon.svg', short: 'SB' },
-                { platform: 'linux', name: 'v2rayN', meta: 'Linux', download: 'https://github.com/2dust/v2rayN/releases/latest', scheme: 'v2rayn', icon: 'https://raw.githubusercontent.com/2dust/v2rayN/master/v2rayN/v2rayN.Desktop/v2rayN.png', short: 'VN' },
-                { platform: 'linux', name: 'NekoRay', meta: 'Linux', download: 'https://github.com/MatsuriDayo/nekoray/releases/latest', scheme: 'nekoray', icon: 'https://raw.githubusercontent.com/MatsuriDayo/nekoray/main/res/public/nekobox.png', short: 'NR' },
-                { platform: 'linux', name: 'OpenVPN Connect', meta: 'Linux', download: 'https://openvpn.net/openvpn-client-for-linux/', scheme: 'openvpn', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/51/16/6b/51166b12-3136-6063-98a6-b595c5824ae2/AppIcon-0-0-1x_U007epad-0-1-85-220.png/100x100bb.jpg', short: 'OV' },
-                { platform: 'linux', name: 'Clash Verge Rev', meta: 'Linux', download: 'https://github.com/clash-verge-rev/clash-verge-rev/releases/latest', scheme: 'clash', icon: 'https://raw.githubusercontent.com/clash-verge-rev/clash-verge-rev/main/src-tauri/icons/128x128.png', short: 'CV' }
+                // ----------------------------------------------------
+                // iOS / iPadOS
+                // ----------------------------------------------------
+                {
+                    platform: 'ios',
+                    name: 'Hiddify',
+                    meta: 'Xray / Hysteria2',
+                    protocols: ['xray', 'hysteria2'],
+                    mode: 'subscription',
+                    scheme: 'hiddify',
+                    download: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532',
+                    short: 'HD'
+                },
+                {
+                    platform: 'ios',
+                    name: 'sing-box',
+                    meta: 'Xray / Hysteria2',
+                    protocols: ['xray', 'hysteria2'],
+                    mode: 'subscription',
+                    scheme: 'singbox',
+                    download: 'https://apps.apple.com/app/sing-box-vt/id6673731168',
+                    short: 'SB'
+                },
+                {
+                    platform: 'ios',
+                    name: 'Shadowrocket',
+                    meta: 'Xray subscription',
+                    protocols: ['xray'],
+                    mode: 'subscription',
+                    scheme: 'shadowrocket',
+                    download: 'https://apps.apple.com/app/shadowrocket/id932747118',
+                    short: 'SR'
+                },
+                {
+                    platform: 'ios',
+                    name: 'Streisand',
+                    meta: 'Xray subscription',
+                    protocols: ['xray'],
+                    mode: 'subscription',
+                    scheme: 'streisand',
+                    download: 'https://apps.apple.com/app/streisand/id6450534064',
+                    short: 'ST'
+                },
+                {
+                    platform: 'ios',
+                    name: 'V2Box',
+                    meta: 'Xray subscription',
+                    protocols: ['xray'],
+                    mode: 'subscription',
+                    scheme: 'v2box',
+                    download: 'https://apps.apple.com/app/v2box-v2ray-client/id6446814690',
+                    short: 'V2'
+                },
+                {
+                    platform: 'ios',
+                    name: 'WireGuard',
+                    meta: 'Official WireGuard client',
+                    protocols: ['wireguard'],
+                    mode: 'profile',
+                    download: 'https://www.wireguard.com/install/',
+                    short: 'WG'
+                },
+                {
+                    platform: 'ios',
+                    name: 'AmneziaVPN',
+                    meta: 'AmneziaWG client',
+                    protocols: ['amneziawg'],
+                    mode: 'profile',
+                    download: 'https://amnezia.org/downloads',
+                    short: 'AW'
+                },
+                {
+                    platform: 'ios',
+                    name: 'OpenVPN Connect',
+                    meta: 'Official OpenVPN client',
+                    protocols: ['openvpn'],
+                    mode: 'profile',
+                    download: 'https://apps.apple.com/app/openvpn-connect/id590379981',
+                    short: 'OV'
+                },
+                {
+                    platform: 'ios',
+                    name: 'Apple built-in VPN',
+                    meta: 'IKEv2 / L2TP ? no app required',
+                    protocols: ['ikev2', 'l2tp'],
+                    mode: 'native',
+                    help: 'https://support.apple.com/guide/deployment/vpn-overview-depae3d361d0/web',
+                    short: '?'
+                },
+                {
+                    platform: 'ios',
+                    name: 'AnyConnect / OpenConnect',
+                    meta: 'Check server-compatible client requirements',
+                    protocols: ['anyconnect'],
+                    mode: 'guide',
+                    warning: true,
+                    help: 'https://www.infradead.org/openconnect/',
+                    short: 'AC'
+                },
+                {
+                    platform: 'ios',
+                    name: 'PPTP compatibility',
+                    meta: 'PPTP is not a current Apple native VPN protocol',
+                    protocols: ['pptp'],
+                    mode: 'guide',
+                    warning: true,
+                    short: 'PP'
+                },
+
+                // ----------------------------------------------------
+                // Android
+                // ----------------------------------------------------
+                {
+                    platform: 'android',
+                    name: 'Hiddify',
+                    meta: 'Xray / Hysteria2',
+                    protocols: ['xray', 'hysteria2'],
+                    mode: 'subscription',
+                    scheme: 'hiddify',
+                    download: 'https://github.com/hiddify/hiddify-next/releases/latest',
+                    short: 'HD'
+                },
+                {
+                    platform: 'android',
+                    name: 'sing-box',
+                    meta: 'Xray / Hysteria2',
+                    protocols: ['xray', 'hysteria2'],
+                    mode: 'subscription',
+                    scheme: 'singbox',
+                    download: 'https://github.com/SagerNet/sing-box/releases/latest',
+                    short: 'SB'
+                },
+                {
+                    platform: 'android',
+                    name: 'v2rayNG',
+                    meta: 'Xray subscription',
+                    protocols: ['xray'],
+                    mode: 'subscription',
+                    scheme: 'v2rayng',
+                    download: 'https://github.com/2dust/v2rayNG/releases/latest',
+                    short: 'NG'
+                },
+                {
+                    platform: 'android',
+                    name: 'NekoBox',
+                    meta: 'Xray subscription',
+                    protocols: ['xray'],
+                    mode: 'subscription',
+                    scheme: 'nekobox',
+                    download: 'https://github.com/MatsuriDayo/NekoBoxForAndroid/releases/latest',
+                    short: 'NB'
+                },
+                {
+                    platform: 'android',
+                    name: 'WireGuard',
+                    meta: 'Official WireGuard client',
+                    protocols: ['wireguard'],
+                    mode: 'profile',
+                    download: 'https://www.wireguard.com/install/',
+                    short: 'WG'
+                },
+                {
+                    platform: 'android',
+                    name: 'AmneziaVPN',
+                    meta: 'AmneziaWG client',
+                    protocols: ['amneziawg'],
+                    mode: 'profile',
+                    download: 'https://amnezia.org/downloads',
+                    short: 'AW'
+                },
+                {
+                    platform: 'android',
+                    name: 'OpenVPN Connect',
+                    meta: 'Official OpenVPN client',
+                    protocols: ['openvpn'],
+                    mode: 'profile',
+                    download: 'https://play.google.com/store/apps/details?id=net.openvpn.openvpn',
+                    short: 'OV'
+                },
+                {
+                    platform: 'android',
+                    name: 'strongSwan VPN Client',
+                    meta: 'IKEv2 / IPsec',
+                    protocols: ['ikev2'],
+                    mode: 'credentials',
+                    download: 'https://strongswan.org/download.html',
+                    short: 'SW'
+                },
+                {
+                    platform: 'android',
+                    name: 'OpenConnect',
+                    meta: 'AnyConnect-compatible VPN client',
+                    protocols: ['anyconnect'],
+                    mode: 'credentials',
+                    download: 'https://play.google.com/store/apps/details?id=com.github.digitalsoftwaresolutions.openconnect',
+                    short: 'OC'
+                },
+                {
+                    platform: 'android',
+                    name: 'L2TP / PPTP compatibility',
+                    meta: 'Legacy support depends on Android version and vendor',
+                    protocols: ['l2tp', 'pptp'],
+                    mode: 'guide',
+                    warning: true,
+                    short: 'VPN'
+                },
+
+                // ----------------------------------------------------
+                // Windows
+                // ----------------------------------------------------
+                {
+                    platform: 'windows',
+                    name: 'Hiddify',
+                    meta: 'Xray / Hysteria2',
+                    protocols: ['xray', 'hysteria2'],
+                    mode: 'subscription',
+                    scheme: 'hiddify',
+                    download: 'https://github.com/hiddify/hiddify-next/releases/latest',
+                    short: 'HD'
+                },
+                {
+                    platform: 'windows',
+                    name: 'sing-box',
+                    meta: 'Xray / Hysteria2',
+                    protocols: ['xray', 'hysteria2'],
+                    mode: 'subscription',
+                    scheme: 'singbox',
+                    download: 'https://github.com/SagerNet/sing-box/releases/latest',
+                    short: 'SB'
+                },
+                {
+                    platform: 'windows',
+                    name: 'v2rayN',
+                    meta: 'Xray subscription',
+                    protocols: ['xray'],
+                    mode: 'subscription',
+                    scheme: 'v2rayn',
+                    download: 'https://github.com/2dust/v2rayN/releases/latest',
+                    short: 'VN'
+                },
+                {
+                    platform: 'windows',
+                    name: 'NekoRay',
+                    meta: 'Xray subscription',
+                    protocols: ['xray'],
+                    mode: 'subscription',
+                    scheme: 'nekoray',
+                    download: 'https://github.com/MatsuriDayo/nekoray/releases/latest',
+                    short: 'NR'
+                },
+                {
+                    platform: 'windows',
+                    name: 'Clash Verge Rev',
+                    meta: 'Xray / Hysteria2',
+                    protocols: ['xray', 'hysteria2'],
+                    mode: 'subscription',
+                    scheme: 'clash',
+                    download: 'https://github.com/clash-verge-rev/clash-verge-rev/releases/latest',
+                    short: 'CV'
+                },
+                {
+                    platform: 'windows',
+                    name: 'WireGuard',
+                    meta: 'Official WireGuard client',
+                    protocols: ['wireguard'],
+                    mode: 'profile',
+                    download: 'https://www.wireguard.com/install/',
+                    short: 'WG'
+                },
+                {
+                    platform: 'windows',
+                    name: 'AmneziaVPN',
+                    meta: 'AmneziaWG client',
+                    protocols: ['amneziawg'],
+                    mode: 'profile',
+                    download: 'https://amnezia.org/downloads',
+                    short: 'AW'
+                },
+                {
+                    platform: 'windows',
+                    name: 'OpenVPN Connect',
+                    meta: 'Official OpenVPN client',
+                    protocols: ['openvpn'],
+                    mode: 'profile',
+                    download: 'https://openvpn.net/client/',
+                    short: 'OV'
+                },
+                {
+                    platform: 'windows',
+                    name: 'Windows built-in VPN',
+                    meta: 'IKEv2 / L2TP / PPTP ? no app required',
+                    protocols: ['ikev2', 'l2tp', 'pptp'],
+                    mode: 'native',
+                    help: 'https://learn.microsoft.com/windows/security/operating-system-security/network-security/vpn/vpn-connection-type',
+                    short: 'WIN'
+                },
+                {
+                    platform: 'windows',
+                    name: 'OpenConnect GUI',
+                    meta: 'AnyConnect-compatible client',
+                    protocols: ['anyconnect'],
+                    mode: 'credentials',
+                    download: 'https://gitlab.com/openconnect/openconnect-gui/-/releases',
+                    help: 'https://www.infradead.org/openconnect/',
+                    short: 'OC'
+                },
+
+                // ----------------------------------------------------
+                // macOS
+                // ----------------------------------------------------
+                {
+                    platform: 'macos',
+                    name: 'Hiddify',
+                    meta: 'Xray / Hysteria2',
+                    protocols: ['xray', 'hysteria2'],
+                    mode: 'subscription',
+                    scheme: 'hiddify',
+                    download: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532',
+                    short: 'HD'
+                },
+                {
+                    platform: 'macos',
+                    name: 'sing-box',
+                    meta: 'Xray / Hysteria2',
+                    protocols: ['xray', 'hysteria2'],
+                    mode: 'subscription',
+                    scheme: 'singbox',
+                    download: 'https://github.com/SagerNet/sing-box/releases/latest',
+                    short: 'SB'
+                },
+                {
+                    platform: 'macos',
+                    name: 'Streisand',
+                    meta: 'Xray subscription',
+                    protocols: ['xray'],
+                    mode: 'subscription',
+                    scheme: 'streisand',
+                    download: 'https://apps.apple.com/app/streisand/id6450534064',
+                    short: 'ST'
+                },
+                {
+                    platform: 'macos',
+                    name: 'V2Box',
+                    meta: 'Xray subscription',
+                    protocols: ['xray'],
+                    mode: 'subscription',
+                    scheme: 'v2box',
+                    download: 'https://apps.apple.com/app/v2box-v2ray-client/id6446814690',
+                    short: 'V2'
+                },
+                {
+                    platform: 'macos',
+                    name: 'Clash Verge Rev',
+                    meta: 'Xray / Hysteria2',
+                    protocols: ['xray', 'hysteria2'],
+                    mode: 'subscription',
+                    scheme: 'clash',
+                    download: 'https://github.com/clash-verge-rev/clash-verge-rev/releases/latest',
+                    short: 'CV'
+                },
+                {
+                    platform: 'macos',
+                    name: 'WireGuard',
+                    meta: 'Official WireGuard client',
+                    protocols: ['wireguard'],
+                    mode: 'profile',
+                    download: 'https://www.wireguard.com/install/',
+                    short: 'WG'
+                },
+                {
+                    platform: 'macos',
+                    name: 'AmneziaVPN',
+                    meta: 'AmneziaWG client',
+                    protocols: ['amneziawg'],
+                    mode: 'profile',
+                    download: 'https://amnezia.org/downloads',
+                    short: 'AW'
+                },
+                {
+                    platform: 'macos',
+                    name: 'OpenVPN Connect',
+                    meta: 'Official OpenVPN client',
+                    protocols: ['openvpn'],
+                    mode: 'profile',
+                    download: 'https://openvpn.net/client/',
+                    short: 'OV'
+                },
+                {
+                    platform: 'macos',
+                    name: 'Apple built-in VPN',
+                    meta: 'IKEv2 / L2TP ? no app required',
+                    protocols: ['ikev2', 'l2tp'],
+                    mode: 'native',
+                    help: 'https://support.apple.com/guide/deployment/vpn-overview-depae3d361d0/web',
+                    short: '?'
+                },
+                {
+                    platform: 'macos',
+                    name: 'OpenConnect',
+                    meta: 'AnyConnect-compatible client',
+                    protocols: ['anyconnect'],
+                    mode: 'credentials',
+                    download: 'https://www.infradead.org/openconnect/packages.html',
+                    short: 'OC'
+                },
+                {
+                    platform: 'macos',
+                    name: 'PPTP compatibility',
+                    meta: 'PPTP is not a current Apple native VPN protocol',
+                    protocols: ['pptp'],
+                    mode: 'guide',
+                    warning: true,
+                    short: 'PP'
+                },
+
+                // ----------------------------------------------------
+                // Linux
+                // ----------------------------------------------------
+                {
+                    platform: 'linux',
+                    name: 'Hiddify',
+                    meta: 'Xray / Hysteria2',
+                    protocols: ['xray', 'hysteria2'],
+                    mode: 'subscription',
+                    scheme: 'hiddify',
+                    download: 'https://github.com/hiddify/hiddify-next/releases/latest',
+                    short: 'HD'
+                },
+                {
+                    platform: 'linux',
+                    name: 'sing-box',
+                    meta: 'Xray / Hysteria2',
+                    protocols: ['xray', 'hysteria2'],
+                    mode: 'subscription',
+                    scheme: 'singbox',
+                    download: 'https://github.com/SagerNet/sing-box/releases/latest',
+                    short: 'SB'
+                },
+                {
+                    platform: 'linux',
+                    name: 'v2rayN',
+                    meta: 'Xray subscription',
+                    protocols: ['xray'],
+                    mode: 'subscription',
+                    scheme: 'v2rayn',
+                    download: 'https://github.com/2dust/v2rayN/releases/latest',
+                    short: 'VN'
+                },
+                {
+                    platform: 'linux',
+                    name: 'Clash Verge Rev',
+                    meta: 'Xray / Hysteria2',
+                    protocols: ['xray', 'hysteria2'],
+                    mode: 'subscription',
+                    scheme: 'clash',
+                    download: 'https://github.com/clash-verge-rev/clash-verge-rev/releases/latest',
+                    short: 'CV'
+                },
+                {
+                    platform: 'linux',
+                    name: 'WireGuard tools',
+                    meta: 'WireGuard',
+                    protocols: ['wireguard'],
+                    mode: 'profile',
+                    download: 'https://www.wireguard.com/install/',
+                    short: 'WG'
+                },
+                {
+                    platform: 'linux',
+                    name: 'AmneziaVPN',
+                    meta: 'AmneziaWG client',
+                    protocols: ['amneziawg'],
+                    mode: 'profile',
+                    download: 'https://amnezia.org/downloads',
+                    short: 'AW'
+                },
+                {
+                    platform: 'linux',
+                    name: 'OpenVPN',
+                    meta: 'OpenVPN client',
+                    protocols: ['openvpn'],
+                    mode: 'profile',
+                    download: 'https://openvpn.net/openvpn-client-for-linux/',
+                    short: 'OV'
+                },
+                {
+                    platform: 'linux',
+                    name: 'strongSwan',
+                    meta: 'IKEv2 / IPsec',
+                    protocols: ['ikev2'],
+                    mode: 'credentials',
+                    download: 'https://strongswan.org/download.html',
+                    short: 'SW'
+                },
+                {
+                    platform: 'linux',
+                    name: 'NetworkManager L2TP',
+                    meta: 'L2TP / IPsec',
+                    protocols: ['l2tp'],
+                    mode: 'credentials',
+                    download: 'https://github.com/nm-l2tp/NetworkManager-l2tp',
+                    short: 'L2'
+                },
+                {
+                    platform: 'linux',
+                    name: 'NetworkManager PPTP',
+                    meta: 'PPTP',
+                    protocols: ['pptp'],
+                    mode: 'credentials',
+                    download: 'https://github.com/NetworkManager/NetworkManager-pptp',
+                    short: 'PP'
+                },
+                {
+                    platform: 'linux',
+                    name: 'OpenConnect',
+                    meta: 'AnyConnect-compatible client',
+                    protocols: ['anyconnect'],
+                    mode: 'credentials',
+                    download: 'https://www.infradead.org/openconnect/packages.html',
+                    short: 'OC'
+                }
             ];
 
             function readStorage(key) {
@@ -3012,6 +5782,17 @@
                 document.documentElement.dir = state.language === 'fa' ? 'rtl' : 'ltr';
                 document.body.dir = document.documentElement.dir;
                 document.title = t('pageTitle');
+
+                var premiumLanguageButton =
+                    document.getElementById('premiumLanguageButton');
+
+                if (premiumLanguageButton) {
+                    premiumLanguageButton.textContent =
+                        state.language === 'fa'
+                            ? 'FA'
+                            : 'EN';
+                }
+
                 document.querySelectorAll('[data-i18n]').forEach(function (node) {
                     node.textContent = t(node.getAttribute('data-i18n'));
                 });
@@ -3375,6 +6156,38 @@
                         used: formatBytes(bodyData.usedTraffic)
                     });
                 document.getElementById('usageProgressFill').style.width = percent + '%';
+
+                var premiumUsageRing =
+                    document.getElementById('premiumUsageRing');
+
+                var premiumUsagePercent =
+                    document.getElementById('premiumUsagePercent');
+
+                if (premiumUsageRing) {
+                    premiumUsageRing.style.setProperty(
+                        '--am-usage-percent',
+                        String(percent)
+                    );
+                }
+
+                if (premiumUsagePercent) {
+                    premiumUsagePercent.textContent =
+                        formatNumber(percent) + '%';
+                }
+
+                var premiumStatusText =
+                    document.getElementById('premiumStatusText');
+
+                if (premiumStatusText) {
+                    premiumStatusText.textContent =
+                        statusLabel(bodyData.status);
+
+                    premiumStatusText.setAttribute(
+                        'data-state',
+                        bodyData.status
+                    );
+                }
+
                 document.getElementById('statusChip').textContent = statusLabel(bodyData.status);
                 document.getElementById('statusChip').setAttribute('data-state', bodyData.status);
                 document.getElementById('statusNote').textContent = statusNote(bodyData.status);
@@ -3402,6 +6215,24 @@
                 document.getElementById('detailCreatedAt').textContent = createdDate ? formatDateTime(createdDate) : '—';
                 document.getElementById('detailExpiry').textContent = expiryValue;
                 document.getElementById('detailReset').textContent = resetLabel(bodyData.resetStrategy);
+
+                var premiumCreatedAt =
+                    document.getElementById('premiumCreatedAt');
+
+                var premiumExpiry =
+                    document.getElementById('premiumExpiry');
+
+                if (premiumCreatedAt) {
+                    premiumCreatedAt.textContent =
+                        createdDate
+                            ? formatDateTime(createdDate)
+                            : '?';
+                }
+
+                if (premiumExpiry) {
+                    premiumExpiry.textContent =
+                        expiryValue;
+                }
             }
 
             function countOpenvpnProfiles() {
@@ -3410,6 +6241,34 @@
 
             function countWireguardProfiles() {
                 return document.querySelectorAll('[data-wg-profile]').length;
+            }
+
+            function countAmneziaWGProfiles() {
+                return document.querySelectorAll('[data-awg-profile]').length;
+            }
+
+            function countL2TPCards() {
+                return document.querySelectorAll(
+                    '[data-l2tp-card]'
+                ).length;
+            }
+
+            function countPPTPCards() {
+                return document.querySelectorAll(
+                    '[data-pptp-card]'
+                ).length;
+            }
+
+            function countIKEv2Cards() {
+                return document.querySelectorAll(
+                    '[data-ikev2-card]'
+                ).length;
+            }
+
+            function countAnyConnectCards() {
+                return document.querySelectorAll(
+                    '[data-anyconnect-card]'
+                ).length;
             }
 
             function countCredentialCards() {
@@ -3429,8 +6288,19 @@
                     tabs.push({ key: 'ovpn', count: countOpenvpnProfiles() });
                 }
                 if (countWireguardProfiles() > 0 || wireguardConfigLinks.length > 0) {
-                    tabs.push({ key: 'wireguard', count: countWireguardProfiles() || wireguardConfigLinks.length });
+                    tabs.push({
+                        key: 'wireguard',
+                        count: countWireguardProfiles() || wireguardConfigLinks.length
+                    });
                 }
+
+                if (countAmneziaWGProfiles() > 0) {
+                    tabs.push({
+                        key: 'amneziawg',
+                        count: countAmneziaWGProfiles()
+                    });
+                }
+
                 if (countCredentialCards() > 0) {
                     tabs.push({ key: 'l2tp', count: countCredentialCards() });
                 }
@@ -3457,6 +6327,7 @@
             function tabLabel(view) {
                 if (view === 'ovpn') return t('protocolTabOVPN');
                 if (view === 'wireguard') return t('protocolTabWireGuard');
+                if (view === 'amneziawg') return t('protocolTabAmneziaWG');
                 if (view === 'l2tp') return t('protocolTabL2TP');
                 if (view === 'remote-access') return t('protocolTabRemoteAccess');
                 return t('protocolTabV2');
@@ -3465,9 +6336,597 @@
             function activeViewTitle() {
                 if (state.activeView === 'ovpn') return t('openvpnTitle');
                 if (state.activeView === 'wireguard') return t('wireguardTitle');
+                if (state.activeView === 'amneziawg') return t('amneziawgTitle');
                 if (state.activeView === 'l2tp') return t('l2tpTitle');
                 if (state.activeView === 'remote-access') return t('remoteAccessTitle');
                 return t('v2Title');
+            }
+
+
+            function premiumProtocolDefinitions() {
+                var definitions = [];
+
+                if (v2ConfigLinks.length > 0) {
+                    definitions.push({
+                        key: 'v2',
+                        view: 'v2',
+                        label: 'Xray',
+                        icon: 'XR',
+                        count: v2ConfigLinks.length,
+                        selector: null,
+                        profile: false,
+                        subscription: true
+                    });
+                }
+
+                var wgCount =
+                    countWireguardProfiles() ||
+                    wireguardConfigLinks.length;
+
+                if (wgCount > 0) {
+                    definitions.push({
+                        key: 'wireguard',
+                        view: 'wireguard',
+                        label: 'WireGuard',
+                        icon: 'WG',
+                        count: wgCount,
+                        selector: '[data-wg-profile]',
+                        profile: true
+                    });
+                }
+
+                var ovpnCount =
+                    countOpenvpnProfiles();
+
+                if (ovpnCount > 0) {
+                    definitions.push({
+                        key: 'ovpn',
+                        view: 'ovpn',
+                        label: 'OpenVPN',
+                        icon: 'OV',
+                        count: ovpnCount,
+                        selector: '[data-ovpn-profile]',
+                        profile: true
+                    });
+                }
+
+                var anyConnectCount =
+                    countAnyConnectCards();
+
+                if (anyConnectCount > 0) {
+                    definitions.push({
+                        key: 'anyconnect',
+                        view: 'remote-access',
+                        label: 'AnyConnect',
+                        icon: 'AC',
+                        count: anyConnectCount,
+                        selector: '[data-anyconnect-card]',
+                        credential: true
+                    });
+                }
+
+                var l2tpCount =
+                    countL2TPCards();
+
+                if (l2tpCount > 0) {
+                    definitions.push({
+                        key: 'l2tp',
+                        view: 'l2tp',
+                        label: 'L2TP',
+                        icon: 'L2',
+                        count: l2tpCount,
+                        selector: '[data-l2tp-card]',
+                        credential: true
+                    });
+                }
+
+                var pptpCount =
+                    countPPTPCards();
+
+                if (pptpCount > 0) {
+                    definitions.push({
+                        key: 'pptp',
+                        view: 'l2tp',
+                        label: 'PPTP',
+                        icon: 'PP',
+                        count: pptpCount,
+                        selector: '[data-pptp-card]',
+                        credential: true
+                    });
+                }
+
+                var ikev2Count =
+                    countIKEv2Cards();
+
+                if (ikev2Count > 0) {
+                    definitions.push({
+                        key: 'ikev2',
+                        view: 'remote-access',
+                        label: 'IKEv2',
+                        icon: 'I2',
+                        count: ikev2Count,
+                        selector: '[data-ikev2-card]',
+                        credential: true
+                    });
+                }
+
+                var awgCount =
+                    countAmneziaWGProfiles();
+
+                if (awgCount > 0) {
+                    definitions.push({
+                        key: 'amneziawg',
+                        view: 'amneziawg',
+                        label: 'AmneziaWG',
+                        icon: 'AW',
+                        count: awgCount,
+                        selector: '[data-awg-profile]',
+                        profile: true
+                    });
+                }
+
+                return definitions;
+            }
+
+            function premiumProfileBody(definition) {
+                if (!definition || !definition.selector) {
+                    return '';
+                }
+
+                var item =
+                    document.querySelector(
+                        definition.selector
+                    );
+
+                if (!item) {
+                    return '';
+                }
+
+                var next =
+                    item.nextElementSibling;
+
+                if (
+                    next &&
+                    (
+                        next.tagName === 'TEXTAREA' ||
+                        next.matches('.am-wg-config')
+                    )
+                ) {
+                    return (
+                        next.value ||
+                        next.textContent ||
+                        ''
+                    ).trim();
+                }
+
+                var textarea =
+                    item.querySelector('textarea');
+
+                return textarea
+                    ? (
+                        textarea.value ||
+                        textarea.textContent ||
+                        ''
+                    ).trim()
+                    : '';
+            }
+
+            function premiumProfileDownload(definition) {
+                if (!definition || !definition.selector) {
+                    return '';
+                }
+
+                var item =
+                    document.querySelector(
+                        definition.selector
+                    );
+
+                if (!item) {
+                    return '';
+                }
+
+                var anchor =
+                    item.querySelector('a[href]');
+
+                return anchor
+                    ? anchor.getAttribute('href') || ''
+                    : '';
+            }
+
+            function premiumCredentialText(definition) {
+                if (!definition || !definition.selector) {
+                    return '';
+                }
+
+                var card =
+                    document.querySelector(
+                        definition.selector
+                    );
+
+                if (!card) {
+                    return '';
+                }
+
+                var values = [];
+
+                card.querySelectorAll(
+                    '[data-copy-text]'
+                ).forEach(function (button) {
+                    var value =
+                        String(
+                            button.getAttribute(
+                                'data-copy-text'
+                            ) || ''
+                        ).trim();
+
+                    if (
+                        value &&
+                        values.indexOf(value) < 0
+                    ) {
+                        values.push(value);
+                    }
+                });
+
+                return values.join('\n');
+            }
+
+            function activatePremiumProtocol(definition) {
+                if (!definition) return;
+
+                state.activeView =
+                    definition.view;
+
+                renderProtocolTabs();
+                renderActiveProtocolPanel();
+
+                var details =
+                    document.getElementById(
+                        'protocolCardTitle'
+                    );
+
+                if (details) {
+                    details.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            }
+
+            function premiumProtocolCopy(definition, button) {
+                if (definition.subscription) {
+                    copyText(
+                        normalizeUrl(
+                            bodyData.subscriptionUrl
+                        ),
+                        button
+                    );
+                    return;
+                }
+
+                var value =
+                    definition.profile
+                        ? premiumProfileBody(definition)
+                        : premiumCredentialText(definition);
+
+                if (
+                    !value &&
+                    definition.key === 'wireguard' &&
+                    wireguardConfigLinks.length > 0
+                ) {
+                    value =
+                        wireguardConfigLinks[0].value || '';
+                }
+
+                if (!value) {
+                    activatePremiumProtocol(definition);
+                    return;
+                }
+
+                copyText(value, button);
+            }
+
+            function premiumProtocolQR(definition) {
+                var value = '';
+
+                if (definition.subscription) {
+                    value =
+                        normalizeUrl(
+                            bodyData.subscriptionUrl
+                        );
+                } else if (definition.profile) {
+                    value =
+                        premiumProfileBody(
+                            definition
+                        );
+                }
+
+                if (
+                    !value &&
+                    definition.key === 'wireguard' &&
+                    wireguardConfigLinks.length > 0
+                ) {
+                    value =
+                        wireguardConfigLinks[0].value || '';
+                }
+
+                if (!value) {
+                    activatePremiumProtocol(definition);
+                    return;
+                }
+
+                openQrModal(
+                    value,
+                    definition.label
+                );
+            }
+
+            function renderPremiumProtocolCards() {
+                var root =
+                    document.getElementById(
+                        'premiumProtocolCards'
+                    );
+
+                var totalNode =
+                    document.getElementById(
+                        'premiumTotalConfigCount'
+                    );
+
+                if (!root) return;
+
+                var definitions =
+                    premiumProtocolDefinitions();
+
+                var total =
+                    definitions.reduce(
+                        function (sum, item) {
+                            return sum + Number(item.count || 0);
+                        },
+                        0
+                    );
+
+                if (totalNode) {
+                    totalNode.textContent =
+                        formatNumber(total) +
+                        (
+                            total === 1
+                                ? ' configuration'
+                                : ' configurations'
+                        );
+                }
+
+                root.innerHTML = '';
+
+                if (!definitions.length) {
+                    var empty =
+                        document.createElement('div');
+
+                    empty.className =
+                        'am-premium-protocol-cards-empty';
+
+                    empty.textContent =
+                        t('noConfigs');
+
+                    root.appendChild(empty);
+                    return;
+                }
+
+                definitions.forEach(
+                    function (definition) {
+                        var card =
+                            document.createElement(
+                                'article'
+                            );
+
+                        card.className =
+                            'am-premium-protocol-card' +
+                            (
+                                state.activeView ===
+                                definition.view
+                                    ? ' is-active'
+                                    : ''
+                            );
+
+                        var top =
+                            document.createElement(
+                                'div'
+                            );
+
+                        top.className =
+                            'am-premium-protocol-top';
+
+                        var icon =
+                            document.createElement(
+                                'span'
+                            );
+
+                        icon.className =
+                            'am-premium-protocol-icon';
+
+                        icon.textContent =
+                            definition.icon;
+
+                        var meta =
+                            document.createElement(
+                                'span'
+                            );
+
+                        meta.className =
+                            'am-premium-protocol-meta';
+
+                        var name =
+                            document.createElement(
+                                'strong'
+                            );
+
+                        name.className =
+                            'am-premium-protocol-name';
+
+                        name.textContent =
+                            definition.label;
+
+                        var count =
+                            document.createElement(
+                                'span'
+                            );
+
+                        count.className =
+                            'am-premium-protocol-count';
+
+                        count.textContent =
+                            formatNumber(
+                                definition.count
+                            ) +
+                            (
+                                definition.count === 1
+                                    ? ' profile'
+                                    : ' profiles'
+                            );
+
+                        meta.appendChild(name);
+                        meta.appendChild(count);
+
+                        var ready =
+                            document.createElement(
+                                'span'
+                            );
+
+                        ready.className =
+                            'am-premium-protocol-ready';
+
+                        ready.textContent =
+                            'Ready';
+
+                        top.appendChild(icon);
+                        top.appendChild(meta);
+                        top.appendChild(ready);
+
+                        card.appendChild(top);
+
+                        var actions =
+                            document.createElement(
+                                'div'
+                            );
+
+                        actions.className =
+                            'am-premium-protocol-actions';
+
+                        var copy =
+                            document.createElement(
+                                'button'
+                            );
+
+                        copy.type = 'button';
+
+                        copy.className =
+                            'am-premium-protocol-action';
+
+                        copy.textContent =
+                            'Copy';
+
+                        copy.addEventListener(
+                            'click',
+                            function () {
+                                premiumProtocolCopy(
+                                    definition,
+                                    copy
+                                );
+                            }
+                        );
+
+                        actions.appendChild(copy);
+
+                        if (
+                            definition.profile ||
+                            definition.subscription
+                        ) {
+                            var qr =
+                                document.createElement(
+                                    'button'
+                                );
+
+                            qr.type = 'button';
+
+                            qr.className =
+                                'am-premium-protocol-action';
+
+                            qr.textContent =
+                                'QR';
+
+                            qr.addEventListener(
+                                'click',
+                                function () {
+                                    premiumProtocolQR(
+                                        definition
+                                    );
+                                }
+                            );
+
+                            actions.appendChild(qr);
+                        }
+
+                        var download =
+                            premiumProfileDownload(
+                                definition
+                            );
+
+                        if (download) {
+                            var downloadButton =
+                                document.createElement(
+                                    'a'
+                                );
+
+                            downloadButton.className =
+                                'am-premium-protocol-action';
+
+                            downloadButton.textContent =
+                                'Download';
+
+                            downloadButton.href =
+                                download;
+
+                            downloadButton.target =
+                                '_blank';
+
+                            downloadButton.rel =
+                                'noopener noreferrer';
+
+                            actions.appendChild(
+                                downloadButton
+                            );
+                        }
+
+                        card.appendChild(actions);
+
+                        var detailsButton =
+                            document.createElement(
+                                'button'
+                            );
+
+                        detailsButton.type =
+                            'button';
+
+                        detailsButton.className =
+                            'am-premium-protocol-details';
+
+                        detailsButton.textContent =
+                            'View details  ->';
+
+                        detailsButton.addEventListener(
+                            'click',
+                            function () {
+                                activatePremiumProtocol(
+                                    definition
+                                );
+                            }
+                        );
+
+                        card.appendChild(
+                            detailsButton
+                        );
+
+                        root.appendChild(card);
+                    }
+                );
             }
 
             function renderProtocolTabs() {
@@ -3492,6 +6951,8 @@
                     });
                     root.appendChild(button);
                 });
+
+                renderPremiumProtocolCards();
             }
 
             function filteredConfigs() {
@@ -3580,14 +7041,17 @@
                 var linksPanel = document.getElementById('linksProtocolPanel');
                 var ovpnPanel = document.getElementById('ovpnProtocolPanel');
                 var wgPanel = document.getElementById('wgProtocolPanel');
+                var awgPanel = document.getElementById('awgProtocolPanel');
                 var l2tpPanel = document.getElementById('l2tpProtocolPanel');
                 var remoteAccessPanel = document.getElementById('remoteAccessProtocolPanel');
                 var ovpnEmpty = document.getElementById('ovpnEmptyState');
                 var wgEmpty = document.getElementById('wgEmptyState');
+                var awgEmpty = document.getElementById('awgEmptyState');
                 var l2tpEmpty = document.getElementById('l2tpEmptyState');
                 var remoteAccessEmpty = document.getElementById('remoteAccessEmptyState');
                 var ovpnCount = countOpenvpnProfiles();
                 var wgCount = countWireguardProfiles();
+                var awgCount = countAmneziaWGProfiles();
                 var credentialCount = countCredentialCards();
                 var remoteAccessCount = countRemoteAccessCards();
                 var isLinkView = state.activeView === 'v2';
@@ -3619,6 +7083,10 @@
                 if (wgPanel) {
                     wgPanel.hidden = state.activeView !== 'wireguard';
                 }
+
+                if (awgPanel) {
+                    awgPanel.hidden = state.activeView !== 'amneziawg';
+                }
                 if (l2tpPanel) {
                     l2tpPanel.hidden = state.activeView !== 'l2tp';
                 }
@@ -3630,6 +7098,10 @@
                 }
                 if (wgEmpty) {
                     wgEmpty.hidden = wgCount > 0;
+                }
+
+                if (awgEmpty) {
+                    awgEmpty.hidden = awgCount > 0;
                 }
                 if (l2tpEmpty) {
                     l2tpEmpty.hidden = credentialCount > 0;
@@ -3655,6 +7127,21 @@
                     if (copyAllButton) {
                         copyAllButton.disabled = true;
                     }
+                    return;
+                }
+
+                if (state.activeView === 'amneziawg') {
+                    count.textContent = interpolate(
+                        t('amneziawgCount'),
+                        {
+                            count: formatNumber(awgCount)
+                        }
+                    );
+
+                    if (copyAllButton) {
+                        copyAllButton.disabled = true;
+                    }
+
                     return;
                 }
 
@@ -3775,11 +7262,158 @@
                 return icons[platform] || '';
             }
 
-            function appPlatforms() {
-                var order = ['ios', 'android', 'windows', 'macos', 'linux'];
-                return order.filter(function (platform) {
-                    return appCatalog.some(function (app) { return app.platform === platform; });
+            function smartAvailableProtocols() {
+                var available = {};
+
+                rawLinks.forEach(function (link) {
+                    var protocol = protocolOf(link);
+
+                    if (
+                        protocol === 'hy2' ||
+                        protocol === 'hysteria2'
+                    ) {
+                        available.hysteria2 = true;
+                        return;
+                    }
+
+                    if (isV2Protocol(protocol)) {
+                        available.xray = true;
+                    }
                 });
+
+                if (
+                    document.querySelector('[data-ovpn-profile]')
+                ) {
+                    available.openvpn = true;
+                }
+
+                if (
+                    document.querySelector('[data-wg-profile]') ||
+                    wireguardConfigLinks.length > 0
+                ) {
+                    available.wireguard = true;
+                }
+
+                if (
+                    document.querySelector('[data-awg-profile]')
+                ) {
+                    available.amneziawg = true;
+                }
+
+                if (
+                    document.querySelector('[data-l2tp-card]')
+                ) {
+                    available.l2tp = true;
+                }
+
+                if (
+                    document.querySelector('[data-pptp-card]')
+                ) {
+                    available.pptp = true;
+                }
+
+                if (
+                    document.querySelector('[data-ikev2-card]')
+                ) {
+                    available.ikev2 = true;
+                }
+
+                if (
+                    document.querySelector('[data-anyconnect-card]')
+                ) {
+                    available.anyconnect = true;
+                }
+
+                return available;
+            }
+
+            function smartMatchingProtocols(app, available) {
+                return (app.protocols || []).filter(
+                    function (protocol) {
+                        return Boolean(
+                            available[protocol]
+                        );
+                    }
+                );
+            }
+
+            function smartProtocolLabel(protocol) {
+                var labels = {
+                    xray: 'Xray',
+                    hysteria2: 'Hysteria2',
+                    openvpn: 'OpenVPN',
+                    wireguard: 'WireGuard',
+                    amneziawg: 'AmneziaWG',
+                    l2tp: 'L2TP/IPsec',
+                    pptp: 'PPTP',
+                    ikev2: 'IKEv2',
+                    anyconnect: 'AnyConnect/OpenConnect'
+                };
+
+                return labels[protocol] || protocol;
+            }
+
+            function smartProfileDownload(protocol) {
+                var selectors = {
+                    openvpn:
+                        '[data-ovpn-profile] a[href]',
+                    wireguard:
+                        '[data-wg-profile] a[href]',
+                    amneziawg:
+                        '[data-awg-profile] a[href]'
+                };
+
+                var selector = selectors[protocol];
+
+                if (!selector) return '';
+
+                var anchor =
+                    document.querySelector(selector);
+
+                return anchor
+                    ? anchor.getAttribute('href') || ''
+                    : '';
+            }
+
+            function smartActivateProtocol(protocol) {
+                var views = {
+                    xray: 'v2',
+                    hysteria2: 'v2',
+                    openvpn: 'ovpn',
+                    wireguard: 'wireguard',
+                    amneziawg: 'amneziawg',
+                    l2tp: 'l2tp',
+                    pptp: 'l2tp',
+                    ikev2: 'remote-access',
+                    anyconnect: 'remote-access'
+                };
+
+                state.activeView =
+                    views[protocol] ||
+                    state.activeView;
+
+                renderProtocolTabs();
+                renderActiveProtocolPanel();
+
+                var target =
+                    document.getElementById(
+                        'configurations'
+                    );
+
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            }
+
+            function appPlatforms() {
+                var detected = detectPlatform();
+
+                return [
+                    detected
+                ];
             }
 
             function base64Encode(value) {
@@ -3807,6 +7441,8 @@
             }
 
             function appAddUrl(app) {
+                if (!app || !app.scheme) return '';
+
                 var subscription = appSubscriptionUrl();
                 var encodedUrl = encodeURIComponent(subscription);
                 var encodedName = encodeURIComponent(appSubscriptionName());
@@ -3834,7 +7470,7 @@
                     case 'clash':
                         return 'clash://install-config?url=' + encodedUrl + '&name=' + encodedName;
                     default:
-                        return subscription;
+                        return '';
                 }
             }
 
@@ -3872,91 +7508,385 @@
             }
 
             function renderAppPlatformTabs() {
-                var root = document.getElementById('appPlatformTabs');
+                var root =
+                    document.getElementById(
+                        'appPlatformTabs'
+                    );
+
                 if (!root) return;
-                var platforms = appPlatforms();
-                if (platforms.indexOf(state.activeAppPlatform) === -1) {
-                    state.activeAppPlatform = platforms[0] || 'ios';
-                }
+
+                var detected = detectPlatform();
+
+                state.activeAppPlatform =
+                    detected;
+
                 root.innerHTML = '';
-                platforms.forEach(function (platform) {
-                    var button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'am-app-tab' + (state.activeAppPlatform === platform ? ' is-active' : '');
-                    button.setAttribute('aria-selected', state.activeAppPlatform === platform ? 'true' : 'false');
-                    var icon = document.createElement('span');
-                    icon.className = 'am-os-icon';
-                    icon.setAttribute('aria-hidden', 'true');
-                    icon.innerHTML = osIcon(platform);
-                    var label = document.createElement('span');
-                    label.textContent = appPlatformLabel(platform);
-                    button.appendChild(icon);
-                    button.appendChild(label);
-                    button.addEventListener('click', function () {
-                        state.activeAppPlatform = platform;
-                        renderAppDownloads();
-                    });
-                    root.appendChild(button);
-                });
+
+                var chip =
+                    document.createElement('span');
+
+                chip.className =
+                    'am-app-tab is-active am-app-platform-lock';
+
+                chip.setAttribute(
+                    'data-smart-detected-platform',
+                    detected
+                );
+
+                var icon =
+                    document.createElement('span');
+
+                icon.className =
+                    'am-os-icon';
+
+                icon.setAttribute(
+                    'aria-hidden',
+                    'true'
+                );
+
+                icon.innerHTML =
+                    osIcon(detected);
+
+                var label =
+                    document.createElement('span');
+
+                label.textContent =
+                    appPlatformLabel(detected);
+
+                chip.appendChild(icon);
+                chip.appendChild(label);
+
+                root.appendChild(chip);
             }
 
             function renderAppDownloads() {
                 renderAppPlatformTabs();
-                var root = document.getElementById('appDownloadList');
-                var empty = document.getElementById('appDownloadEmptyState');
-                if (!root || !empty) return;
-                var deviceNote = document.getElementById('detectedDeviceNote');
-                if (deviceNote) {
-                    deviceNote.hidden = false;
-                    deviceNote.textContent = interpolate(t('deviceDetected'), { device: appPlatformLabel(state.activeAppPlatform) });
-                }
-                var items = appCatalog.filter(function (app) {
-                    return app.platform === state.activeAppPlatform;
-                });
-                var deviceNote = document.getElementById('detectedDeviceNote');
-                if (deviceNote) {
-                    deviceNote.hidden = false;
-                    deviceNote.textContent = interpolate(t('deviceDetected'), { device: appPlatformLabel(state.activeAppPlatform) });
-                }
-                root.innerHTML = '';
-                empty.hidden = items.length > 0;
-                if (items.length === 0) return;
-                items.forEach(function (app, index) {
-                    var row = document.createElement('article');
-                    row.className = 'am-app-item';
-                    if (items.length % 2 === 1 && index === items.length - 1) {
-                        row.className += ' am-app-item--full';
-                    }
-                    var icon = buildAppIcon(app);
-                    var info = document.createElement('div');
-                    var name = document.createElement('span');
-                    name.className = 'am-app-name';
-                    name.textContent = app.name;
-                    var meta = document.createElement('span');
-                    meta.className = 'am-app-meta';
-                    meta.textContent = app.meta;
-                    info.appendChild(name);
-                    info.appendChild(meta);
 
-                    var actions = document.createElement('div');
-                    actions.className = 'am-app-actions';
-                    var download = document.createElement('a');
-                    download.className = 'am-link-button';
-                    download.href = app.download;
-                    download.target = '_blank';
-                    download.rel = 'noopener noreferrer';
-                    download.textContent = t('downloadButton');
-                    var add = document.createElement('a');
-                    add.className = 'am-link-button am-button--primary';
-                    add.href = appAddUrl(app);
-                    add.textContent = t('appAddButton');
-                    actions.appendChild(download);
-                    actions.appendChild(add);
-                    row.appendChild(icon);
-                    row.appendChild(info);
-                    row.appendChild(actions);
-                    root.appendChild(row);
-                });
+                var root =
+                    document.getElementById(
+                        'appDownloadList'
+                    );
+
+                var empty =
+                    document.getElementById(
+                        'appDownloadEmptyState'
+                    );
+
+                if (!root || !empty) return;
+
+                var platform =
+                    detectPlatform();
+
+                state.activeAppPlatform =
+                    platform;
+
+                var available =
+                    smartAvailableProtocols();
+
+                var items =
+                    appCatalog.filter(
+                        function (app) {
+                            return (
+                                app.platform === platform &&
+                                smartMatchingProtocols(
+                                    app,
+                                    available
+                                ).length > 0
+                            );
+                        }
+                    );
+
+                var deviceNote =
+                    document.getElementById(
+                        'detectedDeviceNote'
+                    );
+
+                if (deviceNote) {
+                    deviceNote.hidden = false;
+
+                    deviceNote.textContent =
+                        interpolate(
+                            t('deviceDetected'),
+                            {
+                                device:
+                                    appPlatformLabel(
+                                        platform
+                                    )
+                            }
+                        );
+                }
+
+                root.innerHTML = '';
+
+                empty.hidden =
+                    items.length > 0;
+
+                if (items.length === 0) {
+                    return;
+                }
+
+                items.forEach(
+                    function (app, index) {
+                        var matched =
+                            smartMatchingProtocols(
+                                app,
+                                available
+                            );
+
+                        var row =
+                            document.createElement(
+                                'article'
+                            );
+
+                        row.className =
+                            'am-app-item am-smart-app-item';
+
+                        if (app.warning) {
+                            row.className +=
+                                ' am-app-item--warning';
+                        }
+
+                        row.setAttribute(
+                            'data-smart-platform',
+                            platform
+                        );
+
+                        row.setAttribute(
+                            'data-smart-protocols',
+                            matched.join(',')
+                        );
+
+                        if (
+                            items.length % 2 === 1 &&
+                            index === items.length - 1
+                        ) {
+                            row.className +=
+                                ' am-app-item--full';
+                        }
+
+                        var icon =
+                            buildAppIcon(app);
+
+                        var info =
+                            document.createElement(
+                                'div'
+                            );
+
+                        var name =
+                            document.createElement(
+                                'span'
+                            );
+
+                        name.className =
+                            'am-app-name';
+
+                        name.textContent =
+                            app.name;
+
+                        var meta =
+                            document.createElement(
+                                'span'
+                            );
+
+                        meta.className =
+                            'am-app-meta';
+
+                        meta.textContent =
+                            app.meta;
+
+                        var compat =
+                            document.createElement(
+                                'span'
+                            );
+
+                        compat.className =
+                            'am-app-compat';
+
+                        compat.textContent =
+                            matched
+                                .map(
+                                    smartProtocolLabel
+                                )
+                                .join(' ? ');
+
+                        info.appendChild(name);
+                        info.appendChild(meta);
+                        info.appendChild(compat);
+
+                        var actions =
+                            document.createElement(
+                                'div'
+                            );
+
+                        actions.className =
+                            'am-app-actions';
+
+                        if (app.download) {
+                            var download =
+                                document.createElement(
+                                    'a'
+                                );
+
+                            download.className =
+                                'am-link-button';
+
+                            download.href =
+                                app.download;
+
+                            download.target =
+                                '_blank';
+
+                            download.rel =
+                                'noopener noreferrer';
+
+                            download.textContent =
+                                t('downloadButton');
+
+                            actions.appendChild(
+                                download
+                            );
+                        }
+
+                        if (
+                            app.mode ===
+                            'subscription'
+                        ) {
+                            var addUrl =
+                                appAddUrl(app);
+
+                            if (addUrl) {
+                                var add =
+                                    document.createElement(
+                                        'a'
+                                    );
+
+                                add.className =
+                                    'am-link-button am-button--primary';
+
+                                add.href =
+                                    addUrl;
+
+                                add.textContent =
+                                    t('appAddButton');
+
+                                actions.appendChild(
+                                    add
+                                );
+                            }
+                        }
+
+                        if (
+                            app.mode === 'profile'
+                        ) {
+                            var profileURL = '';
+
+                            matched.some(
+                                function (protocol) {
+                                    profileURL =
+                                        smartProfileDownload(
+                                            protocol
+                                        );
+
+                                    return Boolean(
+                                        profileURL
+                                    );
+                                }
+                            );
+
+                            if (profileURL) {
+                                var profile =
+                                    document.createElement(
+                                        'a'
+                                    );
+
+                                profile.className =
+                                    'am-link-button am-button--primary';
+
+                                profile.href =
+                                    profileURL;
+
+                                profile.target =
+                                    '_blank';
+
+                                profile.rel =
+                                    'noopener noreferrer';
+
+                                profile.textContent =
+                                    'Profile';
+
+                                actions.appendChild(
+                                    profile
+                                );
+                            }
+                        }
+
+                        if (app.help) {
+                            var guide =
+                                document.createElement(
+                                    'a'
+                                );
+
+                            guide.className =
+                                'am-link-button';
+
+                            guide.href =
+                                app.help;
+
+                            guide.target =
+                                '_blank';
+
+                            guide.rel =
+                                'noopener noreferrer';
+
+                            guide.textContent =
+                                'Guide';
+
+                            actions.appendChild(
+                                guide
+                            );
+                        }
+
+                        if (
+                            app.mode === 'native' ||
+                            app.mode === 'credentials' ||
+                            app.mode === 'guide' ||
+                            app.mode === 'profile'
+                        ) {
+                            var details =
+                                document.createElement(
+                                    'button'
+                                );
+
+                            details.type =
+                                'button';
+
+                            details.className =
+                                'am-link-button';
+
+                            details.textContent =
+                                'View setup';
+
+                            details.addEventListener(
+                                'click',
+                                function () {
+                                    smartActivateProtocol(
+                                        matched[0]
+                                    );
+                                }
+                            );
+
+                            actions.appendChild(
+                                details
+                            );
+                        }
+
+                        row.appendChild(icon);
+                        row.appendChild(info);
+                        row.appendChild(actions);
+
+                        root.appendChild(row);
+                    }
+                );
             }
 
             function setRangeButtons(days) {
@@ -4098,6 +8028,73 @@
                 var themeToggleButton = document.getElementById('themeToggleButton');
                 var langMenuButton = document.getElementById('langMenuButton');
                 var langMenu = document.getElementById('langMenu');
+
+                var premiumThemeButton =
+                    document.getElementById('premiumThemeButton');
+
+                var premiumLanguageButton =
+                    document.getElementById('premiumLanguageButton');
+
+                var premiumCopySubscriptionButton =
+                    document.getElementById(
+                        'premiumCopySubscriptionButton'
+                    );
+
+                var premiumSubscriptionQrButton =
+                    document.getElementById(
+                        'premiumSubscriptionQrButton'
+                    );
+
+                if (premiumThemeButton) {
+                    premiumThemeButton.addEventListener(
+                        'click',
+                        function () {
+                            toggleTheme();
+                        }
+                    );
+                }
+
+                if (premiumLanguageButton) {
+                    premiumLanguageButton.addEventListener(
+                        'click',
+                        function () {
+                            applyLanguage(
+                                state.language === 'fa'
+                                    ? 'en'
+                                    : 'fa'
+                            );
+                        }
+                    );
+                }
+
+                if (premiumCopySubscriptionButton) {
+                    premiumCopySubscriptionButton.addEventListener(
+                        'click',
+                        function () {
+                            copyText(
+                                normalizeUrl(
+                                    bodyData.subscriptionUrl
+                                ),
+                                premiumCopySubscriptionButton
+                            );
+                        }
+                    );
+                }
+
+                if (premiumSubscriptionQrButton) {
+                    premiumSubscriptionQrButton.addEventListener(
+                        'click',
+                        function () {
+                            openQrModal(
+                                normalizeUrl(
+                                    bodyData.subscriptionUrl
+                                ),
+                                t('qrSubscriptionLabel')
+                            );
+                        }
+                    );
+                }
+
                 if (themeToggleButton) {
                     themeToggleButton.addEventListener('click', function (event) {
                         event.stopPropagation();
@@ -4159,6 +8156,27 @@
                     button.addEventListener('click', function () {
                         var target = document.getElementById(button.getAttribute('data-copy-target') || '');
                         copyText(target ? target.value || target.textContent || '' : '', button);
+                    });
+                });
+
+                document.querySelectorAll('[data-qr-target]').forEach(function (button) {
+                    button.addEventListener('click', function () {
+                        var target = document.getElementById(
+                            button.getAttribute('data-qr-target') || ''
+                        );
+
+                        var value = target
+                            ? (target.value || target.textContent || '')
+                            : '';
+
+                        if (!value) {
+                            return;
+                        }
+
+                        openQrModal(
+                            value,
+                            t('amneziawgTitle')
+                        );
                     });
                 });
                 document.querySelectorAll('[data-range-days]').forEach(function (button) {

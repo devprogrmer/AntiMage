@@ -2533,3 +2533,673 @@ func TestSubscriptionTokenAcceptsLegacyPythonAndRecentGoSignatures(t *testing.T)
 		t.Fatalf("new tokens must use legacy python-compatible signatures: %s", generated)
 	}
 }
+
+func TestBundledSubscriptionWorkspaceRendersAmneziaWGOnlyUser(t *testing.T) {
+	template := readTestTemplateFile(t, filepath.Join("templates", "subscription", "index.html"))
+
+	html, err := renderSubscriptionPageTemplate(
+		template,
+		UserDetail{
+			Username:               "alice",
+			Status:                 "active",
+			UsedTraffic:            0,
+			DataLimitResetStrategy: "no_reset",
+		},
+		nil,
+		"/sub/token/usage",
+		"",
+		"token",
+		map[string]any{
+			"amneziawg": map[string]any{
+				"profiles": []AWGProfile{
+					{
+						DeviceIndex: 1,
+						DownloadURL: "/sub/token/awg/edge-device-1.conf",
+						Body: `[Interface]
+PrivateKey = client-private-key
+Address = 10.90.0.2/32
+DNS = 1.1.1.1
+MTU = 1420
+Jc = 4
+Jmin = 40
+Jmax = 70
+S1 = 101
+S2 = 102
+H1 = 1001
+H2 = 1002
+H3 = 1003
+H4 = 1004
+
+[Peer]
+PublicKey = server-public-key
+Endpoint = vpn.example.com:51820
+PersistentKeepalive = 25
+`,
+					},
+				},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, expected := range []string{
+		`id="awgProtocolPanel"`,
+		`data-awg-profile`,
+		`/sub/token/awg/edge-device-1.conf`,
+		`PrivateKey = client-private-key`,
+		`PublicKey = server-public-key`,
+		`Jc = 4`,
+		`Endpoint = vpn.example.com:51820`,
+		`countAmneziaWGProfiles`,
+		`key: 'amneziawg'`,
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf("AWG-only subscription workspace missing %q:\n%s", expected, html)
+		}
+	}
+
+	if strings.Contains(html, "server-private-key") {
+		t.Fatal("subscription HTML leaked a server private key")
+	}
+}
+
+// AntiMage Subscription Workspace Acceptance Matrix
+//
+// These tests protect the real-data subscription workspace against
+// regressions in native protocol visibility, AWG-only subscriptions,
+// multi-device rendering, state handling, security and responsive UI.
+
+func renderBundledSubscriptionWorkspaceForAcceptance(
+	t *testing.T,
+	user UserDetail,
+	links []string,
+	vpn map[string]any,
+) string {
+	t.Helper()
+
+	template := readTestTemplateFile(
+		t,
+		filepath.Join("templates", "subscription", "index.html"),
+	)
+
+	if user.Username == "" {
+		user.Username = "acceptance-user"
+	}
+
+	if user.Status == "" {
+		user.Status = "active"
+	}
+
+	if user.DataLimitResetStrategy == "" {
+		user.DataLimitResetStrategy = "no_reset"
+	}
+
+	if user.SubscriptionURL == "" {
+		user.SubscriptionURL = "/sub/acceptance-token"
+	}
+
+	html, err := renderSubscriptionPageTemplate(
+		template,
+		user,
+		links,
+		"/sub/acceptance-token/usage",
+		"https://support.example",
+		"acceptance-token",
+		vpn,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return html
+}
+
+func TestSubscriptionWorkspaceAcceptanceAWGOnly(t *testing.T) {
+	html := renderBundledSubscriptionWorkspaceForAcceptance(
+		t,
+		UserDetail{},
+		nil,
+		map[string]any{
+			"amneziawg": map[string]any{
+				"profiles": []AWGProfile{
+					{
+						HostTag:     "awg-edge",
+						HostName:    "AWG Edge",
+						DeviceIndex: 0,
+						Filename:    "alice-amneziawg-device-1.conf",
+						DownloadURL: "/sub/token/awg/awg-edge-device-1.conf",
+						Body: `[Interface]
+PrivateKey = CLIENT_AWG_PRIVATE_KEY
+Address = 10.90.0.2/32
+DNS = 1.1.1.1
+MTU = 1420
+Jc = 4
+Jmin = 40
+Jmax = 70
+S1 = 101
+S2 = 102
+H1 = 1001
+H2 = 1002
+H3 = 1003
+H4 = 1004
+
+[Peer]
+PublicKey = SERVER_PUBLIC_KEY
+Endpoint = awg.example.com:51820
+PersistentKeepalive = 25
+`,
+					},
+				},
+			},
+		},
+	)
+
+	for _, expected := range []string{
+		`id="awgProtocolPanel"`,
+		`data-awg-profile`,
+		`CLIENT_AWG_PRIVATE_KEY`,
+		`SERVER_PUBLIC_KEY`,
+		`awg.example.com:51820`,
+		`id="awg-config-awg-edge-0"`,
+		`countAmneziaWGProfiles`,
+		`key: 'amneziawg'`,
+		`label: 'AmneziaWG'`,
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf(
+				"AWG-only workspace missing %q",
+				expected,
+			)
+		}
+	}
+
+	if strings.Contains(
+		html,
+		`id="premiumTotalConfigCount">
+                                    0 configurations`,
+	) {
+		t.Fatal(
+			"AWG-only workspace flashes an incorrect 0 configurations state",
+		)
+	}
+}
+
+func TestSubscriptionWorkspaceAcceptanceWireGuardAndAWG(t *testing.T) {
+	html := renderBundledSubscriptionWorkspaceForAcceptance(
+		t,
+		UserDetail{},
+		nil,
+		map[string]any{
+			"wireguard": map[string]any{
+				"profiles": []WGProfile{
+					{
+						HostTag:     "wg-edge",
+						Remark:      "WireGuard Edge",
+						Filename:    "wg-edge.conf",
+						DownloadURL: "/sub/token/wg/wg-edge.conf",
+						Body:        "[Interface]\nPrivateKey = WG_CLIENT_KEY\n",
+					},
+				},
+			},
+			"amneziawg": map[string]any{
+				"profiles": []AWGProfile{
+					{
+						HostTag:     "awg-edge",
+						DeviceIndex: 0,
+						Filename:    "awg-edge.conf",
+						DownloadURL: "/sub/token/awg/awg-edge.conf",
+						Body:        "[Interface]\nPrivateKey = AWG_CLIENT_KEY\nJc = 4\n",
+					},
+				},
+			},
+		},
+	)
+
+	for _, expected := range []string{
+		`data-wg-profile`,
+		`data-awg-profile`,
+		`WG_CLIENT_KEY`,
+		`AWG_CLIENT_KEY`,
+		`label: 'WireGuard'`,
+		`label: 'AmneziaWG'`,
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf(
+				"WG+AWG workspace missing %q",
+				expected,
+			)
+		}
+	}
+}
+
+func TestSubscriptionWorkspaceAcceptanceOpenVPN(t *testing.T) {
+	html := renderBundledSubscriptionWorkspaceForAcceptance(
+		t,
+		UserDetail{},
+		nil,
+		map[string]any{
+			"openvpn": map[string]any{
+				"downloads": []string{
+					"/sub/token/ov/ov-edge.ovpn",
+				},
+				"profiles": []map[string]any{
+					{
+						"HostTag":     "ov-edge",
+						"Remark":      "OpenVPN Edge",
+						"Filename":    "alice-ov-edge.ovpn",
+						"DownloadURL": "/sub/token/ov/ov-edge.ovpn",
+						"Body":        "client\nremote ov.example.com 1194\n",
+					},
+				},
+			},
+		},
+	)
+
+	for _, expected := range []string{
+		`data-ovpn-profile`,
+		`alice-ov-edge.ovpn`,
+		`/sub/token/ov/ov-edge.ovpn`,
+		`remote ov.example.com 1194`,
+		`label: 'OpenVPN'`,
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf(
+				"OpenVPN workspace missing %q",
+				expected,
+			)
+		}
+	}
+}
+
+func TestSubscriptionWorkspaceAcceptanceNativeCredentials(t *testing.T) {
+	html := renderBundledSubscriptionWorkspaceForAcceptance(
+		t,
+		UserDetail{},
+		nil,
+		map[string]any{
+			"l2tp": []L2TPInfo{
+				{
+					HostName: "L2TP Edge",
+					Server:   "l2tp.example.com",
+					Username: "alice",
+					Password: "l2tp-secret",
+					IPSecPSK: "l2tp-psk",
+				},
+			},
+			"pptp": []PPTPInfo{
+				{
+					HostName: "PPTP Edge",
+					Server:   "pptp.example.com",
+					Username: "alice",
+					Password: "pptp-secret",
+				},
+			},
+			"ikev2": []RemoteAccessInfo{
+				{
+					HostName: "IKE Edge",
+					Server:   "ike.example.com",
+					Port:     500,
+					Username: "alice",
+					Password: "ike-secret",
+				},
+			},
+			"anyconnect": []RemoteAccessInfo{
+				{
+					HostName: "AnyConnect Edge",
+					Server:   "ac.example.com",
+					Port:     443,
+					Username: "alice",
+					Password: "ac-secret",
+				},
+			},
+		},
+	)
+
+	for _, expected := range []string{
+		`data-l2tp-card`,
+		`data-pptp-card`,
+		`data-ikev2-card`,
+		`data-anyconnect-card`,
+		`l2tp.example.com`,
+		`pptp.example.com`,
+		`ike.example.com:500`,
+		`ac.example.com:443`,
+		`label: 'L2TP'`,
+		`label: 'PPTP'`,
+		`label: 'IKEv2'`,
+		`label: 'AnyConnect'`,
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf(
+				"native credential workspace missing %q",
+				expected,
+			)
+		}
+	}
+}
+
+func TestSubscriptionWorkspaceAcceptanceEmptyXrayDoesNotHideNative(t *testing.T) {
+	html := renderBundledSubscriptionWorkspaceForAcceptance(
+		t,
+		UserDetail{},
+		nil,
+		map[string]any{
+			"wireguard": map[string]any{
+				"profiles": []WGProfile{
+					{
+						HostTag:     "wg-native",
+						Filename:    "wg-native.conf",
+						DownloadURL: "/sub/token/wg/wg-native.conf",
+						Body:        "[Interface]\nPrivateKey = NATIVE_ONLY_KEY\n",
+					},
+				},
+			},
+		},
+	)
+
+	if !strings.Contains(
+		html,
+		`var rawLinks = [];`,
+	) {
+		t.Fatal(
+			"expected empty Xray/share-link collection",
+		)
+	}
+
+	for _, expected := range []string{
+		`data-wg-profile`,
+		`NATIVE_ONLY_KEY`,
+		`countWireguardProfiles`,
+		`label: 'WireGuard'`,
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf(
+				"native profile disappeared with empty Xray links: %q",
+				expected,
+			)
+		}
+	}
+}
+
+func TestSubscriptionWorkspaceAcceptanceUnlimited(t *testing.T) {
+	html := renderBundledSubscriptionWorkspaceForAcceptance(
+		t,
+		UserDetail{
+			UsedTraffic: 5 * 1024 * 1024,
+		},
+		nil,
+		nil,
+	)
+
+	for _, expected := range []string{
+		`data-data-limit="0"`,
+		`usageSummaryUnlimited`,
+		`premiumUsageRing`,
+		`premiumUsagePercent`,
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf(
+				"unlimited subscription workspace missing %q",
+				expected,
+			)
+		}
+	}
+}
+
+func TestSubscriptionWorkspaceAcceptanceExpiredAndDisabled(t *testing.T) {
+	for _, status := range []string{
+		"expired",
+		"disabled",
+	} {
+		t.Run(status, func(t *testing.T) {
+			html := renderBundledSubscriptionWorkspaceForAcceptance(
+				t,
+				UserDetail{
+					Status: status,
+				},
+				nil,
+				nil,
+			)
+
+			for _, expected := range []string{
+				`data-status="` + status + `"`,
+				`data-state="` + status + `"`,
+				`id="premiumStatusText"`,
+			} {
+				if !strings.Contains(
+					html,
+					expected,
+				) {
+					t.Fatalf(
+						"%s workspace missing %q",
+						status,
+						expected,
+					)
+				}
+			}
+		})
+	}
+}
+
+func TestSubscriptionWorkspaceAcceptanceMultiDeviceWireGuardAndAWG(t *testing.T) {
+	html := renderBundledSubscriptionWorkspaceForAcceptance(
+		t,
+		UserDetail{},
+		nil,
+		map[string]any{
+			"wireguard": map[string]any{
+				"profiles": []WGProfile{
+					{
+						HostTag:     "wg-device-1",
+						Filename:    "wg-device-1.conf",
+						DownloadURL: "/sub/token/wg/wg-device-1.conf",
+						Body:        "[Interface]\nPrivateKey = WG_DEVICE_1\n",
+					},
+					{
+						HostTag:     "wg-device-2",
+						Filename:    "wg-device-2.conf",
+						DownloadURL: "/sub/token/wg/wg-device-2.conf",
+						Body:        "[Interface]\nPrivateKey = WG_DEVICE_2\n",
+					},
+				},
+			},
+			"amneziawg": map[string]any{
+				"profiles": []AWGProfile{
+					{
+						HostTag:     "awg-edge",
+						DeviceIndex: 0,
+						Filename:    "awg-device-1.conf",
+						DownloadURL: "/sub/token/awg/awg-device-1.conf",
+						Body:        "[Interface]\nPrivateKey = AWG_DEVICE_1\nJc = 4\n",
+					},
+					{
+						HostTag:     "awg-edge",
+						DeviceIndex: 1,
+						Filename:    "awg-device-2.conf",
+						DownloadURL: "/sub/token/awg/awg-device-2.conf",
+						Body:        "[Interface]\nPrivateKey = AWG_DEVICE_2\nJc = 5\n",
+					},
+				},
+			},
+		},
+	)
+
+	for _, expected := range []string{
+		`id="wg-config-wg-device-1"`,
+		`id="wg-config-wg-device-2"`,
+		`id="awg-config-awg-edge-0"`,
+		`id="awg-config-awg-edge-1"`,
+		`WG_DEVICE_1`,
+		`WG_DEVICE_2`,
+		`AWG_DEVICE_1`,
+		`AWG_DEVICE_2`,
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf(
+				"multi-device workspace missing %q",
+				expected,
+			)
+		}
+	}
+
+	if strings.Count(html, `<div class="am-vpn-download" data-awg-profile>`) != 2 {
+		t.Fatalf(
+			"expected exactly 2 AWG profile cards",
+		)
+	}
+
+	if strings.Count(html, `<div class="am-vpn-download" data-wg-profile>`) != 2 {
+		t.Fatalf(
+			"expected exactly 2 WireGuard profile cards",
+		)
+	}
+}
+
+func TestSubscriptionWorkspaceDoesNotExposeServerPrivateKey(t *testing.T) {
+	const (
+		clientPrivateKey = "CLIENT_PRIVATE_KEY_ALLOWED_IN_OWN_PROFILE"
+		serverPrivateKey = "SERVER_PRIVATE_KEY_MUST_NEVER_RENDER"
+	)
+
+	html := renderBundledSubscriptionWorkspaceForAcceptance(
+		t,
+		UserDetail{},
+		nil,
+		map[string]any{
+			"amneziawg": map[string]any{
+				"ServerPrivateKey": serverPrivateKey,
+				"profiles": []AWGProfile{
+					{
+						HostTag:     "awg-secure",
+						DeviceIndex: 0,
+						Filename:    "secure.conf",
+						DownloadURL: "/sub/token/awg/secure.conf",
+						Body: `[Interface]
+PrivateKey = ` + clientPrivateKey + `
+Address = 10.90.0.2/32
+
+[Peer]
+PublicKey = SERVER_PUBLIC_KEY_SAFE_TO_RENDER
+Endpoint = secure.example.com:51820
+`,
+					},
+				},
+			},
+			"internal_metadata": map[string]any{
+				"server_private_key": serverPrivateKey,
+			},
+		},
+	)
+
+	if !strings.Contains(
+		html,
+		clientPrivateKey,
+	) {
+		t.Fatal(
+			"client private key disappeared from the user's own downloadable profile",
+		)
+	}
+
+	if strings.Contains(
+		html,
+		serverPrivateKey,
+	) {
+		t.Fatal(
+			"server private key leaked into subscription HTML",
+		)
+	}
+
+	if strings.Contains(
+		html,
+		`data-server-private-key`,
+	) {
+		t.Fatal(
+			"server private key metadata attribute exists in subscription HTML",
+		)
+	}
+}
+
+func TestSubscriptionWorkspaceResponsiveContract(t *testing.T) {
+	html := renderBundledSubscriptionWorkspaceForAcceptance(
+		t,
+		UserDetail{},
+		nil,
+		nil,
+	)
+
+	for _, expected := range []string{
+		`AntiMage Premium Screenshot Layout v2`,
+		`AntiMage Premium Protocol Cards v3`,
+		`@media (max-width: 1180px)`,
+		`@media (max-width: 850px)`,
+		`@media (max-width: 620px)`,
+		`@media (max-width: 1200px)`,
+		`@media (max-width: 700px)`,
+		`@media (max-width: 430px)`,
+		`class="am-premium-topbar"`,
+		`class="am-premium-hero"`,
+		`class="am-premium-quick-actions"`,
+		`id="applications"`,
+		`id="configurations"`,
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf(
+				"responsive workspace contract missing %q",
+				expected,
+			)
+		}
+	}
+}
+
+func TestSubscriptionWorkspaceSmartApplicationCatalog(t *testing.T) {
+	html := renderBundledSubscriptionWorkspaceForAcceptance(
+		t,
+		UserDetail{},
+		[]string{
+			"vless://11111111-1111-4111-8111-111111111111@example.com:443?security=tls&type=ws#xray",
+			"hysteria2://secret@hy.example.com:443#hy2",
+		},
+		map[string]any{},
+	)
+
+	for _, expected := range []string{
+		"AntiMage Smart Applications v4",
+		"function smartAvailableProtocols()",
+		"function smartMatchingProtocols(app, available)",
+		"function smartProfileDownload(protocol)",
+		"function smartActivateProtocol(protocol)",
+		"data-smart-detected-platform",
+		"data-smart-platform",
+		"data-smart-protocols",
+
+		"name: 'WireGuard'",
+		"name: 'AmneziaVPN'",
+		"name: 'OpenVPN Connect'",
+		"name: 'Windows built-in VPN'",
+		"name: 'Apple built-in VPN'",
+		"name: 'strongSwan VPN Client'",
+		"name: 'OpenConnect'",
+		"name: 'OpenConnect GUI'",
+		"name: 'NetworkManager L2TP'",
+		"name: 'NetworkManager PPTP'",
+
+		"protocols: ['xray', 'hysteria2']",
+		"protocols: ['wireguard']",
+		"protocols: ['amneziawg']",
+		"protocols: ['openvpn']",
+		"protocols: ['ikev2', 'l2tp', 'pptp']",
+
+		"app.platform === platform",
+		"smartMatchingProtocols(",
+		"if (!app || !app.scheme) return '';",
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf(
+				"smart application workspace missing %q",
+				expected,
+			)
+		}
+	}
+}
