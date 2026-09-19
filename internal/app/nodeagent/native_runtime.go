@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"strings"
+	"time"
 )
 
 type nativeRuntimeSessionCallback struct {
@@ -198,6 +199,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		usedListenPorts[inbound.ListenPort] = "wireguard:" + strings.TrimSpace(inbound.Tag)
 	}
 	for _, inbound := range payload.AmneziaWGInbounds {
+		inbound = filterAmneziaWGRuntimeInboundByPolicy(inbound, time.Now())
 		tag := strings.TrimSpace(inbound.Tag)
 		if _, exists := awgDesired[tag]; exists {
 			return fmt.Errorf("duplicate amneziawg runtime tag %q", tag)
@@ -428,7 +430,11 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		}
 	}
 
-	if err := s.reconcileWireGuardRouting(wgPrepared); err != nil {
+	routingPrepared := append([]preparedWireGuardRuntime(nil), wgPrepared...)
+	for _, runtime := range awgPrepared {
+		routingPrepared = append(routingPrepared, preparedWireGuardRuntime{Tag: "amneziawg:" + runtime.Tag, InterfaceName: runtime.InterfaceName, SourceCIDR: runtime.SourceCIDR, Routing: runtime.Routing})
+	}
+	if err := s.reconcileWireGuardRouting(routingPrepared); err != nil {
 		return err
 	}
 

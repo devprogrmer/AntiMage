@@ -72,6 +72,11 @@ type Server struct {
 	wireGuardUsageAwaitingReflection []wireGuardUsageAwaitingReflectionBatch
 	wireGuardUsageLoaded             bool
 	wireGuardUsageLastAckedBatchID   string
+	amneziaWGUsageMu                 sync.Mutex
+	amneziaWGUsageBaseline           map[string]uint64
+	amneziaWGUsagePending            *amneziaWGUsagePendingBatch
+	amneziaWGUsageLoaded             bool
+	amneziaWGUsageLastAckedBatchID   string
 	xrayUsageMu                      sync.Mutex
 	xrayUsageBaseline                map[string]uint64
 	xrayUsagePending                 *xrayUsagePendingBatch
@@ -130,6 +135,7 @@ func New(cfg Config) *Server {
 		pptpUsageBaseline:               make(map[string]uint64),
 		wireGuardUsageBaseline:          make(map[string]uint64),
 		wireGuardUsageCarry:             make(map[string]wireGuardUsageCarry),
+		amneziaWGUsageBaseline:          make(map[string]uint64),
 		xrayUsageBaseline:               make(map[string]uint64),
 		xrayOutboundUsageBaseline:       make(map[string]uint64),
 		torProxies:                      make(map[uint32]*exec.Cmd),

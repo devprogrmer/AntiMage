@@ -18,6 +18,7 @@ type combinedUsagePendingBatch struct {
 	WireGuardBatchID string    `json:"wireguard_batch_id"`
 	L2TPBatchID      string    `json:"l2tp_batch_id,omitempty"`
 	PPTPBatchID      string    `json:"pptp_batch_id,omitempty"`
+	AmneziaWGBatchID string    `json:"amneziawg_batch_id,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 }
 
@@ -108,11 +109,15 @@ func (s *Server) combineUserUsageBatches(
 ) (*nodev1.UserUsageBatch, error) {
 	var l2tpBatch *nodev1.UserUsageBatch
 	var pptpBatch *nodev1.UserUsageBatch
+	var awgBatch *nodev1.UserUsageBatch
 	if len(optionalNative) > 0 {
 		l2tpBatch = optionalNative[0]
 	}
 	if len(optionalNative) > 1 {
 		pptpBatch = optionalNative[1]
+	}
+	if len(optionalNative) > 2 {
+		awgBatch = optionalNative[2]
 	}
 	coreID := ""
 	if coreBatch != nil {
@@ -130,6 +135,10 @@ func (s *Server) combineUserUsageBatches(
 	if pptpBatch != nil {
 		pptpID = strings.TrimSpace(pptpBatch.GetBatchId())
 	}
+	awgID := ""
+	if awgBatch != nil {
+		awgID = strings.TrimSpace(awgBatch.GetBatchId())
+	}
 
 	nonEmpty := 0
 	if coreID != "" {
@@ -144,6 +153,9 @@ func (s *Server) combineUserUsageBatches(
 	if pptpID != "" {
 		nonEmpty++
 	}
+	if awgID != "" {
+		nonEmpty++
+	}
 	if nonEmpty == 0 {
 		return &nodev1.UserUsageBatch{}, nil
 	}
@@ -156,6 +168,9 @@ func (s *Server) combineUserUsageBatches(
 		}
 		if l2tpID != "" {
 			return l2tpBatch, nil
+		}
+		if awgID != "" {
+			return awgBatch, nil
 		}
 		return pptpBatch, nil
 	}
@@ -191,6 +206,11 @@ func (s *Server) combineUserUsageBatches(
 				"combined PPTP child batch changed before ACK",
 			)
 		}
+		if pending.AmneziaWGBatchID == "" {
+			awgBatch = nil
+		} else if pending.AmneziaWGBatchID != awgID {
+			return nil, fmt.Errorf("combined AmneziaWG child batch changed before ACK")
+		}
 
 		return buildCombinedUsageBatch(
 			pending.BatchID,
@@ -198,6 +218,7 @@ func (s *Server) combineUserUsageBatches(
 			wireGuardBatch,
 			l2tpBatch,
 			pptpBatch,
+			awgBatch,
 		), nil
 	}
 
@@ -210,6 +231,7 @@ func (s *Server) combineUserUsageBatches(
 		WireGuardBatchID: wgID,
 		L2TPBatchID:      l2tpID,
 		PPTPBatchID:      pptpID,
+		AmneziaWGBatchID: awgID,
 		CreatedAt:        time.Now().UTC(),
 	}
 	s.combinedUsagePending = pending
@@ -223,6 +245,7 @@ func (s *Server) combineUserUsageBatches(
 		wireGuardBatch,
 		l2tpBatch,
 		pptpBatch,
+		awgBatch,
 	), nil
 }
 
@@ -234,17 +257,22 @@ func buildCombinedUsageBatch(
 ) *nodev1.UserUsageBatch {
 	var l2tpBatch *nodev1.UserUsageBatch
 	var pptpBatch *nodev1.UserUsageBatch
+	var awgBatch *nodev1.UserUsageBatch
 	if len(optionalNative) > 0 {
 		l2tpBatch = optionalNative[0]
 	}
 	if len(optionalNative) > 1 {
 		pptpBatch = optionalNative[1]
 	}
+	if len(optionalNative) > 2 {
+		awgBatch = optionalNative[2]
+	}
 	stats := make([]*nodev1.UserUsageSample, 0,
 		len(coreBatch.GetStats())+
 			len(wireGuardBatch.GetStats())+
 			len(l2tpBatch.GetStats())+
 			len(pptpBatch.GetStats()))
+	stats = append(stats, awgBatch.GetStats()...)
 	stats = append(stats, coreBatch.GetStats()...)
 	stats = append(stats, wireGuardBatch.GetStats()...)
 	stats = append(stats, l2tpBatch.GetStats()...)
@@ -255,6 +283,7 @@ func buildCombinedUsageBatch(
 			len(wireGuardBatch.GetOnlineIps())+
 			len(l2tpBatch.GetOnlineIps())+
 			len(pptpBatch.GetOnlineIps()))
+	onlineIPs = append(onlineIPs, awgBatch.GetOnlineIps()...)
 	onlineIPs = append(onlineIPs, coreBatch.GetOnlineIps()...)
 	onlineIPs = append(onlineIPs, wireGuardBatch.GetOnlineIps()...)
 	onlineIPs = append(onlineIPs, l2tpBatch.GetOnlineIps()...)
@@ -265,6 +294,7 @@ func buildCombinedUsageBatch(
 			len(wireGuardBatch.GetSpeeds())+
 			len(l2tpBatch.GetSpeeds())+
 			len(pptpBatch.GetSpeeds()))
+	speeds = append(speeds, awgBatch.GetSpeeds()...)
 	speeds = append(speeds, coreBatch.GetSpeeds()...)
 	speeds = append(speeds, wireGuardBatch.GetSpeeds()...)
 	speeds = append(speeds, l2tpBatch.GetSpeeds()...)
@@ -353,8 +383,16 @@ func (s *Server) ackCombinedUserUsage(
 		}
 		pptpAck = resp.GetAcknowledged()
 	}
+	awgAck := true
+	if strings.TrimSpace(pending.AmneziaWGBatchID) != "" {
+		resp, err := s.ackAmneziaWGUserUsage(ctx, &nodev1.AckUsageRequest{BatchId: pending.AmneziaWGBatchID})
+		if err != nil {
+			return nil, fmt.Errorf("combined AmneziaWG ACK failed: %w", err)
+		}
+		awgAck = resp.GetAcknowledged()
+	}
 
-	if !coreAck || !wgAck || !l2tpAck || !pptpAck {
+	if !coreAck || !wgAck || !l2tpAck || !pptpAck || !awgAck {
 		return &nodev1.AckUsageResponse{Acknowledged: false}, nil
 	}
 
@@ -394,6 +432,9 @@ func (s *Server) ackUsageChildBatch(
 		return resp.GetAcknowledged(), err
 	case strings.HasPrefix(batchID, "wireguard-"):
 		resp, err := s.ackWireGuardUserUsage(ctx, req)
+		return resp.GetAcknowledged(), err
+	case strings.HasPrefix(batchID, "amneziawg-"):
+		resp, err := s.ackAmneziaWGUserUsage(ctx, req)
 		return resp.GetAcknowledged(), err
 	default:
 		return false, nil

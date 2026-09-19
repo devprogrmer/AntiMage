@@ -534,6 +534,7 @@ export const InboundFormModal: FC<Props> = ({
 		currentProtocol !== "socks" &&
 		currentProtocol !== "openvpn" &&
 		currentProtocol !== "wireguard" &&
+		currentProtocol !== "amneziawg" &&
 		currentProtocol !== "l2tp" &&
 		currentProtocol !== "pptp" &&
 		currentProtocol !== "ikev2" &&
@@ -700,7 +701,7 @@ export const InboundFormModal: FC<Props> = ({
 			});
 		}
 		if (streamNetwork !== "tcp") {
-			form.setValue("streamNetwork", "tcp", {
+														form.setValue("streamNetwork", "tcp", {
 				shouldDirty: true,
 				shouldValidate: true,
 			});
@@ -722,7 +723,7 @@ export const InboundFormModal: FC<Props> = ({
 	]);
 
 	useEffect(() => {
-		if (currentProtocol !== "wireguard") {
+		if (currentProtocol !== "wireguard" && currentProtocol !== "amneziawg") {
 			autoWGTunnelPortRef.current = "";
 			return;
 		}
@@ -744,7 +745,7 @@ export const InboundFormModal: FC<Props> = ({
 			}
 		}
 		if (!String(form.getValues("wgServerAddress") || "").trim()) {
-			form.setValue("wgServerAddress", "10.69.0.1/16", {
+			form.setValue("wgServerAddress", currentProtocol === "amneziawg" ? "10.72.0.1/16" : "10.69.0.1/16", {
 				shouldDirty: true,
 				shouldValidate: true,
 			});
@@ -1697,7 +1698,8 @@ export const InboundFormModal: FC<Props> = ({
 														}
 														if (
 															nextProtocol === "openvpn" ||
-															nextProtocol === "wireguard" ||
+													nextProtocol === "wireguard" ||
+													nextProtocol === "amneziawg" ||
 															nextProtocol === "l2tp" ||
 															nextProtocol === "pptp" ||
 															nextProtocol === "ikev2" ||
@@ -1763,7 +1765,7 @@ export const InboundFormModal: FC<Props> = ({
 																		shouldDirty: true,
 																	});
 															}
-															if (nextProtocol === "wireguard") {
+													if (nextProtocol === "wireguard") {
 																if (!form.getValues("wgIPv4Pool")) {
 																	form.setValue("wgIPv4Pool", "10.69.0.0/16", {
 																		shouldDirty: true,
@@ -2460,7 +2462,7 @@ export const InboundFormModal: FC<Props> = ({
 												</FormControl>
 											</Stack>
 										)}
-										{currentProtocol === "wireguard" && (
+										{(currentProtocol === "wireguard" || currentProtocol === "amneziawg") && (
 											<Stack spacing={3}>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl
@@ -2628,9 +2630,37 @@ export const InboundFormModal: FC<Props> = ({
 														"inbounds.wireguard.help.publicKey",
 														"Server public key shown for reference and future profile generation. The node derives the runtime key from the private key.",
 													)}
-													<Input {...register("wgPublicKey")} isReadOnly />
-												</FormControl>
-											</Stack>
+												<Input {...register("wgPublicKey")} isReadOnly />
+											</FormControl>
+											{currentProtocol === "amneziawg" && (
+												<>
+													<FormControl>
+														{ovLabel("inbounds.amneziawg.dns", "DNS servers", "inbounds.amneziawg.help.dns", "DNS resolvers written to every AmneziaWG device profile.")}
+														<Textarea rows={2} {...register("awgDNSServers")} placeholder={"1.1.1.1\n8.8.8.8"} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel("inbounds.amneziawg.psk", "Per-device PSK", "inbounds.amneziawg.help.psk", "Generate a distinct preshared key for each device in addition to its key pair.", { mb: 0 })}
+														<Switch {...register("awgPSKEnabled")} />
+													</FormControl>
+													<SimpleGrid columns={{ base: 2, md: 5 }} spacing={3}>
+														{(["awgJc", "awgJmin", "awgJmax", "awgS1", "awgS2"] as const).map((field) => (
+															<FormControl key={field} isRequired isInvalid={Boolean(fieldValidationErrors[field])}>
+																<FormLabel>{field.slice(3)}</FormLabel>
+																<Input {...register(field)} inputMode="numeric" />
+															</FormControl>
+														))}
+													</SimpleGrid>
+													<SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
+														{(["awgH1", "awgH2", "awgH3", "awgH4"] as const).map((field) => (
+															<FormControl key={field} isRequired isInvalid={Boolean(fieldValidationErrors[field])}>
+																<FormLabel>{field.slice(3)}</FormLabel>
+																<Input {...register(field)} inputMode="numeric" />
+															</FormControl>
+														))}
+													</SimpleGrid>
+												</>
+											)}
+										</Stack>
 										)}
 										{(currentProtocol === "ikev2" ||
 											currentProtocol === "anyconnect") && (
@@ -6614,6 +6644,7 @@ export const InboundFormModal: FC<Props> = ({
 
 									{currentProtocol !== "openvpn" &&
 										currentProtocol !== "wireguard" &&
+										currentProtocol !== "amneziawg" &&
 										currentProtocol !== "l2tp" &&
 										currentProtocol !== "pptp" &&
 										currentProtocol !== "ikev2" &&

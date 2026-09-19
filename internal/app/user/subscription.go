@@ -83,6 +83,7 @@ var subscriptionClientConfigs = map[string]SubscriptionClientConfig{
 	"nekobox":      {Format: "v2ray", Media: "text/plain", Base64: true},
 	"openvpn":      {Format: "openvpn", Media: "application/x-openvpn-profile"},
 	"wireguard":    {Format: "wireguard", Media: "application/x-wireguard-profile"},
+	"amneziawg":    {Format: "amneziawg", Media: "application/x-amneziawg-profile"},
 }
 
 func NormalizeSubscriptionClientType(value string) (string, bool) {
@@ -109,6 +110,8 @@ func NormalizeSubscriptionClientType(value string) (string, bool) {
 		value = "passwall"
 	case "wg":
 		value = "wireguard"
+	case "awg", "amnezia-wg":
+		value = "amneziawg"
 	}
 	_, ok := subscriptionClientConfigs[value]
 	return value, ok
@@ -139,6 +142,9 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	}
 	if req.ClientType == "wireguard" {
 		return s.generateWGProfile(ctx, user, req)
+	}
+	if req.ClientType == "amneziawg" {
+		return s.generateAWGProfile(ctx, user, req)
 	}
 	clientType := req.ClientType
 	if clientType == "" {
@@ -221,6 +227,16 @@ func (s Service) subscriptionVPNInfo(ctx context.Context, user UserDetail, subsc
 			wgLinks = append(wgLinks, profile.Link)
 		}
 	}
+	awgProfiles, err := s.AWGDownloadProfiles(ctx, user, subscriptionURL)
+	if err != nil {
+		return nil, err
+	}
+	awgDownloads := make([]string, 0, len(awgProfiles))
+	for _, profile := range awgProfiles {
+		if strings.TrimSpace(profile.DownloadURL) != "" {
+			awgDownloads = append(awgDownloads, profile.DownloadURL)
+		}
+	}
 	l2tpItems, err := s.L2TPInfos(ctx, user, subscriptionURL)
 	if err != nil {
 		return nil, err
@@ -246,6 +262,10 @@ func (s Service) subscriptionVPNInfo(ctx context.Context, user UserDetail, subsc
 			"downloads": wgDownloads,
 			"links":     wgLinks,
 			"profiles":  wgProfiles,
+		},
+		"amneziawg": map[string]any{
+			"downloads": awgDownloads,
+			"profiles":  awgProfiles,
 		},
 		"l2tp":       l2tpItems,
 		"pptp":       pptpItems,
@@ -933,6 +953,9 @@ func resolvePrefixedSubscriptionPath(path string, prefix string) (SubscriptionRe
 				HostTag:    strings.TrimSuffix(segments[2], ".conf"),
 			}, true
 		}
+		if segments[1] == "awg" || segments[1] == "amneziawg" {
+			return SubscriptionRenderRequest{Identifier: segments[0], ClientType: "amneziawg", HostTag: strings.TrimSuffix(segments[2], ".conf")}, true
+		}
 		if segments[2] == "info" || segments[2] == "usage" {
 			return SubscriptionRenderRequest{Username: segments[0], Key: segments[1], ClientType: segments[2]}, true
 		}
@@ -955,6 +978,9 @@ func resolvePrefixedSubscriptionPath(path string, prefix string) (SubscriptionRe
 			ClientType: "wireguard",
 			HostTag:    strings.TrimSuffix(segments[3], ".conf"),
 		}, true
+	}
+	if len(segments) == 4 && (segments[2] == "awg" || segments[2] == "amneziawg") {
+		return SubscriptionRenderRequest{Username: segments[0], Key: segments[1], ClientType: "amneziawg", HostTag: strings.TrimSuffix(segments[3], ".conf")}, true
 	}
 	return SubscriptionRenderRequest{}, false
 }

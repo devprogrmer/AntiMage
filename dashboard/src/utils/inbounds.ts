@@ -8,6 +8,7 @@ export type Protocol =
 	| "hysteria"
 	| "openvpn"
 	| "wireguard"
+	| "amneziawg"
 	| "l2tp"
 	| "pptp"
 	| "ikev2"
@@ -386,6 +387,17 @@ export type InboundFormValues = {
 	wgTproxyEnabled: boolean;
 	wgNatEnabled: boolean;
 	wgAccountingEnabled: boolean;
+	awgJc: string;
+	awgJmin: string;
+	awgJmax: string;
+	awgS1: string;
+	awgS2: string;
+	awgH1: string;
+	awgH2: string;
+	awgH3: string;
+	awgH4: string;
+	awgDNSServers: string;
+	awgPSKEnabled: boolean;
 
 	l2tpTunnelPort: string;
 	l2tpIPv4Pool: string;
@@ -513,6 +525,7 @@ export const protocolOptions: Protocol[] = [
 	"hysteria",
 	"openvpn",
 	"wireguard",
+	"amneziawg",
 	"l2tp",
 	"pptp",
 	"ikev2",
@@ -598,7 +611,14 @@ const randomPortText = (): string => {
 	return "443";
 };
 
+const randomAWGHeaders = (): [string, string, string, string] => {
+	const values = new Set<number>();
+	while (values.size < 4) values.add(100_000_000 + Math.floor(Math.random() * 1_900_000_000));
+	return [...values].map(String) as [string, string, string, string];
+};
+
 const defaultPortText = (protocol: Protocol): string => {
+	if (protocol === "amneziawg") return "51821";
 	if (protocol === "l2tp") return "1701";
 	if (protocol === "pptp") return "1723";
 	if (protocol === "ikev2") return "500";
@@ -1150,7 +1170,7 @@ export const validateInboundFormFields = (
 			errors.ovServerKey = "Server key is required.";
 		}
 	}
-	if (values.protocol === "wireguard") {
+	if (values.protocol === "wireguard" || values.protocol === "amneziawg") {
 		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.wgIPv4Pool.trim())) {
 			errors.wgIPv4Pool = "IPv4 pool must be a CIDR, for example 10.69.0.0/16.";
 		}
@@ -1192,6 +1212,29 @@ export const validateInboundFormFields = (
 		};
 		validateWGNumber("wgMTU", "MTU", 576, 1500);
 		validateWGNumber("wgPersistentKeepalive", "Persistent keepalive", 0, 3600);
+		if (values.protocol === "amneziawg") {
+			const numericFields: Array<[
+				"awgJc" | "awgJmin" | "awgJmax" | "awgS1" | "awgS2",
+				number,
+				number,
+			]> = [
+				["awgJc", 0, 128], ["awgJmin", 0, 128], ["awgJmax", 0, 128],
+				["awgS1", 0, 255], ["awgS2", 0, 255],
+			];
+			for (const [key, min, max] of numericFields) {
+				const parsed = Number(values[key]);
+				if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+					errors[key] = `${key.slice(3)} must be a number between ${min} and ${max}.`;
+				}
+			}
+			if (Number(values.awgJmin) > Number(values.awgJmax)) {
+				errors.awgJmax = "Jmax must be greater than or equal to Jmin.";
+			}
+			const headers = [values.awgH1, values.awgH2, values.awgH3, values.awgH4];
+			if (headers.some((value) => !/^\d+$/.test(value) || Number(value) < 4) || new Set(headers).size !== 4) {
+				errors.awgH1 = "H1-H4 must be distinct decimal values greater than 3.";
+			}
+		}
 	}
 	if (values.protocol === "l2tp" || values.protocol === "pptp") {
 		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.l2tpIPv4Pool.trim())) {
@@ -1657,7 +1700,9 @@ const buildSockoptSettings = (values: InboundFormValues) => {
 
 export const createDefaultInboundForm = (
 	protocol: Protocol = "vless",
-): InboundFormValues => ({
+): InboundFormValues => {
+	const awgHeaders = randomAWGHeaders();
+	return ({
 	tag: "",
 	listen: "",
 	port: defaultPortText(protocol),
@@ -1861,8 +1906,8 @@ export const createDefaultInboundForm = (
 	ovTlsAuth: "",
 	ovExtraClientConfig: "",
 	wgTunnelPort: "",
-	wgIPv4Pool: "10.69.0.0/16",
-	wgServerAddress: "10.69.0.1/16",
+	wgIPv4Pool: protocol === "amneziawg" ? "10.72.0.0/16" : "10.69.0.0/16",
+	wgServerAddress: protocol === "amneziawg" ? "10.72.0.1/16" : "10.69.0.1/16",
 	wgPrivateKey: "",
 	wgPublicKey: "",
 	wgMTU: "1420",
@@ -1870,6 +1915,17 @@ export const createDefaultInboundForm = (
 	wgTproxyEnabled: true,
 	wgNatEnabled: false,
 	wgAccountingEnabled: true,
+	awgJc: "4",
+	awgJmin: "8",
+	awgJmax: "80",
+	awgS1: "77",
+	awgS2: "90",
+	awgH1: awgHeaders[0],
+	awgH2: awgHeaders[1],
+	awgH3: awgHeaders[2],
+	awgH4: awgHeaders[3],
+	awgDNSServers: "1.1.1.1\n8.8.8.8",
+	awgPSKEnabled: true,
 	l2tpTunnelPort:
 		protocol === "l2tp" ? "1702" : protocol === "pptp" ? "41942" : "",
 	l2tpIPv4Pool: "10.67.0.0/16",
@@ -1961,6 +2017,7 @@ export const createDefaultInboundForm = (
 	acCertUserOID: "2.5.4.3",
 	targetIds: ["master"],
 });
+};
 
 const fallbackToForm = (fallback: Record<string, any>): FallbackForm => ({
 	dest: fallback?.dest?.toString() ?? "",
@@ -2670,7 +2727,7 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 				? (settings.extra_client_config ?? base.ovExtraClientConfig)
 				: base.ovExtraClientConfig,
 		wgTunnelPort:
-			protocol === "wireguard"
+			protocol === "wireguard" || protocol === "amneziawg"
 				? toInputValue(
 						settings.tunnel_port ??
 							settings.xray_tunnel_port ??
@@ -2678,32 +2735,32 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 					)
 				: base.wgTunnelPort,
 		wgIPv4Pool:
-			protocol === "wireguard"
+			protocol === "wireguard" || protocol === "amneziawg"
 				? (settings.address_pool ??
 					settings.ipv4_pool_cidr ??
 					settings.ipv4PoolCidr ??
 					base.wgIPv4Pool)
 				: base.wgIPv4Pool,
 		wgServerAddress:
-			protocol === "wireguard"
+			protocol === "wireguard" || protocol === "amneziawg"
 				? (settings.server_address ??
 					settings.serverAddress ??
 					base.wgServerAddress)
 				: base.wgServerAddress,
 		wgPrivateKey:
-			protocol === "wireguard"
+			protocol === "wireguard" || protocol === "amneziawg"
 				? (settings.private_key ?? settings.privateKey ?? base.wgPrivateKey)
 				: base.wgPrivateKey,
 		wgPublicKey:
-			protocol === "wireguard"
+			protocol === "wireguard" || protocol === "amneziawg"
 				? (settings.public_key ?? settings.publicKey ?? base.wgPublicKey)
 				: base.wgPublicKey,
 		wgMTU:
-			protocol === "wireguard"
+			protocol === "wireguard" || protocol === "amneziawg"
 				? toInputValue(settings.mtu ?? base.wgMTU)
 				: base.wgMTU,
 		wgPersistentKeepalive:
-			protocol === "wireguard"
+			protocol === "wireguard" || protocol === "amneziawg"
 				? toInputValue(
 						settings.persistent_keepalive ??
 							settings.persistentKeepalive ??
@@ -2711,17 +2768,28 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 					)
 				: base.wgPersistentKeepalive,
 		wgTproxyEnabled:
-			protocol === "wireguard"
+			protocol === "wireguard" || protocol === "amneziawg"
 				? Boolean(settings.tproxy_enabled ?? base.wgTproxyEnabled)
 				: base.wgTproxyEnabled,
 		wgNatEnabled:
-			protocol === "wireguard"
+			protocol === "wireguard" || protocol === "amneziawg"
 				? Boolean(settings.nat_enabled ?? base.wgNatEnabled)
 				: base.wgNatEnabled,
 		wgAccountingEnabled:
-			protocol === "wireguard"
+			protocol === "wireguard" || protocol === "amneziawg"
 				? Boolean(settings.accounting_enabled ?? base.wgAccountingEnabled)
 				: base.wgAccountingEnabled,
+		awgJc: protocol === "amneziawg" ? toInputValue(settings.jc ?? base.awgJc) : base.awgJc,
+		awgJmin: protocol === "amneziawg" ? toInputValue(settings.jmin ?? base.awgJmin) : base.awgJmin,
+		awgJmax: protocol === "amneziawg" ? toInputValue(settings.jmax ?? base.awgJmax) : base.awgJmax,
+		awgS1: protocol === "amneziawg" ? toInputValue(settings.s1 ?? base.awgS1) : base.awgS1,
+		awgS2: protocol === "amneziawg" ? toInputValue(settings.s2 ?? base.awgS2) : base.awgS2,
+		awgH1: protocol === "amneziawg" ? toInputValue(settings.h1 ?? base.awgH1) : base.awgH1,
+		awgH2: protocol === "amneziawg" ? toInputValue(settings.h2 ?? base.awgH2) : base.awgH2,
+		awgH3: protocol === "amneziawg" ? toInputValue(settings.h3 ?? base.awgH3) : base.awgH3,
+		awgH4: protocol === "amneziawg" ? toInputValue(settings.h4 ?? base.awgH4) : base.awgH4,
+		awgDNSServers: protocol === "amneziawg" ? joinLines(parseStringList(settings.dns_servers ?? settings.dnsServers)) : base.awgDNSServers,
+		awgPSKEnabled: protocol === "amneziawg" ? Boolean(settings.psk_enabled ?? settings.pskEnabled ?? base.awgPSKEnabled) : base.awgPSKEnabled,
 		l2tpTunnelPort:
 			protocol === "l2tp"
 				? "1702"
@@ -3937,7 +4005,8 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.extra_client_config = values.ovExtraClientConfig.trim() || undefined;
 			break;
 		case "wireguard":
-			base.address_pool = values.wgIPv4Pool.trim() || "10.69.0.0/16";
+		case "amneziawg":
+			base.address_pool = values.wgIPv4Pool.trim() || (values.protocol === "amneziawg" ? "10.72.0.0/16" : "10.69.0.0/16");
 			base.ipv4_pool_cidr = base.address_pool;
 			base.server_address = values.wgServerAddress.trim() || "10.69.0.1/16";
 			base.private_key = values.wgPrivateKey.trim() || undefined;
@@ -3952,6 +4021,19 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.tproxy_enabled = values.wgTproxyEnabled;
 			base.nat_enabled = !values.wgTproxyEnabled || values.wgNatEnabled;
 			base.accounting_enabled = values.wgAccountingEnabled;
+			if (values.protocol === "amneziawg") {
+				base.dns_servers = splitLines(values.awgDNSServers);
+				base.psk_enabled = values.awgPSKEnabled;
+				base.jc = parseOptionalNumber(values.awgJc);
+				base.jmin = parseOptionalNumber(values.awgJmin);
+				base.jmax = parseOptionalNumber(values.awgJmax);
+				base.s1 = parseOptionalNumber(values.awgS1);
+				base.s2 = parseOptionalNumber(values.awgS2);
+				base.h1 = values.awgH1.trim();
+				base.h2 = values.awgH2.trim();
+				base.h3 = values.awgH3.trim();
+				base.h4 = values.awgH4.trim();
+			}
 			break;
 		case "l2tp":
 		case "pptp":

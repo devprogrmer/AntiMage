@@ -4,10 +4,27 @@ import (
 	"encoding/base64"
 	"strings"
 	"testing"
+	"time"
 )
 
 func awgTestKey(fill byte) string {
 	return base64.StdEncoding.EncodeToString([]byte(strings.Repeat(string(fill), 32)))
+}
+
+func TestFilterAmneziaWGRuntimeInboundEnforcesDisableExpireAndQuota(t *testing.T) {
+	now := time.Unix(2_000, 0)
+	limit := int64(100)
+	expired := int64(1_999)
+	inbound := amneziaWGRuntimeInbound{Peers: []amneziaWGRuntimePeer{
+		{UserID: 1, Status: "active"},
+		{UserID: 2, Status: "disabled"},
+		{UserID: 3, Status: "active", UsedTraffic: 100, DataLimit: &limit},
+		{UserID: 4, Status: "active", Expire: &expired},
+	}}
+	filtered := filterAmneziaWGRuntimeInboundByPolicy(inbound, now)
+	if len(filtered.Peers) != 1 || filtered.Peers[0].UserID != 1 {
+		t.Fatalf("filtered peers=%#v", filtered.Peers)
+	}
 }
 
 func TestParseNativeRuntimePayloadIncludesAmneziaWG(t *testing.T) {

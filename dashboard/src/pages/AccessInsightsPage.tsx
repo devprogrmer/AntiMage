@@ -61,6 +61,8 @@ const protocolColor = (protocol: string) => {
 			return "green";
 		case "wireguard":
 			return "cyan";
+		case "amneziawg":
+			return "teal";
 		case "l2tp/ipsec":
 			return "orange";
 		case "ikev2":

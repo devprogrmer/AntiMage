@@ -33,6 +33,7 @@ var proxyProtocols = map[string]struct{}{
 var subscriptionDownloadProtocols = map[string]struct{}{
 	"openvpn":    {},
 	"wireguard":  {},
+	"amneziawg":  {},
 	"l2tp":       {},
 	"pptp":       {},
 	"ikev2":      {},

@@ -2,6 +2,7 @@ package xrayconfig
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
@@ -148,6 +149,11 @@ func (r Repository) CreateInbound(ctx context.Context, payload map[string]any) (
 	if err := r.ensureInboundRecordTx(ctx, tx, tag); err != nil {
 		return InboundMutationResult{}, err
 	}
+	if strings.ToLower(strings.TrimSpace(stringValue(inbound["protocol"]))) != AWGProtocol {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM amneziawg_devices WHERE inbound_tag = ?`, tag); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") && !strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
+			return InboundMutationResult{}, err
+		}
+	}
 	if err := r.setInboundUsageCoefficientTx(ctx, tx, tag, usageCoefficient); err != nil {
 		return InboundMutationResult{}, err
 	}
@@ -263,6 +269,11 @@ func (r Repository) UpdateInbound(ctx context.Context, tag string, payload map[s
 	if err := r.ensureInboundRecordTx(ctx, tx, tag); err != nil {
 		return InboundMutationResult{}, err
 	}
+	if strings.ToLower(strings.TrimSpace(stringValue(inbound["protocol"]))) != AWGProtocol {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM amneziawg_devices WHERE inbound_tag = ?`, tag); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") && !strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
+			return InboundMutationResult{}, err
+		}
+	}
 	if err := r.setInboundUsageCoefficientTx(ctx, tx, tag, usageCoefficient); err != nil {
 		return InboundMutationResult{}, err
 	}
@@ -334,6 +345,9 @@ func (r Repository) DeleteInbound(ctx context.Context, tag string) (InboundMutat
 		return InboundMutationResult{}, err
 	}
 	if err := r.deleteInboundRecordTx(ctx, tx, tag); err != nil {
+		return InboundMutationResult{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM amneziawg_devices WHERE inbound_tag = ?`, tag); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") && !strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
 		return InboundMutationResult{}, err
 	}
 	if err := r.enqueueSyncForTargetsTx(ctx, tx, currentTargets); err != nil {
@@ -605,6 +619,17 @@ func (r Repository) prepareInboundPayload(payload map[string]any, enforceTag str
 		inbound["tag"] = tag
 		inbound["protocol"] = protocol
 		inbound = normalizeVirtualTunnelInbound(inbound)
+		if protocol == AWGProtocol {
+			settings := mapValue(inbound["settings"])
+			if strings.TrimSpace(stringValue(settings["h1"])) == "" {
+				headers, err := generateAWGHeaders()
+				if err != nil {
+					return nil, fmt.Errorf("%w: generate AmneziaWG headers: %v", ErrInvalidInbound, err)
+				}
+				settings["h1"], settings["h2"], settings["h3"], settings["h4"] = headers[0], headers[1], headers[2], headers[3]
+				inbound["settings"] = settings
+			}
+		}
 		if err := validateExecutableInbound(inbound); err != nil {
 			return nil, err
 		}
@@ -651,6 +676,28 @@ func (r Repository) prepareInboundPayload(payload map[string]any, enforceTag str
 		return nil, fmt.Errorf("inbound %q TLS certificate: %w", tag, err)
 	}
 	return inbound, nil
+}
+
+func generateAWGHeaders() ([4]string, error) {
+	var result [4]string
+	seen := map[uint32]struct{}{}
+	for index := range result {
+		for {
+			var raw [4]byte
+			if _, err := cryptorand.Read(raw[:]); err != nil {
+				return result, err
+			}
+			value := uint32(raw[0])<<24 | uint32(raw[1])<<16 | uint32(raw[2])<<8 | uint32(raw[3])
+			value = 100_000_000 + value%2_000_000_000
+			if _, exists := seen[value]; exists {
+				continue
+			}
+			seen[value] = struct{}{}
+			result[index] = strconv.FormatUint(uint64(value), 10)
+			break
+		}
+	}
+	return result, nil
 }
 
 func (r Repository) isReservedInboundTag(tag string) bool {

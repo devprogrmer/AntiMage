@@ -15,8 +15,12 @@ type AWGProfileRequest struct {
 }
 
 type AWGProfile struct {
+	HostTag     string `json:"host_tag,omitempty"`
+	HostName    string `json:"host_name,omitempty"`
+	InboundTag  string `json:"inbound_tag,omitempty"`
 	DeviceIndex int    `json:"device_index"`
 	Filename    string `json:"filename"`
+	DownloadURL string `json:"download_url,omitempty"`
 	Body        string `json:"body"`
 }
 

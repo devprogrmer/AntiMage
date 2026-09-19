@@ -82,3 +82,44 @@ func TestReconcileAmneziaWGDevicesRevokesTrimmedSlots(t *testing.T) {
 		t.Fatalf("persisted devices=%d want 1", rows)
 	}
 }
+
+func TestDeleteAmneziaWGDevicesOnlyDeletesOwnedUserRows(t *testing.T) {
+	db := openAWGDeviceTestDB(t)
+	repo := NewRepository(db, "sqlite")
+	if _, err := repo.ReconcileAmneziaWGDevices(context.Background(), "awg-main", 1, 2, "10.72.0.0/24", "10.72.0.1/24", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.ReconcileAmneziaWGDevices(context.Background(), "awg-main", 2, 1, "10.72.0.0/24", "10.72.0.1/24", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DeleteAmneziaWGDevices(context.Background(), "awg-main", 1); err != nil {
+		t.Fatal(err)
+	}
+	var deleted, preserved int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM amneziawg_devices WHERE user_id = 1`).Scan(&deleted); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM amneziawg_devices WHERE user_id = 2`).Scan(&preserved); err != nil {
+		t.Fatal(err)
+	}
+	if deleted != 0 || preserved != 1 {
+		t.Fatalf("deleted=%d preserved=%d", deleted, preserved)
+	}
+}
+
+func openAWGDeviceTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "awg-delete.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`CREATE TABLE amneziawg_devices (
+		inbound_tag TEXT NOT NULL, user_id INTEGER NOT NULL, device_index INTEGER NOT NULL,
+		private_key TEXT NOT NULL, public_key TEXT NOT NULL, preshared_key TEXT NOT NULL DEFAULT '',
+		address TEXT NOT NULL, generation INTEGER NOT NULL DEFAULT 1,
+		PRIMARY KEY (inbound_tag, user_id, device_index))`); err != nil {
+		t.Fatal(err)
+	}
+	return db
+}

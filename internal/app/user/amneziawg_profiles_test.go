@@ -33,3 +33,14 @@ func TestRenderAmneziaWGProfilesIncludesEveryDeviceAndObfuscationValue(t *testin
 		}
 	}
 }
+
+func TestResolveAmneziaWGDeviceProfilePath(t *testing.T) {
+	req, ok := resolvePrefixedSubscriptionPath("/sub/token/awg/edge-device-2.conf", "/sub/")
+	if !ok || req.ClientType != "amneziawg" || req.HostTag != "edge-device-2" {
+		t.Fatalf("request=%#v ok=%v", req, ok)
+	}
+	client, ok := NormalizeSubscriptionClientType("awg")
+	if !ok || client != "amneziawg" {
+		t.Fatalf("client=%q ok=%v", client, ok)
+	}
+}

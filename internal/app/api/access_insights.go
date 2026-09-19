@@ -449,6 +449,8 @@ func accessProtocolLabel(protocol string) string {
 		return "OpenVPN"
 	case "wg", "wireguard":
 		return "WireGuard"
+	case "awg", "amneziawg":
+		return "AmneziaWG"
 	case "l2tp":
 		return "L2TP/IPsec"
 	case "ikev2":

@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const defaultAmneziaWGPoolCIDR = "10.72.0.0/16"
@@ -50,6 +52,7 @@ type preparedAmneziaWGRuntime struct {
 	SourceCIDR    string
 	MTU           int
 	Obfuscation   amneziaWGObfuscation
+	Routing       wireGuardRoutingSpec
 	Inbound       amneziaWGRuntimeInbound
 }
 
@@ -133,6 +136,10 @@ func (s *Server) prepareAmneziaWGInbound(inbound amneziaWGRuntimeInbound) (prepa
 		return preparedAmneziaWGRuntime{}, err
 	}
 	configText := renderAmneziaWGAuditConfig(inbound, serverCIDR, mtu, obfs)
+	routing, err := buildWireGuardRoutingSpec(wireGuardRuntimeInbound{Tag: inbound.Tag, TunnelPort: inbound.TunnelPort, Settings: inbound.Settings}, interfaceName, pool.String())
+	if err != nil {
+		return preparedAmneziaWGRuntime{}, fmt.Errorf("%s", strings.Replace(err.Error(), "wireguard", "amneziawg", 1))
+	}
 	dir := filepath.Join(s.cfg.DataDir, "amneziawg", "runtime", amneziaWGRuntimeDirName(tag))
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg %q: create runtime directory: %w", tag, err)
@@ -141,7 +148,61 @@ func (s *Server) prepareAmneziaWGInbound(inbound amneziaWGRuntimeInbound) (prepa
 	if err := atomicWriteFile(path, []byte(configText), 0600); err != nil {
 		return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg %q: write runtime config: %w", tag, err)
 	}
-	return preparedAmneziaWGRuntime{Tag: tag, InterfaceName: interfaceName, ConfigPath: path, ConfigText: configText, ServerCIDR: serverCIDR, SourceCIDR: pool.String(), MTU: mtu, Obfuscation: obfs, Inbound: inbound}, nil
+	usageRaw, err := json.Marshal(amneziaWGUsageRuntimeConfig{InboundTag: tag, InterfaceName: interfaceName, Peers: amneziaWGPeerUserMap(inbound.Peers), PeerAddresses: amneziaWGPeerAddressMap(inbound.Peers), Policies: amneziaWGPeerPolicies(inbound.Peers), AccountingEnabled: wireGuardBoolSetting(inbound.Settings, "accounting_enabled", true)})
+	if err != nil {
+		return preparedAmneziaWGRuntime{}, err
+	}
+	if err := atomicWriteFile(filepath.Join(dir, "usage-helper.json"), usageRaw, 0600); err != nil {
+		return preparedAmneziaWGRuntime{}, err
+	}
+	return preparedAmneziaWGRuntime{Tag: tag, InterfaceName: interfaceName, ConfigPath: path, ConfigText: configText, ServerCIDR: serverCIDR, SourceCIDR: pool.String(), MTU: mtu, Obfuscation: obfs, Routing: routing, Inbound: inbound}, nil
+}
+
+func filterAmneziaWGRuntimeInboundByPolicy(inbound amneziaWGRuntimeInbound, now time.Time) amneziaWGRuntimeInbound {
+	filtered := inbound
+	filtered.Peers = make([]amneziaWGRuntimePeer, 0, len(inbound.Peers))
+	for _, peer := range inbound.Peers {
+		policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic}
+		if peer.DataLimit != nil {
+			policy.DataLimit = *peer.DataLimit
+		}
+		if peer.Expire != nil {
+			policy.Expire = *peer.Expire
+		}
+		if allowed, _ := nativeSessionUserPolicyAllowed(policy, now); allowed {
+			filtered.Peers = append(filtered.Peers, peer)
+		}
+	}
+	return filtered
+}
+
+func amneziaWGPeerUserMap(peers []amneziaWGRuntimePeer) map[string]int64 {
+	out := map[string]int64{}
+	for _, peer := range peers {
+		out[peer.PublicKey] = peer.UserID
+	}
+	return out
+}
+func amneziaWGPeerAddressMap(peers []amneziaWGRuntimePeer) map[string]string {
+	out := map[string]string{}
+	for _, peer := range peers {
+		out[peer.PublicKey] = peer.Address
+	}
+	return out
+}
+func amneziaWGPeerPolicies(peers []amneziaWGRuntimePeer) map[string]nativeSessionUserPolicy {
+	out := map[string]nativeSessionUserPolicy{}
+	for _, peer := range peers {
+		policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic}
+		if peer.DataLimit != nil {
+			policy.DataLimit = *peer.DataLimit
+		}
+		if peer.Expire != nil {
+			policy.Expire = *peer.Expire
+		}
+		out[peer.PublicKey] = policy
+	}
+	return out
 }
 
 func amneziaWGRuntimeAddressing(settings map[string]any) (netip.Prefix, string, error) {
@@ -249,7 +310,25 @@ func (s *Server) preflightAmneziaWGRuntimes(prepared []preparedAmneziaWGRuntime)
 	if len(prepared) == 0 {
 		return nil
 	}
-	return amneziaWGPlatformPreflight()
+	if err := amneziaWGPlatformPreflight(); err != nil {
+		return err
+	}
+	for _, item := range prepared {
+		if item.Routing.Mode != wireGuardRoutingNone {
+			if _, err := wireGuardRoutingLookPath("iptables"); err != nil {
+				return fmt.Errorf("amneziawg routing: iptables command not installed")
+			}
+			if _, err := wireGuardRoutingLookPath("sysctl"); err != nil {
+				return fmt.Errorf("amneziawg routing: sysctl command not installed")
+			}
+			if item.Routing.Mode == wireGuardRoutingTProxy {
+				if _, err := wireGuardRoutingLookPath("ip"); err != nil {
+					return fmt.Errorf("amneziawg tproxy: ip command not installed")
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Server) applyAmneziaWGRuntime(prepared preparedAmneziaWGRuntime) error {

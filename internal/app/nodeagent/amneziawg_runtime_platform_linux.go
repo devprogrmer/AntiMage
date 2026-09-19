@@ -105,3 +105,37 @@ func amneziaWGPlatformRemove(interfaceName string) error {
 	}
 	return netlink.LinkDel(link)
 }
+
+func amneziaWGPlatformSnapshot(interfaceName string) ([]wireGuardPeerCounters, error) {
+	client, err := wgctrl.New()
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	device, err := client.Device(interfaceName)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]wireGuardPeerCounters, 0, len(device.Peers))
+	for _, peer := range device.Peers {
+		endpoint := ""
+		if peer.Endpoint != nil {
+			endpoint = peer.Endpoint.String()
+		}
+		result = append(result, wireGuardPeerCounters{PublicKey: peer.PublicKey.String(), Endpoint: endpoint, LatestHandshake: peer.LastHandshakeTime.Unix(), ReceivedBytes: uint64(max(peer.ReceiveBytes, 0)), SentBytes: uint64(max(peer.TransmitBytes, 0))})
+	}
+	return result, nil
+}
+
+func amneziaWGPlatformRemovePeer(interfaceName, publicKey string) error {
+	key, err := wgtypes.ParseKey(publicKey)
+	if err != nil {
+		return err
+	}
+	client, err := wgctrl.New()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	return client.ConfigureDevice(interfaceName, wgtypes.Config{Peers: []wgtypes.PeerConfig{{PublicKey: key, Remove: true}}})
+}
