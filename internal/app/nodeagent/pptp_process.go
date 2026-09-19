@@ -5,17 +5,24 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 )
 
+const (
+	pptpCHAPBlockStart = "# BEGIN ANTIMAGE PPTP CHAP"
+	pptpCHAPBlockEnd   = "# END ANTIMAGE PPTP CHAP"
+)
+
 var (
-	pptpCommandContext = exec.CommandContext
-	pptpLookPath       = exec.LookPath
-	pptpStartupGrace   = 300 * time.Millisecond
-	pptpShutdownGrace  = 3 * time.Second
-	pptpKillGrace      = 2 * time.Second
+	pptpCommandContext  = exec.CommandContext
+	pptpLookPath        = exec.LookPath
+	pptpStartupGrace    = 300 * time.Millisecond
+	pptpShutdownGrace   = 3 * time.Second
+	pptpKillGrace       = 2 * time.Second
+	pptpCHAPSecretsPath = "/etc/ppp/chap-secrets"
 )
 
 type pptpProcess struct {
@@ -50,10 +57,114 @@ func (r *pptpProcess) waitError() error {
 	return r.waitErr
 }
 
-func (s *Server) startPPTPInbound(tag, configPath string) error {
+func renderPPTPSystemCHAPSecrets(runtimes []preparedPPTPRuntime) string {
+	parts := make([]string, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		parts = append(parts, runtime.CHAPSecrets)
+	}
+	return dedupePPTPCHAPSecrets(strings.Join(parts, "\n"))
+}
+
+func dedupePPTPCHAPSecrets(chapSecrets string) string {
+	seen := make(map[string]struct{})
+	var b strings.Builder
+	for _, line := range strings.Split(chapSecrets, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if _, ok := seen[line]; ok {
+			continue
+		}
+		seen[line] = struct{}{}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func updatePPTPManagedBlock(path, body string) error {
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	text := string(existing)
+	block := pptpCHAPBlockStart + "\n"
+	if strings.TrimSpace(body) != "" {
+		block += strings.TrimRight(body, "\n") + "\n"
+	}
+	block += pptpCHAPBlockEnd + "\n"
+
+	startIndex := strings.Index(text, pptpCHAPBlockStart)
+	endIndex := strings.Index(text, pptpCHAPBlockEnd)
+	if startIndex >= 0 && endIndex > startIndex {
+		endIndex += len(pptpCHAPBlockEnd)
+		before := strings.TrimRight(text[:startIndex], "\n")
+		after := strings.TrimLeft(text[endIndex:], "\n")
+		switch {
+		case before != "" && after != "":
+			text = before + "\n" + block + after
+		case before != "":
+			text = before + "\n" + block
+		case after != "":
+			text = block + after
+		default:
+			text = block
+		}
+	} else {
+		if strings.TrimSpace(text) != "" {
+			text = strings.TrimRight(text, "\n") + "\n"
+		}
+		text += block
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".chap-secrets-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.WriteString(text); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0600)
+}
+
+func installPPTPSystemCHAPSecrets(chapSecrets string) error {
+	return updatePPTPManagedBlock(pptpCHAPSecretsPath, dedupePPTPCHAPSecrets(chapSecrets))
+}
+
+func clearPPTPSystemCHAPSecrets() error {
+	return updatePPTPManagedBlock(pptpCHAPSecretsPath, "")
+}
+
+func (s *Server) startPPTPInbound(tag, configPath, chapSecrets string) error {
 	tag = strings.TrimSpace(tag)
 	if tag == "" {
 		return fmt.Errorf("pptp runtime tag is required")
+	}
+	if err := installPPTPSystemCHAPSecrets(chapSecrets); err != nil {
+		return fmt.Errorf("pptp %q: install chap secrets: %w", tag, err)
 	}
 	pptpdPath, err := pptpLookPath("pptpd")
 	if err != nil {

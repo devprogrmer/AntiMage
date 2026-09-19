@@ -69,10 +69,11 @@ type preparedL2TPRuntime struct {
 }
 
 type preparedPPTPRuntime struct {
-	Tag        string
-	ConfigPath string
-	TProxy     openVPNTProxySpec
-	NAT        openVPNNATSpec
+	Tag         string
+	ConfigPath  string
+	CHAPSecrets string
+	TProxy      openVPNTProxySpec
+	NAT         openVPNNATSpec
 }
 
 func parseNativeRuntimePayload(raw string) (nativeRuntimePayload, error) {
@@ -326,10 +327,11 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		pptpPrepared = append(
 			pptpPrepared,
 			preparedPPTPRuntime{
-				Tag:        tag,
-				ConfigPath: configPath,
-				TProxy:     tproxy,
-				NAT:        nat,
+				Tag:         tag,
+				ConfigPath:  configPath,
+				CHAPSecrets: renderPPTPCHAPSecrets(inbound.Users),
+				TProxy:      tproxy,
+				NAT:         nat,
 			},
 		)
 	}
@@ -372,6 +374,11 @@ func (s *Server) applyNativeRuntime(raw string) error {
 	s.stopRemovedPPTPRuntimes(pptpDesired)
 	s.stopRemovedPPTPTProxySpecs(pptpDesired)
 	s.stopRemovedPPTPNATSpecs(pptpDesired)
+	if len(pptpDesired) == 0 {
+		if err := clearPPTPSystemCHAPSecrets(); err != nil {
+			s.appendLog("clear PPTP chap secrets failed: " + err.Error())
+		}
+	}
 
 	for _, runtime := range wgPrepared {
 		if err := s.applyWireGuardRuntime(runtime); err != nil {
@@ -422,6 +429,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		}
 	}
 
+	pptpCHAPSecrets := renderPPTPSystemCHAPSecrets(pptpPrepared)
 	for _, runtime := range pptpPrepared {
 		if err := s.applyPPTPTProxy(runtime.Tag, runtime.TProxy); err != nil {
 			return err
@@ -430,7 +438,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 			_ = s.removePPTPTProxyForTag(runtime.Tag)
 			return err
 		}
-		if err := s.startPPTPInbound(runtime.Tag, runtime.ConfigPath); err != nil {
+		if err := s.startPPTPInbound(runtime.Tag, runtime.ConfigPath, pptpCHAPSecrets); err != nil {
 			_ = s.removePPTPTProxyForTag(runtime.Tag)
 			_ = s.removePPTPNATForTag(runtime.Tag)
 			return err

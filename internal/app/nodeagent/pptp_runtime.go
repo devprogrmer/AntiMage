@@ -42,7 +42,6 @@ type pptpRuntimeUser struct {
 type pptpRuntimeFiles struct {
 	Config        string
 	PPPOptions    string
-	CHAPSecrets   string
 	IPUpScript    string
 	IPDownScript  string
 	SessionConfig string
@@ -74,15 +73,10 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 	files := pptpRuntimeFiles{
 		Config:        filepath.Join(root, "pptpd.conf"),
 		PPPOptions:    filepath.Join(root, "ppp-options"),
-		CHAPSecrets:   filepath.Join(root, "chap-secrets"),
 		IPUpScript:    filepath.Join(root, "ip-up.sh"),
 		IPDownScript:  filepath.Join(root, "ip-down.sh"),
 		SessionConfig: filepath.Join(root, "session-helper.json"),
 		UsageConfig:   filepath.Join(root, "usage-helper.json"),
-	}
-
-	if err := os.WriteFile(files.CHAPSecrets, []byte(renderPPTPCHAPSecrets(inbound.Users)), 0600); err != nil {
-		return "", err
 	}
 
 	usageUsers := make(map[string]int64)
@@ -206,7 +200,6 @@ func renderPPTPPPPOptions(inbound pptpRuntimeInbound, files pptpRuntimeFiles, lo
 	line("refuse-mschap")
 	line("require-mschap-v2")
 	line("require-mppe-128")
-	line("chap-secrets " + filepath.ToSlash(files.CHAPSecrets))
 	line("ms-dns " + strings.Join(l2TPStringListSetting(inbound.Settings, "dns_servers", []string{"1.1.1.1", "8.8.8.8"}), "\nms-dns "))
 	line("mtu " + strconv.Itoa(l2TPIntSetting(inbound.Settings, "mtu", 1410)))
 	line("mru " + strconv.Itoa(l2TPIntSetting(inbound.Settings, "mru", 1410)))
