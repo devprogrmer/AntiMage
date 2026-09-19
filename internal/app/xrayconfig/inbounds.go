@@ -597,6 +597,11 @@ func (r Repository) prepareInboundPayload(payload map[string]any, enforceTag str
 		return nil, fmt.Errorf("%w: unsupported protocol %q", ErrInvalidInbound, protocol)
 	}
 	if isVirtualTunnelProtocol(protocol) {
+		if protocol == AWGProtocol {
+			if _, exists := inbound["port"]; !exists {
+				inbound["port"] = 51821
+			}
+		}
 		inbound["tag"] = tag
 		inbound["protocol"] = protocol
 		inbound = normalizeVirtualTunnelInbound(inbound)

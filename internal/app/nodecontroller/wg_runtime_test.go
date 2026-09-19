@@ -101,3 +101,9 @@ updated_at
 		)
 	}
 }
+
+func TestProtocolRuntimeKeepsAmneziaWGIndependent(t *testing.T) {
+	if reflect.TypeOf(AWGRuntime{}) == reflect.TypeOf(WGRuntime{}) {
+		t.Fatal("AmneziaWG runtime must have an independent type")
+	}
+}

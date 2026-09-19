@@ -21,7 +21,7 @@ func TestAllReturnsIndependentSlice(t *testing.T) {
 }
 
 func TestRegistryMarksNonConstructibleWireGuardVariants(t *testing.T) {
-	for _, id := range []string{"wg-c", "amneziawg", "awg"} {
+	for _, id := range []string{"wg-c"} {
 		definition, ok := Find(id)
 		if !ok {
 			t.Fatalf("protocol %q is missing from the AntiMage registry", id)
@@ -32,6 +32,20 @@ func TestRegistryMarksNonConstructibleWireGuardVariants(t *testing.T) {
 		if definition.Inbound || definition.Subscription || definition.TrafficAccounting {
 			t.Fatalf("protocol %q exposes constructible inbound capabilities: %#v", id, definition)
 		}
+	}
+
+	awg, ok := Find("amneziawg")
+	if !ok {
+		t.Fatal("amneziawg is missing from the AntiMage registry")
+	}
+	if awg.Constructible != nil && !*awg.Constructible {
+		t.Fatalf("amneziawg must be constructible: %#v", awg)
+	}
+	if !awg.Inbound || !awg.Subscription || !awg.TrafficAccounting {
+		t.Fatalf("amneziawg capabilities are incomplete: %#v", awg)
+	}
+	if awg.DefaultPort != 51821 || awg.Network != "udp" {
+		t.Fatalf("amneziawg listener defaults = %d/%s, want 51821/udp", awg.DefaultPort, awg.Network)
 	}
 
 	definition, ok := Find("wireguard")

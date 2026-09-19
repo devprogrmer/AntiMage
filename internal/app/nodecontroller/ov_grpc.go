@@ -41,6 +41,10 @@ func (c Controller) runtimeConfigRequestFromInbounds(ctx context.Context, node N
 	if err != nil {
 		return nil, fmt.Errorf("WireGuard runtime: %w", err)
 	}
+	awgRuntime, err := c.repo.awgRuntime(ctx, node.ID, inbounds)
+	if err != nil {
+		return nil, fmt.Errorf("AmneziaWG runtime: %w", err)
+	}
 	ikev2Runtime, err := c.repo.remoteAccessRuntimeFromInbounds(ctx, node.ID, xrayconfig.IKEv2Protocol, inbounds)
 	if err != nil {
 		return nil, fmt.Errorf("IKEv2 runtime: %w", err)
@@ -64,6 +68,8 @@ func (c Controller) runtimeConfigRequestFromInbounds(ctx context.Context, node N
 		"pptp_generated":       pptpRuntime.GeneratedAt,
 		"wg_inbounds":          wgRuntime.Inbounds,
 		"wg_generated":         wgRuntime.GeneratedAt,
+		"awg_inbounds":         awgRuntime.Inbounds,
+		"awg_generated":        awgRuntime.GeneratedAt,
 		"ikev2_inbounds":       ikev2Runtime.Inbounds,
 		"ikev2_generated":      ikev2Runtime.GeneratedAt,
 		"anyconnect_inbounds":  anyConnectRuntime.Inbounds,

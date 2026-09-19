@@ -61,8 +61,10 @@ func (c Controller) WGRuntime(ctx context.Context, nodeID int64) (WGRuntime, err
 // families that AntiMage manages through the node controller.
 func (c Controller) ProtocolRuntime(ctx context.Context, nodeID int64, protocol string) (any, error) {
 	switch strings.ToLower(strings.TrimSpace(protocol)) {
-	case "wireguard", "wg", "amneziawg", "awg":
+	case "wireguard", "wg":
 		return c.repo.WGRuntime(ctx, nodeID)
+	case "amneziawg", "awg":
+		return c.repo.AWGRuntime(ctx, nodeID)
 	case "openvpn", "ov":
 		return c.repo.OVRuntime(ctx, nodeID)
 	case "l2tp", "l2tp-ipsec":

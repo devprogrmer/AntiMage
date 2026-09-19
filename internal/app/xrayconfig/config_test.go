@@ -57,6 +57,53 @@ func testConfig() map[string]any {
 	}
 }
 
+func TestNormalizeAmneziaWGSettingsUsesIndependentDefaults(t *testing.T) {
+	inbound := normalizeVirtualTunnelInbound(map[string]any{
+		"tag": "awg-main", "protocol": "amneziawg", "port": 51821,
+		"settings": map[string]any{
+			"privateKey":    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+			"serverAddress": "10.72.0.1/24",
+			"dnsServers":    []any{"1.1.1.1"},
+		},
+	})
+	settings := mapValue(inbound["settings"])
+	for key, want := range map[string]int{"jc": 4, "jmin": 8, "jmax": 80, "s1": 77, "s2": 90, "mtu": 1420, "persistent_keepalive": 25} {
+		if got := intValue(settings[key]); got != want {
+			t.Fatalf("%s=%d want %d; settings=%#v", key, got, want, settings)
+		}
+	}
+	if got := stringValue(settings["ipv4_pool_cidr"]); got != "10.72.0.0/16" {
+		t.Fatalf("ipv4_pool_cidr=%q want 10.72.0.0/16", got)
+	}
+	if got := stringValue(settings["server_address"]); got != "10.72.0.1/24" {
+		t.Fatalf("server_address=%q", got)
+	}
+	if got := normalizeStringAnyList(settings["dns_servers"]); len(got) != 1 || stringValue(got[0]) != "1.1.1.1" {
+		t.Fatalf("dns_servers=%#v", got)
+	}
+}
+
+func TestValidateAmneziaWGRejectsInvalidObfuscationAndHeaders(t *testing.T) {
+	base := map[string]any{
+		"tag": "awg-main", "protocol": "amneziawg", "port": 51821,
+		"settings": map[string]any{
+			"private_key":    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+			"server_address": "10.72.0.1/24", "ipv4_pool_cidr": "10.72.0.0/16",
+			"tproxy_enabled": false,
+			"jc":             4, "jmin": 80, "jmax": 8, "s1": 77, "s2": 90,
+			"h1": "1234567", "h2": "1234567", "h3": "7654321", "h4": "3456789",
+		},
+	}
+	if err := validateVirtualTunnelInbound("awg-main", base); err == nil || !strings.Contains(err.Error(), "jmin") {
+		t.Fatalf("expected jmin/jmax validation error, got %v", err)
+	}
+	settings := mapValue(base["settings"])
+	settings["jmin"], settings["jmax"] = 8, 80
+	if err := validateVirtualTunnelInbound("awg-main", base); err == nil || !strings.Contains(err.Error(), "distinct") {
+		t.Fatalf("expected distinct header validation error, got %v", err)
+	}
+}
+
 func TestParseValidConfigResolvesInbounds(t *testing.T) {
 	cfg, err := Parse(testConfig(), Options{})
 	if err != nil {
