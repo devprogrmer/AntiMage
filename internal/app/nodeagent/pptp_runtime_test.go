@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -84,7 +85,7 @@ func TestPreparePPTPInboundRendersDaemonConfigs(t *testing.T) {
 	for _, expected := range []string{
 		"option " + filepath.ToSlash(filepath.Join(root, "ppp-options")),
 		"localip 10.68.0.1",
-		"remoteip 10.68.0.2-10.68.0.254",
+		"remoteip 10.68.0.2-254",
 	} {
 		if !strings.Contains(string(rawPPTPD), expected) {
 			t.Fatalf("pptpd config missing %q:\n%s", expected, rawPPTPD)
@@ -219,5 +220,18 @@ func TestApplyPPTPNATUsesRuntimePoolCIDR(t *testing.T) {
 	}
 	if !commandsContain(commands, "iptables -w 5 -t nat -A "+pptpNATChain+" -s 10.68.0.0/24 -j MASQUERADE") {
 		t.Fatalf("missing PPTP MASQUERADE rule:\n%s", strings.Join(commands, "\n"))
+	}
+}
+
+func TestPPTPRemoteIPRange24(t *testing.T) {
+	prefix := netip.MustParsePrefix("10.68.0.0/24")
+
+	got, err := pptpRemoteIPRange(prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got != "10.68.0.2-254" {
+		t.Fatalf("got %q, want %q", got, "10.68.0.2-254")
 	}
 }
