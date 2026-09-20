@@ -3397,7 +3397,213 @@
                     repeat(
                         auto-fit,
                         minmax(92px, 1fr)
+                );
+            }
+        }
+
+        /* ============================================================
+           AntiMage Mobile Performance Profile v5
+           ============================================================ */
+
+        html,
+        body {
+            max-width: 100%;
+            overflow-x: clip;
+        }
+
+        @media (max-width: 700px) {
+            body.am-theme-dark {
+                background:
+                    radial-gradient(
+                        circle at 8% 0,
+                        rgba(221, 40, 134, .14),
+                        transparent 20rem
+                    ),
+                    linear-gradient(
+                        145deg,
+                        #080a11 0%,
+                        #07111b 58%,
+                        #080b13 100%
                     );
+                background-attachment: scroll;
+            }
+
+            body.am-theme-dark::before {
+                display: none;
+            }
+
+            .am-shell {
+                width: 100%;
+                max-width: 100%;
+                padding: 0 10px 28px;
+                overflow: clip;
+            }
+
+            .am-premium-topbar {
+                min-width: 0;
+                min-height: 58px;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 8px;
+                padding-inline: 2px;
+                background: rgba(7, 11, 18, .98);
+                backdrop-filter: none;
+            }
+
+            .am-premium-brand {
+                min-width: 0;
+                gap: 8px;
+                font-size: 16px;
+            }
+
+            .am-premium-logo {
+                width: 27px;
+                height: 27px;
+                flex-basis: 27px;
+                filter: none;
+            }
+
+            .am-premium-topbar-actions {
+                min-width: 0;
+                gap: 6px;
+            }
+
+            .am-premium-circle-button {
+                width: 34px;
+                height: 34px;
+                flex: 0 0 34px;
+            }
+
+            .am-premium-user-chip {
+                display: none;
+            }
+
+            .am-premium-hero {
+                min-width: 0;
+                min-height: 0;
+                gap: 0;
+                overflow: clip;
+            }
+
+            .am-premium-hero-copy {
+                width: 100%;
+                max-width: 100%;
+                padding: 24px 0 20px;
+            }
+
+            .am-premium-eyebrow {
+                margin-bottom: 10px;
+                font-size: 9px;
+                letter-spacing: .12em;
+            }
+
+            .am-premium-headline {
+                width: 100%;
+                max-width: 100%;
+                font-size: clamp(34px, 10.8vw, 43px);
+                line-height: 1.04;
+                letter-spacing: 0;
+                overflow-wrap: break-word;
+            }
+
+            .am-premium-description {
+                width: 100%;
+                max-width: 100%;
+                margin: 14px 0 18px;
+                font-size: 13px;
+                line-height: 1.55;
+                overflow-wrap: anywhere;
+            }
+
+            .am-premium-benefits {
+                gap: 7px;
+            }
+
+            .am-premium-benefit {
+                min-width: 0;
+                font-size: 11px;
+            }
+
+            .am-premium-benefit-icon {
+                width: 32px;
+                height: 32px;
+                flex: 0 0 32px;
+                box-shadow: none;
+            }
+
+            .am-premium-orb {
+                display: none;
+            }
+
+            .am-premium-identity,
+            .am-usage-block,
+            .am-account-block,
+            .am-premium-quick-actions,
+            .am-app-downloads.am-panel-card,
+            .am-main-grid > .am-stack:first-child > .am-panel-card {
+                min-width: 0;
+                border-radius: 12px;
+                box-shadow: 0 10px 28px rgba(0, 0, 0, .2);
+                backdrop-filter: none;
+            }
+
+            .am-premium-identity {
+                min-height: 0;
+                padding: 16px;
+            }
+
+            .am-overview {
+                gap: 10px;
+            }
+
+            .am-usage-block,
+            .am-account-block,
+            .am-premium-quick-actions {
+                padding: 14px !important;
+            }
+
+            .am-premium-usage-layout {
+                grid-template-columns: 1fr;
+                gap: 14px;
+            }
+
+            .am-app-downloads,
+            .am-main-grid {
+                content-visibility: auto;
+                contain-intrinsic-size: 1px 720px;
+            }
+
+            .am-premium-action,
+            .am-app-item,
+            .am-premium-protocol-card,
+            .am-protocol-tab {
+                transition: none !important;
+            }
+        }
+
+        @media (max-width: 380px) {
+            .am-shell {
+                padding-inline: 8px;
+            }
+
+            .am-premium-headline {
+                font-size: 34px;
+            }
+
+            .am-premium-circle-button {
+                width: 32px;
+                height: 32px;
+                flex-basis: 32px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                scroll-behavior: auto !important;
+                animation-duration: .01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
             }
         }
 
