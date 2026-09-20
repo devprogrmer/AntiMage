@@ -28,31 +28,31 @@
   --am-font-stack: var(--am-font-ltr);
   --am-dialog-viewport-height: 100dvh;
   --am-dialog-safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
-  --am-panel-bg: #0b1118;
-  --am-panel-main: #0e151d;
-  --am-panel-sidebar: #121d26;
-  --am-panel-surface: #17232d;
-  --am-panel-elevated: #1d2c37;
-  --am-panel-border: #2b3a45;
-  --am-panel-border-strong: #3c505d;
+  --am-panel-bg: #070b12;
+  --am-panel-main: #07111b;
+  --am-panel-sidebar: #0d1722;
+  --am-panel-surface: #0d1722;
+  --am-panel-elevated: #111d29;
+  --am-panel-border: rgba(139, 157, 184, 0.18);
+  --am-panel-border-strong: rgba(139, 157, 184, 0.34);
   --am-panel-text: #eef5f4;
   --am-panel-text-secondary: #c2d0d1;
   --am-panel-text-muted: #81939a;
-  --am-panel-accent: #f05e63;
-  --am-panel-accent-hover: #ff7377;
-  --am-panel-row-hover: #1a2933;
-  --am-panel-row-selected: #17242e;
+  --am-panel-accent: #ef3f98;
+  --am-panel-accent-hover: #ff78bd;
+  --am-panel-row-hover: #111d29;
+  --am-panel-row-selected: #151b2a;
   --am-sidebar-offset: 0px;
-  --primary-50: #fff0f0;
-  --primary-100: #ffd5d6;
-  --primary-200: #ffb0b2;
-  --primary-300: #ff8c8f;
-  --primary-400: #f9767b;
-  --primary-500: #f05e63;
-  --primary-600: #d84852;
-  --primary-700: #b83846;
-  --primary-800: #8f2d3a;
-  --primary-900: #64232e;
+  --primary-50: #fff0f8;
+  --primary-100: #ffd1e8;
+  --primary-200: #ffa3cf;
+  --primary-300: #ff78bd;
+  --primary-400: #f75aa8;
+  --primary-500: #ef3f98;
+  --primary-600: #d92c83;
+  --primary-700: #b91f6d;
+  --primary-800: #911b57;
+  --primary-900: #681640;
   --am-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --am-ease-standard: cubic-bezier(0.77, 0, 0.175, 1);
   --am-duration-fast: 140ms;
@@ -61,18 +61,18 @@
 
 .am-theme-dark,
 .chakra-ui-dark {
-  --am-panel-bg: #0b1118;
-  --am-panel-main: #0e151d;
-  --am-panel-sidebar: #121d26;
-  --am-panel-surface: #17232d;
-  --am-panel-elevated: #1d2c37;
-  --am-panel-border: #2b3a45;
-  --am-panel-border-strong: #3c505d;
+  --am-panel-bg: #070b12;
+  --am-panel-main: #07111b;
+  --am-panel-sidebar: #0d1722;
+  --am-panel-surface: #0d1722;
+  --am-panel-elevated: #111d29;
+  --am-panel-border: rgba(139, 157, 184, 0.18);
+  --am-panel-border-strong: rgba(139, 157, 184, 0.34);
   --am-panel-text: #eef5f4;
   --am-panel-text-secondary: #c2d0d1;
   --am-panel-text-muted: #81939a;
-  --am-panel-row-hover: #1a2933;
-  --am-panel-row-selected: #17242e;
+  --am-panel-row-hover: #111d29;
+  --am-panel-row-selected: #151b2a;
 }
 
 .am-theme-light,
@@ -110,6 +110,15 @@ html[dir="rtl"] body,
 html[dir="rtl"] #root,
 [dir="rtl"] {
   --am-font-stack: var(--am-font-rtl);
+  font-family: var(--am-font-rtl);
+}
+
+html[dir="ltr"],
+html[dir="ltr"] body,
+html[dir="ltr"] #root,
+[dir="ltr"] {
+  --am-font-stack: var(--am-font-ltr);
+  font-family: var(--am-font-ltr);
 }
 
 * {

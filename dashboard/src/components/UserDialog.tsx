@@ -26,7 +26,6 @@ import {
 	ModalOverlay,
 	SlideFade,
 	Spinner,
-	Stack,
 	Switch,
 	Tab,
 	TabList,
@@ -234,7 +233,8 @@ const formatUser = (user: User): FormType => {
 			: user.data_limit,
 
 		ip_limit: user.ip_limit && user.ip_limit > 0 ? user.ip_limit : null,
-		device_limit: user.device_limit && user.device_limit > 0 ? user.device_limit : null,
+		device_limit:
+			user.device_limit && user.device_limit > 0 ? user.device_limit : null,
 
 		on_hold_expire_duration: user.on_hold_expire_duration
 			? Number(user.on_hold_expire_duration / (24 * 60 * 60))
@@ -473,7 +473,9 @@ const buildSchema = (isEditing: boolean) => {
 		device_limit: z
 			.union([z.number().int().min(0), z.null()])
 			.optional()
-			.transform((value) => typeof value === "number" && Number.isFinite(value) ? value : null),
+			.transform((value) =>
+				typeof value === "number" && Number.isFinite(value) ? value : null,
+			),
 
 		manual_key_entry: z.boolean().default(false),
 
@@ -557,9 +559,7 @@ const buildSchema = (isEditing: boolean) => {
 
 export const UserDialog: FC<UserDialogProps> = () => {
 	const editingUser = useDashboard((state) => state.editingUser);
-	const isCreatingNewUser = useDashboard(
-		(state) => state.isCreatingNewUser,
-	);
+	const isCreatingNewUser = useDashboard((state) => state.isCreatingNewUser);
 	const onCreateUser = useDashboard((state) => state.onCreateUser);
 	const editUser = useDashboard((state) => state.editUser);
 	const fetchUserUsage = useDashboard((state) => state.fetchUserUsage);
@@ -572,9 +572,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const activeUsersCount = useDashboard(
 		(state) => state.users.active_total ?? null,
 	);
-	const isUserLimitReached = useDashboard(
-		(state) => state.isUserLimitReached,
-	);
+	const isUserLimitReached = useDashboard((state) => state.isUserLimitReached);
 	const linkTemplates = useDashboard((state) => state.linkTemplates);
 	const setQRCode = useDashboard((state) => state.setQRCode);
 	const setSubLink = useDashboard((state) => state.setSubLink);
@@ -1653,7 +1651,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 				? Math.floor(ip_limit)
 				: 0;
 		const normalizedDeviceLimit =
-			typeof device_limit === "number" && Number.isFinite(device_limit) && device_limit > 0
+			typeof device_limit === "number" &&
+			Number.isFinite(device_limit) &&
+			device_limit > 0
 				? Math.floor(device_limit)
 				: 0;
 
@@ -1967,7 +1967,15 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		<Modal
 			isOpen={isOpen}
 			onClose={onClose}
-			size={isMobileDialog ? "full" : shouldCompactModal ? "lg" : "2xl"}
+			size={
+				isMobileDialog
+					? "full"
+					: shouldCompactModal
+						? "lg"
+						: useTwoColumns
+							? "3xl"
+							: "2xl"
+			}
 			scrollBehavior="inside"
 		>
 			<ModalOverlay bg="blackAlpha.300" />
@@ -2380,13 +2388,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																</FormControl>
 															</Flex>
 
-															<Stack
-																direction={{ base: "column", md: "row" }}
-																spacing={4}
+															<Grid
+																templateColumns={{
+																	base: "minmax(0, 1fr)",
+																	sm: "repeat(2, minmax(0, 1fr))",
+																}}
+																gap={3}
 																mb={"10px"}
 															>
 																<FormControl
-																	flex="1"
+																	gridColumn={{ base: "auto", sm: "1 / -1" }}
 																	isInvalid={
 																		!!form.formState.errors.data_limit?.message
 																	}
@@ -2527,26 +2538,64 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																			/>
 																		)}
 																	/>
-																	</FormControl>
-																	<FormControl flex="1">
-																		<FormLabel display="flex" alignItems="center" gap={2} textAlign={isRTL ? "right" : "left"}>
-																			{t("userDialog.deviceLimitLabel")}
-																			<Tooltip hasArrow placement="top" label={t("userDialog.deviceLimitHint")}>
-																				<chakra.span color="gray.400" cursor="help"><QuestionMarkCircleIcon width={16} height={16} /></chakra.span>
-																			</Tooltip>
-																		</FormLabel>
-																		<Controller
-																			control={form.control}
-																			name="device_limit"
-																			render={({ field }) => (
-																				<Input size="sm" borderRadius="6px" placeholder={t("userDialog.deviceLimitPlaceholder")}
-																					value={typeof field.value === "number" && field.value > 0 ? String(field.value) : ""}
-																					onChange={(event) => { const raw = event.target.value.trim(); if (!raw) return field.onChange(null); if (/^\d+$/.test(raw)) field.onChange(Number(raw)); }}
-																					disabled={disabled} error={form.formState.errors.device_limit?.message} dir="ltr" />
-																			)}
-																		/>
-																	</FormControl>
-																</Stack>
+																</FormControl>
+																<FormControl flex="1">
+																	<FormLabel
+																		display="flex"
+																		alignItems="center"
+																		gap={2}
+																		textAlign={isRTL ? "right" : "left"}
+																	>
+																		{t("userDialog.deviceLimitLabel")}
+																		<Tooltip
+																			hasArrow
+																			placement="top"
+																			label={t("userDialog.deviceLimitHint")}
+																		>
+																			<chakra.span
+																				color="gray.400"
+																				cursor="help"
+																			>
+																				<QuestionMarkCircleIcon
+																					width={16}
+																					height={16}
+																				/>
+																			</chakra.span>
+																		</Tooltip>
+																	</FormLabel>
+																	<Controller
+																		control={form.control}
+																		name="device_limit"
+																		render={({ field }) => (
+																			<Input
+																				size="sm"
+																				borderRadius="6px"
+																				placeholder={t(
+																					"userDialog.deviceLimitPlaceholder",
+																				)}
+																				value={
+																					typeof field.value === "number" &&
+																					field.value > 0
+																						? String(field.value)
+																						: ""
+																				}
+																				onChange={(event) => {
+																					const raw = event.target.value.trim();
+																					if (!raw) return field.onChange(null);
+																					if (/^\d+$/.test(raw))
+																						field.onChange(Number(raw));
+																				}}
+																				disabled={disabled}
+																				error={
+																					form.formState.errors.device_limit
+																						?.message
+																				}
+																				dir="ltr"
+																			/>
+																		)}
+																	/>
+																</FormControl>
+															</Grid>
 
 															<Collapse
 																in={!!(dataLimit && dataLimit > 0)}
@@ -2893,7 +2942,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																	</Text>
 																</HStack>
 															) : hasServices ? (
-																<VStack align="stretch" spacing={3}>
+																<VStack
+																	align="stretch"
+																	spacing={2}
+																	maxH="360px"
+																	overflowY="auto"
+																	pe={1}
+																>
 																	{services.map((service) => {
 																		const isSelected =
 																			selectedServiceId === service.id;
@@ -2938,7 +2993,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																				}}
 																				borderWidth="1px"
 																				borderRadius="md"
-																				p={4}
+																				p={3}
 																				borderColor={
 																					isSelected
 																						? "primary.500"
