@@ -3540,6 +3540,18 @@ install_binary_antimage() {
     mkdir -p "$BINARY_BIN_DIR" "$DATA_DIR" "$APP_DIR/scripts"
     install -m 755 "$tmp_dir/antimage-server" "$BINARY_SERVER"
     install -m 755 "$tmp_dir/antimage-cli" "$BINARY_CLI"
+
+    # Install/update runtime templates shipped with binary packages.
+    if [ -d "$tmp_dir/templates" ]; then
+        mkdir -p "$APP_DIR/templates"
+        cp -a "$tmp_dir/templates/." "$APP_DIR/templates/"
+    else
+        mkdir -p "$APP_DIR/templates/subscription"
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+            "$ANTIMAGE_RAW_BASE/templates/subscription/index.html" \
+            -o "$APP_DIR/templates/subscription/index.html"
+    fi
+
     install_binary_cli_launcher
 
     if [ ! -f "$ENV_FILE" ]; then
