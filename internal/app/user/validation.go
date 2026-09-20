@@ -290,6 +290,9 @@ func validateUserBase(payload *UserPayloadBase, catalog MutationContext) error {
 		zero := int64(0)
 		payload.IPLimit = &zero
 	}
+	if payload.DeviceLimit != nil && *payload.DeviceLimit < 0 {
+		return ValidationError{Detail: "device_limit must be a non-negative integer"}
+	}
 	if payload.OnHoldExpireDuration != nil && *payload.OnHoldExpireDuration <= 0 {
 		payload.OnHoldExpireDuration = nil
 	}

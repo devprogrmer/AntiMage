@@ -135,6 +135,7 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			on_hold_timeout DATETIME NULL,
 			on_hold_expire_duration BIGINT NULL,
 			ip_limit INTEGER NOT NULL DEFAULT 0,
+			device_limit INTEGER NOT NULL DEFAULT 0,
 			last_status_change DATETIME NULL,
 			admin_disabled_at DATETIME NULL,
 			service_limit_disabled_at DATETIME NULL,

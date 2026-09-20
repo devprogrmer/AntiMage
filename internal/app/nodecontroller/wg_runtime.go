@@ -29,6 +29,7 @@ type WGRuntimeInbound struct {
 
 type WGRuntimePeer struct {
 	UserID                int64  `json:"user_id"`
+	DeviceIndex           int    `json:"device_index"`
 	Username              string `json:"username"`
 	PublicKey             string `json:"public_key"`
 	PresharedKey          string `json:"preshared_key,omitempty"`
@@ -209,7 +210,7 @@ func (r Repository) WGUsersForServices(ctx context.Context, inboundTag string, s
 		args = append(args, id)
 	}
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, username, COALESCE(credential_key, ''), status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(ip_limit, 0)
+SELECT id, username, COALESCE(credential_key, ''), status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(device_limit, 0)
 FROM users
 WHERE status IN ('active', 'on_hold')
   AND service_id IN (`+strings.Join(placeholders, ",")+`)
@@ -218,7 +219,11 @@ ORDER BY id`, args...)
 		return nil, err
 	}
 	defer rows.Close()
-	peers := []WGRuntimePeer{}
+	type runtimeUser struct {
+		peer          WGRuntimePeer
+		credentialKey string
+	}
+	users := []runtimeUser{}
 	for rows.Next() {
 		var item WGRuntimePeer
 		var credentialKey string
@@ -226,28 +231,27 @@ ORDER BY id`, args...)
 		if err := rows.Scan(&item.UserID, &item.Username, &credentialKey, &item.Status, &item.UsedTraffic, &dataLimit, &expire, &item.DeviceLimit); err != nil {
 			return nil, err
 		}
-		pair, err := userapp.WGKeyPairFromCredentialKey(credentialKey)
-		if err != nil {
-			return nil, fmt.Errorf("user %d WireGuard credential: %w", item.UserID, err)
-		}
-		item.PublicKey = pair.PublicKey
 		item.DataLimit = nullableOVInt64(dataLimit)
 		item.Expire = nullableOVInt64(expire)
-		peers = append(peers, item)
+		users = append(users, runtimeUser{peer: item, credentialKey: credentialKey})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	userIDs := make([]int64, len(peers))
-	for i := range peers {
-		userIDs[i] = peers[i].UserID
-	}
-	addresses, err := userapp.NewRepository(r.db, r.dialect).WGIPv4Addresses(ctx, inboundTag, userIDs, pool, serverAddress)
-	if err != nil {
-		return nil, err
-	}
-	for i := range peers {
-		peers[i].Address = addresses[peers[i].UserID]
+	peers := []WGRuntimePeer{}
+	deviceRepo := userapp.NewRepository(r.db, r.dialect)
+	for _, runtimeUser := range users {
+		devices, err := deviceRepo.ReconcileWireGuardDevices(ctx, inboundTag, runtimeUser.peer.UserID, int(runtimeUser.peer.DeviceLimit), pool, serverAddress, runtimeUser.credentialKey)
+		if err != nil {
+			return nil, fmt.Errorf("user %d WireGuard devices: %w", runtimeUser.peer.UserID, err)
+		}
+		for _, device := range devices {
+			peer := runtimeUser.peer
+			peer.DeviceIndex = device.DeviceIndex
+			peer.PublicKey = device.PublicKey
+			peer.Address = device.Address
+			peers = append(peers, peer)
+		}
 	}
 	return peers, nil
 }

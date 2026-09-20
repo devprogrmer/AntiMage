@@ -678,6 +678,7 @@ func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 			on_hold_expire_duration BIGINT NULL,
 			on_hold_timeout DATETIME NULL,
 			ip_limit INTEGER DEFAULT 0,
+			device_limit INTEGER DEFAULT 0,
 			auto_delete_in_days INTEGER NULL,
 			subadress TEXT NULL,
 			service_id INTEGER NULL,
@@ -755,6 +756,18 @@ func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 			server_address TEXT,
 			address TEXT,
 			PRIMARY KEY (inbound_tag, user_id, pool, server_address)
+		)`,
+		`CREATE TABLE wireguard_devices (
+			inbound_tag TEXT NOT NULL,
+			user_id INTEGER NOT NULL,
+			device_index INTEGER NOT NULL,
+			private_key TEXT NOT NULL,
+			public_key TEXT NOT NULL,
+			address TEXT NOT NULL,
+			generation INTEGER NOT NULL DEFAULT 1,
+			PRIMARY KEY (inbound_tag, user_id, device_index),
+			UNIQUE (inbound_tag, public_key),
+			UNIQUE (inbound_tag, address)
 		)`,
 		`CREATE TABLE xray_config (
 			id INTEGER PRIMARY KEY,

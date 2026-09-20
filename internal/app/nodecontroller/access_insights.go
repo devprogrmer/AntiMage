@@ -235,6 +235,9 @@ func collapseUserOnlineIPs(records []UserOnlineIPRecord) []UserOnlineIPRecord {
 			ip = strings.TrimSpace(item.AssignedIP)
 		}
 		key := fmt.Sprintf("%d:%s", item.UserID, ip)
+		if deviceID := strings.TrimSpace(item.DeviceID); deviceID != "" {
+			key = fmt.Sprintf("%d:device:%s", item.UserID, deviceID)
+		}
 		if ip == "" {
 			key = fmt.Sprintf("%d:%d:%s:%s", item.UserID, item.NodeID, item.Protocol, item.SessionID)
 		}

@@ -163,6 +163,9 @@ func (r Repository) bulkUsersActionMutation(ctx context.Context, requester admin
 			if _, err := tx.ExecContext(ctx, `DELETE FROM amneziawg_devices WHERE user_id = ?`, userID); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") && !strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
 				return BulkUsersActionResult{}, err
 			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM wireguard_devices WHERE user_id = ?`, userID); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") && !strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
+				return BulkUsersActionResult{}, err
+			}
 		}
 	}
 

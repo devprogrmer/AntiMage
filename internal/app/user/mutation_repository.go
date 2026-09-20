@@ -70,6 +70,7 @@ func (r Repository) createUserMutation(ctx context.Context, admin adminapp.Admin
 			AutoDeleteInDays:       payload.AutoDeleteInDays,
 			NextPlans:              payload.NextPlans,
 			IPLimit:                payload.IPLimit,
+			DeviceLimit:            payload.DeviceLimit,
 			Flow:                   payload.Flow,
 			CredentialKey:          payload.CredentialKey,
 		}
@@ -111,9 +112,9 @@ func (r Repository) createUserMutation(ctx context.Context, admin adminapp.Admin
 INSERT INTO users (
 	username, credential_key, subadress, flow, status, used_traffic, data_limit,
 	data_limit_reset_strategy, expire, admin_id, created_at, note, telegram_id,
-	contact_number, on_hold_expire_duration, on_hold_timeout, ip_limit,
+	contact_number, on_hold_expire_duration, on_hold_timeout, ip_limit, device_limit,
 	auto_delete_in_days, last_status_change, service_id
-) VALUES (?, ?, '', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, '', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		payload.Username,
 		nullableStringValue(credentialKey),
 		nullableStringPtr(payload.Flow),
@@ -129,6 +130,7 @@ INSERT INTO users (
 		nilIfZero(payload.OnHoldExpireDuration),
 		nullableStringPtr(payload.OnHoldTimeout),
 		int64OrZero(payload.IPLimit),
+		int64OrZero(payload.DeviceLimit),
 		nilIfZero(payload.AutoDeleteInDays),
 		dbTime(now),
 		nullableInt64Ptr(serviceID),
@@ -323,6 +325,10 @@ func (r Repository) updateUserMutation(ctx context.Context, admin adminapp.Admin
 		sets = append(sets, "ip_limit = ?")
 		args = append(args, int64OrZero(payload.IPLimit))
 	}
+	if rawFieldPresent(rawFields, "device_limit") {
+		sets = append(sets, "device_limit = ?")
+		args = append(args, int64OrZero(payload.DeviceLimit))
+	}
 	if rawFieldPresent(rawFields, "on_hold_timeout") {
 		sets = append(sets, "on_hold_timeout = ?")
 		args = append(args, nullableStringPtr(payload.OnHoldTimeout))
@@ -381,6 +387,9 @@ func (r Repository) updateUserMutation(ctx context.Context, admin adminapp.Admin
 		if _, err := tx.ExecContext(ctx, `DELETE FROM amneziawg_devices WHERE user_id = ?`, existing.ID); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") && !strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
 			return MutationResult{}, err
 		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM wireguard_devices WHERE user_id = ?`, existing.ID); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") && !strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
+			return MutationResult{}, err
+		}
 	}
 	if operationType != "" {
 		if err := r.enqueueUserOperationForNodesTx(ctx, tx, operationType, existing.ID, time.Now().UTC(), existing.ServiceID, targetServiceID); err != nil {
@@ -423,6 +432,9 @@ func (r Repository) deleteUserMutation(ctx context.Context, admin adminapp.Admin
 		return MutationResult{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM amneziawg_devices WHERE user_id = ?`, existing.ID); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") && !strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
+		return MutationResult{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM wireguard_devices WHERE user_id = ?`, existing.ID); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") && !strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
 		return MutationResult{}, err
 	}
 	if err := r.enqueueUserOperationForNodesTx(ctx, tx, NodeOperationRemoveUser, existing.ID, time.Now().UTC()); err != nil {

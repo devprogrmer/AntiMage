@@ -194,6 +194,7 @@ type BaseFormFields = Pick<
 	| "expire"
 	| "data_limit"
 	| "ip_limit"
+	| "device_limit"
 	| "data_limit_reset_strategy"
 	| "on_hold_expire_duration"
 	| "note"
@@ -233,6 +234,7 @@ const formatUser = (user: User): FormType => {
 			: user.data_limit,
 
 		ip_limit: user.ip_limit && user.ip_limit > 0 ? user.ip_limit : null,
+		device_limit: user.device_limit && user.device_limit > 0 ? user.device_limit : null,
 
 		on_hold_expire_duration: user.on_hold_expire_duration
 			? Number(user.on_hold_expire_duration / (24 * 60 * 60))
@@ -266,6 +268,7 @@ const getDefaultValues = (): FormType => {
 		data_limit: null,
 
 		ip_limit: null,
+		device_limit: null,
 
 		expire: null,
 
@@ -466,6 +469,11 @@ const buildSchema = (isEditing: boolean) => {
 				}
 				return Number.isFinite(value) ? value : null;
 			}),
+
+		device_limit: z
+			.union([z.number().int().min(0), z.null()])
+			.optional()
+			.transform((value) => typeof value === "number" && Number.isFinite(value) ? value : null),
 
 		manual_key_entry: z.boolean().default(false),
 
@@ -1506,6 +1514,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			on_hold_expire_duration,
 
 			ip_limit,
+			device_limit,
 
 			credential_key,
 
@@ -1643,6 +1652,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			typeof ip_limit === "number" && Number.isFinite(ip_limit) && ip_limit > 0
 				? Math.floor(ip_limit)
 				: 0;
+		const normalizedDeviceLimit =
+			typeof device_limit === "number" && Number.isFinite(device_limit) && device_limit > 0
+				? Math.floor(device_limit)
+				: 0;
 
 		if (!isEditing) {
 			const effectiveServiceId = hasPrivilegedRole
@@ -1680,6 +1693,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 				data_limit: values.data_limit,
 
 				ip_limit: normalizedIpLimit,
+				device_limit: normalizedDeviceLimit,
 
 				data_limit_reset_strategy:
 					data_limit && data_limit > 0 ? data_limit_reset_strategy : "no_reset",
@@ -1757,6 +1771,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			data_limit: data_limit,
 
 			ip_limit: normalizedIpLimit,
+			device_limit: normalizedDeviceLimit,
 
 			status:
 				status === "active" || status === "disabled" || status === "on_hold"
@@ -2512,8 +2527,26 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																			/>
 																		)}
 																	/>
-																</FormControl>
-															</Stack>
+																	</FormControl>
+																	<FormControl flex="1">
+																		<FormLabel display="flex" alignItems="center" gap={2} textAlign={isRTL ? "right" : "left"}>
+																			{t("userDialog.deviceLimitLabel")}
+																			<Tooltip hasArrow placement="top" label={t("userDialog.deviceLimitHint")}>
+																				<chakra.span color="gray.400" cursor="help"><QuestionMarkCircleIcon width={16} height={16} /></chakra.span>
+																			</Tooltip>
+																		</FormLabel>
+																		<Controller
+																			control={form.control}
+																			name="device_limit"
+																			render={({ field }) => (
+																				<Input size="sm" borderRadius="6px" placeholder={t("userDialog.deviceLimitPlaceholder")}
+																					value={typeof field.value === "number" && field.value > 0 ? String(field.value) : ""}
+																					onChange={(event) => { const raw = event.target.value.trim(); if (!raw) return field.onChange(null); if (/^\d+$/.test(raw)) field.onChange(Number(raw)); }}
+																					disabled={disabled} error={form.formState.errors.device_limit?.message} dir="ltr" />
+																			)}
+																		/>
+																	</FormControl>
+																</Stack>
 
 															<Collapse
 																in={!!(dataLimit && dataLimit > 0)}

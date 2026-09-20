@@ -10,6 +10,8 @@ import (
 func TestUserPayloadValidation(t *testing.T) {
 	longNote := strings.Repeat("x", 501)
 	negativeIP := int64(-3)
+	negativeDevice := int64(-1)
+	unlimitedDevices := int64(0)
 	validFlow := " XTLS-RPRX-VISION-UDP443 "
 	dataLimit := int64(1024)
 	duration := int64(3600)
@@ -29,6 +31,15 @@ func TestUserPayloadValidation(t *testing.T) {
 					IPLimit: &negativeIP,
 				},
 			},
+		},
+		{
+			name: "zero device limit is unlimited",
+			payload: UserCreate{Username: "valid-user", UserPayloadBase: UserPayloadBase{DeviceLimit: &unlimitedDevices}},
+		},
+		{
+			name: "negative device limit is rejected",
+			payload: UserCreate{Username: "valid-user", UserPayloadBase: UserPayloadBase{DeviceLimit: &negativeDevice}},
+			wantErr: "device_limit must be a non-negative integer",
 		},
 		{
 			name:    "invalid username",

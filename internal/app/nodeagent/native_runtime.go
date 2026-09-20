@@ -208,7 +208,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		if owner, exists := usedListenPorts[inbound.ListenPort]; exists {
 			return fmt.Errorf("amneziawg listen port %d for %q conflicts with %s", inbound.ListenPort, tag, owner)
 		}
-		prepared, err := s.prepareAmneziaWGInbound(inbound)
+		prepared, err := s.prepareAmneziaWGInbound(inbound, payload.SessionCallback)
 		if err != nil {
 			return err
 		}

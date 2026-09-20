@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -22,6 +23,7 @@ type amneziaWGUsageRuntimeConfig struct {
 	PeerAddresses     map[string]string                  `json:"peer_addresses"`
 	Policies          map[string]nativeSessionUserPolicy `json:"policies"`
 	AccountingEnabled bool                               `json:"accounting_enabled"`
+	Callback          nativeRuntimeSessionCallback       `json:"session_callback,omitempty"`
 }
 
 type amneziaWGUsageSample struct {
@@ -145,6 +147,12 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 					address = host
 				}
 				onlineIPs = append(onlineIPs, &nodev1.OnlineUserIP{Uid: "amneziawg:" + strconv.FormatInt(userID, 10), Ips: []*nodev1.OnlineIP{{Ip: address, LastSeenUnix: now.Unix()}}})
+				event := amneziaWGSessionEvent(cfg, peer, userID, "seen")
+				if eventErr := s.sendNativeSessionEvent(ctx, cfg.Callback, event); errors.Is(eventErr, errNativeSessionDeviceLimit) {
+					_ = amneziaWGRemovePeer(cfg.InterfaceName, publicKey)
+				}
+			} else {
+				_ = s.sendNativeSessionEvent(ctx, cfg.Callback, amneziaWGSessionEvent(cfg, peer, userID, "stop"))
 			}
 			policy := cfg.Policies[publicKey]
 			allowed, _ := nativeSessionUserPolicyAllowed(policy, now)
@@ -174,6 +182,11 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 		return nil, err
 	}
 	return amneziaWGUsageBatchProto(pending, onlineIPs), nil
+}
+
+func amneziaWGSessionEvent(cfg amneziaWGUsageRuntimeConfig, peer wireGuardPeerCounters, userID int64, event string) nativeSessionEvent {
+	publicKey := strings.TrimSpace(peer.PublicKey)
+	return nativeSessionEvent{UserID: userID, Protocol: "amneziawg", InboundTag: strings.TrimSpace(cfg.InboundTag), SessionID: wireGuardSessionID(cfg.InboundTag, publicKey), AssignedIP: strings.TrimSpace(cfg.PeerAddresses[publicKey]), ClientIP: wireGuardEndpointHost(peer.Endpoint), DeviceID: wireGuardSafeDeviceID(publicKey), DeviceType: "Unknown", ClientName: "AmneziaWG", Platform: "Unknown", Event: event}
 }
 
 func amneziaWGUsageBatchProto(pending *amneziaWGUsagePendingBatch, onlineIPs []*nodev1.OnlineUserIP) *nodev1.UserUsageBatch {

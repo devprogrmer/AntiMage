@@ -22,6 +22,10 @@ type nodeSessionEventPayload struct {
 	SessionID  string `json:"session_id"`
 	AssignedIP string `json:"assigned_ip,omitempty"`
 	ClientIP   string `json:"client_ip,omitempty"`
+	DeviceID   string `json:"device_id,omitempty"`
+	DeviceType string `json:"device_type,omitempty"`
+	ClientName string `json:"client_name,omitempty"`
+	Platform   string `json:"platform,omitempty"`
 	Event      string `json:"event"`
 }
 
@@ -75,7 +79,7 @@ func (s *Server) validateNodeSessionEvent(ctx context.Context, payload nodeSessi
 	}
 	if event != "ready" {
 		switch strings.ToLower(strings.TrimSpace(payload.Protocol)) {
-		case "ov", "openvpn", "l2tp", "pptp", "wg", "wireguard", "ikev2", "anyconnect":
+		case "ov", "openvpn", "l2tp", "pptp", "wg", "wireguard", "awg", "amneziawg", "ikev2", "anyconnect":
 		default:
 			return statusError{status: http.StatusBadRequest, detail: "unsupported protocol"}
 		}
@@ -179,16 +183,16 @@ WHERE node_id = ? AND user_id = ? AND protocol = 'ov' AND COALESCE(inbound_tag, 
 }
 
 func sessionAdmissionAllowed(ctx context.Context, tx *sql.Tx, payload nodeSessionEventPayload) (bool, error) {
-	var limit int64
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(ip_limit, 0) FROM users WHERE id = ?`, payload.UserID).Scan(&limit); err != nil {
+	var ipLimit, deviceLimit int64
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(ip_limit, 0), COALESCE(device_limit, 0) FROM users WHERE id = ?`, payload.UserID).Scan(&ipLimit, &deviceLimit); err != nil {
 		return false, err
 	}
-	if limit <= 0 {
+	if ipLimit <= 0 && deviceLimit <= 0 {
 		return true, nil
 	}
 
 	rows, err := tx.QueryContext(ctx, `
-SELECT node_id, session_id, COALESCE(assigned_ip, ''), COALESCE(client_ip, '')
+SELECT node_id, session_id, COALESCE(assigned_ip, ''), COALESCE(client_ip, ''), COALESCE(device_id, '')
 FROM vpn_user_sessions
 WHERE user_id = ? AND ended_at IS NULL`, payload.UserID)
 	if err != nil {
@@ -196,32 +200,49 @@ WHERE user_id = ? AND ended_at IS NULL`, payload.UserID)
 	}
 	defer rows.Close()
 
-	incoming := globalSessionDeviceKey(payload.AssignedIP, payload.ClientIP)
-	if incoming == "" {
-		return false, nil
-	}
+	incomingIP := globalSessionDeviceKey(payload.AssignedIP, payload.ClientIP)
+	incomingDevice := strings.TrimSpace(payload.DeviceID)
+	ips := map[string]struct{}{}
 	devices := map[string]struct{}{}
 	for rows.Next() {
 		var nodeID int64
-		var sessionID, assignedIP, clientIP string
-		if err := rows.Scan(&nodeID, &sessionID, &assignedIP, &clientIP); err != nil {
+		var sessionID, assignedIP, clientIP, deviceID string
+		if err := rows.Scan(&nodeID, &sessionID, &assignedIP, &clientIP, &deviceID); err != nil {
 			return false, err
 		}
 		if nodeID == payload.NodeID && strings.TrimSpace(sessionID) == strings.TrimSpace(payload.SessionID) {
 			continue
 		}
-		if strings.TrimSpace(assignedIP) == "" && strings.TrimSpace(clientIP) == "" {
-			continue
+		if key := globalSessionDeviceKey(assignedIP, clientIP); key != "" {
+			ips[key] = struct{}{}
 		}
-		devices[globalSessionDeviceKey(assignedIP, clientIP)] = struct{}{}
+		if deviceID = strings.TrimSpace(deviceID); deviceID != "" {
+			devices[deviceID] = struct{}{}
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return false, err
 	}
-	if _, exists := devices[incoming]; exists {
-		return true, nil
+	if ipLimit > 0 && incomingIP != "" {
+		if _, exists := ips[incomingIP]; !exists && int64(len(ips)) >= ipLimit {
+			return false, nil
+		}
 	}
-	return int64(len(devices)) < limit, nil
+	if deviceLimit > 0 && incomingDevice != "" && supportsHardDeviceIdentity(payload.Protocol) {
+		if _, exists := devices[incomingDevice]; !exists && int64(len(devices)) >= deviceLimit {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func supportsHardDeviceIdentity(protocol string) bool {
+	switch normalizedVPNProtocol(protocol) {
+	case "wg", "amneziawg":
+		return true
+	default:
+		return false
+	}
 }
 
 func globalSessionDeviceKey(assignedIP, clientIP string) string {
@@ -237,13 +258,14 @@ func globalSessionDeviceKey(assignedIP, clientIP string) string {
 func upsertVPNSession(ctx context.Context, tx *sql.Tx, payload nodeSessionEventPayload, now time.Time) error {
 	res, err := tx.ExecContext(ctx, `
 UPDATE vpn_user_sessions
-SET user_id = ?, protocol = ?, inbound_tag = ?, assigned_ip = ?, client_ip = ?, last_seen_at = ?, ended_at = NULL
+SET user_id = ?, protocol = ?, inbound_tag = ?, assigned_ip = ?, client_ip = ?, device_id = ?, device_type = ?, client_name = ?, platform = ?, last_seen_at = ?, ended_at = NULL
 WHERE node_id = ? AND session_id = ?`,
 		payload.UserID,
 		normalizedVPNProtocol(payload.Protocol),
 		nullableTrimmed(payload.InboundTag),
 		nullableTrimmed(payload.AssignedIP),
 		nullableTrimmed(payload.ClientIP),
+		nullableTrimmed(payload.DeviceID), normalizeDeviceMetadata(payload.DeviceType), normalizeDeviceMetadata(payload.ClientName), normalizeDeviceMetadata(payload.Platform),
 		dbTimestamp(now),
 		payload.NodeID,
 		strings.TrimSpace(payload.SessionID),
@@ -255,8 +277,8 @@ WHERE node_id = ? AND session_id = ?`,
 		return nil
 	}
 	_, err = tx.ExecContext(ctx, `
-INSERT INTO vpn_user_sessions (node_id, user_id, protocol, inbound_tag, session_id, assigned_ip, client_ip, started_at, last_seen_at, ended_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+INSERT INTO vpn_user_sessions (node_id, user_id, protocol, inbound_tag, session_id, assigned_ip, client_ip, device_id, device_type, client_name, platform, started_at, last_seen_at, ended_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
 		payload.NodeID,
 		payload.UserID,
 		normalizedVPNProtocol(payload.Protocol),
@@ -264,6 +286,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
 		strings.TrimSpace(payload.SessionID),
 		nullableTrimmed(payload.AssignedIP),
 		nullableTrimmed(payload.ClientIP),
+		nullableTrimmed(payload.DeviceID), normalizeDeviceMetadata(payload.DeviceType), normalizeDeviceMetadata(payload.ClientName), normalizeDeviceMetadata(payload.Platform),
 		dbTimestamp(now),
 		dbTimestamp(now),
 	)
@@ -290,9 +313,22 @@ func normalizedVPNProtocol(value string) string {
 		return "ov"
 	case "wireguard":
 		return "wg"
+	case "awg":
+		return "amneziawg"
 	default:
 		return strings.ToLower(strings.TrimSpace(value))
 	}
+}
+
+func normalizeDeviceMetadata(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "Unknown"
+	}
+	if len(value) > 64 {
+		return value[:64]
+	}
+	return value
 }
 
 func nullableTrimmed(value string) any {
