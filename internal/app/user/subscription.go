@@ -20,6 +20,7 @@ import (
 
 	outboundsubapp "github.com/antimage/antimage/internal/app/outboundsub"
 	"github.com/antimage/antimage/internal/app/usage"
+	embeddedtemplates "github.com/antimage/antimage/templates"
 	"github.com/flosch/pongo2/v6"
 )
 
@@ -1148,7 +1149,10 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 			rawLinks = append(rawLinks, downloadLinks...)
 		}
 	}
-	content := fallbackSubscriptionPageTemplate
+	content := embeddedtemplates.SubscriptionPage
+	if strings.TrimSpace(content) == "" {
+		content = fallbackSubscriptionPageTemplate
+	}
 	if s.templates != nil {
 		templateContent, err := s.templates.ReadTemplateContent(ctx, "subscription_page_template", user.AdminID)
 		if err != nil {
