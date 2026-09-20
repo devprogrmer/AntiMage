@@ -88,9 +88,9 @@ const SwatchIconChakra = chakra(SwatchIcon, {
 const ACCENT_OPTIONS: AccentOption[] = [
 	{
 		key: "coral",
-		label: "Coral",
-		color: "#f05e63",
-		hover: "#ff7377",
+		label: "Subscription Pink",
+		color: "#ef3f98",
+		hover: "#ff78bd",
 	},
 	{ key: "blue", label: "Blue", color: "#2563eb", hover: "#3b82f6" },
 	{ key: "green", label: "Green", color: "#16a34a", hover: "#22c55e" },
@@ -506,9 +506,7 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 				>
 					<HStack justify="flex-start" spacing={3} w="full" minW={0}>
 						<SwatchIconChakra flexShrink={0} />
-						<Text noOfLines={1}>
-							{triggerLabel || t("header.theme")}
-						</Text>
+						<Text noOfLines={1}>{triggerLabel || t("header.theme")}</Text>
 					</HStack>
 				</MenuButton>
 				{portalContainer ? (

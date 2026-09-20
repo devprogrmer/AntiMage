@@ -3132,6 +3132,10 @@ func TestSubscriptionWorkspaceResponsiveContract(t *testing.T) {
 	for _, expected := range []string{
 		`AntiMage Premium Screenshot Layout v2`,
 		`AntiMage Premium Protocol Cards v3`,
+		`AntiMage Mobile Performance Profile v5`,
+		`overflow-x: clip`,
+		`background-attachment: scroll`,
+		`@media (prefers-reduced-motion: reduce)`,
 		`@media (max-width: 1180px)`,
 		`@media (max-width: 850px)`,
 		`@media (max-width: 620px)`,

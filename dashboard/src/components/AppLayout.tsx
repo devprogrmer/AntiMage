@@ -770,7 +770,7 @@ export function AppLayout() {
 				direction={isRTL ? "row-reverse" : "row"}
 				dir={isRTL ? "rtl" : "ltr"}
 				bg="panel.app"
-				backgroundImage="radial-gradient(circle at top left, rgba(240, 94, 99, 0.18), transparent 24rem), radial-gradient(circle at bottom right, rgba(240, 94, 99, 0.10), transparent 22rem), linear-gradient(180deg, var(--am-panel-main), var(--am-panel-bg))"
+				backgroundImage="radial-gradient(circle at 2% 2%, rgba(221, 40, 134, 0.18), transparent 25rem), radial-gradient(circle at 95% 8%, rgba(150, 42, 115, 0.17), transparent 30rem), radial-gradient(circle at 92% 88%, rgba(224, 38, 129, 0.14), transparent 26rem), linear-gradient(145deg, #080a11 0%, #07111b 46%, #080b13 100%)"
 				sx={{
 					"--am-sidebar-offset": isMobile
 						? "0px"
@@ -1422,7 +1422,7 @@ export function AppLayout() {
 															borderWidth="1px"
 															boxShadow="xl"
 														>
-											<PopoverBody position="relative" zIndex={1} p="2">
+															<PopoverBody position="relative" zIndex={1} p="2">
 																<VStack align="stretch" spacing={1}>
 																	{settingsMenuItems.map((entry) => {
 																		const ItemIcon = entry.icon;
@@ -1465,7 +1465,7 @@ export function AppLayout() {
 																		);
 																	})}
 																</VStack>
-											</PopoverBody>
+															</PopoverBody>
 														</PopoverContent>
 													</Portal>
 												</Popover>
@@ -1550,7 +1550,7 @@ export function AppLayout() {
 															borderWidth="1px"
 															boxShadow="xl"
 														>
-											<PopoverBody position="relative" zIndex={1} p="2">
+															<PopoverBody position="relative" zIndex={1} p="2">
 																<Button
 																	variant="ghost"
 																	size="sm"
@@ -1574,7 +1574,7 @@ export function AppLayout() {
 																>
 																	{t("header.logout")}
 																</Button>
-											</PopoverBody>
+															</PopoverBody>
 														</PopoverContent>
 													</Portal>
 												</Popover>
