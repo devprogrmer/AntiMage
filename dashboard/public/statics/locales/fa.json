@@ -2030,6 +2030,8 @@
 	"usersTable.getIps": "نمایش آدرس‌های IP",
 	"usersTable.device": "دستگاه",
 	"usersTable.deviceLog": "گزارش دستگاه‌ها",
+	"usersTable.revokeDevice": "لغو دستگاه",
+	"usersTable.deviceRevoked": "دسترسی دستگاه لغو شد",
 	"usersTable.firstSeen": "اولین مشاهده",
 	"usersTable.getIpsFailed": "دریافت IPها انجام نشد.",
 	"usersTable.ipsCopied": "آدرس‌های IP کپی شدند",

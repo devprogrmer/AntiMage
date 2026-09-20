@@ -2042,6 +2042,8 @@
 	"usersTable.getIps": "View IP addresses",
 	"usersTable.device": "Device",
 	"usersTable.deviceLog": "Device log",
+	"usersTable.revokeDevice": "Revoke device",
+	"usersTable.deviceRevoked": "Device revoked",
 	"usersTable.firstSeen": "First seen",
 	"usersTable.getIpsFailed": "Could not load IPs.",
 	"usersTable.ipsCopied": "IP addresses copied",

@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -144,11 +146,14 @@ func (s *Server) handleUserPath(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if suffix == "devices" {
-			if r.Method != http.MethodGet {
+			switch r.Method {
+			case http.MethodGet:
+				s.handleUserDevices(w, r, username)
+			case http.MethodDelete:
+				s.handleUserDeviceRevoke(w, r, username)
+			default:
 				writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-				return
 			}
-			s.handleUserDevices(w, r, username)
 			return
 		}
 		s.handleUserMutationAction(w, r, username, suffix)
@@ -321,6 +326,67 @@ func (s *Server) handleUserDevices(w http.ResponseWriter, r *http.Request, usern
 	}
 	records = s.enrichOnlineIPRecords(ctx, records)
 	writeJSON(w, http.StatusOK, map[string]any{"username": result.Username, "devices": records})
+}
+
+func (s *Server) handleUserDeviceRevoke(w http.ResponseWriter, r *http.Request, username string) {
+	principal, ok := r.Context().Value(adminContextKey).(adminPrincipal)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "missing admin context")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	user, err := s.userService.UserGet(ctx, userapp.UserGetRequest{Username: username, RequestOrigin: requestOrigin(r), Admin: s.userAdminContext(principal, nil)})
+	if err != nil {
+		writeUserReadError(w, err)
+		return
+	}
+	protocol := normalizedVPNProtocol(r.URL.Query().Get("protocol"))
+	deviceID := strings.TrimSpace(r.URL.Query().Get("device_id"))
+	inbound := strings.TrimSpace(r.URL.Query().Get("inbound_tag"))
+	if (protocol != "wg" && protocol != "amneziawg") || deviceID == "" || inbound == "" {
+		writeError(w, http.StatusBadRequest, "protocol, inbound_tag and stable device_id are required")
+		return
+	}
+	table := "wireguard_devices"
+	if protocol == "amneziawg" {
+		table = "amneziawg_devices"
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT device_index, public_key FROM `+table+` WHERE user_id=? AND inbound_tag=?`, user.ID, inbound)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	deviceIndex := -1
+	for rows.Next() {
+		var index int
+		var publicKey string
+		if rows.Scan(&index, &publicKey) == nil && safeDeviceID(publicKey) == deviceID {
+			deviceIndex = index
+			break
+		}
+	}
+	_ = rows.Close()
+	if deviceIndex < 0 {
+		writeError(w, http.StatusNotFound, "device not found")
+		return
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM `+table+` WHERE user_id=? AND inbound_tag=? AND device_index=?`, user.ID, inbound, deviceIndex); err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	_, _ = s.db.ExecContext(ctx, `UPDATE vpn_user_sessions SET ended_at=CURRENT_TIMESTAMP WHERE user_id=? AND protocol=? AND device_id=? AND ended_at IS NULL`, user.ID, protocol, deviceID)
+	if err := s.nodeControllerQueueSync(ctx, nil, map[string]any{"source": "device_revoke", "user_id": user.ID}); err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	s.kickNodeOperationsSoon()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func safeDeviceID(publicKey string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(publicKey)))
+	return "wg-" + hex.EncodeToString(sum[:8])
 }
 
 func (s *Server) handleUsersUsage(w http.ResponseWriter, r *http.Request) {

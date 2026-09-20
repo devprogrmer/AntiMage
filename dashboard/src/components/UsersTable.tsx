@@ -834,6 +834,19 @@ export const UsersTable: FC<UsersTableProps> = ({
 		}
 	};
 
+	const handleRevokeDevice = async (record: UserIPRecord) => {
+		if (!ipDialog || !record.device_id || !record.inbound_tag) return;
+		setContextAction("revoke-device");
+		try {
+			const query = new URLSearchParams({ protocol: record.protocol, inbound_tag: record.inbound_tag, device_id: record.device_id });
+			await fetch(`/user/${encodeURIComponent(ipDialog.username)}/devices?${query.toString()}`, { method: "DELETE" });
+			setIPDialog((current) => current ? { ...current, records: current.records.filter((item) => item.device_id !== record.device_id) } : current);
+			notify(t("usersTable.deviceRevoked"), "success");
+		} catch (error: any) {
+			notify(error?.data?.detail || error?.message || t("error"), "error");
+		} finally { setContextAction(null); }
+	};
+
 	const handleCopyIPs = async () => {
 		if (!ipDialog?.records.length) return;
 		try {
@@ -2005,6 +2018,11 @@ export const UsersTable: FC<UsersTableProps> = ({
 												{t("usersTable.firstSeen")}: {dayjs(record.first_seen_at).format("YYYY-MM-DD HH:mm")}
 												{" · "}{record.online ? t("online") : t("offline")}
 											</Text>
+										)}
+										{ipDialog?.mode === "devices" && record.device_id && ["wg", "wireguard", "awg", "amneziawg"].includes(record.protocol) && (
+											<Button mt={2} size="xs" variant="outline" colorScheme="red" leftIcon={<RevokeIcon />} isLoading={contextAction === "revoke-device"} onClick={() => handleRevokeDevice(record)}>
+												{t("usersTable.revokeDevice")}
+											</Button>
 										)}
 										{assignedIPs.length > 0 && (
 											<Text
