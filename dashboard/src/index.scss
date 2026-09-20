@@ -23,7 +23,9 @@
 }
 
 :root {
-  --am-font-stack: "Arad", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  --am-font-ltr: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --am-font-rtl: "Arad", var(--am-font-ltr);
+  --am-font-stack: var(--am-font-ltr);
   --am-dialog-viewport-height: 100dvh;
   --am-dialog-safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
   --am-panel-bg: #0b1118;
@@ -101,6 +103,13 @@ html, body, #root {
   font-family: var(--am-font-stack);
   background: var(--am-panel-bg);
   color: var(--am-panel-text);
+}
+
+html[dir="rtl"],
+html[dir="rtl"] body,
+html[dir="rtl"] #root,
+[dir="rtl"] {
+  --am-font-stack: var(--am-font-rtl);
 }
 
 * {

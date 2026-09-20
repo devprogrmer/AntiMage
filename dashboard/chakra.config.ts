@@ -13,7 +13,8 @@ const sharedThemeConfig = {
 	direction: "ltr" as const,
 	shadows: { outline: "0 0 0 2px var(--chakra-colors-primary-200)" },
 	fonts: {
-		body: `Arad,Inter,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen,Ubuntu,Cantarell,Fira Sans,Droid Sans,Helvetica Neue,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol",sans-serif`,
+		body: "var(--am-font-stack)",
+		heading: "var(--am-font-stack)",
 	},
 	colors: {
 		"light-border": "#d2d2d4",

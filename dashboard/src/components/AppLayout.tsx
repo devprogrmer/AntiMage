@@ -192,7 +192,6 @@ export function AppLayout() {
 		"0 18px 48px rgba(15, 23, 42, 0.10)",
 		"0 18px 48px rgba(0, 0, 0, 0.32)",
 	);
-	const shellMainBg = useColorModeValue("panel.main", "panel.main");
 	const headeamuttonBg = useColorModeValue("panel.elevated", "panel.elevated");
 	const headeamuttonHoveamg = useColorModeValue(
 		"panel.borderStrong",
@@ -771,6 +770,7 @@ export function AppLayout() {
 				direction={isRTL ? "row-reverse" : "row"}
 				dir={isRTL ? "rtl" : "ltr"}
 				bg="panel.app"
+				backgroundImage="radial-gradient(circle at top left, rgba(240, 94, 99, 0.18), transparent 24rem), radial-gradient(circle at bottom right, rgba(240, 94, 99, 0.10), transparent 22rem), linear-gradient(180deg, var(--am-panel-main), var(--am-panel-bg))"
 				sx={{
 					"--am-sidebar-offset": isMobile
 						? "0px"
@@ -1123,7 +1123,7 @@ export function AppLayout() {
 						pb={{ base: "40", md: "4" }}
 						overflow="auto"
 						minH="0"
-						bg={shellMainBg}
+						bg="transparent"
 					>
 						<Outlet />
 					</Box>
