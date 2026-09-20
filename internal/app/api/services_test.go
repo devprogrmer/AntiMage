@@ -576,6 +576,7 @@ func TestServiceHostChangeKeepsSubscriptionLinkAndChangesConfigOutput(t *testing
 	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN flow TEXT NULL`)
 	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN expire BIGINT NULL`)
 	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN ip_limit INTEGER DEFAULT 0`)
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN device_limit INTEGER DEFAULT 0`)
 	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN auto_delete_in_days INTEGER NULL`)
 	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN subadress TEXT NULL`)
 	if _, err := db.Exec(`ALTER TABLE jwt ADD COLUMN subscription_secret_key TEXT DEFAULT 'sub-secret'`); err != nil {
