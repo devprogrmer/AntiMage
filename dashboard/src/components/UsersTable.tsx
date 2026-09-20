@@ -179,6 +179,10 @@ type UserIPRecord = {
 	inbound_tag?: string;
 	inbound_tags?: string[];
 	session_id?: string;
+	device_id?: string;
+	device_type?: string;
+	client_name?: string;
+	platform?: string;
 	ip?: string;
 	assigned_ip?: string;
 	assigned_ips?: string[];
@@ -186,11 +190,19 @@ type UserIPRecord = {
 	operator_short_name?: string;
 	operator_owner?: string;
 	last_seen_at?: string;
+	first_seen_at?: string;
+	last_online_at?: string;
+	online?: boolean;
 };
 
 type UserIPsResponse = {
 	username: string;
 	ips: UserIPRecord[];
+};
+
+type UserDevicesResponse = {
+	username: string;
+	devices: UserIPRecord[];
 };
 
 const uniqueIPValues = (values: Array<string | undefined>) =>
@@ -202,8 +214,9 @@ const deduplicateUserIPRecords = (records: UserIPRecord[]) => {
 	const byIP = new Map<string, UserIPRecord>();
 	for (const record of records) {
 		const ip = (record.ip || record.assigned_ip || "").trim();
-		const key =
-			ip || `${record.node_id}:${record.protocol}:${record.session_id || ""}`;
+		const key = record.device_id
+			? `device:${record.device_id}`
+			: ip || `${record.node_id}:${record.protocol}:${record.session_id || ""}`;
 		const current = byIP.get(key);
 		if (!current) {
 			byIP.set(key, {
@@ -572,6 +585,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 	const [ipDialog, setIPDialog] = useState<{
 		username: string;
 		records: UserIPRecord[];
+		mode: "ips" | "devices";
 		error?: string;
 	} | null>(null);
 
@@ -765,7 +779,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 
 	const handleGetIPs = async (user: UserListItem) => {
 		setContextAction("ips");
-		setIPDialog({ username: user.username, records: [] });
+		setIPDialog({ username: user.username, records: [], mode: "ips" });
 		closeContextMenu();
 		try {
 			const response = await fetch<UserIPsResponse>(
@@ -776,6 +790,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 					? {
 							username: user.username,
 							records: deduplicateUserIPRecords(response.ips || []),
+							mode: "ips",
 						}
 					: current,
 			);
@@ -786,6 +801,33 @@ export const UsersTable: FC<UsersTableProps> = ({
 				current?.username === user.username
 					? { ...current, error: message }
 					: current,
+			);
+		} finally {
+			setContextAction(null);
+		}
+	};
+
+	const handleGetDevices = async (user: UserListItem) => {
+		setContextAction("devices");
+		setIPDialog({ username: user.username, records: [], mode: "devices" });
+		closeContextMenu();
+		try {
+			const response = await fetch<UserDevicesResponse>(
+				`/user/${encodeURIComponent(user.username)}/devices`,
+			);
+			setIPDialog((current) =>
+				current?.username === user.username
+					? {
+							username: user.username,
+							records: response.devices || [],
+							mode: "devices",
+						}
+					: current,
+			);
+		} catch (error: any) {
+			const message = error?.data?.detail || error?.message || t("error");
+			setIPDialog((current) =>
+				current?.username === user.username ? { ...current, error: message } : current,
 			);
 		} finally {
 			setContextAction(null);
@@ -1229,6 +1271,13 @@ export const UsersTable: FC<UsersTableProps> = ({
 				isDisabled: contextAction === "ips",
 				onClick: () => handleGetIPs(user),
 			},
+			{
+				id: "device-log",
+				label: t("usersTable.deviceLog"),
+				icon: <SignalIcon />,
+				isDisabled: contextAction === "devices",
+				onClick: () => handleGetDevices(user),
+			},
 		];
 
 		if (canOpenUserDialog && !rowManagementLocked) {
@@ -1452,6 +1501,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			"revoke",
 			"reset",
 			"get-ips",
+			"device-log",
 		].flatMap((id) => {
 			const action = availableActions.find((item) => item.id === id);
 			return action ? [action] : [];
@@ -1730,7 +1780,11 @@ export const UsersTable: FC<UsersTableProps> = ({
 			<AppDialog
 				isOpen={ipDialog !== null}
 				onClose={() => setIPDialog(null)}
-				title={t("usersTable.ipsDialogTitle")}
+				title={t(
+					ipDialog?.mode === "devices"
+						? "usersTable.deviceLog"
+						: "usersTable.ipsDialogTitle",
+				)}
 				isCentered
 				size="lg"
 				scrollBehavior="inside"
@@ -1782,7 +1836,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						</Text>
 					</Box>
 
-					{contextAction === "ips" ? (
+					{contextAction === "ips" || contextAction === "devices" ? (
 						<Flex align="center" justify="center" gap={3} py={8}>
 							<Spinner size="sm" color="panel.accent" />
 							<Text fontSize="sm" color="panel.textMuted">
@@ -1845,6 +1899,15 @@ export const UsersTable: FC<UsersTableProps> = ({
 									record.assigned_ip,
 								]).filter((value) => value !== ip);
 								const connections = Math.max(record.connections || 1, 1);
+								const deviceSummary = [
+									record.device_type || "Unknown",
+									record.client_name || "Unknown",
+									record.platform && record.platform !== "Unknown"
+										? record.platform
+										: undefined,
+								]
+									.filter(Boolean)
+									.join(" · ");
 
 								return (
 									<Box
@@ -1928,6 +1991,21 @@ export const UsersTable: FC<UsersTableProps> = ({
 												</HStack>
 											)}
 										</HStack>
+										<Text
+											mt={1}
+											fontSize="xs"
+											color="panel.textSecondary"
+											overflowWrap="anywhere"
+										>
+											{t("usersTable.device")}: {deviceSummary}
+											{record.device_id ? ` (${record.device_id})` : ""}
+										</Text>
+										{ipDialog?.mode === "devices" && record.first_seen_at && (
+											<Text mt={1} fontSize="xs" color="panel.textMuted" dir="ltr">
+												{t("usersTable.firstSeen")}: {dayjs(record.first_seen_at).format("YYYY-MM-DD HH:mm")}
+												{" · "}{record.online ? t("online") : t("offline")}
+											</Text>
+										)}
 										{assignedIPs.length > 0 && (
 											<Text
 												mt={1}
