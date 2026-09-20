@@ -81,7 +81,7 @@ func amneziaWGGeneratedInterfaceName(tag string) (string, error) {
 	return name, nil
 }
 
-func (s *Server) prepareAmneziaWGInbound(inbound amneziaWGRuntimeInbound) (preparedAmneziaWGRuntime, error) {
+func (s *Server) prepareAmneziaWGInbound(inbound amneziaWGRuntimeInbound, callbacks ...nativeRuntimeSessionCallback) (preparedAmneziaWGRuntime, error) {
 	tag := strings.TrimSpace(inbound.Tag)
 	if tag == "" {
 		return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg inbound tag is required")
@@ -151,7 +151,11 @@ func (s *Server) prepareAmneziaWGInbound(inbound amneziaWGRuntimeInbound) (prepa
 	if err := atomicWriteFile(path, []byte(configText), 0600); err != nil {
 		return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg %q: write runtime config: %w", tag, err)
 	}
-	usageRaw, err := json.Marshal(amneziaWGUsageRuntimeConfig{InboundTag: tag, InterfaceName: interfaceName, Peers: amneziaWGPeerUserMap(inbound.Peers), PeerAddresses: amneziaWGPeerAddressMap(inbound.Peers), Policies: amneziaWGPeerPolicies(inbound.Peers), AccountingEnabled: wireGuardBoolSetting(inbound.Settings, "accounting_enabled", true)})
+	var callback nativeRuntimeSessionCallback
+	if len(callbacks) > 0 {
+		callback = callbacks[0]
+	}
+	usageRaw, err := json.Marshal(amneziaWGUsageRuntimeConfig{InboundTag: tag, InterfaceName: interfaceName, Peers: amneziaWGPeerUserMap(inbound.Peers), PeerAddresses: amneziaWGPeerAddressMap(inbound.Peers), Policies: amneziaWGPeerPolicies(inbound.Peers), AccountingEnabled: wireGuardBoolSetting(inbound.Settings, "accounting_enabled", true), Callback: callback})
 	if err != nil {
 		return preparedAmneziaWGRuntime{}, err
 	}

@@ -14,17 +14,21 @@ const (
 // Definition is the stable capability metadata shared by the control plane,
 // dashboard and subscription services.
 type Definition struct {
-	ID                string
-	DisplayName       string
-	Family            Family
-	Inbound           bool
-	Outbound          bool
-	Subscription      bool
-	TrafficAccounting bool
-	Source            string
-	DefaultPort       int    `json:"default_port,omitempty"`
-	Network           string `json:"network,omitempty"`
-	Constructible     *bool  `json:"constructible,omitempty"`
+	ID                       string
+	DisplayName              string
+	Family                   Family
+	Inbound                  bool
+	Outbound                 bool
+	Subscription             bool
+	TrafficAccounting        bool
+	Source                   string
+	DefaultPort              int    `json:"default_port,omitempty"`
+	Network                  string `json:"network,omitempty"`
+	Constructible            *bool  `json:"constructible,omitempty"`
+	SupportsDeviceIdentity   bool   `json:"supports_device_identity"`
+	SupportsDeviceLimit      bool   `json:"supports_device_limit"`
+	SupportsDeviceMetadata   bool   `json:"supports_device_metadata"`
+	SupportsDisconnectDevice bool   `json:"supports_disconnect_device"`
 }
 
 var constructibleFalse = false
@@ -40,10 +44,10 @@ var definitions = []Definition{
 	{ID: "hysteria", DisplayName: "Hysteria", Family: FamilyXray, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "xray"},
 	{ID: "hysteria2", DisplayName: "Hysteria 2", Family: FamilyXray, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "xray"},
 	{ID: "tunnel", DisplayName: "Tunnel", Family: FamilyXray, Inbound: true, Outbound: false, Subscription: false, TrafficAccounting: true, Source: "xray"},
-	{ID: "openvpn", DisplayName: "OpenVPN", Family: FamilyDaemon, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
-	{ID: "wireguard", DisplayName: "WireGuard", Family: FamilyKernel, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
+	{ID: "openvpn", DisplayName: "OpenVPN", Family: FamilyDaemon, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system", SupportsDisconnectDevice: true},
+	{ID: "wireguard", DisplayName: "WireGuard", Family: FamilyKernel, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system", SupportsDeviceIdentity: true, SupportsDeviceLimit: true, SupportsDisconnectDevice: true},
 	{ID: "wg-c", DisplayName: "WireGuard C", Family: FamilyKernel, Inbound: false, Outbound: true, Subscription: false, TrafficAccounting: false, Source: "system", Constructible: &constructibleFalse},
-	{ID: "amneziawg", DisplayName: "AmneziaWG", Family: FamilyKernel, Inbound: true, Outbound: false, Subscription: true, TrafficAccounting: true, Source: "system", DefaultPort: 51821, Network: "udp"},
+	{ID: "amneziawg", DisplayName: "AmneziaWG", Family: FamilyKernel, Inbound: true, Outbound: false, Subscription: true, TrafficAccounting: true, Source: "system", DefaultPort: 51821, Network: "udp", SupportsDeviceIdentity: true, SupportsDeviceLimit: true, SupportsDisconnectDevice: true},
 	{ID: "ikev2", DisplayName: "IKEv2", Family: FamilyDaemon, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
 	{ID: "l2tp", DisplayName: "L2TP/IPsec", Family: FamilyDaemon, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},
 	{ID: "pptp", DisplayName: "PPTP", Family: FamilyDaemon, Inbound: true, Outbound: true, Subscription: true, TrafficAccounting: true, Source: "system"},

@@ -70,6 +70,7 @@ func (r Repository) createUserMutation(ctx context.Context, admin adminapp.Admin
 			AutoDeleteInDays:       payload.AutoDeleteInDays,
 			NextPlans:              payload.NextPlans,
 			IPLimit:                payload.IPLimit,
+			DeviceLimit:            payload.DeviceLimit,
 			Flow:                   payload.Flow,
 			CredentialKey:          payload.CredentialKey,
 		}
@@ -111,9 +112,9 @@ func (r Repository) createUserMutation(ctx context.Context, admin adminapp.Admin
 INSERT INTO users (
 	username, credential_key, subadress, flow, status, used_traffic, data_limit,
 	data_limit_reset_strategy, expire, admin_id, created_at, note, telegram_id,
-	contact_number, on_hold_expire_duration, on_hold_timeout, ip_limit,
+	contact_number, on_hold_expire_duration, on_hold_timeout, ip_limit, device_limit,
 	auto_delete_in_days, last_status_change, service_id
-) VALUES (?, ?, '', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, '', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		payload.Username,
 		nullableStringValue(credentialKey),
 		nullableStringPtr(payload.Flow),
@@ -129,6 +130,7 @@ INSERT INTO users (
 		nilIfZero(payload.OnHoldExpireDuration),
 		nullableStringPtr(payload.OnHoldTimeout),
 		int64OrZero(payload.IPLimit),
+		int64OrZero(payload.DeviceLimit),
 		nilIfZero(payload.AutoDeleteInDays),
 		dbTime(now),
 		nullableInt64Ptr(serviceID),
@@ -322,6 +324,10 @@ func (r Repository) updateUserMutation(ctx context.Context, admin adminapp.Admin
 	if rawFieldPresent(rawFields, "ip_limit") {
 		sets = append(sets, "ip_limit = ?")
 		args = append(args, int64OrZero(payload.IPLimit))
+	}
+	if rawFieldPresent(rawFields, "device_limit") {
+		sets = append(sets, "device_limit = ?")
+		args = append(args, int64OrZero(payload.DeviceLimit))
 	}
 	if rawFieldPresent(rawFields, "on_hold_timeout") {
 		sets = append(sets, "on_hold_timeout = ?")

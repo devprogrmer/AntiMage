@@ -21,6 +21,11 @@ func wireGuardSessionID(inboundTag, publicKey string) string {
 	return "wg-" + hex.EncodeToString(sum[:16])
 }
 
+func wireGuardSafeDeviceID(publicKey string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(publicKey)))
+	return "wg-" + hex.EncodeToString(sum[:8])
+}
+
 func wireGuardEndpointHost(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "(none)" {
@@ -224,6 +229,10 @@ func wireGuardSessionEvent(
 		SessionID:  wireGuardSessionID(cfg.InboundTag, publicKey),
 		AssignedIP: strings.TrimSpace(cfg.PeerAddresses[publicKey]),
 		ClientIP:   wireGuardEndpointHost(peer.Endpoint),
+		DeviceID:   wireGuardSafeDeviceID(publicKey),
+		DeviceType: "Unknown",
+		ClientName: "WireGuard",
+		Platform:   "Unknown",
 		Event:      event,
 	}
 }

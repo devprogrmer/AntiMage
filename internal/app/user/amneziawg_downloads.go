@@ -36,7 +36,7 @@ func (s Service) AWGDownloadProfiles(ctx context.Context, user UserDetail, subsc
 	}
 	sortConfigHosts(selected, orderMap, index)
 	serverIP := s.repo.configServerIP(ctx)
-	limit := int(user.IPLimit)
+	limit := int(user.DeviceLimit)
 	if limit < 1 {
 		limit = 1
 	}

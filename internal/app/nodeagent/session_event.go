@@ -28,6 +28,10 @@ type nativeSessionEvent struct {
 	SessionID  string `json:"session_id"`
 	AssignedIP string `json:"assigned_ip,omitempty"`
 	ClientIP   string `json:"client_ip,omitempty"`
+	DeviceID   string `json:"device_id,omitempty"`
+	DeviceType string `json:"device_type,omitempty"`
+	ClientName string `json:"client_name,omitempty"`
+	Platform   string `json:"platform,omitempty"`
 	Event      string `json:"event"`
 }
 

@@ -104,7 +104,7 @@ func (r Repository) AWGUsersForServices(ctx context.Context, inboundTag string, 
 		marks[i], args[i] = "?", id
 	}
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, username, status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(ip_limit, 0)
+SELECT id, username, status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(device_limit, 0)
 FROM users
 WHERE status IN ('active', 'on_hold') AND service_id IN (`+strings.Join(marks, ",")+`)
 ORDER BY id`, args...)
