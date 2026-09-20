@@ -2,6 +2,7 @@ package nodecontroller
 
 import (
 	"context"
+	"database/sql"
 	"net/netip"
 	"sort"
 	"strconv"
@@ -55,6 +56,10 @@ type UserOnlineIPRecord struct {
 	InboundTag        string    `json:"inbound_tag,omitempty"`
 	InboundTags       []string  `json:"inbound_tags,omitempty"`
 	SessionID         string    `json:"session_id,omitempty"`
+	DeviceID          string    `json:"device_id,omitempty"`
+	DeviceType        string    `json:"device_type,omitempty"`
+	ClientName        string    `json:"client_name,omitempty"`
+	Platform          string    `json:"platform,omitempty"`
 	IP                string    `json:"ip,omitempty"`
 	AssignedIP        string    `json:"assigned_ip,omitempty"`
 	AssignedIPs       []string  `json:"assigned_ips,omitempty"`
@@ -62,6 +67,9 @@ type UserOnlineIPRecord struct {
 	OperatorShortName string    `json:"operator_short_name,omitempty"`
 	OperatorOwner     string    `json:"operator_owner,omitempty"`
 	LastSeenAt        time.Time `json:"last_seen_at"`
+	FirstSeenAt       time.Time `json:"first_seen_at,omitempty"`
+	LastOnlineAt      time.Time `json:"last_online_at,omitempty"`
+	Online            bool      `json:"online"`
 }
 
 type limiterEndpoint struct {
@@ -247,8 +255,14 @@ ORDER BY uoi.last_seen_at DESC, uoi.node_id, uoi.protocol, uoi.ip`,
 		if hasClientIP {
 			clientExpr = "COALESCE(vus.client_ip, '')"
 		}
+		presenceExpr := []string{"''", "'Unknown'", "'Unknown'", "'Unknown'"}
+		for index, column := range []string{"device_id", "device_type", "client_name", "platform"} {
+			if exists, _ := r.tableHasColumn(ctx, "vpn_user_sessions", column); exists {
+				presenceExpr[index] = "COALESCE(vus." + column + ", '')"
+			}
+		}
 		rows, err := r.db.QueryContext(ctx, `
-SELECT vus.node_id, COALESCE(n.name, ''), vus.user_id, vus.protocol, COALESCE(vus.inbound_tag, ''), vus.session_id, COALESCE(vus.assigned_ip, ''), `+clientExpr+`, vus.last_seen_at
+SELECT vus.node_id, COALESCE(n.name, ''), vus.user_id, vus.protocol, COALESCE(vus.inbound_tag, ''), vus.session_id, `+strings.Join(presenceExpr, ", ")+`, COALESCE(vus.assigned_ip, ''), `+clientExpr+`, vus.last_seen_at
 FROM vpn_user_sessions vus
 LEFT JOIN nodes n ON n.id = vus.node_id
 WHERE vus.user_id = ? AND vus.ended_at IS NULL
@@ -262,7 +276,7 @@ ORDER BY vus.last_seen_at DESC, vus.node_id, vus.protocol, vus.session_id`,
 		for rows.Next() {
 			var item UserOnlineIPRecord
 			var seen any
-			if err := rows.Scan(&item.NodeID, &item.NodeName, &item.UserID, &item.Protocol, &item.InboundTag, &item.SessionID, &item.AssignedIP, &item.IP, &seen); err != nil {
+			if err := rows.Scan(&item.NodeID, &item.NodeName, &item.UserID, &item.Protocol, &item.InboundTag, &item.SessionID, &item.DeviceID, &item.DeviceType, &item.ClientName, &item.Platform, &item.AssignedIP, &item.IP, &seen); err != nil {
 				rows.Close()
 				return nil, err
 			}
@@ -282,6 +296,52 @@ ORDER BY vus.last_seen_at DESC, vus.node_id, vus.protocol, vus.session_id`,
 		return result[i].LastSeenAt.After(result[j].LastSeenAt)
 	})
 	return result, nil
+}
+
+func (r Repository) UserDeviceHistory(ctx context.Context, userID int64) ([]UserOnlineIPRecord, error) {
+	if userID <= 0 {
+		return nil, nil
+	}
+	if ok, err := r.tableExists(ctx, "vpn_user_sessions"); err != nil || !ok {
+		return nil, err
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT vus.node_id, COALESCE(n.name,''), vus.user_id, vus.protocol,
+COALESCE(vus.inbound_tag,''), vus.session_id, COALESCE(vus.device_id,''), COALESCE(vus.device_type,'Unknown'),
+COALESCE(vus.client_name,'Unknown'), COALESCE(vus.platform,'Unknown'), COALESCE(vus.assigned_ip,''),
+COALESCE(vus.client_ip,''), vus.started_at, vus.last_seen_at, vus.ended_at
+FROM vpn_user_sessions vus LEFT JOIN nodes n ON n.id=vus.node_id WHERE vus.user_id=?
+AND (n.id IS NULL OR LOWER(COALESCE(n.status,'')) <> 'deleted') ORDER BY vus.last_seen_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []UserOnlineIPRecord{}
+	cutoff := onlineIPActiveCutoff()
+	for rows.Next() {
+		var item UserOnlineIPRecord
+		var started, seen any
+		var ended sql.NullTime
+		if err := rows.Scan(&item.NodeID, &item.NodeName, &item.UserID, &item.Protocol, &item.InboundTag, &item.SessionID, &item.DeviceID, &item.DeviceType, &item.ClientName, &item.Platform, &item.AssignedIP, &item.IP, &started, &seen, &ended); err != nil {
+			return nil, err
+		}
+		if item.IP == "" {
+			item.IP = item.AssignedIP
+		}
+		if parsed := usageDBTime(started); parsed != nil {
+			item.FirstSeenAt = *parsed
+		}
+		if parsed := usageDBTime(seen); parsed != nil {
+			item.LastSeenAt = *parsed
+			item.LastOnlineAt = *parsed
+		}
+		item.Online = !ended.Valid && !item.LastSeenAt.Before(cutoff)
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
+func (c Controller) UserDeviceHistory(ctx context.Context, userID int64) ([]UserOnlineIPRecord, error) {
+	return c.repo.UserDeviceHistory(ctx, userID)
 }
 
 func (c Controller) UserOnlineIPs(ctx context.Context, userID int64) ([]UserOnlineIPRecord, error) {

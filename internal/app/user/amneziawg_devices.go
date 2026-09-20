@@ -49,9 +49,6 @@ func (r Repository) ReconcileAmneziaWGDevices(ctx context.Context, inboundTag st
 	if inboundTag == "" || userID <= 0 {
 		return nil, fmt.Errorf("AmneziaWG inbound tag and user ID are required")
 	}
-	if limit <= 0 {
-		limit = 1
-	}
 	if limit > 64 {
 		return nil, fmt.Errorf("AmneziaWG device limit must not exceed 64")
 	}
@@ -84,8 +81,17 @@ func (r Repository) ReconcileAmneziaWGDevices(ctx context.Context, inboundTag st
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM amneziawg_devices WHERE inbound_tag = ? AND user_id = ? AND device_index >= ?`, inboundTag, userID, limit); err != nil {
-		return nil, err
+	desired := limit
+	if desired <= 0 {
+		desired = len(existing)
+		if desired == 0 {
+			desired = 1
+		}
+	}
+	if limit > 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM amneziawg_devices WHERE inbound_tag = ? AND user_id = ? AND device_index >= ?`, inboundTag, userID, limit); err != nil {
+			return nil, err
+		}
 	}
 
 	used := map[string]struct{}{}
@@ -119,8 +125,8 @@ func (r Repository) ReconcileAmneziaWGDevices(ctx context.Context, inboundTag st
 		return "", fmt.Errorf("AmneziaWG address pool %s has no free device address", addressPool.prefix)
 	}
 
-	devices := make([]AWGDevice, 0, limit)
-	for index := 0; index < limit; index++ {
+	devices := make([]AWGDevice, 0, desired)
+	for index := 0; index < desired; index++ {
 		if item, ok := existing[index]; ok {
 			parsed, parseErr := netip.ParseAddr(strings.TrimSpace(item.Address))
 			if parseErr != nil || !addressPool.prefix.Contains(parsed) || parsed.String() == addressPool.serverAddress() {

@@ -80,3 +80,24 @@ func TestRegistryIDsAreUnique(t *testing.T) {
 		seen[definition.ID] = struct{}{}
 	}
 }
+
+func TestStableDeviceCapabilitiesAreTruthful(t *testing.T) {
+	for _, id := range []string{"wireguard", "amneziawg"} {
+		definition, ok := Find(id)
+		if !ok || !definition.SupportsDeviceIdentity || !definition.SupportsDeviceLimit || !definition.SupportsDisconnectDevice {
+			t.Fatalf("%s capabilities=%#v", id, definition)
+		}
+		if definition.SupportsDeviceMetadata {
+			t.Fatalf("%s must not claim unavailable metadata", id)
+		}
+	}
+	for _, id := range []string{"openvpn", "l2tp", "pptp", "ikev2", "anyconnect", "vless"} {
+		definition, ok := Find(id)
+		if !ok {
+			t.Fatalf("missing %s", id)
+		}
+		if definition.SupportsDeviceLimit {
+			t.Fatalf("%s must not claim hard device limit", id)
+		}
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 
 	"golang.org/x/crypto/curve25519"
@@ -19,6 +20,7 @@ const (
 )
 
 type WGProfile struct {
+	DeviceIndex     int    `json:"device_index"`
 	HostTag         string `json:"host_tag"`
 	HostName        string `json:"host_name"`
 	InboundTag      string `json:"inbound_tag"`
@@ -73,6 +75,10 @@ func (s Service) WGProfiles(ctx context.Context, userID int64, hostTag string, i
 	if strings.TrimSpace(item.ServerIP) == "" {
 		item.ServerIP = s.repo.configServerIP(ctx)
 	}
+	var deviceLimit int
+	if err := s.repo.db.QueryRowContext(ctx, `SELECT COALESCE(device_limit, 0) FROM users WHERE id = ?`, userID).Scan(&deviceLimit); err != nil {
+		return nil, err
+	}
 	if err := s.repo.populateWGAddresses(ctx, &item, inbounds); err != nil {
 		return nil, err
 	}
@@ -101,28 +107,44 @@ func (s Service) WGProfiles(ctx context.Context, userID int64, hostTag string, i
 			continue
 		}
 		tag := WGHostTag(host, remark, address)
-		if hostTag != "" && !WGHostTagMatches(host, remark, address, tag, hostTag) {
+		baseRequestedTag, requestedDevice := splitWGDeviceHostTag(hostTag)
+		if baseRequestedTag != "" && !WGHostTagMatches(host, remark, address, tag, baseRequestedTag) {
 			continue
 		}
-		material, err := buildWGProfileMaterial(item, remark, address, effective, host, includeBody)
+		settings := normalizeWGProfileSettings(mapValue(effective["settings"]))
+		devices, err := s.repo.ReconcileWireGuardDevices(ctx, host.InboundTag, userID, deviceLimit, stringValue(settings["address_pool"]), stringValue(settings["server_address"]), item.CredentialKey)
 		if err != nil {
 			return nil, err
 		}
-		profiles = append(profiles, WGProfile{
-			HostTag:         tag,
-			HostName:        firstNonEmptyString(host.Remark, remark, address),
-			InboundTag:      host.InboundTag,
-			Remark:          remark,
-			Filename:        WGProfileFilename(item.Username, tag),
-			Link:            material.Link,
-			Body:            material.Body,
-			Server:          address,
-			Address:         address,
-			Port:            material.Port,
-			ClientAddress:   material.ClientAddress,
-			ClientPublicKey: material.ClientPublicKey,
-			ServerPublicKey: material.ServerPublicKey,
-		})
+		for _, device := range devices {
+			if requestedDevice >= 0 && device.DeviceIndex != requestedDevice {
+				continue
+			}
+			material, err := buildWGProfileMaterialForDevice(device, remark, address, effective, host, includeBody)
+			if err != nil {
+				return nil, err
+			}
+			deviceTag := tag
+			if device.DeviceIndex > 0 {
+				deviceTag = fmt.Sprintf("%s-device-%d", tag, device.DeviceIndex+1)
+			}
+			profiles = append(profiles, WGProfile{
+				DeviceIndex:     device.DeviceIndex,
+				HostTag:         deviceTag,
+				HostName:        firstNonEmptyString(host.Remark, remark, address),
+				InboundTag:      host.InboundTag,
+				Remark:          remark,
+				Filename:        WGProfileFilename(item.Username, deviceTag),
+				Link:            material.Link,
+				Body:            material.Body,
+				Server:          address,
+				Address:         address,
+				Port:            material.Port,
+				ClientAddress:   material.ClientAddress,
+				ClientPublicKey: material.ClientPublicKey,
+				ServerPublicKey: material.ServerPublicKey,
+			})
+		}
 	}
 	return profiles, nil
 }
@@ -195,6 +217,15 @@ func buildWGProfileMaterial(item ConfigLinkUser, remark string, address string, 
 	if err != nil {
 		return wgProfileMaterial{}, err
 	}
+	device := WGDevice{PrivateKey: pair.PrivateKey, PublicKey: pair.PublicKey, Address: item.WireGuardAddresses[stringValue(inbound["tag"])]}
+	if device.Address == "" {
+		settings := normalizeWGProfileSettings(mapValue(inbound["settings"]))
+		device.Address = WGIPv4AddressForUser(item.ID, stringValue(settings["address_pool"]), stringValue(settings["server_address"]))
+	}
+	return buildWGProfileMaterialForDevice(device, remark, address, inbound, host, includeBody)
+}
+
+func buildWGProfileMaterialForDevice(device WGDevice, remark string, address string, inbound ResolvedInbound, host Host, includeBody bool) (wgProfileMaterial, error) {
 	settings := normalizeWGProfileSettings(mapValue(inbound["settings"]))
 	settings["dns_servers"] = wgHostDNSServers(host)
 	port := intValue(inbound["port"])
@@ -205,27 +236,40 @@ func buildWGProfileMaterial(item ConfigLinkUser, remark string, address string, 
 	if err != nil {
 		return wgProfileMaterial{}, err
 	}
-	clientAddress := item.WireGuardAddresses[stringValue(inbound["tag"])]
-	if clientAddress == "" {
-		clientAddress = WGIPv4AddressForUser(item.ID, stringValue(settings["address_pool"]), stringValue(settings["server_address"]))
-	}
-	clientAddress += "/32"
+	clientAddress := strings.TrimSpace(device.Address) + "/32"
 	endpoint := formatWGEndpoint(address, portString(inbound["port"]))
 	if endpoint == "" {
 		return wgProfileMaterial{}, fmt.Errorf("WireGuard endpoint is required")
 	}
 
 	material := wgProfileMaterial{
-		Link:            buildWGURI(remark, address, portString(inbound["port"]), pair.PrivateKey, clientAddress, serverPublicKey, settings),
+		Link:            buildWGURI(remark, address, portString(inbound["port"]), device.PrivateKey, clientAddress, serverPublicKey, settings),
 		ClientAddress:   clientAddress,
-		ClientPublicKey: pair.PublicKey,
+		ClientPublicKey: device.PublicKey,
 		ServerPublicKey: serverPublicKey,
 		Port:            port,
 	}
 	if includeBody {
-		material.Body = buildWGConfigBody(pair.PrivateKey, clientAddress, serverPublicKey, endpoint, settings)
+		material.Body = buildWGConfigBody(device.PrivateKey, clientAddress, serverPublicKey, endpoint, settings)
 	}
 	return material, nil
+}
+
+func splitWGDeviceHostTag(value string) (string, int) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", -1
+	}
+	marker := "-device-"
+	index := strings.LastIndex(value, marker)
+	if index < 0 {
+		return value, -1
+	}
+	number, err := strconv.Atoi(value[index+len(marker):])
+	if err != nil || number < 2 {
+		return value, -1
+	}
+	return value[:index], number - 1
 }
 
 func wgHostDNSServers(host Host) []string {
