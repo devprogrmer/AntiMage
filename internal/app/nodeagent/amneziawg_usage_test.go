@@ -94,7 +94,7 @@ func TestAmneziaWGUsageDeltaACKRestartOnlineAndQuota(t *testing.T) {
 	if retry.BatchId != first.BatchId || retry.Stats[0].Value != 100 {
 		t.Fatalf("pending batch was not stable: %#v", retry)
 	}
-	ack, err := s.ackAmneziaWGUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: first.BatchId})
+	ack, err := s.AckUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: first.BatchId})
 	if err != nil || !ack.Acknowledged {
 		t.Fatalf("ack=%#v err=%v", ack, err)
 	}
