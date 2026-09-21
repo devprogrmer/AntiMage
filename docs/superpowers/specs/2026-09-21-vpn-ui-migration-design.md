@@ -1,108 +1,78 @@
-# vpn-ui Migration Design
+# vpn-ui Backup Migration Design
 
 ## Goal
 
-Add a dedicated migration flow that imports supported users and inbounds from
-a `Sir-MmD/vpn-ui` SQLite backup into AntiMage without treating the foreign
-database as an AntiMage restore archive.
+Add `Restore from vpn-ui` beside AntiMage's existing Backup/Restore controls.
+The administrator uploads a Sir-MmD/vpn-ui SQLite backup and imports its
+accounts into an existing AntiMage service without replacing the AntiMage
+database.
 
-## Source Contract
+## Source and Safety
 
-The initial source is the public `Sir-MmD/vpn-ui` main-line SQLite database
-backup (`.db`). The importer detects SQLite by its file header and fingerprints
-the expected vpn-ui schema using required tables and columns. A generic SQLite
-file or a different 3x-ui fork is rejected unless its schema matches the
-supported variants.
+The source is a vpn-ui `.db` SQLite backup. It is opened read-only and must
+match either the current `accounts` schema or the legacy `client_traffics`
+schema. Generic SQLite files are rejected. Upload size and imported account
+count are bounded, and the temporary upload is removed after the request.
 
-The uploaded file is treated as untrusted data. It is opened read-only without
-running vpn-ui migrations, extensions, triggers, or executable content. Upload
-size and row counts are bounded.
+No source admin, panel password, JWT/session secret, TLS key, node certificate,
+host path, raw daemon configuration, WireGuard/AmneziaWG private key, or PSK is
+read into AntiMage or returned by the API.
 
-## User Experience
+## Destination Model
 
-Settings > Backup gains a separate `Migrate from vpn-ui` action. Upload first
-creates a short-lived analysis record and displays a preview:
+The administrator selects an existing AntiMage service with active hosts.
+Imported accounts use that service's protocols, nodes, and routing. AntiMage
+generates fresh subscription and connection credentials, so imported users get
+valid profiles for the current AntiMage runtime rather than stale vpn-ui host
+configuration.
 
-- detected source/version evidence;
-- user and inbound counts;
-- protocol mapping and unsupported counts;
-- username and port conflicts;
-- fields that will be regenerated or omitted;
-- warnings and blocking errors.
+The importer preserves where available:
 
-The administrator chooses a conflict policy: skip duplicate usernames or add a
-deterministic suffix. Existing AntiMage records are never overwritten by this
-importer. Applying a preview requires its opaque analysis token and the source
-file digest, preventing a changed file from being applied under an old preview.
+- username;
+- enabled/disabled state;
+- expired and quota-limited effective state;
+- total data limit and used traffic;
+- expiry timestamp, including vpn-ui millisecond timestamps;
+- IP limit and device limit from current vpn-ui accounts;
+- account comment.
 
-## Neutral Import Model
+Legacy backups preserve username, state, traffic, quota, and expiry but report
+that IP/device limits are unavailable.
 
-The vpn-ui reader maps source rows into a source-independent migration model:
+## Duplicate Policy
 
-- users: username/email identity, enabled state, expiry, total quota, used
-  traffic, IP/device limit where representable, notes, and source ID;
-- inbounds: protocol, listen port/address, transport/security settings, and
-  source tag;
-- memberships: which imported user belongs to which imported inbound/service;
-- warnings: field-level omissions with source identifiers.
+The default policy skips an existing AntiMage username. The optional rename
+policy appends a deterministic `-vpn<source-id>` suffix while respecting
+AntiMage's 34-character username limit. Re-uploading the same backup therefore
+does not create another renamed copy.
 
-The apply layer consumes only this neutral model. It uses existing AntiMage
-repositories and normalization rather than inserting foreign rows directly.
-This boundary permits future importers without weakening AntiMage restore.
+## API and UI
 
-## Mapping Rules
+`POST /api/settings/backup/import/vpn-ui` is sudo-protected under the Backups
+permission and accepts multipart fields `file`, `service_id`, and
+`duplicate_policy`. The response contains detected, imported, skipped, renamed,
+and warning counts only.
 
-Xray protocols supported by AntiMage are normalized through the current
-protocol registry. Native protocols are imported only when all mandatory
-runtime settings can be represented and validated. Unsupported protocols or
-settings are skipped with explicit preview warnings.
+The existing Backup menu gains a `Restore from vpn-ui` action. Its responsive
+dialog contains the `.db` file dropzone, destination-service selector,
+duplicate policy, safety warning, progress state, and import summary. This
+action remains available in Docker mode because it changes application data,
+not host files; native AntiMage `.rbbackup` restore retains its existing binary
+mode restriction.
 
-Traffic values are converted to AntiMage's byte counters without double
-counting. Unlimited quota/expiry remains unlimited. Disabled and expired users
-remain disabled/expired. Imported users receive new AntiMage subscription
-tokens.
+## Runtime Convergence
 
-Passwords and public client identifiers may be preserved only where the target
-protocol model explicitly supports them. Admin accounts, panel credentials,
-JWT/session secrets, TLS private keys, node certificates, host paths, arbitrary
-scripts, raw daemon configs, private WireGuard/AmneziaWG keys, and PSKs are not
-imported. Key-based device profiles are regenerated by AntiMage and reported in
-the preview.
-
-Each compatible source inbound becomes an AntiMage inbound and is grouped into
-a generated service unless the administrator selects an existing compatible
-service during preview. Port conflicts block that inbound but do not silently
-change its port.
-
-## Atomicity, Idempotency, and Rollback
-
-Before apply, AntiMage creates a database backup through its existing backup
-service. Apply runs in one database transaction where repository boundaries
-permit it; runtime propagation starts only after commit. Any database failure
-rolls back all imported rows.
-
-Imported records carry source kind, source database digest, and source row ID
-in a migration ledger with a uniqueness constraint. Reapplying the same backup
-does not duplicate records. A partial runtime propagation failure does not
-delete imported data; it is reported and queued through normal convergence.
-
-## API and Authorization
-
-Sudo-protected endpoints provide analyze, apply, status, and discard. Uploaded
-files live in a private temporary directory with an expiry and are deleted on
-apply/discard/timeout. API responses never include passwords, private keys,
-PSKs, raw settings blobs, or source database paths.
+Each imported account is created through AntiMage's existing user mutation
+service. This creates protocol credentials and node operations consistently
+with an ordinary user creation. Restored usage and final state are then written
+to the new account, and node operation processing is kicked immediately.
 
 ## Verification
 
-Fixtures generated from the documented vpn-ui schema cover users, memberships,
-Xray inbounds, native inbounds, unlimited/expired/disabled users, usage values,
-duplicate usernames, port conflicts, malformed databases, oversized input,
-unsupported protocols, secret redaction, idempotent reapply, transactional
-rollback, and runtime convergence payloads.
-
-Frontend tests cover upload, preview, conflict selection, warnings, apply, and
-failure states. A migration is not called live verified until an actual vpn-ui
-backup is imported into a disposable AntiMage deployment and representative
-client configurations connect after regeneration.
-
+Reader tests cover current and legacy vpn-ui schemas, usage aggregation,
+millisecond expiry conversion, limits, and unrelated SQLite rejection. API
+tests cover backup request body allowance and existing backup regression.
+Frontend typecheck/build and the complete frontend and Go test suites must
+pass. Live validation still requires importing a real vpn-ui backup into a
+disposable AntiMage deployment and connecting a regenerated profile; without
+that, live migration is not claimed.
