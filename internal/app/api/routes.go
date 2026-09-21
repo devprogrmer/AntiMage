@@ -14,7 +14,7 @@ const (
 )
 
 func apiRequestBodyLimit(path string) int64 {
-	if path == "/api/settings/backup/import" {
+	if path == "/api/settings/backup/import" || path == "/api/settings/backup/import/vpn-ui" {
 		return 0
 	}
 	if path == "/api/haproxy/templates" {
@@ -173,6 +173,7 @@ func (s *Server) registerSettingsRoutes(r chi.Router) {
 	r.HandleFunc("/settings/all", s.requireSudo(s.handleAllSettings))
 	r.HandleFunc("/settings/backup/export", s.requireSudo(s.handleBackupExport))
 	r.HandleFunc("/settings/backup/import", s.requireSudo(s.handleBackupImport))
+	r.HandleFunc("/settings/backup/import/vpn-ui", s.requireSudo(s.handleVPNUIBackupImport))
 	r.HandleFunc("/settings/panel", s.requireAdmin(s.handlePanelSettings))
 	r.HandleFunc("/settings/phpmyadmin/embed/*", s.handlePHPMyAdmin)
 	r.HandleFunc("/settings/phpmyadmin/*", s.requireSudo(s.handlePHPMyAdmin))

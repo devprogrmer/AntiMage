@@ -148,6 +148,14 @@ export interface AntiMageBackupImportResponse {
 	warnings: string[];
 }
 
+export interface VPNUIBackupImportResponse {
+	detected: number;
+	imported: number;
+	skipped: number;
+	renamed: number;
+	warnings: string[];
+}
+
 export interface SubscriptionTemplateSettings {
 	subscription_url_prefix: string;
 	subscription_profile_title: string;
@@ -667,6 +675,41 @@ export const importAntiMageBackup = async (
 			reject({ response: { _data: xhr.response } });
 		};
 		xhr.onerror = () => reject(new Error("Backup upload failed"));
+		onProgress?.(0);
+		xhr.send(body);
+	});
+};
+
+export const importVPNUIBackup = async (
+	file: File,
+	serviceId: number,
+	duplicatePolicy: "skip" | "rename",
+	onProgress?: (percent: number) => void,
+): Promise<VPNUIBackupImportResponse> => {
+	return new Promise((resolve, reject) => {
+		const body = new FormData();
+		body.append("file", file);
+		body.append("service_id", String(serviceId));
+		body.append("duplicate_policy", duplicatePolicy);
+		const xhr = new XMLHttpRequest();
+		const baseURL = (apiBaseURL || "/api").replace(/\/$/, "");
+		xhr.open("POST", `${baseURL}/settings/backup/import/vpn-ui`);
+		xhr.withCredentials = true;
+		xhr.responseType = "json";
+		xhr.upload.onprogress = (event) => {
+			if (event.lengthComputable) {
+				onProgress?.(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+			}
+		};
+		xhr.upload.onload = () => onProgress?.(100);
+		xhr.onload = () => {
+			if (xhr.status >= 200 && xhr.status < 300) {
+				resolve(xhr.response as VPNUIBackupImportResponse);
+				return;
+			}
+			reject({ response: { _data: xhr.response } });
+		};
+		xhr.onerror = () => reject(new Error("vpn-ui backup upload failed"));
 		onProgress?.(0);
 		xhr.send(body);
 	});
