@@ -102,6 +102,12 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 	}
 	aggregated := map[aggregateKey]uint64{}
 	onlineIPs := []*nodev1.OnlineUserIP{}
+	type sessionDispatch struct {
+		callback nativeRuntimeSessionCallback
+		events   []nativeSessionEvent
+		peers    map[string]amneziaWGSessionPeer
+	}
+	sessionDispatches := []sessionDispatch{}
 	entries, err := os.ReadDir(filepath.Join(s.cfg.DataDir, "amneziawg", "runtime"))
 	if os.IsNotExist(err) {
 		return &nodev1.UserUsageBatch{}, nil
@@ -124,6 +130,8 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 			s.appendLog("amneziawg stats query failed: " + snapErr.Error())
 			continue
 		}
+		sessionEvents := []nativeSessionEvent{}
+		sessionPeers := map[string]amneziaWGSessionPeer{}
 		for _, peer := range peers {
 			publicKey := strings.TrimSpace(peer.PublicKey)
 			userID := cfg.Peers[publicKey]
@@ -148,11 +156,12 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 				}
 				onlineIPs = append(onlineIPs, &nodev1.OnlineUserIP{Uid: "amneziawg:" + strconv.FormatInt(userID, 10), Ips: []*nodev1.OnlineIP{{Ip: address, LastSeenUnix: now.Unix()}}})
 				event := amneziaWGSessionEvent(cfg, peer, userID, "seen")
-				if eventErr := s.sendNativeSessionEvent(ctx, cfg.Callback, event); errors.Is(eventErr, errNativeSessionDeviceLimit) {
-					_ = amneziaWGRemovePeer(cfg.InterfaceName, publicKey)
-				}
+				sessionEvents = append(sessionEvents, event)
+				sessionPeers[event.SessionID] = amneziaWGSessionPeer{interfaceName: cfg.InterfaceName, publicKey: publicKey}
 			} else {
-				_ = s.sendNativeSessionEvent(ctx, cfg.Callback, amneziaWGSessionEvent(cfg, peer, userID, "stop"))
+				event := amneziaWGSessionEvent(cfg, peer, userID, "stop")
+				sessionEvents = append(sessionEvents, event)
+				sessionPeers[event.SessionID] = amneziaWGSessionPeer{interfaceName: cfg.InterfaceName, publicKey: publicKey}
 			}
 			policy := cfg.Policies[publicKey]
 			allowed, _ := nativeSessionUserPolicyAllowed(policy, now)
@@ -160,6 +169,20 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 				_ = amneziaWGRemovePeer(cfg.InterfaceName, publicKey)
 			}
 		}
+		sessionDispatches = append(sessionDispatches, sessionDispatch{callback: cfg.Callback, events: sessionEvents, peers: sessionPeers})
+	}
+	for _, dispatch := range sessionDispatches {
+		s.dispatchNativeSessionEvents(dispatch.callback, dispatch.events, func(event nativeSessionEvent, eventErr error) {
+			if errors.Is(eventErr, errNativeSessionDeviceLimit) {
+				if peer, ok := dispatch.peers[event.SessionID]; ok {
+					_ = amneziaWGRemovePeer(peer.interfaceName, peer.publicKey)
+				}
+				return
+			}
+			if eventErr != nil {
+				s.appendLog("amneziawg session callback failed for " + event.InboundTag + " user " + strconv.FormatInt(event.UserID, 10) + ": " + eventErr.Error())
+			}
+		})
 	}
 	keys := make([]aggregateKey, 0, len(aggregated))
 	for key := range aggregated {
@@ -182,6 +205,11 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 		return nil, err
 	}
 	return amneziaWGUsageBatchProto(pending, onlineIPs), nil
+}
+
+type amneziaWGSessionPeer struct {
+	interfaceName string
+	publicKey     string
 }
 
 func amneziaWGSessionEvent(cfg amneziaWGUsageRuntimeConfig, peer wireGuardPeerCounters, userID int64, event string) nativeSessionEvent {

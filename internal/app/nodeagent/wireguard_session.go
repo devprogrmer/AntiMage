@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-const wireGuardSessionCallbackTimeout = 6 * time.Second
-
 func wireGuardSessionID(inboundTag, publicKey string) string {
 	sum := sha256.Sum256([]byte(
 		strings.TrimSpace(inboundTag) + "\x00" +
@@ -43,7 +41,7 @@ func wireGuardEndpointHost(raw string) string {
 }
 
 func (s *Server) reconcileWireGuardSessions(
-	ctx context.Context,
+	_ context.Context,
 	cfg wireGuardUsageRuntimeConfig,
 	interfaceName string,
 	peers []wireGuardPeerCounters,
@@ -75,6 +73,7 @@ func (s *Server) reconcileWireGuardSessions(
 		return nil
 
 	}
+	events := make([]nativeSessionEvent, 0, len(sessionPeers))
 
 	// Stop stale sessions first. This matters because the controller's
 	// admission check counts non-ended sessions when enforcing device limits.
@@ -92,24 +91,7 @@ func (s *Server) reconcileWireGuardSessions(
 			"stop",
 		)
 
-		callbackCtx, cancel := context.WithTimeout(
-			ctx,
-			wireGuardSessionCallbackTimeout,
-		)
-		err := s.sendNativeSessionEvent(
-			callbackCtx,
-			cfg.Callback,
-			event,
-		)
-		cancel()
-
-		if err != nil {
-			s.appendLog(
-				"wireguard stop callback failed for " +
-					cfg.InboundTag + " user " +
-					fmt.Sprint(userID) + ": " + err.Error(),
-			)
-		}
+		events = append(events, event)
 	}
 
 	// Refresh active peers after stale sessions are closed.
@@ -127,49 +109,32 @@ func (s *Server) reconcileWireGuardSessions(
 			"seen",
 		)
 
-		callbackCtx, cancel := context.WithTimeout(
-			ctx,
-			wireGuardSessionCallbackTimeout,
-		)
-		err := s.sendNativeSessionEvent(
-			callbackCtx,
-			cfg.Callback,
-			event,
-		)
-		cancel()
-
-		if err == nil {
-			continue
-		}
-
-		if !errors.Is(err, errNativeSessionDeviceLimit) {
-			s.appendLog(
-				"wireguard seen callback failed for " +
-					cfg.InboundTag + " user " +
-					fmt.Sprint(userID) + ": " + err.Error(),
-			)
-			continue
-		}
-		if err := s.disconnectWireGuardPeerAccountingSafeLocked(
-			cfg,
-			interfaceName,
-			peer,
-			userID,
-		); err != nil {
-			s.appendLog(
-				"wireguard peer disconnect blocked for " +
-					cfg.InboundTag + " user " +
-					fmt.Sprint(userID) + ": " + err.Error(),
-			)
-			continue
-		}
-
-		s.appendLog(
-			"wireguard peer disconnected by device limit: " +
-				cfg.InboundTag + " user " +
-				fmt.Sprint(userID),
-		)
+		events = append(events, event)
 	}
+
+	s.dispatchNativeSessionEvents(cfg.Callback, events, func(event nativeSessionEvent, err error) {
+		if err == nil {
+			return
+		}
+		if !errors.Is(err, errNativeSessionDeviceLimit) {
+			s.appendLog("wireguard session callback failed for " + cfg.InboundTag + " user " + fmt.Sprint(event.UserID) + ": " + err.Error())
+			return
+		}
+		for _, peer := range sessionPeers {
+			if wireGuardSessionID(cfg.InboundTag, peer.PublicKey) != event.SessionID {
+				continue
+			}
+			s.wireGuardUsageMu.Lock()
+			disconnectErr := s.disconnectWireGuardPeerAccountingSafeLocked(cfg, interfaceName, peer, event.UserID)
+			s.wireGuardUsageMu.Unlock()
+			if disconnectErr != nil {
+				s.appendLog("wireguard peer disconnect blocked for " + cfg.InboundTag + " user " + fmt.Sprint(event.UserID) + ": " + disconnectErr.Error())
+				return
+			}
+			s.appendLog("wireguard peer disconnected by device limit: " + cfg.InboundTag + " user " + fmt.Sprint(event.UserID))
+			return
+		}
+	})
 
 	return nil
 }

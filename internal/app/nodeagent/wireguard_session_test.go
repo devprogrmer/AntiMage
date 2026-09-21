@@ -11,6 +11,18 @@ import (
 	"time"
 )
 
+func waitForWireGuardSessionTest(t *testing.T, ready func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if ready() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for asynchronous session callback")
+}
+
 func TestWireGuardEndpointHost(t *testing.T) {
 	for raw, want := range map[string]string{
 		"198.51.100.4:20000":   "198.51.100.4",
@@ -69,12 +81,15 @@ func TestWireGuardSessionDeviceLimitRemovesPeerAfterAccountingSnapshot(t *testin
 
 	var calls []string
 	snapshotObservedAtRemoval := false
+	var runtimeMu sync.Mutex
 
 	wireGuardRuntimeRun = func(
 		_ context.Context,
 		name string,
 		args ...string,
 	) ([]byte, error) {
+		runtimeMu.Lock()
+		defer runtimeMu.Unlock()
 		calls = append(calls, name+" "+strings.Join(args, " "))
 
 		carry, ok := server.wireGuardUsageCarry[key]
@@ -127,24 +142,44 @@ func TestWireGuardSessionDeviceLimitRemovesPeerAfterAccountingSnapshot(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	waitForWireGuardSessionTest(t, func() bool {
+		mu.Lock()
+		eventCount := len(events)
+		mu.Unlock()
+
+		runtimeMu.Lock()
+		callCount := len(calls)
+		runtimeMu.Unlock()
+
+		suppressionKey := wireGuardDynamicSuppressionKey("wg-main", "peer-a")
+		server.mu.Lock()
+		_, suppressed := server.wireGuardDynamicSuppressedPeers[suppressionKey]
+		server.mu.Unlock()
+
+		return eventCount == 1 && callCount == 1 && suppressed
+	})
 
 	mu.Lock()
-	defer mu.Unlock()
-
 	if len(events) != 1 {
+		mu.Unlock()
 		t.Fatalf("events = %d, want 1", len(events))
 	}
-	if events[0].Protocol != "wg" {
-		t.Fatalf("protocol = %q", events[0].Protocol)
+	event := events[0]
+	mu.Unlock()
+
+	if event.Protocol != "wg" {
+		t.Fatalf("protocol = %q", event.Protocol)
 	}
-	if events[0].AssignedIP != "10.69.0.42" {
-		t.Fatalf("assigned ip = %q", events[0].AssignedIP)
+	if event.AssignedIP != "10.69.0.42" {
+		t.Fatalf("assigned ip = %q", event.AssignedIP)
 	}
-	if events[0].ClientIP != "198.51.100.4" {
-		t.Fatalf("client ip = %q", events[0].ClientIP)
+	if event.ClientIP != "198.51.100.4" {
+		t.Fatalf("client ip = %q", event.ClientIP)
 	}
 
+	runtimeMu.Lock()
 	if len(calls) != 1 {
+		runtimeMu.Unlock()
 		t.Fatalf(
 			"wireguard runtime calls = %v, want exactly one",
 			calls,
@@ -153,18 +188,24 @@ func TestWireGuardSessionDeviceLimitRemovesPeerAfterAccountingSnapshot(t *testin
 
 	want := "wg set wg-test0 peer peer-a remove"
 	if calls[0] != want {
+		got := calls[0]
+		runtimeMu.Unlock()
 		t.Fatalf(
 			"wireguard runtime call = %q, want %q",
-			calls[0],
+			got,
 			want,
 		)
 	}
 
 	if !snapshotObservedAtRemoval {
+		runtimeMu.Unlock()
 		t.Fatal("peer removal happened before persisted accounting snapshot")
 	}
+	runtimeMu.Unlock()
 
+	server.wireGuardUsageMu.Lock()
 	carry, ok := server.wireGuardUsageCarry[key]
+	server.wireGuardUsageMu.Unlock()
 	if !ok {
 		t.Fatal("accounting snapshot carry missing")
 	}
@@ -179,9 +220,12 @@ func TestWireGuardSessionDeviceLimitRemovesPeerAfterAccountingSnapshot(t *testin
 	}
 
 	suppressionKey := wireGuardDynamicSuppressionKey("wg-main", "peer-a")
+	server.mu.Lock()
 	if _, ok := server.wireGuardDynamicSuppressedPeers[suppressionKey]; !ok {
+		server.mu.Unlock()
 		t.Fatal("device-limit disconnect did not suppress peer from unchanged runtime apply")
 	}
+	server.mu.Unlock()
 }
 func TestWireGuardSessionsStopStaleBeforeSeen(t *testing.T) {
 	var mu sync.Mutex
@@ -243,6 +287,11 @@ func TestWireGuardSessionsStopStaleBeforeSeen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	waitForWireGuardSessionTest(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(order) == 2
+	})
 
 	mu.Lock()
 	defer mu.Unlock()

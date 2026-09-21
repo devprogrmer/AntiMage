@@ -3,6 +3,8 @@ package nodeagent
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +12,48 @@ import (
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
+
+func TestAmneziaWGPresenceCallbackDoesNotBlockAccounting(t *testing.T) {
+	callbackStarted := make(chan struct{}, 1)
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		callbackStarted <- struct{}{}
+		time.Sleep(750 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer httpServer.Close()
+
+	dataDir := t.TempDir()
+	key := awgTestKey('n')
+	writeAWGUsageConfig(t, dataDir, amneziaWGUsageRuntimeConfig{
+		InboundTag: "awg-main", InterfaceName: "awg0",
+		Peers: map[string]int64{key: 7}, PeerAddresses: map[string]string{key: "10.72.0.2"},
+		Policies: map[string]nativeSessionUserPolicy{key: {Status: "active"}}, AccountingEnabled: true,
+		Callback: nativeRuntimeSessionCallback{URL: httpServer.URL, NodeID: 9},
+	})
+
+	oldSnapshot := amneziaWGSnapshot
+	defer func() { amneziaWGSnapshot = oldSnapshot }()
+	amneziaWGSnapshot = func(string) ([]wireGuardPeerCounters, error) {
+		return []wireGuardPeerCounters{{PublicKey: key, Endpoint: "198.51.100.7:321", LatestHandshake: time.Now().Unix(), ReceivedBytes: 50}}, nil
+	}
+
+	started := time.Now()
+	batch, err := New(Config{DataDir: dataDir}).collectAmneziaWGUserUsage(context.Background(), &nodev1.CollectUsageRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+		t.Fatalf("accounting waited for presence callback: %s", elapsed)
+	}
+	if len(batch.Stats) == 0 || batch.Stats[0].Value != 50 {
+		t.Fatalf("usage batch = %#v", batch)
+	}
+	select {
+	case <-callbackStarted:
+	case <-time.After(time.Second):
+		t.Fatal("presence callback was not dispatched")
+	}
+}
 
 func writeAWGUsageConfig(t *testing.T, dataDir string, cfg amneziaWGUsageRuntimeConfig) {
 	t.Helper()

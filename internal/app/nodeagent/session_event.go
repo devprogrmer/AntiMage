@@ -124,3 +124,27 @@ func (s *Server) sendNativeSessionEvent(
 		detail,
 	)
 }
+
+func (s *Server) dispatchNativeSessionEvents(
+	callback nativeRuntimeSessionCallback,
+	events []nativeSessionEvent,
+	onResult func(nativeSessionEvent, error),
+) {
+	if strings.TrimSpace(callback.URL) == "" || len(events) == 0 {
+		return
+	}
+	events = append([]nativeSessionEvent(nil), events...)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), nativeSessionHTTPClient.Timeout)
+		defer cancel()
+		for _, event := range events {
+			err := s.sendNativeSessionEvent(ctx, callback, event)
+			if onResult != nil {
+				onResult(event, err)
+			}
+			if ctx.Err() != nil {
+				return
+			}
+		}
+	}()
+}
