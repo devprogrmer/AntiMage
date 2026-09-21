@@ -2597,6 +2597,46 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																</FormControl>
 															</Grid>
 
+															<Grid
+																templateColumns={{
+																	base: "minmax(0, 1fr)",
+																	sm: "repeat(2, minmax(0, 1fr))",
+																}}
+																gap={3}
+																mb="10px"
+															>
+																{(["download", "upload"] as const).map(
+																	(direction) => (
+																		<FormControl key={direction} isDisabled>
+																			<FormLabel
+																				textAlign={isRTL ? "right" : "left"}
+																			>
+																				{t(`userDialog.${direction}SpeedLimit`)}
+																			</FormLabel>
+																			<InputGroup size="sm">
+																				<ChakraInput
+																					type="number"
+																					min={0}
+																					placeholder={t(
+																						"userDialog.speedLimitPlaceholder",
+																					)}
+																					borderRadius="6px"
+																					dir="ltr"
+																				/>
+																				<InputRightAddon>Mbps</InputRightAddon>
+																			</InputGroup>
+																		</FormControl>
+																	),
+																)}
+																<Text
+																	gridColumn={{ base: "auto", sm: "1 / -1" }}
+																	fontSize="xs"
+																	color="gray.500"
+																>
+																	{t("userDialog.speedLimitPending")}
+																</Text>
+															</Grid>
+
 															<Collapse
 																in={!!(dataLimit && dataLimit > 0)}
 																animateOpacity
