@@ -423,6 +423,9 @@ func (s *Server) AckUserUsage(
 	if strings.HasPrefix(batchID, "wireguard-") {
 		return s.ackWireGuardUserUsage(ctx, req)
 	}
+	if strings.HasPrefix(batchID, "amneziawg-") {
+		return s.ackAmneziaWGUserUsage(ctx, req)
+	}
 
 	// Try combined OpenVPN/Xray + WireGuard ACK
 	if strings.HasPrefix(batchID, "combined-") {
