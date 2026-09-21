@@ -11,6 +11,18 @@ import (
 	"time"
 )
 
+func waitForWireGuardSessionTest(t *testing.T, ready func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if ready() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for asynchronous session callback")
+}
+
 func TestWireGuardEndpointHost(t *testing.T) {
 	for raw, want := range map[string]string{
 		"198.51.100.4:20000":   "198.51.100.4",
@@ -127,6 +139,11 @@ func TestWireGuardSessionDeviceLimitRemovesPeerAfterAccountingSnapshot(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	waitForWireGuardSessionTest(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(events) == 1 && len(calls) == 1
+	})
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -243,6 +260,11 @@ func TestWireGuardSessionsStopStaleBeforeSeen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	waitForWireGuardSessionTest(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(order) == 2
+	})
 
 	mu.Lock()
 	defer mu.Unlock()
