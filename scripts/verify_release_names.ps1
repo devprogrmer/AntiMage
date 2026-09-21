@@ -12,8 +12,6 @@ $vpnUiAllowed = @(
     "dashboard/src/components/AntiMageBackupPanel.tsx",
     "dashboard/src/service/settings.ts",
     "dashboard/src/service/settings.test.ts",
-    "docs/superpowers/plans/2026-09-21-vpn-ui-migration.md",
-    "docs/superpowers/specs/2026-09-21-vpn-ui-migration-design.md",
     "internal/app/api/routes.go",
     "internal/app/api/settings_vpn_ui_migration.go",
     "internal/app/api/settings_vpn_ui_migration_test.go",
