@@ -44,6 +44,8 @@
 	"admins.dailyUsageTooltip": "کل حجم مصرفی روزانه برای ادمین و بازه زمانی انتخاب شده",
 	"admins.dataLimit": "محدودیت حجم (گیگابایت)",
 	"admins.dataLimitHint": "برای حجم نامحدود خالی بگذارید",
+	"admins.resellerBudgetHint": "الزامی است. واگذاری از این بودجه کم می‌شود و حذف ادمین آن را برنمی‌گرداند.",
+	"admins.validation.invalidDataLimit": "بودجهٔ حجم باید بزرگ‌تر از صفر باشد.",
 	"admins.dataLimitPlaceholder": "مثلا ۱۰۰ برای ۱۰۰ گیگابایت (خالی = نامحدود)",
 	"admins.expireDonateDescription": "اگر دوست داشتید، میتونید با دونیت کردن، روند پیشروی و توسعه را افزایش دهید.",
 	"admins.expireDonateHint": "برای منتشر شدن دونیت کنید",

@@ -305,6 +305,9 @@ func (r Repository) bulkDeleteFilter(targetAdmin *adminapp.Admin, payload BulkUs
 
 func (r Repository) ensureBulkActionAllowedTx(ctx context.Context, tx *sql.Tx, requester adminapp.Admin, targetAdmin *adminapp.Admin, payload BulkUsersActionRequest) error {
 	if payload.Action == AdvancedUserActionDeleteUsers {
+		if err := r.ensureResellerUserDeleteAllowedTx(ctx, tx, requester); err != nil {
+			return err
+		}
 		if err := EnsureUserPermission(requester, UserPermissionDelete); err != nil {
 			return permissionHTTPError(err)
 		}
@@ -803,8 +806,12 @@ func (r Repository) recordBulkCreatedTrafficTx(ctx context.Context, tx *sql.Tx, 
 				return err
 			}
 		} else {
-			if _, err := tx.ExecContext(ctx, `UPDATE admins SET created_traffic = COALESCE(created_traffic, 0) + ? WHERE id = ?`, inc.amount, inc.adminID); err != nil {
+			result, err := tx.ExecContext(ctx, `UPDATE admins SET created_traffic = COALESCE(created_traffic, 0) + ? WHERE id = ? AND (COALESCE(traffic_limit_mode, 'used_traffic') != 'created_traffic' OR data_limit IS NULL OR (data_limit >= ? AND COALESCE(created_traffic, 0) <= data_limit - ?))`, inc.amount, inc.adminID, inc.amount, inc.amount)
+			if err != nil {
 				return err
+			}
+			if rowsAffected(result) != 1 {
+				return clientError(403, CreatedTrafficLimitExceededMessage)
 			}
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO admin_created_traffic_logs (admin_id, service_id, amount, action, created_at) VALUES (?, ?, ?, ?, ?)`, inc.adminID, nullableInt64Ptr(inc.serviceID), inc.amount, action, dbTime(now)); err != nil {

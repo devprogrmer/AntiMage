@@ -49,6 +49,10 @@ func (s *Server) handleAdminsList(w http.ResponseWriter, r *http.Request) {
 	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
 		where := `WHERE status != ?`
 		args := []any{string(adminapp.StatusDeleted)}
+		if principal.Context.Admin.Role == adminapp.RoleReseller {
+			where += ` AND (id = ? OR created_by = ?)`
+			args = append(args, principal.Context.Admin.ID, principal.Context.Admin.Username)
+		}
 		if usernameFilter != "" {
 			predicate, searchArgs := searchmatch.SQLAny(s.dialect, []string{"username"}, usernameFilter, searchmatch.Options{
 				MatchCase: matchCase, MatchWholeWord: matchWholeWord,
@@ -119,7 +123,7 @@ func (s *Server) handleAdminUsageValuePath(w http.ResponseWriter, r *http.Reques
 		if err != nil {
 			return err
 		}
-		if !canViewAdminUsage(principal.Context.Admin, dbadmin.Username) {
+		if !canViewAdminUsage(principal.Context.Admin, dbadmin) {
 			return statusError{status: http.StatusForbidden, detail: "Access denied"}
 		}
 		value = effectiveAdminUsage(dbadmin)
@@ -140,7 +144,7 @@ func (s *Server) handleAdminUsageDaily(w http.ResponseWriter, r *http.Request, u
 		if err != nil {
 			return err
 		}
-		if !canViewAdminUsage(principal.Context.Admin, dbadmin.Username) {
+		if !canViewAdminUsage(principal.Context.Admin, dbadmin) {
 			return statusError{status: http.StatusForbidden, detail: "Access denied"}
 		}
 		start, end := usageDBRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"))
@@ -195,7 +199,7 @@ func (s *Server) handleAdminUsageChart(w http.ResponseWriter, r *http.Request, u
 		if err != nil {
 			return err
 		}
-		if !canViewAdminUsage(principal.Context.Admin, dbadmin.Username) {
+		if !canViewAdminUsage(principal.Context.Admin, dbadmin) {
 			return statusError{status: http.StatusForbidden, detail: "Access denied"}
 		}
 		start, end := usageDBRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"))
@@ -243,7 +247,7 @@ func (s *Server) handleAdminUsageNodes(w http.ResponseWriter, r *http.Request, u
 		if err != nil {
 			return err
 		}
-		if !canViewAdminUsage(principal.Context.Admin, dbadmin.Username) {
+		if !canViewAdminUsage(principal.Context.Admin, dbadmin) {
 			return statusError{status: http.StatusForbidden, detail: "Access denied"}
 		}
 		start, end := usageDBRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"))
@@ -363,8 +367,8 @@ func addAdminCountsTx(ctx context.Context, tx *sql.Tx, adminID int64, response m
 	return nil
 }
 
-func canViewAdminUsage(actor adminapp.Admin, username string) bool {
-	return actor.Role == adminapp.RoleSudo || actor.Role == adminapp.RoleFullAccess || strings.EqualFold(actor.Username, username)
+func canViewAdminUsage(actor, target adminapp.Admin) bool {
+	return actor.Role == adminapp.RoleSudo || actor.Role == adminapp.RoleFullAccess || strings.EqualFold(actor.Username, target.Username) || actor.Role == adminapp.RoleReseller && strings.EqualFold(actor.Username, target.CreatedBy)
 }
 
 func effectiveAdminUsage(dbadmin adminapp.Admin) int64 {

@@ -169,7 +169,8 @@ const getAdminIsExpired = (admin: Admin, nowUnix: number) =>
 
 const getAdminIsLimited = (admin: Admin) =>
 	admin.disabled_reason === ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY ||
-	(admin.data_limit !== null &&
+	(admin.traffic_limit_mode !== AdminTrafficLimitMode.CreatedTraffic &&
+		admin.data_limit !== null &&
 		admin.data_limit !== undefined &&
 		admin.data_limit > 0 &&
 		getAdminEffectiveUsage(admin) >= admin.data_limit);
@@ -972,6 +973,8 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	const adminRowActions = (admin: Admin): DataTableRowAction<Admin>[] => {
 		const meta = getAdminRowMeta(admin);
 		const actions: DataTableRowAction<Admin>[] = [];
+		const hasResellerBudget = admin.role === AdminRole.Reseller ||
+			admins.some((item) => item.role === AdminRole.Reseller && item.username === admin.created_by);
 
 		if (meta.canManage) {
 			actions.push(
@@ -981,13 +984,14 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 					icon: <PencilIcon width={16} />,
 					onClick: () => openAdminDialog(admin),
 				},
-				{
+			);
+			if (!hasResellerBudget) actions.push({
 					id: "permissions",
 					label: t("admins.editPermissionsButton"),
 					icon: <AdjustmentsHorizontalIcon width={16} />,
 					onClick: () => handleOpenPermissionsModal(admin),
-				},
-				{
+				});
+			if (!hasResellerBudget) actions.push({
 					id: "reset",
 					label: t("admins.resetUsage"),
 					icon: <ResetIcon />,
@@ -995,8 +999,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 					isDisabled:
 						actionState?.username === admin.username &&
 						actionState?.type === "reset",
-				},
-			);
+				});
 		}
 
 		if (canManageSecurityFor(admin)) {

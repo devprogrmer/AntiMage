@@ -232,7 +232,7 @@ func EnsureCustomKeyPermission(admin adminapp.Admin, hasKey bool) error {
 }
 
 func EnsureUserManagementAvailable(admin adminapp.Admin, action string) error {
-	if AdminCreatedTrafficLimitReached(admin) {
+	if action == "create users" && AdminCreatedTrafficLimitReached(admin) {
 		return PermissionError{Detail: CreatedTrafficLimitExceededMessage}
 	}
 	return nil

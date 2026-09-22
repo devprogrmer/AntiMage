@@ -698,6 +698,14 @@ export const AdminDialog: FC = () => {
 	}, [setValue, watchRole]);
 
 	useEffect(() => {
+		if (watchRole === AdminRole.Reseller || userData.role === AdminRole.Reseller) {
+			setValue("traffic_limit_mode", AdminTrafficLimitMode.CreatedTraffic);
+			setValue("use_service_traffic_limits", false);
+			setValue("delete_user_usage_limit_enabled", false);
+		}
+	}, [setValue, watchRole, userData.role]);
+
+	useEffect(() => {
 		if (!permissionsValue.users.delete) {
 			setValue("delete_user_usage_limit_enabled", false, {
 				shouldDirty: true,
@@ -719,12 +727,14 @@ export const AdminDialog: FC = () => {
 			setSubmitStatus("loading");
 			const selectedRole: AdminRole = values.role ?? AdminRole.Standard;
 			let permissionPayload: AdminPermissions | undefined;
-			if (selectedRole === AdminRole.Reseller) {
-				toast({
-					status: "warning",
-					title: t("common.comingSoon"),
-					description: t("admins.roles.resellerDescription"),
-					isClosable: true,
+			if (
+				(selectedRole === AdminRole.Reseller ||
+					userData.role === AdminRole.Reseller) &&
+				(!values.data_limit || Number(values.data_limit) <= 0)
+			) {
+				setError("data_limit", {
+					type: "manual",
+					message: t("admins.validation.invalidDataLimit"),
 				});
 				showSubmitError();
 				return;
@@ -1111,23 +1121,20 @@ export const AdminDialog: FC = () => {
 										{t("admins.roles.standardDescription")}
 									</FormHelperText>
 								</Radio>
-								<Radio value={AdminRole.Reseller} isDisabled>
+								{canCreateFullAccess && <Radio value={AdminRole.Reseller}>
 									<Text fontWeight="medium">
 										{t("admins.roles.reseller")}
-										<Box as="span" ml={2} fontSize="xs" color="orange.500">
-											{t("common.comingSoon")}
-										</Box>
 									</Text>
 									<FormHelperText m={0}>
 										{t("admins.roles.resellerDescription")}
 									</FormHelperText>
-								</Radio>
-								<Radio value={AdminRole.Sudo}>
+								</Radio>}
+								{userData.role !== AdminRole.Reseller && <Radio value={AdminRole.Sudo}>
 									<Text fontWeight="medium">{t("admins.roles.sudo")}</Text>
 									<FormHelperText m={0}>
 										{t("admins.roles.sudoDescription")}
 									</FormHelperText>
-								</Radio>
+								</Radio>}
 								{canCreateFullAccess && (
 									<Radio value={AdminRole.FullAccess}>
 										<Text fontWeight="medium">
@@ -1148,7 +1155,7 @@ export const AdminDialog: FC = () => {
 					{t("admins.limitsSection")}
 				</Text>
 				<VStack spacing={4} align="stretch">
-					{!isFullAccessRole && (
+					{!isFullAccessRole && watchRole !== AdminRole.Reseller && userData.role !== AdminRole.Reseller && (
 						<VStack align="stretch" spacing={3}>
 							<Checkbox
 								isChecked={usePerServiceTrafficLimits}
@@ -1181,7 +1188,9 @@ export const AdminDialog: FC = () => {
 								{errors.data_limit?.message as string}
 							</FormErrorMessage>
 							<Text fontSize="xs" color="gray.500" mt={1}>
-								{t("admins.dataLimitHint")}
+									{watchRole === AdminRole.Reseller || userData.role === AdminRole.Reseller
+										? t("admins.resellerBudgetHint")
+										: t("admins.dataLimitHint")}
 							</Text>
 						</FormControl>
 						<FormControl isInvalid={!!errors.users_limit}>
@@ -1207,6 +1216,8 @@ export const AdminDialog: FC = () => {
 						</FormControl>
 					</SimpleGrid>
 					{!isFullAccessRole &&
+						watchRole !== AdminRole.Reseller &&
+						userData.role !== AdminRole.Reseller &&
 						!usePerServiceTrafficLimits &&
 						(hasGlobalDataLimit || isCreatedTrafficMode) && (
 							<VStack align="stretch" spacing={3}>
@@ -1716,11 +1727,11 @@ export const AdminDialog: FC = () => {
 						>
 							<TabList>
 								<Tab>{t("details")}</Tab>
-								<Tab>{t("admins.permissionsTabLabel")}</Tab>
+								{watchRole !== AdminRole.Reseller && userData.role !== AdminRole.Reseller && <Tab>{t("admins.permissionsTabLabel")}</Tab>}
 							</TabList>
 							<TabPanels>
 								<TabPanel px={0}>{detailsForm}</TabPanel>
-								<TabPanel px={0}>{permissionsPanel}</TabPanel>
+								{watchRole !== AdminRole.Reseller && userData.role !== AdminRole.Reseller && <TabPanel px={0}>{permissionsPanel}</TabPanel>}
 							</TabPanels>
 						</Tabs>
 					</XrayModalBody>
