@@ -43,6 +43,7 @@ type SubscriptionRenderRequest struct {
 	InboundTag            string
 	HostTag               string
 	UserAgent             string
+	ClientIP              string
 	DeviceType            string
 	DeviceManufacturer    string
 	DeviceModel           string
@@ -167,6 +168,15 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	if err != nil {
 		return SubscriptionHTTPResponse{}, err
 	}
+
+	_ = s.recordGenericSubscriptionDeviceMetadata(
+		ctx,
+		user.ID,
+		"xray",
+		"",
+		req,
+	)
+
 	return SubscriptionHTTPResponse{
 		Status:    200,
 		MediaType: config.Media,
@@ -197,7 +207,7 @@ func (s Service) SubscriptionInfo(ctx context.Context, req SubscriptionRenderReq
 	if err != nil {
 		return nil, err
 	}
-	vpnInfo, err := s.subscriptionVPNInfo(ctx, user, req.URL)
+	vpnInfo, err := s.subscriptionVPNInfo(ctx, user, req.URL, req)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +220,12 @@ func (s Service) SubscriptionInfo(ctx context.Context, req SubscriptionRenderReq
 	return info, nil
 }
 
-func (s Service) subscriptionVPNInfo(ctx context.Context, user UserDetail, subscriptionURL string) (map[string]any, error) {
+func (s Service) subscriptionVPNInfo(
+	ctx context.Context,
+	user UserDetail,
+	subscriptionURL string,
+	req SubscriptionRenderRequest,
+) (map[string]any, error) {
 	ovProfiles, err := s.OVDownloadProfiles(ctx, user, subscriptionURL)
 	if err != nil {
 		return nil, err
@@ -261,6 +276,67 @@ func (s Service) subscriptionVPNInfo(ctx context.Context, user UserDetail, subsc
 	if err != nil {
 		return nil, err
 	}
+
+	// The browser/subscription request is the only portable
+	// source for model/OS metadata for these protocols.
+	_ = s.recordGenericSubscriptionDeviceMetadata(
+		ctx,
+		user.ID,
+		"xray",
+		"",
+		req,
+	)
+
+	for _, profile := range ovProfiles {
+		_ = s.recordGenericSubscriptionDeviceMetadata(
+			ctx,
+			user.ID,
+			"ov",
+			profile.InboundTag,
+			req,
+		)
+	}
+
+	for _, item := range l2tpItems {
+		_ = s.recordGenericSubscriptionDeviceMetadata(
+			ctx,
+			user.ID,
+			"l2tp",
+			item.InboundTag,
+			req,
+		)
+	}
+
+	for _, item := range pptpItems {
+		_ = s.recordGenericSubscriptionDeviceMetadata(
+			ctx,
+			user.ID,
+			"pptp",
+			item.InboundTag,
+			req,
+		)
+	}
+
+	for _, item := range ikev2Items {
+		_ = s.recordGenericSubscriptionDeviceMetadata(
+			ctx,
+			user.ID,
+			"ikev2",
+			item.InboundTag,
+			req,
+		)
+	}
+
+	for _, item := range anyConnectItems {
+		_ = s.recordGenericSubscriptionDeviceMetadata(
+			ctx,
+			user.ID,
+			"anyconnect",
+			item.InboundTag,
+			req,
+		)
+	}
+
 	return map[string]any{
 		"openvpn": map[string]any{
 			"downloads": ovLinks,
@@ -1133,7 +1209,7 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 	if parsed, err := url.Parse(req.URL); err == nil {
 		path = strings.TrimRight(parsed.Path, "/")
 	}
-	vpnInfo, err := s.subscriptionVPNInfo(ctx, user, req.URL)
+	vpnInfo, err := s.subscriptionVPNInfo(ctx, user, req.URL, req)
 	if err != nil {
 		return "", err
 	}

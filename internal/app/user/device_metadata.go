@@ -22,64 +22,211 @@ type subscriptionDeviceMetadata struct {
 }
 
 var (
-	androidVersionPattern = regexp.MustCompile(`(?i)\bAndroid[ /]([0-9][0-9._]*)`)
-	androidModelPattern   = regexp.MustCompile(`(?i)Android [^;()]+;\s*([^;()]+)`)
-	iosVersionPattern     = regexp.MustCompile(`(?i)(?:CPU (?:iPhone )?OS|iPhone OS) ([0-9_]+)`)
+	androidVersionPattern = regexp.MustCompile(
+		`(?i)\bAndroid[ /]([0-9][0-9._]*)`,
+	)
+
+	androidModelPattern = regexp.MustCompile(
+		`(?i)Android [^;()]+;\s*([^;()]+)`,
+	)
+
+	iosVersionPattern = regexp.MustCompile(
+		`(?i)(?:CPU (?:iPhone )?OS|iPhone OS) ([0-9_]+)`,
+	)
 )
 
 func cleanDeviceHint(value string) string {
 	value = strings.TrimSpace(value)
 	value = strings.Trim(value, `"'`)
+
 	if len(value) > 128 {
 		value = value[:128]
 	}
+
 	return strings.TrimSpace(value)
 }
 
 func normalizeDeviceOSName(value string) string {
 	value = cleanDeviceHint(value)
+
 	switch strings.ToLower(value) {
 	case "android":
 		return "Android"
+
 	case "ios", "iphone os":
 		return "iOS"
+
 	case "windows":
 		return "Windows"
+
 	case "macos", "mac os x":
 		return "macOS"
+
 	case "linux":
 		return "Linux"
+
 	default:
 		return value
 	}
 }
 
-func androidModelFromUserAgent(userAgent string) string {
-	match := androidModelPattern.FindStringSubmatch(userAgent)
+func normalizeMetadataProtocol(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "wireguard":
+		return "wg"
+
+	case "awg":
+		return "amneziawg"
+
+	case "openvpn":
+		return "ov"
+
+	case "openconnect", "cisco", "cisco-anyconnect":
+		return "anyconnect"
+
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+}
+
+func metadataClientName(protocol string) string {
+	switch normalizeMetadataProtocol(protocol) {
+	case "wg":
+		return "WireGuard"
+
+	case "amneziawg":
+		return "AmneziaWG"
+
+	case "ov":
+		return "OpenVPN"
+
+	case "l2tp":
+		return "L2TP"
+
+	case "pptp":
+		return "PPTP"
+
+	case "ikev2":
+		return "IKEv2"
+
+	case "anyconnect":
+		return "Cisco AnyConnect"
+
+	case "xray":
+		return "Xray"
+
+	default:
+		return "Unknown"
+	}
+}
+
+func metadataDevicePrefix(protocol string) string {
+	switch normalizeMetadataProtocol(protocol) {
+	case "ov":
+		return "ov"
+
+	case "l2tp":
+		return "l2tp"
+
+	case "pptp":
+		return "pptp"
+
+	case "ikev2":
+		return "ike"
+
+	case "anyconnect":
+		return "cisco"
+
+	case "xray":
+		return "xray"
+
+	case "amneziawg":
+		return "awg"
+
+	default:
+		return "dev"
+	}
+}
+
+func androidModelFromUserAgent(
+	userAgent string,
+) string {
+	match := androidModelPattern.FindStringSubmatch(
+		userAgent,
+	)
+
 	if len(match) < 2 {
 		return ""
 	}
+
 	model := strings.TrimSpace(match[1])
-	if index := strings.Index(strings.ToLower(model), " build/"); index >= 0 {
+
+	if index := strings.Index(
+		strings.ToLower(model),
+		" build/",
+	); index >= 0 {
 		model = strings.TrimSpace(model[:index])
 	}
+
 	model = strings.TrimSuffix(model, " Build")
+
 	if strings.EqualFold(model, "wv") {
 		return ""
 	}
+
 	return cleanDeviceHint(model)
 }
 
-func subscriptionMetadataFromRequest(req SubscriptionRenderRequest, protocol string) subscriptionDeviceMetadata {
+func manufacturerFromModel(model string) string {
+	model = strings.TrimSpace(model)
+	upper := strings.ToUpper(model)
+
+	switch {
+	case strings.HasPrefix(upper, "SM-"):
+		return "Samsung"
+
+	case strings.HasPrefix(
+		strings.ToLower(model),
+		"pixel",
+	):
+		return "Google"
+
+	case strings.HasPrefix(upper, "ONEPLUS"):
+		return "OnePlus"
+
+	default:
+		return ""
+	}
+}
+
+func subscriptionMetadataFromRequest(
+	req SubscriptionRenderRequest,
+	protocol string,
+) subscriptionDeviceMetadata {
 	ua := strings.TrimSpace(req.UserAgent)
+
 	meta := subscriptionDeviceMetadata{
-		DeviceType:     cleanDeviceHint(req.DeviceType),
-		Manufacturer:   cleanDeviceHint(req.DeviceManufacturer),
-		Model:          cleanDeviceHint(req.DeviceModel),
-		OSName:         normalizeDeviceOSName(req.DevicePlatform),
-		OSVersion:      cleanDeviceHint(req.DevicePlatformVersion),
-		ClientName:     cleanDeviceHint(req.DeviceClientName),
-		ClientVersion:  cleanDeviceHint(req.DeviceClientVersion),
+		DeviceType: cleanDeviceHint(
+			req.DeviceType,
+		),
+		Manufacturer: cleanDeviceHint(
+			req.DeviceManufacturer,
+		),
+		Model: cleanDeviceHint(
+			req.DeviceModel,
+		),
+		OSName: normalizeDeviceOSName(
+			req.DevicePlatform,
+		),
+		OSVersion: cleanDeviceHint(
+			req.DevicePlatformVersion,
+		),
+		ClientName: cleanDeviceHint(
+			req.DeviceClientName,
+		),
+		ClientVersion: cleanDeviceHint(
+			req.DeviceClientVersion,
+		),
 		MetadataSource: "subscription",
 	}
 
@@ -87,15 +234,42 @@ func subscriptionMetadataFromRequest(req SubscriptionRenderRequest, protocol str
 
 	if meta.OSName == "" {
 		switch {
-		case strings.Contains(lowerUA, "android"):
+		case strings.Contains(
+			lowerUA,
+			"android",
+		):
 			meta.OSName = "Android"
-		case strings.Contains(lowerUA, "iphone"), strings.Contains(lowerUA, "ipad"):
+
+		case strings.Contains(
+			lowerUA,
+			"iphone",
+		),
+			strings.Contains(
+				lowerUA,
+				"ipad",
+			):
 			meta.OSName = "iOS"
-		case strings.Contains(lowerUA, "windows"):
+
+		case strings.Contains(
+			lowerUA,
+			"windows",
+		):
 			meta.OSName = "Windows"
-		case strings.Contains(lowerUA, "mac os x"), strings.Contains(lowerUA, "macintosh"):
+
+		case strings.Contains(
+			lowerUA,
+			"mac os x",
+		),
+			strings.Contains(
+				lowerUA,
+				"macintosh",
+			):
 			meta.OSName = "macOS"
-		case strings.Contains(lowerUA, "linux"):
+
+		case strings.Contains(
+			lowerUA,
+			"linux",
+		):
 			meta.OSName = "Linux"
 		}
 	}
@@ -103,57 +277,93 @@ func subscriptionMetadataFromRequest(req SubscriptionRenderRequest, protocol str
 	if meta.OSVersion == "" {
 		switch meta.OSName {
 		case "Android":
-			if match := androidVersionPattern.FindStringSubmatch(ua); len(match) > 1 {
-				meta.OSVersion = strings.ReplaceAll(match[1], "_", ".")
+			if match :=
+				androidVersionPattern.
+					FindStringSubmatch(ua); len(match) > 1 {
+				meta.OSVersion =
+					strings.ReplaceAll(
+						match[1],
+						"_",
+						".",
+					)
 			}
+
 		case "iOS":
-			if match := iosVersionPattern.FindStringSubmatch(ua); len(match) > 1 {
-				meta.OSVersion = strings.ReplaceAll(match[1], "_", ".")
+			if match :=
+				iosVersionPattern.
+					FindStringSubmatch(ua); len(match) > 1 {
+				meta.OSVersion =
+					strings.ReplaceAll(
+						match[1],
+						"_",
+						".",
+					)
 			}
 		}
 	}
 
-	if meta.Model == "" && meta.OSName == "Android" {
-		meta.Model = androidModelFromUserAgent(ua)
+	if meta.Model == "" &&
+		meta.OSName == "Android" {
+		meta.Model =
+			androidModelFromUserAgent(ua)
 	}
-	if meta.Model == "" && meta.OSName == "iOS" {
-		// Stock browser/WireGuard traffic does not reveal the hardware SKU.
+
+	if meta.Model == "" &&
+		meta.OSName == "iOS" {
+
 		meta.Model = "iPhone"
-		if strings.Contains(lowerUA, "ipad") {
+
+		if strings.Contains(
+			lowerUA,
+			"ipad",
+		) {
 			meta.Model = "iPad"
 		}
+	}
+
+	if meta.Manufacturer == "" &&
+		meta.Model != "" {
+		meta.Manufacturer =
+			manufacturerFromModel(meta.Model)
 	}
 
 	if meta.DeviceType == "" {
 		switch meta.OSName {
 		case "Android", "iOS":
 			meta.DeviceType = "Mobile"
+
 		case "Windows", "macOS", "Linux":
 			meta.DeviceType = "Desktop"
+
 		default:
 			meta.DeviceType = "Unknown"
 		}
 	}
 
 	if meta.ClientName == "" {
-		switch strings.ToLower(strings.TrimSpace(protocol)) {
-		case "wg", "wireguard":
-			meta.ClientName = "WireGuard"
-		case "awg", "amneziawg":
-			meta.ClientName = "AmneziaWG"
-		default:
-			meta.ClientName = "Unknown"
-		}
+		meta.ClientName =
+			metadataClientName(protocol)
 	}
 
 	platformParts := []string{}
+
 	if meta.OSName != "" {
-		platformParts = append(platformParts, meta.OSName)
+		platformParts = append(
+			platformParts,
+			meta.OSName,
+		)
 	}
+
 	if meta.OSVersion != "" {
-		platformParts = append(platformParts, meta.OSVersion)
+		platformParts = append(
+			platformParts,
+			meta.OSVersion,
+		)
 	}
-	meta.Platform = strings.Join(platformParts, " ")
+
+	meta.Platform =
+		strings.Join(platformParts, " ")
+
 	if meta.Platform == "" {
 		meta.Platform = "Unknown"
 	}
@@ -161,9 +371,53 @@ func subscriptionMetadataFromRequest(req SubscriptionRenderRequest, protocol str
 	return meta
 }
 
-func stableWGDeviceID(publicKey string) string {
-	sum := sha256.Sum256([]byte(strings.TrimSpace(publicKey)))
-	return "wg-" + hex.EncodeToString(sum[:8])
+func stableWGDeviceID(
+	publicKey string,
+) string {
+	sum := sha256.Sum256(
+		[]byte(strings.TrimSpace(publicKey)),
+	)
+
+	return "wg-" +
+		hex.EncodeToString(sum[:8])
+}
+
+func genericSubscriptionDeviceID(
+	protocol string,
+	inboundTag string,
+	req SubscriptionRenderRequest,
+	meta subscriptionDeviceMetadata,
+) string {
+	parts := []string{
+		normalizeMetadataProtocol(protocol),
+		strings.TrimSpace(inboundTag),
+		meta.Manufacturer,
+		meta.Model,
+		meta.OSName,
+		meta.OSVersion,
+		meta.ClientName,
+		meta.ClientVersion,
+		strings.TrimSpace(req.UserAgent),
+	}
+
+	// If the request exposes almost no device fingerprint,
+	// use its client IP as the final best-effort discriminator.
+	if meta.Model == "" &&
+		meta.OSName == "" &&
+		meta.ClientName == "Unknown" {
+		parts = append(
+			parts,
+			strings.TrimSpace(req.ClientIP),
+		)
+	}
+
+	sum := sha256.Sum256(
+		[]byte(strings.Join(parts, "\x00")),
+	)
+
+	return metadataDevicePrefix(protocol) +
+		"-" +
+		hex.EncodeToString(sum[:8])
 }
 
 func (s Service) recordSubscriptionDeviceMetadata(
@@ -174,26 +428,130 @@ func (s Service) recordSubscriptionDeviceMetadata(
 	publicKey string,
 	req SubscriptionRenderRequest,
 ) error {
-	if userID <= 0 || strings.TrimSpace(publicKey) == "" {
+	if userID <= 0 ||
+		strings.TrimSpace(publicKey) == "" {
 		return nil
 	}
 
-	switch strings.ToLower(strings.TrimSpace(protocol)) {
-	case "wireguard":
-		protocol = "wg"
-	case "awg":
-		protocol = "amneziawg"
+	protocol = normalizeMetadataProtocol(protocol)
+
+	if protocol != "wg" &&
+		protocol != "amneziawg" {
+		return nil
+	}
+
+	return s.storeSubscriptionDeviceMetadata(
+		ctx,
+		userID,
+		protocol,
+		inboundTag,
+		stableWGDeviceID(publicKey),
+		req,
+	)
+}
+
+func (s Service) recordGenericSubscriptionDeviceMetadata(
+	ctx context.Context,
+	userID int64,
+	protocol string,
+	inboundTag string,
+	req SubscriptionRenderRequest,
+) error {
+	if userID <= 0 {
+		return nil
+	}
+
+	protocol = normalizeMetadataProtocol(protocol)
+
+	switch protocol {
+	case "xray",
+		"ov",
+		"l2tp",
+		"pptp",
+		"ikev2",
+		"anyconnect":
+
 	default:
-		protocol = strings.ToLower(strings.TrimSpace(protocol))
-	}
-
-	if protocol != "wg" && protocol != "amneziawg" {
 		return nil
 	}
 
-	meta := subscriptionMetadataFromRequest(req, protocol)
-	deviceID := stableWGDeviceID(publicKey)
-	inboundTag = strings.TrimSpace(inboundTag)
+	meta :=
+		subscriptionMetadataFromRequest(
+			req,
+			protocol,
+		)
+
+	deviceID :=
+		genericSubscriptionDeviceID(
+			protocol,
+			inboundTag,
+			req,
+			meta,
+		)
+
+	return s.storeSubscriptionDeviceMetadataWithMeta(
+		ctx,
+		userID,
+		protocol,
+		inboundTag,
+		deviceID,
+		req,
+		meta,
+	)
+}
+
+func (s Service) storeSubscriptionDeviceMetadata(
+	ctx context.Context,
+	userID int64,
+	protocol string,
+	inboundTag string,
+	deviceID string,
+	req SubscriptionRenderRequest,
+) error {
+	meta :=
+		subscriptionMetadataFromRequest(
+			req,
+			protocol,
+		)
+
+	return s.storeSubscriptionDeviceMetadataWithMeta(
+		ctx,
+		userID,
+		protocol,
+		inboundTag,
+		deviceID,
+		req,
+		meta,
+	)
+}
+
+func (s Service) storeSubscriptionDeviceMetadataWithMeta(
+	ctx context.Context,
+	userID int64,
+	protocol string,
+	inboundTag string,
+	deviceID string,
+	req SubscriptionRenderRequest,
+	meta subscriptionDeviceMetadata,
+) error {
+	protocol =
+		normalizeMetadataProtocol(protocol)
+
+	inboundTag =
+		strings.TrimSpace(inboundTag)
+
+	deviceID =
+		strings.TrimSpace(deviceID)
+
+	if userID <= 0 ||
+		protocol == "" ||
+		deviceID == "" {
+		return nil
+	}
+
+	clientIP :=
+		cleanDeviceHint(req.ClientIP)
+
 	now := time.Now().UTC()
 
 	args := []any{
@@ -210,51 +568,168 @@ func (s Service) recordSubscriptionDeviceMetadata(
 		meta.ClientVersion,
 		meta.Platform,
 		meta.MetadataSource,
+		clientIP,
 		now,
 	}
 
-	if strings.EqualFold(s.repo.dialect, "mysql") ||
-		strings.EqualFold(s.repo.dialect, "mariadb") {
-		_, err := s.repo.db.ExecContext(ctx, `
+	if strings.EqualFold(
+		s.repo.dialect,
+		"mysql",
+	) ||
+		strings.EqualFold(
+			s.repo.dialect,
+			"mariadb",
+		) {
+
+		_, err := s.repo.db.ExecContext(
+			ctx,
+			`
 INSERT INTO vpn_device_metadata (
-	user_id, protocol, inbound_tag, device_id, device_type,
-	manufacturer, model, os_name, os_version,
-	client_name, client_version, platform, metadata_source, last_seen_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	user_id,
+	protocol,
+	inbound_tag,
+	device_id,
+	device_type,
+	manufacturer,
+	model,
+	os_name,
+	os_version,
+	client_name,
+	client_version,
+	platform,
+	metadata_source,
+	client_ip,
+	last_seen_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
-	device_type = VALUES(device_type),
-	manufacturer = VALUES(manufacturer),
-	model = VALUES(model),
-	os_name = VALUES(os_name),
-	os_version = VALUES(os_version),
-	client_name = VALUES(client_name),
-	client_version = VALUES(client_version),
-	platform = VALUES(platform),
+	device_type =
+		COALESCE(
+			NULLIF(VALUES(device_type), 'Unknown'),
+			device_type
+		),
+	manufacturer =
+		COALESCE(
+			NULLIF(VALUES(manufacturer), ''),
+			manufacturer
+		),
+	model =
+		COALESCE(
+			NULLIF(VALUES(model), ''),
+			model
+		),
+	os_name =
+		COALESCE(
+			NULLIF(VALUES(os_name), ''),
+			os_name
+		),
+	os_version =
+		COALESCE(
+			NULLIF(VALUES(os_version), ''),
+			os_version
+		),
+	client_name =
+		COALESCE(
+			NULLIF(VALUES(client_name), 'Unknown'),
+			client_name
+		),
+	client_version =
+		COALESCE(
+			NULLIF(VALUES(client_version), ''),
+			client_version
+		),
+	platform =
+		COALESCE(
+			NULLIF(VALUES(platform), 'Unknown'),
+			platform
+		),
 	metadata_source = VALUES(metadata_source),
+	client_ip =
+		COALESCE(
+			NULLIF(VALUES(client_ip), ''),
+			client_ip
+		),
 	last_seen_at = VALUES(last_seen_at)`,
 			args...,
 		)
+
 		return err
 	}
 
-	_, err := s.repo.db.ExecContext(ctx, `
+	_, err := s.repo.db.ExecContext(
+		ctx,
+		`
 INSERT INTO vpn_device_metadata (
-	user_id, protocol, inbound_tag, device_id, device_type,
-	manufacturer, model, os_name, os_version,
-	client_name, client_version, platform, metadata_source, last_seen_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(user_id, protocol, inbound_tag, device_id) DO UPDATE SET
-	device_type = excluded.device_type,
-	manufacturer = excluded.manufacturer,
-	model = excluded.model,
-	os_name = excluded.os_name,
-	os_version = excluded.os_version,
-	client_name = excluded.client_name,
-	client_version = excluded.client_version,
-	platform = excluded.platform,
+	user_id,
+	protocol,
+	inbound_tag,
+	device_id,
+	device_type,
+	manufacturer,
+	model,
+	os_name,
+	os_version,
+	client_name,
+	client_version,
+	platform,
+	metadata_source,
+	client_ip,
+	last_seen_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(
+	user_id,
+	protocol,
+	inbound_tag,
+	device_id
+) DO UPDATE SET
+	device_type =
+		COALESCE(
+			NULLIF(excluded.device_type, 'Unknown'),
+			vpn_device_metadata.device_type
+		),
+	manufacturer =
+		COALESCE(
+			NULLIF(excluded.manufacturer, ''),
+			vpn_device_metadata.manufacturer
+		),
+	model =
+		COALESCE(
+			NULLIF(excluded.model, ''),
+			vpn_device_metadata.model
+		),
+	os_name =
+		COALESCE(
+			NULLIF(excluded.os_name, ''),
+			vpn_device_metadata.os_name
+		),
+	os_version =
+		COALESCE(
+			NULLIF(excluded.os_version, ''),
+			vpn_device_metadata.os_version
+		),
+	client_name =
+		COALESCE(
+			NULLIF(excluded.client_name, 'Unknown'),
+			vpn_device_metadata.client_name
+		),
+	client_version =
+		COALESCE(
+			NULLIF(excluded.client_version, ''),
+			vpn_device_metadata.client_version
+		),
+	platform =
+		COALESCE(
+			NULLIF(excluded.platform, 'Unknown'),
+			vpn_device_metadata.platform
+		),
 	metadata_source = excluded.metadata_source,
+	client_ip =
+		COALESCE(
+			NULLIF(excluded.client_ip, ''),
+			vpn_device_metadata.client_ip
+		),
 	last_seen_at = excluded.last_seen_at`,
 		args...,
 	)
+
 	return err
 }
