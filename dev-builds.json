@@ -1,9 +1,29 @@
 {
   "schema_version": 1,
   "project": "AntiMage",
-  "latest": "dev-9d72c51",
-  "updated_at": "2026-09-22T17:38:17Z",
+  "latest": "dev-a216157",
+  "updated_at": "2026-09-22T20:42:43Z",
   "builds": [
+    {
+      "tag": "dev-a216157",
+      "sha": "a2161579a7cd519cb9e766a253f1057bbff6d103",
+      "branch": "dev",
+      "workflow": "Binary Build",
+      "run_id": "35781314377",
+      "run_number": "195",
+      "created_at": "2026-09-22T20:42:43Z",
+      "release_tag": "dev-builds",
+      "assets": {
+        "linux-amd64": {
+          "name": "antimage-linux-amd64-dev-a216157.tar.gz",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-linux-amd64-dev-a216157.tar.gz"
+        },
+        "windows-amd64": {
+          "name": "antimage-windows-amd64-dev-a216157.zip",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-a216157.zip"
+        }
+      }
+    },
     {
       "tag": "dev-9d72c51",
       "sha": "9d72c51656478bedf602aad5e63a86f622b0fd71",
@@ -981,26 +1001,6 @@
         "windows-amd64": {
           "name": "antimage-windows-amd64-dev-77aa95c.zip",
           "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-77aa95c.zip"
-        }
-      }
-    },
-    {
-      "tag": "dev-90ddb4a",
-      "sha": "90ddb4a12f7f39d3b8d3d115884fa473f54c8059",
-      "branch": "dev",
-      "workflow": "Binary Build",
-      "run_id": "34550338375",
-      "run_number": "83",
-      "created_at": "2026-09-11T01:28:32Z",
-      "release_tag": "dev-builds",
-      "assets": {
-        "windows-amd64": {
-          "name": "antimage-windows-amd64-dev-90ddb4a.zip",
-          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-90ddb4a.zip"
-        },
-        "linux-amd64": {
-          "name": "antimage-linux-amd64-dev-90ddb4a.tar.gz",
-          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-linux-amd64-dev-90ddb4a.tar.gz"
         }
       }
     }
