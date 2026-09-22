@@ -973,25 +973,30 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	const adminRowActions = (admin: Admin): DataTableRowAction<Admin>[] => {
 		const meta = getAdminRowMeta(admin);
 		const actions: DataTableRowAction<Admin>[] = [];
-		const hasResellerBudget = admin.role === AdminRole.Reseller ||
-			admins.some((item) => item.role === AdminRole.Reseller && item.username === admin.created_by);
+		const hasResellerBudget =
+			admin.role === AdminRole.Reseller ||
+			adminOptions.some(
+				(item) =>
+					item.role === AdminRole.Reseller &&
+					item.username === admin.created_by,
+			);
 
 		if (meta.canManage) {
-			actions.push(
-				{
-					id: "edit",
-					label: t("edit"),
-					icon: <PencilIcon width={16} />,
-					onClick: () => openAdminDialog(admin),
-				},
-			);
-			if (!hasResellerBudget) actions.push({
+			actions.push({
+				id: "edit",
+				label: t("edit"),
+				icon: <PencilIcon width={16} />,
+				onClick: () => openAdminDialog(admin),
+			});
+			if (!hasResellerBudget)
+				actions.push({
 					id: "permissions",
 					label: t("admins.editPermissionsButton"),
 					icon: <AdjustmentsHorizontalIcon width={16} />,
 					onClick: () => handleOpenPermissionsModal(admin),
 				});
-			if (!hasResellerBudget) actions.push({
+			if (!hasResellerBudget)
+				actions.push({
 					id: "reset",
 					label: t("admins.resetUsage"),
 					icon: <ResetIcon />,

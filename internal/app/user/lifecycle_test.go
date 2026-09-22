@@ -361,7 +361,7 @@ func newLifecycleTestDB(t *testing.T) *sql.DB {
 		)`,
 		`CREATE TABLE user_usage_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, used_traffic_at_reset BIGINT, reset_at DATETIME NULL)`,
 		`CREATE TABLE node_user_usages (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at DATETIME, user_id INTEGER, node_id INTEGER, used_traffic BIGINT)`,
-		`CREATE TABLE admins (id INTEGER PRIMARY KEY, role TEXT, use_service_traffic_limits INTEGER DEFAULT 0, created_traffic BIGINT DEFAULT 0)`,
+		`CREATE TABLE admins (id INTEGER PRIMARY KEY, username TEXT, created_by TEXT DEFAULT 'root', role TEXT, status TEXT DEFAULT 'active', use_service_traffic_limits INTEGER DEFAULT 0, created_traffic BIGINT DEFAULT 0, data_limit BIGINT NULL, traffic_limit_mode TEXT DEFAULT 'used_traffic')`,
 		`CREATE TABLE admins_services (admin_id INTEGER, service_id INTEGER, created_traffic BIGINT DEFAULT 0, updated_at DATETIME NULL, PRIMARY KEY(admin_id, service_id))`,
 		`CREATE TABLE admin_created_traffic_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, service_id INTEGER NULL, amount BIGINT, action TEXT, created_at DATETIME NULL)`,
 	}
