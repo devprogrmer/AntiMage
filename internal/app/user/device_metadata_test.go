@@ -55,3 +55,73 @@ func TestStableWGDeviceIDIsStableAndOpaque(t *testing.T) {
 		t.Fatalf("invalid stable IDs: first=%q second=%q other=%q", first, second, other)
 	}
 }
+func TestGenericSubscriptionDeviceID(t *testing.T) {
+	req := SubscriptionRenderRequest{
+		UserAgent: "Mozilla/5.0 (Linux; Android 11; SM-A505F Build/RP1A.200720.012)",
+		ClientIP:  "198.51.100.10",
+	}
+
+	meta := subscriptionMetadataFromRequest(
+		req,
+		"openvpn",
+	)
+
+	first := genericSubscriptionDeviceID(
+		"openvpn",
+		"ov-main",
+		req,
+		meta,
+	)
+
+	second := genericSubscriptionDeviceID(
+		"ov",
+		"ov-main",
+		req,
+		meta,
+	)
+
+	if first == "" || first != second {
+		t.Fatalf(
+			"unstable generic device id: first=%q second=%q",
+			first,
+			second,
+		)
+	}
+
+	if meta.Manufacturer != "Samsung" {
+		t.Fatalf(
+			"manufacturer=%q want Samsung",
+			meta.Manufacturer,
+		)
+	}
+
+	if meta.Model != "SM-A505F" {
+		t.Fatalf(
+			"model=%q want SM-A505F",
+			meta.Model,
+		)
+	}
+}
+
+func TestMetadataClientNames(t *testing.T) {
+	tests := map[string]string{
+		"openvpn":    "OpenVPN",
+		"l2tp":       "L2TP",
+		"pptp":       "PPTP",
+		"ikev2":      "IKEv2",
+		"anyconnect": "Cisco AnyConnect",
+		"xray":       "Xray",
+		"amneziawg":  "AmneziaWG",
+	}
+
+	for protocol, want := range tests {
+		if got := metadataClientName(protocol); got != want {
+			t.Fatalf(
+				"%s client=%q want %q",
+				protocol,
+				got,
+				want,
+			)
+		}
+	}
+}

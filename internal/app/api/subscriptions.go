@@ -3,7 +3,9 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+	"strings"
 
 	userapp "github.com/antimage/antimage/internal/app/user"
 )
@@ -29,6 +31,7 @@ func (s *Server) handleSubscriptionPath(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleResolvedSubscription(w http.ResponseWriter, r *http.Request, req userapp.SubscriptionRenderRequest) {
 	setSubscriptionNoCacheHeaders(w)
 	req.UserAgent = r.Header.Get("User-Agent")
+	req.ClientIP = subscriptionRequestClientIP(r)
 	req.DeviceType = r.Header.Get("X-AntiMage-Device-Type")
 	req.DeviceManufacturer = r.Header.Get("X-AntiMage-Manufacturer")
 	req.DeviceModel = r.Header.Get("X-AntiMage-Model")
@@ -107,6 +110,45 @@ func setSubscriptionNoCacheHeaders(w http.ResponseWriter) {
 	)
 }
 
+func subscriptionRequestClientIP(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+
+	candidates := []string{
+		r.Header.Get("CF-Connecting-IP"),
+		r.Header.Get("X-Real-IP"),
+	}
+
+	for _, forwarded := range strings.Split(
+		r.Header.Get("X-Forwarded-For"),
+		",",
+	) {
+		candidates = append(candidates, forwarded)
+	}
+
+	if host, _, err := net.SplitHostPort(
+		strings.TrimSpace(r.RemoteAddr),
+	); err == nil {
+		candidates = append(candidates, host)
+	} else {
+		candidates = append(
+			candidates,
+			strings.TrimSpace(r.RemoteAddr),
+		)
+	}
+
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		candidate = strings.Trim(candidate, "[]")
+
+		if parsed := net.ParseIP(candidate); parsed != nil {
+			return parsed.String()
+		}
+	}
+
+	return ""
+}
 func writeSubscriptionError(w http.ResponseWriter, err error) {
 	var mutationErr userapp.MutationError
 	if errors.As(err, &mutationErr) {
