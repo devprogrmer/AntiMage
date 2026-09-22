@@ -36,19 +36,26 @@ type SubscriptionClientConfig struct {
 const maxMKCPMTU int64 = 1<<32 - 1
 
 type SubscriptionRenderRequest struct {
-	Identifier string
-	Username   string
-	Key        string
-	ClientType string
-	InboundTag string
-	HostTag    string
-	UserAgent  string
-	Accept     string
-	URL        string
-	Start      string
-	End        string
-	ReadOnly   bool
-	Usage      usage.Service
+	Identifier            string
+	Username              string
+	Key                   string
+	ClientType            string
+	InboundTag            string
+	HostTag               string
+	UserAgent             string
+	DeviceType            string
+	DeviceManufacturer    string
+	DeviceModel           string
+	DevicePlatform        string
+	DevicePlatformVersion string
+	DeviceClientName      string
+	DeviceClientVersion   string
+	Accept                string
+	URL                   string
+	Start                 string
+	End                   string
+	ReadOnly              bool
+	Usage                 usage.Service
 }
 
 type SubscriptionHTTPResponse struct {

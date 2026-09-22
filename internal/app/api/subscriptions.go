@@ -29,6 +29,22 @@ func (s *Server) handleSubscriptionPath(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleResolvedSubscription(w http.ResponseWriter, r *http.Request, req userapp.SubscriptionRenderRequest) {
 	setSubscriptionNoCacheHeaders(w)
 	req.UserAgent = r.Header.Get("User-Agent")
+	req.DeviceType = r.Header.Get("X-AntiMage-Device-Type")
+	req.DeviceManufacturer = r.Header.Get("X-AntiMage-Manufacturer")
+	req.DeviceModel = r.Header.Get("X-AntiMage-Model")
+	if req.DeviceModel == "" {
+		req.DeviceModel = r.Header.Get("Sec-CH-UA-Model")
+	}
+	req.DevicePlatform = r.Header.Get("X-AntiMage-OS")
+	if req.DevicePlatform == "" {
+		req.DevicePlatform = r.Header.Get("Sec-CH-UA-Platform")
+	}
+	req.DevicePlatformVersion = r.Header.Get("X-AntiMage-OS-Version")
+	if req.DevicePlatformVersion == "" {
+		req.DevicePlatformVersion = r.Header.Get("Sec-CH-UA-Platform-Version")
+	}
+	req.DeviceClientName = r.Header.Get("X-AntiMage-Client")
+	req.DeviceClientVersion = r.Header.Get("X-AntiMage-Client-Version")
 	req.Accept = r.Header.Get("Accept")
 	req.URL = requestAbsoluteURL(r)
 	req.Start = r.URL.Query().Get("start")
@@ -85,6 +101,10 @@ func setSubscriptionNoCacheHeaders(w http.ResponseWriter) {
 	w.Header().Set("Cloudflare-CDN-Cache-Control", "no-store")
 	w.Header().Set("Expires", "0")
 	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set(
+		"Accept-CH",
+		"Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version, Sec-CH-UA-Model",
+	)
 }
 
 func writeSubscriptionError(w http.ResponseWriter, err error) {

@@ -249,8 +249,12 @@ func (s *Server) refreshOpenVPNSessions(
 					AssignedIP: strings.TrimSpace(
 						client.VirtualAddress,
 					),
-					ClientIP: clientIP,
-					Event:    "seen",
+					ClientIP:   clientIP,
+					DeviceID:   nativeSessionDeviceID("ov", sessionID),
+					DeviceType: "VPN Session",
+					ClientName: "OpenVPN",
+					Platform:   "Unknown",
+					Event:      "seen",
 				},
 			)
 

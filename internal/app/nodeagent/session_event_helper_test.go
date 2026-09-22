@@ -176,3 +176,12 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 		t.Fatalf("unexpected event addresses: %#v", event)
 	}
 }
+func TestNativeSessionDeviceIDOpenVPN(t *testing.T) {
+	first := nativeSessionDeviceID("ov", "ov-session-a")
+	same := nativeSessionDeviceID("openvpn", "ov-session-a")
+	other := nativeSessionDeviceID("ov", "ov-session-b")
+
+	if first == "" || first != same || first == other {
+		t.Fatalf("invalid OpenVPN device IDs: first=%q same=%q other=%q", first, same, other)
+	}
+}

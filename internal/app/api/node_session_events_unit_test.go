@@ -156,3 +156,70 @@ func TestNodeSessionAdmissionUsesStableDeviceIdentityNotIP(t *testing.T) {
 		t.Fatalf("unknown native device received fake enforcement: %v", err)
 	}
 }
+func TestNodeSessionAdmissionEnforcesOpenVPNConcurrentDeviceLimit(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "openvpn-device-limit.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`
+CREATE TABLE users (
+	id INTEGER PRIMARY KEY,
+	ip_limit INTEGER NOT NULL,
+	device_limit INTEGER NOT NULL
+);
+CREATE TABLE vpn_user_sessions (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	node_id INTEGER NOT NULL,
+	user_id INTEGER NOT NULL,
+	protocol TEXT NOT NULL,
+	inbound_tag TEXT,
+	session_id TEXT NOT NULL,
+	assigned_ip TEXT,
+	client_ip TEXT,
+	device_id TEXT,
+	device_type TEXT NOT NULL DEFAULT 'Unknown',
+	client_name TEXT NOT NULL DEFAULT 'Unknown',
+	platform TEXT NOT NULL DEFAULT 'Unknown',
+	started_at DATETIME NOT NULL,
+	last_seen_at DATETIME NOT NULL,
+	ended_at DATETIME,
+	UNIQUE(node_id, session_id)
+);
+INSERT INTO users(id, ip_limit, device_limit) VALUES(42, 0, 1);`); err != nil {
+		t.Fatal(err)
+	}
+
+	server := &Server{db: db}
+
+	first := nodeSessionEventPayload{
+		NodeID:     7,
+		UserID:     42,
+		Protocol:   "ov",
+		InboundTag: "openvpn-main",
+		SessionID:  "ov:first",
+		AssignedIP: "10.66.0.2",
+		ClientIP:   "198.51.100.10",
+		DeviceID:   "ov-device-a",
+		Event:      "start",
+	}
+	if err := server.applyNodeSessionEvent(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+
+	second := nodeSessionEventPayload{
+		NodeID:     7,
+		UserID:     42,
+		Protocol:   "ov",
+		InboundTag: "openvpn-main",
+		SessionID:  "ov:second",
+		AssignedIP: "10.66.0.2",
+		ClientIP:   "198.51.100.11",
+		DeviceID:   "ov-device-b",
+		Event:      "start",
+	}
+	if err := server.applyNodeSessionEvent(context.Background(), second); !errors.Is(err, errDeviceLimitReached) {
+		t.Fatalf("error=%v want device limit", err)
+	}
+}
