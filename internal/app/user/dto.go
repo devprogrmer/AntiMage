@@ -92,6 +92,8 @@ type UserListItem struct {
 	Expire                 *int64           `json:"expire"`
 	DataLimit              *int64           `json:"data_limit"`
 	DeviceLimit            int64            `json:"device_limit"`
+	UploadSpeedLimit       int64            `json:"upload_speed_limit"`
+	DownloadSpeedLimit     int64            `json:"download_speed_limit"`
 	DataLimitResetStrategy string           `json:"data_limit_reset_strategy,omitempty"`
 	OnlineAt               *string          `json:"online_at"`
 	IsOnline               bool             `json:"is_online"`
@@ -139,6 +141,8 @@ type UserDetail struct {
 	OnHoldTimeout          *string                   `json:"on_hold_timeout"`
 	IPLimit                int64                     `json:"ip_limit"`
 	DeviceLimit            int64                     `json:"device_limit"`
+	UploadSpeedLimit       int64                     `json:"upload_speed_limit"`
+	DownloadSpeedLimit     int64                     `json:"download_speed_limit"`
 	AutoDeleteInDays       *int64                    `json:"auto_delete_in_days"`
 	Subadress              string                    `json:"subadress,omitempty"`
 	ServiceID              *int64                    `json:"service_id"`

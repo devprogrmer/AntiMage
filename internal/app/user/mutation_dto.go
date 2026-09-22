@@ -80,6 +80,8 @@ type UserPayloadBase struct {
 	OnHoldTimeout          *string                    `json:"on_hold_timeout,omitempty"`
 	IPLimit                *int64                     `json:"ip_limit,omitempty"`
 	DeviceLimit            *int64                     `json:"device_limit,omitempty"`
+	UploadSpeedLimit       *int64                     `json:"upload_speed_limit,omitempty"`
+	DownloadSpeedLimit     *int64                     `json:"download_speed_limit,omitempty"`
 	AutoDeleteInDays       *int64                     `json:"auto_delete_in_days,omitempty"`
 	NextPlans              []NextPlanPayload          `json:"next_plans,omitempty"`
 }
@@ -104,6 +106,8 @@ type UserServiceCreate struct {
 	NextPlans              []NextPlanPayload          `json:"next_plans,omitempty"`
 	IPLimit                *int64                     `json:"ip_limit,omitempty"`
 	DeviceLimit            *int64                     `json:"device_limit,omitempty"`
+	UploadSpeedLimit       *int64                     `json:"upload_speed_limit,omitempty"`
+	DownloadSpeedLimit     *int64                     `json:"download_speed_limit,omitempty"`
 	Flow                   *string                    `json:"flow,omitempty"`
 	CredentialKey          *string                    `json:"credential_key,omitempty"`
 }
@@ -191,6 +195,8 @@ func (p UserServiceCreate) ToUserCreate(service ServiceInfo) UserCreate {
 			OnHoldTimeout:          p.OnHoldTimeout,
 			IPLimit:                p.IPLimit,
 			DeviceLimit:            p.DeviceLimit,
+			UploadSpeedLimit:       p.UploadSpeedLimit,
+			DownloadSpeedLimit:     p.DownloadSpeedLimit,
 			AutoDeleteInDays:       p.AutoDeleteInDays,
 			NextPlans:              p.NextPlans,
 		},

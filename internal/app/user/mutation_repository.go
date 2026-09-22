@@ -71,6 +71,8 @@ func (r Repository) createUserMutation(ctx context.Context, admin adminapp.Admin
 			NextPlans:              payload.NextPlans,
 			IPLimit:                payload.IPLimit,
 			DeviceLimit:            payload.DeviceLimit,
+			UploadSpeedLimit:       payload.UploadSpeedLimit,
+			DownloadSpeedLimit:     payload.DownloadSpeedLimit,
 			Flow:                   payload.Flow,
 			CredentialKey:          payload.CredentialKey,
 		}
@@ -113,8 +115,9 @@ INSERT INTO users (
 	username, credential_key, subadress, flow, status, used_traffic, data_limit,
 	data_limit_reset_strategy, expire, admin_id, created_at, note, telegram_id,
 	contact_number, on_hold_expire_duration, on_hold_timeout, ip_limit, device_limit,
+	upload_speed_limit, download_speed_limit,
 	auto_delete_in_days, last_status_change, service_id
-) VALUES (?, ?, '', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, '', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		payload.Username,
 		nullableStringValue(credentialKey),
 		nullableStringPtr(payload.Flow),
@@ -131,6 +134,8 @@ INSERT INTO users (
 		nullableStringPtr(payload.OnHoldTimeout),
 		int64OrZero(payload.IPLimit),
 		int64OrZero(payload.DeviceLimit),
+		int64OrZero(payload.UploadSpeedLimit),
+		int64OrZero(payload.DownloadSpeedLimit),
 		nilIfZero(payload.AutoDeleteInDays),
 		dbTime(now),
 		nullableInt64Ptr(serviceID),
@@ -361,6 +366,14 @@ func (r Repository) updateUserMutation(ctx context.Context, admin adminapp.Admin
 	if rawFieldPresent(rawFields, "device_limit") {
 		sets = append(sets, "device_limit = ?")
 		args = append(args, int64OrZero(payload.DeviceLimit))
+	}
+	if rawFieldPresent(rawFields, "upload_speed_limit") {
+		sets = append(sets, "upload_speed_limit = ?")
+		args = append(args, int64OrZero(payload.UploadSpeedLimit))
+	}
+	if rawFieldPresent(rawFields, "download_speed_limit") {
+		sets = append(sets, "download_speed_limit = ?")
+		args = append(args, int64OrZero(payload.DownloadSpeedLimit))
 	}
 	if rawFieldPresent(rawFields, "on_hold_timeout") {
 		sets = append(sets, "on_hold_timeout = ?")
