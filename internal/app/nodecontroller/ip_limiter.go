@@ -58,8 +58,14 @@ type UserOnlineIPRecord struct {
 	SessionID         string    `json:"session_id,omitempty"`
 	DeviceID          string    `json:"device_id,omitempty"`
 	DeviceType        string    `json:"device_type,omitempty"`
+	Manufacturer      string    `json:"manufacturer,omitempty"`
+	Model             string    `json:"model,omitempty"`
+	OSName            string    `json:"os_name,omitempty"`
+	OSVersion         string    `json:"os_version,omitempty"`
 	ClientName        string    `json:"client_name,omitempty"`
+	ClientVersion     string    `json:"client_version,omitempty"`
 	Platform          string    `json:"platform,omitempty"`
+	MetadataSource    string    `json:"metadata_source,omitempty"`
 	IP                string    `json:"ip,omitempty"`
 	AssignedIP        string    `json:"assigned_ip,omitempty"`
 	AssignedIPs       []string  `json:"assigned_ips,omitempty"`
@@ -305,23 +311,94 @@ func (r Repository) UserDeviceHistory(ctx context.Context, userID int64) ([]User
 	if ok, err := r.tableExists(ctx, "vpn_user_sessions"); err != nil || !ok {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT vus.node_id, COALESCE(n.name,''), vus.user_id, vus.protocol,
-COALESCE(vus.inbound_tag,''), vus.session_id, COALESCE(vus.device_id,''), COALESCE(vus.device_type,'Unknown'),
-COALESCE(vus.client_name,'Unknown'), COALESCE(vus.platform,'Unknown'), COALESCE(vus.assigned_ip,''),
-COALESCE(vus.client_ip,''), vus.started_at, vus.last_seen_at, vus.ended_at
-FROM vpn_user_sessions vus LEFT JOIN nodes n ON n.id=vus.node_id WHERE vus.user_id=?
-AND (n.id IS NULL OR LOWER(COALESCE(n.status,'')) <> 'deleted') ORDER BY vus.last_seen_at DESC`, userID)
+
+	deviceTypeExpr := "COALESCE(vus.device_type,'Unknown')"
+	manufacturerExpr := "''"
+	modelExpr := "''"
+	osNameExpr := "''"
+	osVersionExpr := "''"
+	clientNameExpr := "COALESCE(vus.client_name,'Unknown')"
+	clientVersionExpr := "''"
+	platformExpr := "COALESCE(vus.platform,'Unknown')"
+	metadataSourceExpr := "''"
+	metadataJoin := ""
+
+	if ok, err := r.tableExists(ctx, "vpn_device_metadata"); err != nil {
+		return nil, err
+	} else if ok {
+		metadataJoin = `
+LEFT JOIN vpn_device_metadata vdm
+	ON vdm.user_id = vus.user_id
+	AND vdm.protocol = vus.protocol
+	AND vdm.inbound_tag = COALESCE(vus.inbound_tag,'')
+	AND vdm.device_id = COALESCE(vus.device_id,'')`
+		deviceTypeExpr = "COALESCE(NULLIF(vdm.device_type,''), NULLIF(vus.device_type,''), 'Unknown')"
+		manufacturerExpr = "COALESCE(vdm.manufacturer,'')"
+		modelExpr = "COALESCE(vdm.model,'')"
+		osNameExpr = "COALESCE(vdm.os_name,'')"
+		osVersionExpr = "COALESCE(vdm.os_version,'')"
+		clientNameExpr = "COALESCE(NULLIF(vdm.client_name,''), NULLIF(vus.client_name,''), 'Unknown')"
+		clientVersionExpr = "COALESCE(vdm.client_version,'')"
+		platformExpr = "COALESCE(NULLIF(vdm.platform,''), NULLIF(vus.platform,''), 'Unknown')"
+		metadataSourceExpr = "COALESCE(vdm.metadata_source,'')"
+	}
+
+	query := `SELECT vus.node_id, COALESCE(n.name,''), vus.user_id, vus.protocol,
+COALESCE(vus.inbound_tag,''), vus.session_id, COALESCE(vus.device_id,''), ` +
+		deviceTypeExpr + `, ` +
+		manufacturerExpr + `, ` +
+		modelExpr + `, ` +
+		osNameExpr + `, ` +
+		osVersionExpr + `, ` +
+		clientNameExpr + `, ` +
+		clientVersionExpr + `, ` +
+		platformExpr + `, ` +
+		metadataSourceExpr + `,
+COALESCE(vus.assigned_ip,''), COALESCE(vus.client_ip,''),
+vus.started_at, vus.last_seen_at, vus.ended_at
+FROM vpn_user_sessions vus
+LEFT JOIN nodes n ON n.id=vus.node_id
+` + metadataJoin + `
+WHERE vus.user_id=?
+AND (n.id IS NULL OR LOWER(COALESCE(n.status,'')) <> 'deleted')
+ORDER BY vus.last_seen_at DESC`
+
+	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+
 	result := []UserOnlineIPRecord{}
 	cutoff := onlineIPActiveCutoff()
+
 	for rows.Next() {
 		var item UserOnlineIPRecord
 		var started, seen any
 		var ended sql.NullTime
-		if err := rows.Scan(&item.NodeID, &item.NodeName, &item.UserID, &item.Protocol, &item.InboundTag, &item.SessionID, &item.DeviceID, &item.DeviceType, &item.ClientName, &item.Platform, &item.AssignedIP, &item.IP, &started, &seen, &ended); err != nil {
+		if err := rows.Scan(
+			&item.NodeID,
+			&item.NodeName,
+			&item.UserID,
+			&item.Protocol,
+			&item.InboundTag,
+			&item.SessionID,
+			&item.DeviceID,
+			&item.DeviceType,
+			&item.Manufacturer,
+			&item.Model,
+			&item.OSName,
+			&item.OSVersion,
+			&item.ClientName,
+			&item.ClientVersion,
+			&item.Platform,
+			&item.MetadataSource,
+			&item.AssignedIP,
+			&item.IP,
+			&started,
+			&seen,
+			&ended,
+		); err != nil {
 			return nil, err
 		}
 		if item.IP == "" {
@@ -337,9 +414,9 @@ AND (n.id IS NULL OR LOWER(COALESCE(n.status,'')) <> 'deleted') ORDER BY vus.las
 		item.Online = !ended.Valid && !item.LastSeenAt.Before(cutoff)
 		result = append(result, item)
 	}
+
 	return result, rows.Err()
 }
-
 func (c Controller) UserDeviceHistory(ctx context.Context, userID int64) ([]UserOnlineIPRecord, error) {
 	return c.repo.UserDeviceHistory(ctx, userID)
 }

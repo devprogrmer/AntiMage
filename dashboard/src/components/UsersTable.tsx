@@ -181,8 +181,14 @@ type UserIPRecord = {
 	session_id?: string;
 	device_id?: string;
 	device_type?: string;
+	manufacturer?: string;
+	model?: string;
+	os_name?: string;
+	os_version?: string;
 	client_name?: string;
+	client_version?: string;
 	platform?: string;
+	metadata_source?: string;
 	ip?: string;
 	assigned_ip?: string;
 	assigned_ips?: string[];
@@ -1912,12 +1918,33 @@ export const UsersTable: FC<UsersTableProps> = ({
 									record.assigned_ip,
 								]).filter((value) => value !== ip);
 								const connections = Math.max(record.connections || 1, 1);
-								const deviceSummary = [
-									record.device_type || "Unknown",
-									record.client_name || "Unknown",
-									record.platform && record.platform !== "Unknown"
-										? record.platform
+								const hardwareSummary = [
+									record.manufacturer,
+									record.model,
+								]
+									.filter(Boolean)
+									.join(" ");
+								const osSummary = [
+									record.os_name,
+									record.os_version,
+								]
+									.filter(Boolean)
+									.join(" ");
+								const clientSummary = [
+									record.client_name && record.client_name !== "Unknown"
+										? record.client_name
 										: undefined,
+									record.client_version,
+								]
+									.filter(Boolean)
+									.join(" ");
+								const deviceSummary = [
+									hardwareSummary || record.device_type || "Unknown",
+									osSummary ||
+										(record.platform && record.platform !== "Unknown"
+											? record.platform
+											: undefined),
+									clientSummary || undefined,
 								]
 									.filter(Boolean)
 									.join(" · ");

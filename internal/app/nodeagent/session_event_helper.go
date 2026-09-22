@@ -186,6 +186,10 @@ func RunNativeSessionEventHelper(args []string) error {
 			SessionID:  sessionID,
 			AssignedIP: assignedIP,
 			ClientIP:   clientIP,
+			DeviceID:   nativeSessionDeviceID(protocol, sessionID),
+			DeviceType: nativeSessionDeviceType(protocol),
+			ClientName: nativeSessionClientName(protocol),
+			Platform:   "Unknown",
 			Event:      eventName,
 		},
 	)
@@ -204,6 +208,38 @@ func RunNativeSessionEventHelper(args []string) error {
 	return nil
 }
 
+func nativeSessionDeviceID(protocol string, sessionID string) string {
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	switch protocol {
+	case "ov", "openvpn":
+		sum := sha256.Sum256([]byte(strings.TrimSpace(sessionID)))
+		return "ov-" + hex.EncodeToString(sum[:8])
+	default:
+		return ""
+	}
+}
+
+func nativeSessionDeviceType(protocol string) string {
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "ov", "openvpn":
+		return "VPN Session"
+	default:
+		return "Unknown"
+	}
+}
+
+func nativeSessionClientName(protocol string) string {
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "ov", "openvpn":
+		return "OpenVPN"
+	case "l2tp":
+		return "L2TP"
+	case "pptp":
+		return "PPTP"
+	default:
+		return "Unknown"
+	}
+}
 func firstNonEmptyEnv(keys ...string) string {
 	for _, key := range keys {
 		if value := strings.TrimSpace(os.Getenv(key)); value != "" {

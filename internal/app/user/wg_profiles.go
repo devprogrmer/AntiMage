@@ -158,6 +158,14 @@ func (s Service) generateWGProfile(ctx context.Context, user UserDetail, req Sub
 		return SubscriptionHTTPResponse{}, clientError(404, "WireGuard profile not found")
 	}
 	profile := profiles[0]
+	_ = s.recordSubscriptionDeviceMetadata(
+		ctx,
+		user.ID,
+		"wg",
+		profile.InboundTag,
+		profile.ClientPublicKey,
+		req,
+	)
 	return SubscriptionHTTPResponse{
 		Status:    200,
 		MediaType: "application/x-wireguard-profile",

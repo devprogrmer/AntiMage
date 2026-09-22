@@ -15,13 +15,14 @@ type AWGProfileRequest struct {
 }
 
 type AWGProfile struct {
-	HostTag     string `json:"host_tag,omitempty"`
-	HostName    string `json:"host_name,omitempty"`
-	InboundTag  string `json:"inbound_tag,omitempty"`
-	DeviceIndex int    `json:"device_index"`
-	Filename    string `json:"filename"`
-	DownloadURL string `json:"download_url,omitempty"`
-	Body        string `json:"body"`
+	HostTag         string `json:"host_tag,omitempty"`
+	HostName        string `json:"host_name,omitempty"`
+	InboundTag      string `json:"inbound_tag,omitempty"`
+	DeviceIndex     int    `json:"device_index"`
+	ClientPublicKey string `json:"client_public_key,omitempty"`
+	Filename        string `json:"filename"`
+	DownloadURL     string `json:"download_url,omitempty"`
+	Body            string `json:"body"`
 }
 
 func RenderAmneziaWGProfiles(req AWGProfileRequest) ([]AWGProfile, error) {
@@ -50,7 +51,12 @@ func RenderAmneziaWGProfiles(req AWGProfileRequest) ([]AWGProfile, error) {
 		if req.PersistentKeepalive > 0 {
 			fmt.Fprintf(&body, "PersistentKeepalive = %d\n", req.PersistentKeepalive)
 		}
-		profiles = append(profiles, AWGProfile{DeviceIndex: device.DeviceIndex, Filename: fmt.Sprintf("%s-amneziawg-device-%d.conf", WGSafePathComponent(req.Username), device.DeviceIndex+1), Body: body.String()})
+		profiles = append(profiles, AWGProfile{
+			DeviceIndex:     device.DeviceIndex,
+			ClientPublicKey: device.PublicKey,
+			Filename:        fmt.Sprintf("%s-amneziawg-device-%d.conf", WGSafePathComponent(req.Username), device.DeviceIndex+1),
+			Body:            body.String(),
+		})
 	}
 	return profiles, nil
 }
