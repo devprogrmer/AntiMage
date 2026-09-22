@@ -287,6 +287,39 @@ func (r Repository) updateUserMutation(ctx context.Context, admin adminapp.Admin
 		}
 	}
 
+	resellerBudgetOwner := false
+	if existing.AdminID != nil {
+		resellerBudgetOwner, err = r.resellerBudgetOwnerTx(ctx, tx, existing.AdminID)
+		if err != nil {
+			return MutationResult{}, err
+		}
+	}
+
+	if resellerBudgetOwner && (rawFieldPresent(rawFields, "data_limit") || serviceFieldPresent) {
+		if newDataLimit == nil || *newDataLimit <= 0 {
+			return MutationResult{}, clientError(403, "Reseller-owned users cannot have unlimited traffic")
+		}
+
+		delta := int64PtrValue(newDataLimit) - int64PtrValue(existing.DataLimit)
+		if delta > 0 {
+			reserved, err := r.tryReserveResellerOwnedTrafficTx(
+				ctx,
+				tx,
+				existing.AdminID,
+				targetServiceID,
+				delta,
+				"user_limit_update",
+				time.Now().UTC(),
+			)
+			if err != nil {
+				return MutationResult{}, err
+			}
+			if !reserved {
+				return MutationResult{}, clientError(403, CreatedTrafficLimitExceededMessage)
+			}
+		}
+	}
+
 	sets := []string{"edit_at = ?", "last_status_change = CASE WHEN status != ? THEN ? ELSE last_status_change END"}
 	args := []any{dbTime(time.Now().UTC()), newStatus, dbTime(time.Now().UTC())}
 	if payload.Status != "" || UserStatus(newStatus) != existing.Status {
@@ -408,6 +441,9 @@ func (r Repository) deleteUserMutation(ctx context.Context, admin adminapp.Admin
 		return MutationResult{}, err
 	}
 	defer rollbackQuiet(tx)
+	if err := r.ensureResellerUserDeleteAllowedTx(ctx, tx, admin); err != nil {
+		return MutationResult{}, err
+	}
 	existing, err := r.existingUserTx(ctx, tx, username)
 	if err != nil {
 		return MutationResult{}, err

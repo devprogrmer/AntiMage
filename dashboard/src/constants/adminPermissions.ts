@@ -62,6 +62,24 @@ const USER_ONLY_TEMPLATE: PermissionTemplate = {
 	},
 };
 
+const RESELLER_TEMPLATE: PermissionTemplate = {
+	...USER_ONLY_TEMPLATE,
+	users: {
+		...USER_ONLY_TEMPLATE.users,
+		[UserPermissionToggle.Delete]: false,
+		[UserPermissionToggle.AllowUnlimitedData]: false,
+	},
+	admin_management: {
+		...USER_ONLY_TEMPLATE.admin_management,
+		[AdminManagementPermission.View]: true,
+		[AdminManagementPermission.Edit]: true,
+	},
+	sections: {
+		...USER_ONLY_TEMPLATE.sections,
+		[AdminSection.Admins]: true,
+	},
+};
+
 const SUDO_TEMPLATE: PermissionTemplate = {
 	users: {
 		[UserPermissionToggle.Create]: true,
@@ -167,7 +185,7 @@ export const ROLE_DEFAULT_ADMIN_PERMISSIONS: Record<
 	PermissionTemplate
 > = {
 	[AdminRole.Standard]: USER_ONLY_TEMPLATE,
-	[AdminRole.Reseller]: USER_ONLY_TEMPLATE,
+	[AdminRole.Reseller]: RESELLER_TEMPLATE,
 	[AdminRole.Sudo]: SUDO_TEMPLATE,
 	[AdminRole.FullAccess]: FULL_ACCESS_TEMPLATE,
 };

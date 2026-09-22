@@ -134,6 +134,20 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "Only full access admins can create full access accounts")
 		return
 	}
+	if principal.Context.Admin.Role == adminapp.RoleReseller {
+		if role != adminapp.RoleStandard || payload.DataLimit == nil || *payload.DataLimit <= 0 || payload.UseServiceTrafficLimits != nil && *payload.UseServiceTrafficLimits || !resellerServiceScope(principal.Context.Admin.Services, payload.Services) || payload.ServiceLimits != nil {
+			writeError(w, http.StatusForbidden, "Resellers may create standard admins with a finite traffic budget only")
+			return
+		}
+	}
+	if role == adminapp.RoleReseller && !principal.Context.Admin.HasFullAccess() {
+		writeError(w, http.StatusForbidden, "Only full access admins can create resellers")
+		return
+	}
+	if role == adminapp.RoleReseller && (payload.DataLimit == nil || *payload.DataLimit <= 0) {
+		writeError(w, http.StatusUnprocessableEntity, "Reseller traffic budget must be positive")
+		return
+	}
 	if payload.Require2FA != nil && !canManageAdmin2FA(principal.Context.Admin, adminapp.Admin{Role: role}) {
 		writeError(w, http.StatusForbidden, "You're not allowed")
 		return
@@ -141,6 +155,15 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 
 	var created adminapp.Admin
 	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
+		if principal.Context.Admin.Role != adminapp.RoleReseller {
+			parentID, err := resellerParentIDTx(r.Context(), tx, principal.Context.Admin.CreatedBy)
+			if err != nil {
+				return err
+			}
+			if parentID > 0 {
+				return statusError{status: http.StatusForbidden, detail: "Reseller subadmins cannot create admins"}
+			}
+		}
 		exists, err := adminExistsTx(r.Context(), tx, payload.Username)
 		if err != nil {
 			return err
@@ -159,6 +182,15 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 		if err := validateAdminPermissions(perms); err != nil {
 			return statusError{status: http.StatusUnprocessableEntity, detail: err.Error()}
 		}
+		if principal.Context.Admin.Role == adminapp.RoleReseller {
+			perms = resellerChildPermissions()
+		} else if role == adminapp.RoleReseller {
+			perms.Users.Delete = false
+			perms.Users.AllowUnlimitedData = false
+			perms.AdminManagement.CanView = true
+			perms.AdminManagement.CanEdit = true
+			perms.Sections.Admins = true
+		}
 		permissionsJSON, err := json.Marshal(perms)
 		if err != nil {
 			return err
@@ -168,6 +200,11 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 		showTraffic := optionalBool(payload.ShowUserTraffic, true)
 		useServiceLimits := optionalBool(payload.UseServiceTrafficLimits, false)
 		deleteLimitEnabled := optionalBool(payload.DeleteUserUsageLimitEnabled, false)
+		if role == adminapp.RoleReseller || principal.Context.Admin.Role == adminapp.RoleReseller {
+			trafficMode = string(adminapp.TrafficLimitCreatedTraffic)
+			useServiceLimits = false
+			deleteLimitEnabled = false
+		}
 		if role == adminapp.RoleFullAccess {
 			trafficMode = string(adminapp.TrafficLimitUsedTraffic)
 			showTraffic = true
@@ -176,6 +213,14 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 		}
 		if !perms.Users.Delete {
 			deleteLimitEnabled = false
+		}
+		if principal.Context.Admin.Role == adminapp.RoleReseller {
+			if !resellerServiceScope(principal.Context.Admin.Services, payload.Services) {
+				return statusError{status: http.StatusForbidden, detail: "Child services must belong to the reseller"}
+			}
+			if err := reserveResellerBudgetTx(r.Context(), tx, principal.Context.Admin.ID, *payload.DataLimit); err != nil {
+				return err
+			}
 		}
 		require2FA := optionalBool(payload.Require2FA, false)
 		result, err := tx.ExecContext(
@@ -327,9 +372,46 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 		}
 		previous = target
 		isSelf := strings.EqualFold(principal.Context.Admin.Username, target.Username)
+		if isSelf && !principal.Context.Admin.HasFullAccess() && selfAdminBudgetOrPrivilegeChange(payload.fields) {
+			return statusError{status: http.StatusForbidden, detail: "Admins cannot change their own role, permissions or traffic budget"}
+		}
 		if !isSelf {
 			if err := ensureCanManageAdmin(principal.Context.Admin, target); err != nil {
 				return err
+			}
+		}
+		resellerParentID, err := resellerParentIDTx(r.Context(), tx, target.CreatedBy)
+		if err != nil {
+			return err
+		}
+		if resellerParentID > 0 {
+			parent, err := adminByUsernameTx(r.Context(), tx, target.CreatedBy)
+			if err != nil {
+				return err
+			}
+			if !resellerServiceScope(parent.Services, payload.Services) {
+				return statusError{status: http.StatusForbidden, detail: "Child services must belong to the reseller"}
+			}
+			if payload.Role != "" && payload.Role != string(adminapp.RoleStandard) || payload.ServiceLimits != nil || payload.UseServiceTrafficLimits != nil && *payload.UseServiceTrafficLimits || payload.DeleteUserUsageLimitEnabled != nil && *payload.DeleteUserUsageLimitEnabled {
+				return statusError{status: http.StatusForbidden, detail: "Reseller child privileges and traffic mode cannot be changed"}
+			}
+			if raw, ok := payload.fields["data_limit"]; ok {
+				if string(raw) == "null" || payload.DataLimit == nil || *payload.DataLimit <= 0 || *payload.DataLimit < target.CreatedTraffic {
+					return statusError{status: http.StatusUnprocessableEntity, detail: "Child traffic budget must cover already allocated traffic"}
+				}
+				if delta := *payload.DataLimit - budgetValue(target.DataLimit); delta > 0 {
+					if err := reserveResellerBudgetTx(r.Context(), tx, resellerParentID, delta); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		if target.Role == adminapp.RoleReseller {
+			if payload.Role != "" && payload.Role != string(adminapp.RoleReseller) {
+				return statusError{status: http.StatusForbidden, detail: "Reseller role cannot be changed while its budget is active"}
+			}
+			if raw, ok := payload.fields["data_limit"]; ok && (string(raw) == "null" || payload.DataLimit == nil || *payload.DataLimit <= 0 || *payload.DataLimit < target.CreatedTraffic) {
+				return statusError{status: http.StatusUnprocessableEntity, detail: "Reseller budget must cover already allocated traffic"}
 			}
 		}
 		role := target.Role
@@ -343,6 +425,9 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 			}
 			role = parsed
 		}
+		if role == adminapp.RoleReseller && target.Role != adminapp.RoleReseller {
+			return statusError{status: http.StatusForbidden, detail: "Create a new reseller with an explicit budget instead of converting an admin"}
+		}
 		var currentPermissionsRaw json.RawMessage
 		currentPermissionsRaw, _ = json.Marshal(target.Permissions)
 		rawPermissions := payload.Permissions
@@ -355,6 +440,11 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 		}
 		if err := validateAdminPermissions(perms); err != nil {
 			return statusError{status: http.StatusUnprocessableEntity, detail: err.Error()}
+		}
+		if resellerParentID > 0 {
+			perms = resellerChildPermissions()
+		} else if role == adminapp.RoleReseller {
+			perms = adminapp.RoleDefaultPermissions(adminapp.RoleReseller)
 		}
 		permissionsJSON, err := json.Marshal(perms)
 		if err != nil {
@@ -414,7 +504,7 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 		if _, ok := payload.fields["users_limit"]; ok {
 			appendNullable("users_limit", nullableInt64(payload.UsersLimit))
 		}
-		if role != adminapp.RoleFullAccess {
+		if role != adminapp.RoleFullAccess && role != adminapp.RoleReseller && resellerParentID == 0 {
 			if _, ok := payload.fields["traffic_limit_mode"]; ok {
 				appendNullable("traffic_limit_mode", optionalString(payload.TrafficLimitMode, string(adminapp.TrafficLimitUsedTraffic)))
 			}
@@ -430,6 +520,11 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 			if _, ok := payload.fields["delete_user_usage_limit"]; ok {
 				appendNullable("delete_user_usage_limit", nullableInt64(payload.DeleteUserUsageLimit))
 			}
+		}
+		if role == adminapp.RoleReseller || resellerParentID > 0 {
+			appendNullable("traffic_limit_mode", string(adminapp.TrafficLimitCreatedTraffic))
+			appendNullable("use_service_traffic_limits", 0)
+			appendNullable("delete_user_usage_limit_enabled", 0)
 		}
 		if _, ok := payload.fields["require_2fa"]; ok {
 			if boolPtrValue(payload.Require2FA) && !target.TOTPEnabled {
@@ -523,17 +618,32 @@ func (s *Server) handleDeleteAdmin(w http.ResponseWriter, r *http.Request, usern
 		if err := ensureCanManageAdmin(principal.Context.Admin, target); err != nil {
 			return err
 		}
+		resellerParentID, err := resellerParentIDTx(r.Context(), tx, target.CreatedBy)
+		if err != nil {
+			return err
+		}
+		if target.Role == adminapp.RoleReseller {
+			var children int64
+			if err := tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM admins WHERE created_by = ? AND status != ?`, target.Username, string(adminapp.StatusDeleted)).Scan(&children); err != nil {
+				return err
+			}
+			if children > 0 {
+				return statusError{status: http.StatusConflict, detail: "Delete or transfer reseller subadmins first"}
+			}
+		}
 		if _, err := tx.ExecContext(r.Context(), `DELETE FROM admin_api_keys WHERE admin_id = ?`, target.ID); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(r.Context(), `DELETE FROM admin_sessions WHERE admin_id = ?`, target.ID); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(r.Context(), `DELETE FROM admin_created_traffic_logs WHERE admin_id = ?`, target.ID); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(r.Context(), `DELETE FROM admin_usage_logs WHERE admin_id = ?`, target.ID); err != nil {
-			return err
+		if target.Role != adminapp.RoleReseller && resellerParentID == 0 {
+			if _, err := tx.ExecContext(r.Context(), `DELETE FROM admin_created_traffic_logs WHERE admin_id = ?`, target.ID); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(r.Context(), `DELETE FROM admin_usage_logs WHERE admin_id = ?`, target.ID); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.ExecContext(r.Context(), `DELETE FROM admins_services WHERE admin_id = ?`, target.ID); err != nil {
 			return err
@@ -803,6 +913,13 @@ func (s *Server) handleAdminUsageResetPath(w http.ResponseWriter, r *http.Reques
 		if err != nil {
 			return err
 		}
+		resellerParentID, err := resellerParentIDTx(r.Context(), tx, target.CreatedBy)
+		if err != nil {
+			return err
+		}
+		if target.Role == adminapp.RoleReseller || resellerParentID > 0 {
+			return statusError{status: http.StatusForbidden, detail: "Reseller allocation history cannot be reset"}
+		}
 		if !strings.EqualFold(principal.Context.Admin.Username, target.Username) {
 			if err := ensureCanManageAdmin(principal.Context.Admin, target); err != nil {
 				return err
@@ -890,6 +1007,10 @@ func (s *Server) handleBulkStandardPermissions(w http.ResponseWriter, r *http.Re
 		return
 	}
 	principal, _ := r.Context().Value(adminContextKey).(adminPrincipal)
+	if principal.Context.Admin.Role == adminapp.RoleReseller {
+		writeError(w, http.StatusForbidden, "Resellers cannot change global admin permissions")
+		return
+	}
 	if !canEditAdmins(principal.Context.Admin) {
 		writeError(w, http.StatusForbidden, "You're not allowed")
 		return
@@ -909,7 +1030,7 @@ func (s *Server) handleBulkStandardPermissions(w http.ResponseWriter, r *http.Re
 	}
 	updated := 0
 	err := s.withTx(r.Context(), func(tx *sql.Tx) error {
-		rows, err := tx.QueryContext(r.Context(), `SELECT id, permissions FROM admins WHERE status != ? AND role = ?`, string(adminapp.StatusDeleted), string(adminapp.RoleStandard))
+		rows, err := tx.QueryContext(r.Context(), `SELECT id, permissions FROM admins WHERE status != ? AND role = ? AND NOT EXISTS (SELECT 1 FROM admins parent WHERE parent.username = admins.created_by AND parent.role = ?)`, string(adminapp.StatusDeleted), string(adminapp.RoleStandard), string(adminapp.RoleReseller))
 		if err != nil {
 			return err
 		}
@@ -977,7 +1098,7 @@ func parseAdminPath(path string) (string, string, bool) {
 }
 
 func canEditAdmins(actor adminapp.Admin) bool {
-	return actor.Role == adminapp.RoleFullAccess || actor.Permissions.AdminManagement.CanEdit
+	return actor.Role == adminapp.RoleFullAccess || actor.Role == adminapp.RoleReseller || actor.Permissions.AdminManagement.CanEdit
 }
 
 func ensureCanManageAdmin(actor adminapp.Admin, target adminapp.Admin) error {
@@ -986,6 +1107,15 @@ func ensureCanManageAdmin(actor adminapp.Admin, target adminapp.Admin) error {
 	}
 	if target.Role == adminapp.RoleFullAccess {
 		return statusError{status: http.StatusForbidden, detail: "Full access admins cannot manage other full access accounts"}
+	}
+	if target.Role == adminapp.RoleReseller && !actor.HasFullAccess() {
+		return statusError{status: http.StatusForbidden, detail: "Only full access admins can manage resellers"}
+	}
+	if target.CreatedBy != "" && !strings.EqualFold(target.CreatedBy, "root") && !actor.HasFullAccess() && !strings.EqualFold(target.CreatedBy, actor.Username) {
+		return statusError{status: http.StatusForbidden, detail: "Admins can only manage their own subadmins"}
+	}
+	if actor.Role == adminapp.RoleReseller && (!strings.EqualFold(target.CreatedBy, actor.Username) || target.Role != adminapp.RoleStandard) {
+		return statusError{status: http.StatusForbidden, detail: "Resellers can only manage their own standard admins"}
 	}
 	if target.Role == adminapp.RoleSudo && !actor.Permissions.AdminManagement.CanManageSudo {
 		return statusError{status: http.StatusForbidden, detail: "You're not allowed"}

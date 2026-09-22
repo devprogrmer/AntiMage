@@ -675,6 +675,15 @@ func (r Repository) resetPeriodicUserUsage(ctx context.Context, opts UsageResetO
 		if !resetStrategyDue(row.Strategy, row.LastResetAt, now) {
 			continue
 		}
+		if row.DataLimit != nil && *row.DataLimit > 0 && row.AdminID != nil && !row.UseServiceCap {
+			available, err := periodicResetBudgetAvailableTx(ctx, tx, *row.AdminID, *row.DataLimit)
+			if err != nil {
+				return result, err
+			}
+			if !available {
+				continue
+			}
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO user_usage_logs (user_id, used_traffic_at_reset, reset_at) VALUES (?, ?, ?)`, row.ID, row.UsedTraffic, dbTime(now)); err != nil {
 			return result, err
 		}
@@ -816,11 +825,28 @@ func (r Repository) recordPeriodicResetCreatedTrafficTx(ctx context.Context, tx 
 		_, err := tx.ExecContext(ctx, `INSERT INTO admin_created_traffic_logs (admin_id, service_id, amount, action, created_at) VALUES (?, ?, ?, ?, ?)`, *user.AdminID, *user.ServiceID, amount, "user_reset_usage", dbTime(now))
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE admins SET created_traffic = COALESCE(created_traffic, 0) + ? WHERE id = ?`, amount, *user.AdminID); err != nil {
+	updated, err := tx.ExecContext(ctx, `UPDATE admins SET created_traffic = COALESCE(created_traffic, 0) + ? WHERE id = ? AND (COALESCE(traffic_limit_mode, 'used_traffic') != 'created_traffic' OR data_limit IS NULL OR (data_limit >= ? AND COALESCE(created_traffic, 0) <= data_limit - ?))`, amount, *user.AdminID, amount, amount)
+	if err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO admin_created_traffic_logs (admin_id, service_id, amount, action, created_at) VALUES (?, NULL, ?, ?, ?)`, *user.AdminID, amount, "user_reset_usage", dbTime(now))
+	if rowsAffected(updated) != 1 {
+		return clientError(403, CreatedTrafficLimitExceededMessage)
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO admin_created_traffic_logs (admin_id, service_id, amount, action, created_at) VALUES (?, NULL, ?, ?, ?)`, *user.AdminID, amount, "user_reset_usage", dbTime(now))
 	return err
+}
+
+func periodicResetBudgetAvailableTx(ctx context.Context, tx *sql.Tx, adminID, amount int64) (bool, error) {
+	var mode string
+	var limit sql.NullInt64
+	var spent int64
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(traffic_limit_mode, 'used_traffic'), data_limit, COALESCE(created_traffic, 0) FROM admins WHERE id = ?`, adminID).Scan(&mode, &limit, &spent); err != nil {
+		return false, err
+	}
+	if mode != "created_traffic" || !limit.Valid || limit.Int64 <= 0 {
+		return true, nil
+	}
+	return spent <= limit.Int64 && amount <= limit.Int64-spent, nil
 }
 
 func adminRoleFullAccess() string {

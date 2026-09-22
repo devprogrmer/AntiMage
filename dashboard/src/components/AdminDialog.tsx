@@ -200,6 +200,7 @@ export const AdminDialog: FC = () => {
 		Boolean(userData.permissions.admin_management.manage_2fa);
 	const toast = useToast();
 	const admins = useAdminsStore((state) => state.admins);
+	const adminOptions = useAdminsStore((state) => state.adminOptions);
 	const adminFromStore = useAdminsStore((state) => state.adminInDialog);
 	const isOpen = useAdminsStore((state) => state.isAdminDialogOpen);
 	const closeAdminDialog = useAdminsStore((state) => state.closeAdminDialog);
@@ -215,6 +216,23 @@ export const AdminDialog: FC = () => {
 			adminFromStore
 		);
 	}, [adminFromStore, admins]);
+
+	const isResellerChild = useMemo(
+		() =>
+			Boolean(
+				admin &&
+					admin.role === AdminRole.Standard &&
+					admin.created_by &&
+					((userData.role === AdminRole.Reseller &&
+						admin.created_by === userData.username) ||
+						adminOptions.some(
+							(item) =>
+								item.role === AdminRole.Reseller &&
+								item.username === admin.created_by,
+						)),
+			),
+		[admin, adminOptions, userData.role, userData.username],
+	);
 
 	const mode = useMemo(() => (admin ? "edit" : "create"), [admin]);
 	const statusLabels = useMemo(
@@ -486,6 +504,10 @@ export const AdminDialog: FC = () => {
 	const usersLimitValue = watch("users_limit") ?? "";
 	const maxDataLimitValue = watch("maxDataLimitPerUserGb") ?? "";
 	const isFullAccessRole = watchRole === AdminRole.FullAccess;
+	const isResellerBudgetContext =
+		watchRole === AdminRole.Reseller ||
+		userData.role === AdminRole.Reseller ||
+		isResellerChild;
 	const isCreatedTrafficMode =
 		watchTrafficLimitMode === AdminTrafficLimitMode.CreatedTraffic;
 	const usePerServiceTrafficLimits = Boolean(watchUseServiceTrafficLimits);
@@ -698,6 +720,14 @@ export const AdminDialog: FC = () => {
 	}, [setValue, watchRole]);
 
 	useEffect(() => {
+		if (isResellerBudgetContext) {
+			setValue("traffic_limit_mode", AdminTrafficLimitMode.CreatedTraffic);
+			setValue("use_service_traffic_limits", false);
+			setValue("delete_user_usage_limit_enabled", false);
+		}
+	}, [setValue, isResellerBudgetContext]);
+
+	useEffect(() => {
 		if (!permissionsValue.users.delete) {
 			setValue("delete_user_usage_limit_enabled", false, {
 				shouldDirty: true,
@@ -719,12 +749,14 @@ export const AdminDialog: FC = () => {
 			setSubmitStatus("loading");
 			const selectedRole: AdminRole = values.role ?? AdminRole.Standard;
 			let permissionPayload: AdminPermissions | undefined;
-			if (selectedRole === AdminRole.Reseller) {
-				toast({
-					status: "warning",
-					title: t("common.comingSoon"),
-					description: t("admins.roles.resellerDescription"),
-					isClosable: true,
+			if (
+				(selectedRole === AdminRole.Reseller ||
+					userData.role === AdminRole.Reseller) &&
+				(!values.data_limit || Number(values.data_limit) <= 0)
+			) {
+				setError("data_limit", {
+					type: "manual",
+					message: t("admins.validation.invalidDataLimit"),
 				});
 				showSubmitError();
 				return;
@@ -1100,6 +1132,7 @@ export const AdminDialog: FC = () => {
 						<FormLabel>{t("admins.roleLabel")}</FormLabel>
 						<RadioGroup
 							value={watchRole ?? AdminRole.Standard}
+							isDisabled={isResellerChild}
 							onChange={(value) =>
 								setValue("role", value as AdminRole, { shouldDirty: true })
 							}
@@ -1111,23 +1144,24 @@ export const AdminDialog: FC = () => {
 										{t("admins.roles.standardDescription")}
 									</FormHelperText>
 								</Radio>
-								<Radio value={AdminRole.Reseller} isDisabled>
-									<Text fontWeight="medium">
-										{t("admins.roles.reseller")}
-										<Box as="span" ml={2} fontSize="xs" color="orange.500">
-											{t("common.comingSoon")}
-										</Box>
-									</Text>
-									<FormHelperText m={0}>
-										{t("admins.roles.resellerDescription")}
-									</FormHelperText>
-								</Radio>
-								<Radio value={AdminRole.Sudo}>
-									<Text fontWeight="medium">{t("admins.roles.sudo")}</Text>
-									<FormHelperText m={0}>
-										{t("admins.roles.sudoDescription")}
-									</FormHelperText>
-								</Radio>
+								{canCreateFullAccess && (
+									<Radio value={AdminRole.Reseller}>
+										<Text fontWeight="medium">
+											{t("admins.roles.reseller")}
+										</Text>
+										<FormHelperText m={0}>
+											{t("admins.roles.resellerDescription")}
+										</FormHelperText>
+									</Radio>
+								)}
+								{userData.role !== AdminRole.Reseller && (
+									<Radio value={AdminRole.Sudo}>
+										<Text fontWeight="medium">{t("admins.roles.sudo")}</Text>
+										<FormHelperText m={0}>
+											{t("admins.roles.sudoDescription")}
+										</FormHelperText>
+									</Radio>
+								)}
 								{canCreateFullAccess && (
 									<Radio value={AdminRole.FullAccess}>
 										<Text fontWeight="medium">
@@ -1148,7 +1182,7 @@ export const AdminDialog: FC = () => {
 					{t("admins.limitsSection")}
 				</Text>
 				<VStack spacing={4} align="stretch">
-					{!isFullAccessRole && (
+					{!isFullAccessRole && !isResellerBudgetContext && (
 						<VStack align="stretch" spacing={3}>
 							<Checkbox
 								isChecked={usePerServiceTrafficLimits}
@@ -1181,7 +1215,9 @@ export const AdminDialog: FC = () => {
 								{errors.data_limit?.message as string}
 							</FormErrorMessage>
 							<Text fontSize="xs" color="gray.500" mt={1}>
-								{t("admins.dataLimitHint")}
+								{isResellerBudgetContext
+									? t("admins.resellerBudgetHint")
+									: t("admins.dataLimitHint")}
 							</Text>
 						</FormControl>
 						<FormControl isInvalid={!!errors.users_limit}>
@@ -1207,6 +1243,8 @@ export const AdminDialog: FC = () => {
 						</FormControl>
 					</SimpleGrid>
 					{!isFullAccessRole &&
+						watchRole !== AdminRole.Reseller &&
+						userData.role !== AdminRole.Reseller &&
 						!usePerServiceTrafficLimits &&
 						(hasGlobalDataLimit || isCreatedTrafficMode) && (
 							<VStack align="stretch" spacing={3}>
@@ -1716,11 +1754,15 @@ export const AdminDialog: FC = () => {
 						>
 							<TabList>
 								<Tab>{t("details")}</Tab>
-								<Tab>{t("admins.permissionsTabLabel")}</Tab>
+								{!isResellerBudgetContext && (
+									<Tab>{t("admins.permissionsTabLabel")}</Tab>
+								)}
 							</TabList>
 							<TabPanels>
 								<TabPanel px={0}>{detailsForm}</TabPanel>
-								<TabPanel px={0}>{permissionsPanel}</TabPanel>
+								{!isResellerBudgetContext && (
+									<TabPanel px={0}>{permissionsPanel}</TabPanel>
+								)}
 							</TabPanels>
 						</Tabs>
 					</XrayModalBody>

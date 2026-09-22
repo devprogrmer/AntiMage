@@ -46,7 +46,12 @@ func RoleDefaultPermissions(role AdminRole) AdminPermissions {
 		baseAdminManagement.Manage2FA = true
 		baseSections = allSectionPermissions()
 		baseSudo = allSudoPermissions()
-	case RoleStandard, RoleReseller:
+	case RoleReseller:
+		baseUsers.AllowUnlimitedData = false
+		baseAdminManagement.CanView = true
+		baseAdminManagement.CanEdit = true
+		baseSections.Admins = true
+	case RoleStandard:
 		// Defaults above intentionally match Python AdminPermissions defaults.
 	default:
 		role = RoleStandard
