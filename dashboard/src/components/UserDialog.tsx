@@ -194,6 +194,8 @@ type BaseFormFields = Pick<
 	| "data_limit"
 	| "ip_limit"
 	| "device_limit"
+	| "upload_speed_limit"
+	| "download_speed_limit"
 	| "data_limit_reset_strategy"
 	| "on_hold_expire_duration"
 	| "note"
@@ -236,6 +238,16 @@ const formatUser = (user: User): FormType => {
 		device_limit:
 			user.device_limit && user.device_limit > 0 ? user.device_limit : null,
 
+		upload_speed_limit:
+			user.upload_speed_limit && user.upload_speed_limit > 0
+				? Number((user.upload_speed_limit / BITS_PER_MEGABIT).toFixed(3))
+				: null,
+
+		download_speed_limit:
+			user.download_speed_limit && user.download_speed_limit > 0
+				? Number((user.download_speed_limit / BITS_PER_MEGABIT).toFixed(3))
+				: null,
+
 		on_hold_expire_duration: user.on_hold_expire_duration
 			? Number(user.on_hold_expire_duration / (24 * 60 * 60))
 			: user.on_hold_expire_duration,
@@ -269,6 +281,8 @@ const getDefaultValues = (): FormType => {
 
 		ip_limit: null,
 		device_limit: null,
+		upload_speed_limit: null,
+		download_speed_limit: null,
 
 		expire: null,
 
@@ -312,6 +326,7 @@ const allowedFlows = ["", "xtls-rprx-vision", "xtls-rprx-vision-udp443"];
 
 const usernameRegex = /^[A-Za-z0-9._@-]{3,32}$/;
 const BYTES_PER_GB = 1073741824;
+const BITS_PER_MEGABIT = 1000000;
 const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
 
@@ -340,6 +355,9 @@ const parseDecimalInput = (value: unknown): number | null => {
 
 const gigabytesToBytes = (gigabytes: number) =>
 	Math.round(gigabytes * BYTES_PER_GB);
+
+const megabitsToBits = (megabits: number) =>
+	Math.round(megabits * BITS_PER_MEGABIT);
 
 const buildSchema = (isEditing: boolean) => {
 	const baseSchema = {
@@ -476,6 +494,42 @@ const buildSchema = (isEditing: boolean) => {
 			.transform((value) =>
 				typeof value === "number" && Number.isFinite(value) ? value : null,
 			),
+
+		upload_speed_limit: z
+			.union([z.string(), z.number(), z.null()])
+			.optional()
+			.transform((value, ctx) => {
+				const parsed = parseDecimalInput(value);
+				if (parsed === null) {
+					return 0;
+				}
+				if (!Number.isFinite(parsed) || parsed < 0) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: "Enter a valid non-negative upload speed limit.",
+					});
+					return z.NEVER;
+				}
+				return megabitsToBits(parsed);
+			}),
+
+		download_speed_limit: z
+			.union([z.string(), z.number(), z.null()])
+			.optional()
+			.transform((value, ctx) => {
+				const parsed = parseDecimalInput(value);
+				if (parsed === null) {
+					return 0;
+				}
+				if (!Number.isFinite(parsed) || parsed < 0) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: "Enter a valid non-negative download speed limit.",
+					});
+					return z.NEVER;
+				}
+				return megabitsToBits(parsed);
+			}),
 
 		manual_key_entry: z.boolean().default(false),
 
@@ -1513,6 +1567,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 			ip_limit,
 			device_limit,
+			upload_speed_limit,
+			download_speed_limit,
 
 			credential_key,
 
@@ -1657,6 +1713,20 @@ export const UserDialog: FC<UserDialogProps> = () => {
 				? Math.floor(device_limit)
 				: 0;
 
+		const normalizedUploadSpeedLimit =
+			typeof upload_speed_limit === "number" &&
+			Number.isFinite(upload_speed_limit) &&
+			upload_speed_limit > 0
+				? Math.round(upload_speed_limit)
+				: 0;
+
+		const normalizedDownloadSpeedLimit =
+			typeof download_speed_limit === "number" &&
+			Number.isFinite(download_speed_limit) &&
+			download_speed_limit > 0
+				? Math.round(download_speed_limit)
+				: 0;
+
 		if (!isEditing) {
 			const effectiveServiceId = hasPrivilegedRole
 				? selectedServiceId
@@ -1694,6 +1764,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 				ip_limit: normalizedIpLimit,
 				device_limit: normalizedDeviceLimit,
+				upload_speed_limit: normalizedUploadSpeedLimit,
+				download_speed_limit: normalizedDownloadSpeedLimit,
 
 				data_limit_reset_strategy:
 					data_limit && data_limit > 0 ? data_limit_reset_strategy : "no_reset",
@@ -1772,6 +1844,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 			ip_limit: normalizedIpLimit,
 			device_limit: normalizedDeviceLimit,
+			upload_speed_limit: normalizedUploadSpeedLimit,
+			download_speed_limit: normalizedDownloadSpeedLimit,
 
 			status:
 				status === "active" || status === "disabled" || status === "on_hold"
@@ -2605,36 +2679,53 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																gap={3}
 																mb="10px"
 															>
-																{(["download", "upload"] as const).map(
-																	(direction) => (
-																		<FormControl key={direction} isDisabled>
-																			<FormLabel
-																				textAlign={isRTL ? "right" : "left"}
-																			>
-																				{t(`userDialog.${direction}SpeedLimit`)}
-																			</FormLabel>
-																			<InputGroup size="sm">
-																				<ChakraInput
-																					type="number"
-																					min={0}
-																					placeholder={t(
-																						"userDialog.speedLimitPlaceholder",
-																					)}
-																					borderRadius="6px"
-																					dir="ltr"
-																				/>
-																				<InputRightAddon>Mbps</InputRightAddon>
-																			</InputGroup>
-																		</FormControl>
-																	),
-																)}
-																<Text
-																	gridColumn={{ base: "auto", sm: "1 / -1" }}
-																	fontSize="xs"
-																	color="gray.500"
-																>
-																	{t("userDialog.speedLimitPending")}
-																</Text>
+																{(
+																	[
+																		["download", "download_speed_limit"],
+																		["upload", "upload_speed_limit"],
+																	] as const
+																).map(([direction, fieldName]) => (
+																	<FormControl
+																		key={direction}
+																		isInvalid={
+																			!!form.formState.errors[fieldName]
+																				?.message
+																		}
+																	>
+																		<FormLabel
+																			textAlign={isRTL ? "right" : "left"}
+																		>
+																			{t(`userDialog.${direction}SpeedLimit`)}
+																		</FormLabel>
+																		<Controller
+																			control={form.control}
+																			name={fieldName}
+																			render={({ field }) => (
+																				<>
+																					{renderUnitInput({
+																						unit: "Mbps",
+																						value:
+																							field.value === null ||
+																							typeof field.value === "undefined"
+																								? ""
+																								: String(field.value),
+																						onChange: field.onChange,
+																						disabled,
+																						placeholder: t(
+																							"userDialog.speedLimitPlaceholder",
+																						),
+																					})}
+																					<FormErrorMessage>
+																						{
+																							form.formState.errors[fieldName]
+																								?.message
+																						}
+																					</FormErrorMessage>
+																				</>
+																			)}
+																		/>
+																	</FormControl>
+																))}
 															</Grid>
 
 															<Collapse
