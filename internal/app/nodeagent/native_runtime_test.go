@@ -84,7 +84,9 @@ func TestParseNativeRuntimePayloadEmpty(t *testing.T) {
 func TestApplyNativeRuntimeRejectsUnsupportedDaemonPayload(t *testing.T) {
 	server := New(Config{DataDir: t.TempDir()})
 
-	err := server.applyNativeRuntime(`{"ikev2_inbounds":[{"tag":"ikev2-main"}]}`)
+	err := server.applyNativeRuntime(
+		`{"anyconnect_inbounds":[{"tag":"anyconnect-main"}]}`,
+	)
 	if err == nil {
 		t.Fatal("expected unsupported daemon runtime error")
 	}
