@@ -41,16 +41,18 @@ type openVPNRuntimeInbound struct {
 }
 
 type openVPNRuntimeUser struct {
-	UserID      int64  `json:"user_id"`
-	Username    string `json:"username"`
-	VPNUsername string `json:"vpn_username"`
-	Password    string `json:"password"`
-	IPv4Address string `json:"ipv4_address"`
-	Status      string `json:"status"`
-	UsedTraffic int64  `json:"used_traffic"`
-	DataLimit   *int64 `json:"data_limit,omitempty"`
-	Expire      *int64 `json:"expire,omitempty"`
-	DeviceLimit int64  `json:"device_limit,omitempty"`
+	UserID             int64  `json:"user_id"`
+	Username           string `json:"username"`
+	VPNUsername        string `json:"vpn_username"`
+	Password           string `json:"password"`
+	IPv4Address        string `json:"ipv4_address"`
+	Status             string `json:"status"`
+	UsedTraffic        int64  `json:"used_traffic"`
+	DataLimit          *int64 `json:"data_limit,omitempty"`
+	Expire             *int64 `json:"expire,omitempty"`
+	DeviceLimit        int64  `json:"device_limit,omitempty"`
+	UploadSpeedLimit   int64  `json:"upload_speed_limit"`
+	DownloadSpeedLimit int64  `json:"download_speed_limit"`
 }
 
 type preparedOpenVPNRuntime struct {
@@ -500,6 +502,15 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		}
 	}
 
+	if err := s.reconcileNativeStaticSpeedLimits(
+		wgPrepared,
+		awgPrepared,
+		payload.OpenVPNInbounds,
+		payload.L2TPInbounds,
+		payload.PPTPInbounds,
+	); err != nil {
+		return err
+	}
 	if len(ovPrepared) > 0 || len(wgPrepared) > 0 || len(awgPrepared) > 0 || len(l2tpPrepared) > 0 || len(pptpPrepared) > 0 {
 		s.appendLog(fmt.Sprintf(
 			"native runtime applied: openvpn=%d wireguard=%d amneziawg=%d l2tp=%d pptp=%d",

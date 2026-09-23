@@ -30,6 +30,8 @@ type nativeSessionUserPolicy struct {
 	DataLimit             int64  `json:"data_limit"`
 	Expire                int64  `json:"expire"`
 	ReflectedUsageBatchID string `json:"reflected_usage_batch_id,omitempty"`
+	UploadSpeedLimit      int64  `json:"upload_speed_limit,omitempty"`
+	DownloadSpeedLimit    int64  `json:"download_speed_limit,omitempty"`
 }
 
 func nativeSessionUserPolicyAllowed(
@@ -113,9 +115,13 @@ func RunNativeSessionEventHelper(args []string) error {
 		"PPP_REMOTE",
 	)
 
+	interfaceName := firstNonEmptyEnv("IFNAME")
+
 	clientIP := firstNonEmptyEnv("trusted_ip", "trusted_ip6", "CALLING_NUMBER")
 
 	trustedPort := firstNonEmptyEnv("trusted_port")
+
+	policy := cfg.Policies[commonName]
 
 	stateDir := strings.TrimSpace(cfg.StateDir)
 	if stateDir == "" {
@@ -141,6 +147,19 @@ func RunNativeSessionEventHelper(args []string) error {
 		stateDir,
 		stateKey+".session",
 	)
+
+	if eventName == "stop" {
+		if _, err := nativeSpeedHandlePPPSessionEvent(
+			protocol,
+			eventName,
+			interfaceName,
+			assignedIP,
+			userID,
+			policy,
+		); err != nil {
+			return err
+		}
+	}
 
 	sessionID := ""
 
@@ -174,6 +193,23 @@ func RunNativeSessionEventHelper(args []string) error {
 		}
 	}
 
+	shaped := false
+
+	if eventName == "start" {
+		shaped, err = nativeSpeedHandlePPPSessionEvent(
+			protocol,
+			eventName,
+			interfaceName,
+			assignedIP,
+			userID,
+			policy,
+		)
+		if err != nil {
+			_ = os.Remove(statePath)
+			return err
+		}
+	}
+
 	node := &Server{}
 
 	err = node.sendNativeSessionEvent(
@@ -196,6 +232,9 @@ func RunNativeSessionEventHelper(args []string) error {
 
 	if err != nil {
 		if eventName == "start" {
+			if shaped && interfaceName != "" {
+				nativeSpeedClearInterface(interfaceName)
+			}
 			_ = os.Remove(statePath)
 		}
 		return err
