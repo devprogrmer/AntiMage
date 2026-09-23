@@ -141,8 +141,13 @@ func normalizeIKEv2Settings(settings map[string]any) map[string]any {
 		authMode = "password"
 	}
 	out["auth_mode"] = authMode
+	certMode := strings.ToLower(strings.TrimSpace(stringValue(out["certificate_mode"])))
+	if certMode != "manual" && certMode != "custom" {
+		certMode = "auto"
+	}
+	out["certificate_mode"] = certMode
 	for key, fallback := range map[string]string{
-		"server_identity": "",
+		"server_identity": "auto",
 		"ike_proposals":   "aes256-sha256-modp2048,aes256-sha384-modp3072,aes256gcm16-prfsha384-ecp384",
 		"esp_proposals":   "aes256-sha256,aes256gcm16-ecp384",
 		"fragmentation":   "yes",
@@ -751,13 +756,29 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		if authMode != "password" && authMode != "certificate" && authMode != "password+certificate" {
 			return fmt.Errorf("invalid inbound %q: IKEv2 auth_mode is invalid", tag)
 		}
-		for _, key := range []string{"ca_certificate", "server_certificate", "server_key"} {
-			if strings.TrimSpace(stringValue(settings[key])) == "" {
-				return fmt.Errorf("invalid inbound %q: IKEv2 %s is required", tag, key)
+		certMode := strings.ToLower(strings.TrimSpace(stringValue(settings["certificate_mode"])))
+		if certMode == "" {
+			certMode = "auto"
+		}
+		if certMode != "auto" && certMode != "manual" && certMode != "custom" {
+			return fmt.Errorf("invalid inbound %q: IKEv2 certificate_mode is invalid", tag)
+		}
+		if certMode != "auto" {
+			for _, key := range []string{"ca_certificate", "server_certificate", "server_key"} {
+				if strings.TrimSpace(stringValue(settings[key])) == "" {
+					return fmt.Errorf("invalid inbound %q: IKEv2 %s is required", tag, key)
+				}
 			}
 		}
 		identity := strings.TrimSpace(stringValue(settings["server_identity"]))
-		if identity == "" || strings.ContainsAny(identity, " \t\r\n") {
+		if identity == "" {
+			if certMode == "auto" {
+				identity = "auto"
+			} else {
+				return fmt.Errorf("invalid inbound %q: IKEv2 server_identity is invalid", tag)
+			}
+		}
+		if strings.ContainsAny(identity, " \t\r\n") {
 			return fmt.Errorf("invalid inbound %q: IKEv2 server_identity is invalid", tag)
 		}
 		for _, key := range []string{"ike_proposals", "esp_proposals"} {

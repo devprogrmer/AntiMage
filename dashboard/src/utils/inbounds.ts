@@ -424,6 +424,7 @@ export type InboundFormValues = {
 	raServerKey: string;
 	raCertificateNames: string;
 	raServerIdentity: string;
+	ikeCertMode: "auto" | "manual";
 	raMTU: string;
 	ikeProposals: string;
 	ikeEspProposals: string;
@@ -1297,14 +1298,24 @@ export const validateInboundFormFields = (
 		if (values.raTunnelPort.trim() === values.port.trim()) {
 			errors.raTunnelPort = "Tunnel port must differ from the public port.";
 		}
-		if (!values.raServerCertificate.trim())
+		const ikeManualCert =
+			values.protocol !== "ikev2" || values.ikeCertMode === "manual";
+		if (ikeManualCert && !values.raServerCertificate.trim())
 			errors.raServerCertificate = "Server certificate is required.";
-		if (!values.raServerKey.trim())
+		if (ikeManualCert && !values.raServerKey.trim())
 			errors.raServerKey = "Server key is required.";
-		if (values.protocol === "ikev2" || values.raAuthMode !== "password") {
+		if (
+			ikeManualCert &&
+			(values.protocol === "ikev2" || values.raAuthMode !== "password")
+		) {
 			if (!values.raCA.trim()) errors.raCA = "CA certificate is required.";
 		}
-		if (values.protocol === "ikev2" && !values.raServerIdentity.trim()) {
+		if (
+			values.protocol === "ikev2" &&
+			values.ikeCertMode === "manual" &&
+			(!values.raServerIdentity.trim() ||
+				values.raServerIdentity.trim().toLowerCase() === "auto")
+		) {
 			errors.raServerIdentity = "Server identity is required.";
 		}
 		const validateRemoteNumber = (
@@ -1949,7 +1960,8 @@ export const createDefaultInboundForm = (
 	raServerCertificate: "",
 	raServerKey: "",
 	raCertificateNames: "",
-	raServerIdentity: "",
+	raServerIdentity: protocol === "ikev2" ? "auto" : "",
+	ikeCertMode: protocol === "ikev2" ? "auto" : "manual",
 	raMTU: "1400",
 	ikeProposals:
 		"aes256-sha256-modp2048,aes256-sha384-modp3072,aes256gcm16-prfsha384-ecp384",
@@ -2890,8 +2902,19 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 				: base.raCertificateNames,
 		raServerIdentity:
 			protocol === "ikev2"
-				? (settings.server_identity ?? "")
+				? (settings.server_identity ?? base.raServerIdentity)
 				: base.raServerIdentity,
+		ikeCertMode:
+			protocol === "ikev2"
+				? ((settings.certificate_mode === "manual" ||
+						settings.certificate_mode === "custom" ||
+						settings.ca_certificate ||
+						settings.server_certificate ||
+						settings.server_key) &&
+				  settings.certificate_mode !== "auto"
+						? "manual"
+						: "auto")
+				: base.ikeCertMode,
 		raMTU:
 			protocol === "ikev2" || protocol === "anyconnect"
 				? toInputValue(settings.mtu ?? 1400)
@@ -4071,11 +4094,18 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.tunnel_port = values.raTproxyEnabled
 				? parseOptionalNumber(values.raTunnelPort)
 				: undefined;
-			base.ca_certificate = values.raCA.trim() || undefined;
-			base.server_certificate = values.raServerCertificate.trim() || undefined;
-			base.server_key = values.raServerKey.trim() || undefined;
 			if (values.protocol === "ikev2") {
-				base.server_identity = values.raServerIdentity.trim();
+				base.certificate_mode = values.ikeCertMode;
+				if (values.ikeCertMode === "manual") {
+					base.ca_certificate = values.raCA.trim() || undefined;
+					base.server_certificate =
+						values.raServerCertificate.trim() || undefined;
+					base.server_key = values.raServerKey.trim() || undefined;
+				}
+				base.server_identity =
+					values.ikeCertMode === "auto"
+						? values.raServerIdentity.trim() || "auto"
+						: values.raServerIdentity.trim();
 				base.ike_proposals = values.ikeProposals.trim();
 				base.esp_proposals = values.ikeEspProposals.trim();
 				base.mobike = values.ikeMobike;
@@ -4088,6 +4118,9 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 				base.dpd_delay = parseOptionalNumber(values.ikeDpdDelay);
 				base.routes = splitLines(values.ikeRoutes);
 			} else {
+				base.ca_certificate = values.raCA.trim() || undefined;
+				base.server_certificate = values.raServerCertificate.trim() || undefined;
+				base.server_key = values.raServerKey.trim() || undefined;
 				base.certificate_names = splitLines(values.raCertificateNames);
 				base.mtu = parseOptionalNumber(values.raMTU);
 				base.udp_enabled = values.acUDPEnabled;

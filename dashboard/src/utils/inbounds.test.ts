@@ -102,6 +102,53 @@ describe("AmneziaWG inbound form", () => {
 	});
 });
 
+describe("IKEv2 certificate mode", () => {
+	it("defaults to auto-managed certificates without requiring manual PEM fields", () => {
+		const values = createDefaultInboundForm("ikev2");
+		values.tag = "ikev2-main";
+
+		expect(values.ikeCertMode).toBe("auto");
+		expect(validateInboundFormFields(values).raCA).toBeUndefined();
+		expect(validateInboundFormFields(values).raServerCertificate).toBeUndefined();
+		expect(validateInboundFormFields(values).raServerKey).toBeUndefined();
+		expect(validateInboundFormFields(values).raServerIdentity).toBeUndefined();
+
+		const payload = buildInboundPayload(values);
+		expect(payload.settings).toMatchObject({
+			certificate_mode: "auto",
+			server_identity: "auto",
+		});
+		expect(payload.settings.ca_certificate).toBeUndefined();
+		expect(payload.settings.server_certificate).toBeUndefined();
+		expect(payload.settings.server_key).toBeUndefined();
+	});
+
+	it("requires custom certificate material only in manual IKEv2 mode", () => {
+		const values = createDefaultInboundForm("ikev2");
+		values.ikeCertMode = "manual";
+
+		const errors = validateInboundFormFields(values);
+		expect(errors.raCA).toBeTruthy();
+		expect(errors.raServerCertificate).toBeTruthy();
+		expect(errors.raServerKey).toBeTruthy();
+		expect(errors.raServerIdentity).toBeTruthy();
+
+		values.raCA = "ca";
+		values.raServerCertificate = "cert";
+		values.raServerKey = "key";
+		values.raServerIdentity = "vpn.example.com";
+
+		expect(validateInboundFormFields(values).raCA).toBeUndefined();
+		expect(buildInboundPayload(values).settings).toMatchObject({
+			certificate_mode: "manual",
+			ca_certificate: "ca",
+			server_certificate: "cert",
+			server_key: "key",
+			server_identity: "vpn.example.com",
+		});
+	});
+});
+
 describe("VLESS inbound default flow", () => {
 	it("round-trips the supported inbound value and drops outbound-only values", () => {
 		const raw: RawInbound = {

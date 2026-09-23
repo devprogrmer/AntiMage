@@ -78,6 +78,11 @@ type ikev2Settings struct {
 	// panel-access host / detected server IP when empty.
 	ServerAddr string `json:"serverAddr"`
 
+	// CertificateMode controls server certificate ownership. "auto" (default) creates
+	// and reuses a per-inbound RSA CA + server certificate on the node. "manual" keeps
+	// the operator-provided path/content behavior.
+	CertificateMode string `json:"certificateMode"`
+
 	// TLS server cert, same model as ocserv/sstp: operator paths (TlsUseFile) or inline
 	// PEM. "Generate Self-Signed Cert" fills the content fields (incl. CaCert).
 	TlsUseFile      bool   `json:"tlsUseFile"`
@@ -140,6 +145,17 @@ func (o *ikev2Settings) authMode() string {
 	return m
 }
 
+func (o *ikev2Settings) certificateMode() string {
+	m := strings.ToLower(strings.TrimSpace(o.CertificateMode))
+	if m == "manual" || m == "custom" {
+		return "manual"
+	}
+	if m == "" && (o.TlsUseFile || strings.TrimSpace(o.Certificate) != "" || strings.TrimSpace(o.Key) != "" || strings.TrimSpace(o.CaCert) != "") {
+		return "manual"
+	}
+	return "auto"
+}
+
 // ikev2Client is the minimal client shape parsed from Settings JSON. A dedicated
 // struct (like ocservClient) so the UI's extra string fields (tgId, totalGB…) don't
 // break json.Unmarshal into typed fields.
@@ -193,6 +209,27 @@ func (s *Ikev2Service) GetIkev2Inbounds() ([]*model.Inbound, error) {
 func (s *Ikev2Service) parseSettings(inbound *model.Inbound) (*ikev2Settings, error) {
 	settings := &ikev2Settings{}
 	err := json.Unmarshal([]byte(inbound.Settings), settings)
+	if err != nil {
+		return settings, err
+	}
+	var raw map[string]any
+	if json.Unmarshal([]byte(inbound.Settings), &raw) == nil {
+		if v := strings.TrimSpace(fmt.Sprint(raw["certificate_mode"])); v != "" && v != "<nil>" {
+			settings.CertificateMode = v
+		}
+		if v := strings.TrimSpace(fmt.Sprint(raw["server_identity"])); v != "" && v != "<nil>" {
+			settings.ServerAddr = v
+		}
+		if v := strings.TrimSpace(fmt.Sprint(raw["ca_certificate"])); v != "" && v != "<nil>" {
+			settings.CaCert = v
+		}
+		if v := strings.TrimSpace(fmt.Sprint(raw["server_certificate"])); v != "" && v != "<nil>" {
+			settings.Certificate = v
+		}
+		if v := strings.TrimSpace(fmt.Sprint(raw["server_key"])); v != "" && v != "<nil>" {
+			settings.Key = v
+		}
+	}
 	return settings, err
 }
 
@@ -559,7 +596,26 @@ func (s *Ikev2Service) writeCertFiles(inbound *model.Inbound, settings *ikev2Set
 	base := s.certBaseName(inbound.Id)
 
 	var certPEM, keyPEM []byte
-	if settings.TlsUseFile {
+	caPath := swanctlX509CA + "/" + base + "-ca.pem"
+	if settings.certificateMode() == "auto" {
+		certPath := swanctlX509 + "/" + base + "-server.pem"
+		keyPath := swanctlPrivate + "/" + base + "-server.key"
+		_, certErr := os.Stat(certPath)
+		_, keyErr := os.Stat(keyPath)
+		_, caErr := os.Stat(caPath)
+		if certErr == nil && keyErr == nil && caErr == nil {
+			return nil
+		}
+		cert, key, ca, err := s.GenerateSelfSignedCert(s.serverID(settings))
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(caPath, []byte(strings.TrimSpace(ca)), 0644); err != nil {
+			return err
+		}
+		certPEM = []byte(strings.TrimSpace(cert) + "\n" + strings.TrimSpace(ca))
+		keyPEM = []byte(strings.TrimSpace(key))
+	} else if settings.TlsUseFile {
 		certPath := strings.TrimSpace(settings.CertificateFile)
 		keyPath := strings.TrimSpace(settings.KeyFile)
 		if certPath == "" || keyPath == "" {
@@ -659,7 +715,9 @@ func (s *Ikev2Service) publishServerCert(base string, certPEM, keyPEM []byte) er
 // must match a SAN in the server cert. Falls back to the detected server IP.
 func (s *Ikev2Service) serverID(settings *ikev2Settings) string {
 	if a := strings.TrimSpace(settings.ServerAddr); a != "" {
-		return a
+		if !strings.EqualFold(a, "auto") {
+			return a
+		}
 	}
 	if ip := s.getServerIP(); ip != "" {
 		return ip
