@@ -421,10 +421,11 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		ikev2Prepared = append(
 			ikev2Prepared,
 			preparedIKEv2Runtime{
-				Tag:    tag,
-				Files:  files,
-				TProxy: tproxy,
-				NAT:    nat,
+				Tag:     tag,
+				Inbound: inbound,
+				Files:   files,
+				TProxy:  tproxy,
+				NAT:     nat,
 			},
 		)
 	}

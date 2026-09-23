@@ -68,6 +68,11 @@ type Server struct {
 	pptpUsagePending                 *pptpUsagePendingBatch
 	pptpUsageLoaded                  bool
 	pptpUsageLastAckedBatchID        string
+	ikev2UsageMu                     sync.Mutex
+	ikev2UsageBaseline               map[string]uint64
+	ikev2UsagePending                *ikev2UsagePendingBatch
+	ikev2UsageLoaded                 bool
+	ikev2UsageLastAckedBatchID       string
 	wireGuardUsageMu                 sync.Mutex
 	wireGuardUsageBaseline           map[string]uint64
 	wireGuardUsagePending            *wireGuardUsagePendingBatch

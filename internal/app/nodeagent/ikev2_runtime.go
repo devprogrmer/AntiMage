@@ -30,15 +30,17 @@ type ikev2RuntimeInbound struct {
 }
 
 type ikev2RuntimeUser struct {
-	UserID      int64  `json:"user_id"`
-	Username    string `json:"username"`
-	Password    string `json:"password"`
-	IPv4Address string `json:"ipv4_address"`
-	Status      string `json:"status"`
-	UsedTraffic int64  `json:"used_traffic"`
-	DataLimit   *int64 `json:"data_limit,omitempty"`
-	Expire      *int64 `json:"expire,omitempty"`
-	DeviceLimit int64  `json:"device_limit,omitempty"`
+	UserID             int64  `json:"user_id"`
+	Username           string `json:"username"`
+	Password           string `json:"password"`
+	IPv4Address        string `json:"ipv4_address"`
+	Status             string `json:"status"`
+	UsedTraffic        int64  `json:"used_traffic"`
+	DataLimit          *int64 `json:"data_limit,omitempty"`
+	Expire             *int64 `json:"expire,omitempty"`
+	DeviceLimit        int64  `json:"device_limit,omitempty"`
+	UploadSpeedLimit   int64  `json:"upload_speed_limit"`
+	DownloadSpeedLimit int64  `json:"download_speed_limit"`
 }
 
 type ikev2RuntimeFiles struct {
@@ -53,10 +55,11 @@ type ikev2RuntimeFiles struct {
 }
 
 type preparedIKEv2Runtime struct {
-	Tag    string
-	Files  ikev2RuntimeFiles
-	TProxy ikev2TProxySpec
-	NAT    openVPNNATSpec
+	Tag     string
+	Inbound ikev2RuntimeInbound
+	Files   ikev2RuntimeFiles
+	TProxy  ikev2TProxySpec
+	NAT     openVPNNATSpec
 }
 
 func (s *Server) prepareIKEv2Inbound(
@@ -296,7 +299,7 @@ func renderIKEv2IPSecConfig(
 
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "conn antimage-ikev2-%s\n", ikev2RuntimeDirName(inbound.Tag))
+	fmt.Fprintf(&b, "conn %s\n", ikev2ConnectionName(inbound.Tag))
 	b.WriteString("    auto=add\n")
 	b.WriteString("    keyexchange=ikev2\n")
 	b.WriteString("    type=tunnel\n")
@@ -453,6 +456,10 @@ func ikev2StrongSwanIdentity(identity string) string {
 	}
 
 	return "@" + identity
+}
+
+func ikev2ConnectionName(tag string) string {
+	return "antimage-ikev2-" + ikev2RuntimeDirName(tag)
 }
 
 func ikev2RuntimeDirName(tag string) string {

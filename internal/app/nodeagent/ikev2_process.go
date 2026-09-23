@@ -16,7 +16,8 @@ const (
 )
 
 type ikev2Process struct {
-	tag string
+	tag     string
+	inbound ikev2RuntimeInbound
 }
 
 func preflightIKEv2Runtimes(
@@ -28,6 +29,8 @@ func preflightIKEv2Runtimes(
 
 	for _, name := range []string{
 		"ipsec",
+		"swanctl",
+		"nft",
 		"iptables",
 		"ip",
 		"sysctl",
@@ -49,6 +52,8 @@ func (s *Server) applyIKEv2Runtimes(
 ) error {
 	if len(runtimes) == 0 {
 		clearIKEv2SystemConfig(s)
+		clearIKEv2SpeedLimits()
+		cleanupIKEv2Firewall()
 
 		s.mu.Lock()
 		s.ikev2Runtimes = make(map[string]*ikev2Process)
@@ -59,6 +64,13 @@ func (s *Server) applyIKEv2Runtimes(
 
 	if err := installIKEv2SystemConfig(runtimes); err != nil {
 		return err
+	}
+
+	if err := ensureIKEv2Firewall(); err != nil {
+		return fmt.Errorf(
+			"ikev2 firewall: %w",
+			err,
+		)
 	}
 
 	if err := runL2TPCommand(
@@ -95,7 +107,8 @@ func (s *Server) applyIKEv2Runtimes(
 	next := make(map[string]*ikev2Process, len(runtimes))
 	for _, runtime := range runtimes {
 		next[runtime.Tag] = &ikev2Process{
-			tag: runtime.Tag,
+			tag:     runtime.Tag,
+			inbound: runtime.Inbound,
 		}
 	}
 
@@ -290,5 +303,7 @@ func (s *Server) stopAllIKEv2Runtimes() {
 	}
 
 	clearIKEv2SystemConfig(s)
+	clearIKEv2SpeedLimits()
+	cleanupIKEv2Firewall()
 	s.appendLog("all ikev2 runtimes stopped")
 }
