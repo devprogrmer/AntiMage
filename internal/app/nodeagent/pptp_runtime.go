@@ -118,7 +118,10 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 
 	// Accounting/online detection no longer depends on PPP callbacks.
 	// Do not render callback scripts into PPP options when callback is absent.
-	if strings.TrimSpace(callback.URL) == "" {
+	needsSessionHelper := strings.TrimSpace(callback.URL) != "" ||
+		nativeSpeedUsersHaveLimits(pptpUsersAsOpenVPNUsers(inbound.Users))
+
+	if !needsSessionHelper {
 		files.IPUpScript = ""
 		files.IPDownScript = ""
 		files.SessionConfig = ""
@@ -131,7 +134,7 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 		return "", err
 	}
 
-	if strings.TrimSpace(callback.URL) != "" {
+	if needsSessionHelper {
 		executable, err := os.Executable()
 		if err != nil {
 			return "", fmt.Errorf("pptp %q: resolve node executable: %w", tag, err)

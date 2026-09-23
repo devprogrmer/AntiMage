@@ -137,7 +137,10 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 		)
 	}
 
-	if strings.TrimSpace(callback.URL) == "" {
+	needsSessionHelper := strings.TrimSpace(callback.URL) != "" ||
+		nativeSpeedUsersHaveLimits(l2TPUsersAsOpenVPNUsers(inbound.Users))
+
+	if !needsSessionHelper {
 		files.IPUpScript = ""
 		files.IPDownScript = ""
 		files.SessionConfig = ""
@@ -150,7 +153,7 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 		return l2TPRuntimeFiles{}, err
 	}
 
-	if strings.TrimSpace(callback.URL) != "" {
+	if needsSessionHelper {
 		executable, err := os.Executable()
 		if err != nil {
 			return l2TPRuntimeFiles{}, fmt.Errorf("l2tp %q: resolve node executable: %w", tag, err)

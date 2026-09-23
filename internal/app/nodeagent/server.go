@@ -167,6 +167,7 @@ func (s *Server) Run(ctx context.Context) error {
 		s.stopAllPPTPNATSpecs()
 		s.stopAllWireGuardRuntimes()
 		s.stopAllAmneziaWGRuntimes()
+		s.clearNativeSpeedLimitsLogged()
 		_ = s.stopRuntime()
 	}()
 
@@ -239,6 +240,7 @@ func (s *Server) RestartRuntime(
 	s.stopAllPPTPNATSpecs()
 	s.stopAllWireGuardRuntimes()
 	s.stopAllAmneziaWGRuntimes()
+	s.clearNativeSpeedLimitsLogged()
 	_ = s.stopRuntime()
 
 	return s.applyConfig(ctx, req, "restarted")
@@ -259,6 +261,7 @@ func (s *Server) StopRuntime(
 	s.stopAllPPTPNATSpecs()
 	s.stopAllWireGuardRuntimes()
 	s.stopAllAmneziaWGRuntimes()
+	s.clearNativeSpeedLimitsLogged()
 	_ = s.stopRuntime()
 
 	return s.action("", "stopped"), nil

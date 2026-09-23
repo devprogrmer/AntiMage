@@ -315,11 +315,6 @@ func (c Controller) userOperationConfigSyncDecision(ctx context.Context, node No
 	if !isRuntimeUserOperation(operation.OperationType) || !operation.UserID.Valid {
 		return false, nil, nil
 	}
-	// Updated nodes reconcile one user against their cached runtime config. Old
-	// nodes are detected after dial and keep the full-sync compatibility path.
-	if operation.OperationType == "update_user" {
-		return false, nil, nil
-	}
 	var serviceID sql.NullInt64
 	if err := c.repo.db.QueryRowContext(ctx, `SELECT service_id FROM users WHERE id = ?`, operation.UserID.Int64).Scan(&serviceID); err != nil {
 		if err == sql.ErrNoRows {
@@ -339,16 +334,52 @@ func (c Controller) userOperationConfigSyncDecision(ctx context.Context, node No
 		return false, nil, err
 	}
 	target := xrayconfig.NodeTargetID(node.ID)
+	if serviceRequiresFullUserSync(
+		serviceID.Int64,
+		serviceTags,
+		inbounds,
+		target,
+	) {
+		return true, inbounds, nil
+	}
+
+	return false, inbounds, nil
+}
+
+func serviceRequiresFullUserSync(
+	serviceID int64,
+	serviceTags map[int64]map[string]bool,
+	inbounds []map[string]any,
+	target string,
+) bool {
+	if serviceID <= 0 {
+		return false
+	}
+
 	for _, inbound := range inbounds {
-		if !protocolRequiresFullUserSync(stringValue(inbound["protocol"])) {
+		if !protocolRequiresFullUserSync(
+			stringValue(inbound["protocol"]),
+		) {
 			continue
 		}
+
 		tag := stringValue(inbound["tag"])
-		if tag != "" && serviceTags[serviceID.Int64][tag] && OVInboundMatchesTarget(inbound, target) {
-			return true, inbounds, nil
+		if tag == "" {
+			continue
 		}
+
+		if !serviceTags[serviceID][tag] {
+			continue
+		}
+
+		if !OVInboundMatchesTarget(inbound, target) {
+			continue
+		}
+
+		return true
 	}
-	return false, inbounds, nil
+
+	return false
 }
 
 func protocolRequiresFullUserSync(protocol string) bool {

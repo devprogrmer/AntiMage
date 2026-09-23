@@ -502,6 +502,15 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		}
 	}
 
+	if err := s.reconcileNativeStaticSpeedLimits(
+		wgPrepared,
+		awgPrepared,
+		payload.OpenVPNInbounds,
+		payload.L2TPInbounds,
+		payload.PPTPInbounds,
+	); err != nil {
+		return err
+	}
 	if len(ovPrepared) > 0 || len(wgPrepared) > 0 || len(awgPrepared) > 0 || len(l2tpPrepared) > 0 || len(pptpPrepared) > 0 {
 		s.appendLog(fmt.Sprintf(
 			"native runtime applied: openvpn=%d wireguard=%d amneziawg=%d l2tp=%d pptp=%d",
