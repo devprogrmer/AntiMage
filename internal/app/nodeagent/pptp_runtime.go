@@ -27,16 +27,18 @@ type pptpRuntimeInbound struct {
 }
 
 type pptpRuntimeUser struct {
-	UserID      int64  `json:"user_id"`
-	Username    string `json:"username"`
-	VPNUsername string `json:"vpn_username"`
-	Password    string `json:"password"`
-	IPv4Address string `json:"ipv4_address"`
-	Status      string `json:"status"`
-	UsedTraffic int64  `json:"used_traffic"`
-	DataLimit   *int64 `json:"data_limit,omitempty"`
-	Expire      *int64 `json:"expire,omitempty"`
-	DeviceLimit int64  `json:"device_limit,omitempty"`
+	UserID             int64  `json:"user_id"`
+	Username           string `json:"username"`
+	VPNUsername        string `json:"vpn_username"`
+	Password           string `json:"password"`
+	IPv4Address        string `json:"ipv4_address"`
+	Status             string `json:"status"`
+	UsedTraffic        int64  `json:"used_traffic"`
+	DataLimit          *int64 `json:"data_limit,omitempty"`
+	Expire             *int64 `json:"expire,omitempty"`
+	DeviceLimit        int64  `json:"device_limit,omitempty"`
+	UploadSpeedLimit   int64  `json:"upload_speed_limit"`
+	DownloadSpeedLimit int64  `json:"download_speed_limit"`
 }
 
 type pptpRuntimeFiles struct {
@@ -313,16 +315,18 @@ func pptpUsersAsOpenVPNUsers(users []pptpRuntimeUser) []openVPNRuntimeUser {
 	result := make([]openVPNRuntimeUser, 0, len(users))
 	for _, user := range users {
 		result = append(result, openVPNRuntimeUser{
-			UserID:      user.UserID,
-			Username:    user.Username,
-			VPNUsername: user.VPNUsername,
-			Password:    user.Password,
-			IPv4Address: user.IPv4Address,
-			Status:      user.Status,
-			UsedTraffic: user.UsedTraffic,
-			DataLimit:   user.DataLimit,
-			Expire:      user.Expire,
-			DeviceLimit: user.DeviceLimit,
+			UserID:             user.UserID,
+			Username:           user.Username,
+			VPNUsername:        user.VPNUsername,
+			Password:           user.Password,
+			IPv4Address:        user.IPv4Address,
+			Status:             user.Status,
+			UsedTraffic:        user.UsedTraffic,
+			DataLimit:          user.DataLimit,
+			Expire:             user.Expire,
+			DeviceLimit:        user.DeviceLimit,
+			UploadSpeedLimit:   user.UploadSpeedLimit,
+			DownloadSpeedLimit: user.DownloadSpeedLimit,
 		})
 	}
 	return result

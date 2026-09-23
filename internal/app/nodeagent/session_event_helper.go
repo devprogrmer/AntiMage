@@ -30,6 +30,8 @@ type nativeSessionUserPolicy struct {
 	DataLimit             int64  `json:"data_limit"`
 	Expire                int64  `json:"expire"`
 	ReflectedUsageBatchID string `json:"reflected_usage_batch_id,omitempty"`
+	UploadSpeedLimit      int64  `json:"upload_speed_limit,omitempty"`
+	DownloadSpeedLimit    int64  `json:"download_speed_limit,omitempty"`
 }
 
 func nativeSessionUserPolicyAllowed(

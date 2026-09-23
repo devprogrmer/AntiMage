@@ -34,6 +34,8 @@ type wireGuardRuntimePeer struct {
 	DataLimit             *int64 `json:"data_limit,omitempty"`
 	Expire                *int64 `json:"expire,omitempty"`
 	DeviceLimit           int64  `json:"device_limit,omitempty"`
+	UploadSpeedLimit      int64  `json:"upload_speed_limit"`
+	DownloadSpeedLimit    int64  `json:"download_speed_limit"`
 }
 
 type wireGuardUsageRuntimeConfig struct {
