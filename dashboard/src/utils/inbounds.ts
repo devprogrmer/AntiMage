@@ -1964,8 +1964,8 @@ export const createDefaultInboundForm = (
 	ikeCertMode: protocol === "ikev2" ? "auto" : "manual",
 	raMTU: "1400",
 	ikeProposals:
-		"aes256-sha256-modp2048,aes256-sha384-modp3072,aes256gcm16-prfsha384-ecp384",
-	ikeEspProposals: "aes256-sha256,aes256gcm16-ecp384",
+		"aes256-sha256-modp2048,aes256-sha384-modp3072,aes256gcm16-prfsha384-ecp384,aes256-sha256-modp1024,aes128-sha256-modp1024,aes256-sha1-modp1024,aes128-sha1-modp1024",
+	ikeEspProposals: "aes256-sha256,aes256gcm16-ecp384,aes256-sha1,aes128-sha1",
 	ikeMobike: true,
 	ikeFragmentation: "yes",
 	ikeReauth: false,
