@@ -49,6 +49,13 @@ func (c Controller) runtimeConfigRequestFromInbounds(ctx context.Context, node N
 	if err != nil {
 		return nil, fmt.Errorf("IKEv2 runtime: %w", err)
 	}
+	for index := range ikev2Runtime.Inbounds {
+		if ikev2Runtime.Inbounds[index].Settings == nil {
+			ikev2Runtime.Inbounds[index].Settings = map[string]any{}
+		}
+		ikev2Runtime.Inbounds[index].Settings["runtime_server_identity"] =
+			strings.TrimSpace(node.Address)
+	}
 	anyConnectRuntime, err := c.repo.remoteAccessRuntimeFromInbounds(ctx, node.ID, xrayconfig.AnyConnectProtocol, inbounds)
 	if err != nil {
 		return nil, fmt.Errorf("AnyConnect runtime: %w", err)

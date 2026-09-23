@@ -24,7 +24,7 @@ type nativeRuntimePayload struct {
 	PPTPInbounds       []pptpRuntimeInbound      `json:"pptp_inbounds"`
 	WireGuardInbounds  []wireGuardRuntimeInbound `json:"wg_inbounds"`
 	AmneziaWGInbounds  []amneziaWGRuntimeInbound `json:"awg_inbounds"`
-	IKEv2Inbounds      []json.RawMessage         `json:"ikev2_inbounds"`
+	IKEv2Inbounds      []ikev2RuntimeInbound     `json:"ikev2_inbounds"`
 	AnyConnectInbounds []json.RawMessage         `json:"anyconnect_inbounds"`
 
 	HAProxy json.RawMessage `json:"haproxy"`
@@ -380,6 +380,56 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		)
 	}
 
+	ikev2Desired := make(
+		map[string]struct{},
+		len(payload.IKEv2Inbounds),
+	)
+	ikev2Prepared := make(
+		[]preparedIKEv2Runtime,
+		0,
+		len(payload.IKEv2Inbounds),
+	)
+
+	for _, inbound := range payload.IKEv2Inbounds {
+		tag := strings.TrimSpace(inbound.Tag)
+		if tag == "" {
+			return fmt.Errorf("ikev2 inbound tag is required")
+		}
+		if _, exists := ikev2Desired[tag]; exists {
+			return fmt.Errorf(
+				"duplicate ikev2 runtime tag %q",
+				tag,
+			)
+		}
+
+		files, err := s.prepareIKEv2Inbound(inbound)
+		if err != nil {
+			return err
+		}
+
+		tproxy, err := buildIKEv2TProxySpec(inbound)
+		if err != nil {
+			return err
+		}
+
+		nat, err := buildIKEv2NATSpec(inbound)
+		if err != nil {
+			return err
+		}
+
+		ikev2Desired[tag] = struct{}{}
+		ikev2Prepared = append(
+			ikev2Prepared,
+			preparedIKEv2Runtime{
+				Tag:     tag,
+				Inbound: inbound,
+				Files:   files,
+				TProxy:  tproxy,
+				NAT:     nat,
+			},
+		)
+	}
+
 	if err := s.preflightWireGuardRuntimes(wgPrepared); err != nil {
 		return err
 	}
@@ -395,11 +445,12 @@ func (s *Server) applyNativeRuntime(raw string) error {
 	if err := preflightPPTPRuntimes(pptpPrepared); err != nil {
 		return err
 	}
-	if len(payload.IKEv2Inbounds) > 0 ||
-		len(payload.AnyConnectInbounds) > 0 {
+	if err := preflightIKEv2Runtimes(ikev2Prepared); err != nil {
+		return err
+	}
+	if len(payload.AnyConnectInbounds) > 0 {
 		return fmt.Errorf(
-			"native runtime contains unsupported daemon inbounds: ikev2=%d anyconnect=%d",
-			len(payload.IKEv2Inbounds),
+			"native runtime contains unsupported daemon inbounds: anyconnect=%d",
 			len(payload.AnyConnectInbounds),
 		)
 	}
@@ -422,6 +473,8 @@ func (s *Server) applyNativeRuntime(raw string) error {
 	s.stopRemovedPPTPRuntimes(pptpDesired)
 	s.stopRemovedPPTPTProxySpecs(pptpDesired)
 	s.stopRemovedPPTPNATSpecs(pptpDesired)
+	s.stopRemovedIKEv2TProxySpecs(ikev2Desired)
+	s.stopRemovedIKEv2NATSpecs(ikev2Desired)
 	if len(pptpDesired) == 0 {
 		if err := clearPPTPSystemCHAPSecrets(); err != nil {
 			s.appendLog("clear PPTP chap secrets failed: " + err.Error())
@@ -502,6 +555,31 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		}
 	}
 
+	for _, runtime := range ikev2Prepared {
+		if err := s.applyIKEv2TProxy(
+			runtime.Tag,
+			runtime.TProxy,
+		); err != nil {
+			return err
+		}
+
+		if err := s.applyIKEv2NAT(
+			runtime.Tag,
+			runtime.NAT,
+		); err != nil {
+			_ = s.removeIKEv2TProxy(runtime.TProxy)
+			return err
+		}
+	}
+
+	if err := s.applyIKEv2Runtimes(ikev2Prepared); err != nil {
+		for _, runtime := range ikev2Prepared {
+			_ = s.removeIKEv2TProxy(runtime.TProxy)
+			_ = s.removeIKEv2NATForTag(runtime.Tag)
+		}
+		return err
+	}
+
 	if err := s.reconcileNativeStaticSpeedLimits(
 		wgPrepared,
 		awgPrepared,
@@ -511,14 +589,15 @@ func (s *Server) applyNativeRuntime(raw string) error {
 	); err != nil {
 		return err
 	}
-	if len(ovPrepared) > 0 || len(wgPrepared) > 0 || len(awgPrepared) > 0 || len(l2tpPrepared) > 0 || len(pptpPrepared) > 0 {
+	if len(ovPrepared) > 0 || len(wgPrepared) > 0 || len(awgPrepared) > 0 || len(l2tpPrepared) > 0 || len(pptpPrepared) > 0 || len(ikev2Prepared) > 0 {
 		s.appendLog(fmt.Sprintf(
-			"native runtime applied: openvpn=%d wireguard=%d amneziawg=%d l2tp=%d pptp=%d",
+			"native runtime applied: openvpn=%d wireguard=%d amneziawg=%d l2tp=%d pptp=%d ikev2=%d",
 			len(ovPrepared),
 			len(wgPrepared),
 			len(awgPrepared),
 			len(l2tpPrepared),
 			len(pptpPrepared),
+			len(ikev2Prepared),
 		))
 	}
 	return nil

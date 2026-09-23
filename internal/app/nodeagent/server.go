@@ -46,6 +46,9 @@ type Server struct {
 	pptpRuntimes                     map[string]*pptpProcess
 	pptpTProxySpecs                  map[string]openVPNTProxySpec
 	pptpNATSpecs                     map[string]openVPNNATSpec
+	ikev2Runtimes                    map[string]*ikev2Process
+	ikev2TProxySpecs                 map[string]ikev2TProxySpec
+	ikev2NATSpecs                    map[string]openVPNNATSpec
 	openVPNTProxyStartupReconciled   bool
 	wireGuardRuntimes                map[string]wireGuardRuntimeState
 	amneziaWGRuntimes                map[string]amneziaWGRuntimeState
@@ -65,6 +68,11 @@ type Server struct {
 	pptpUsagePending                 *pptpUsagePendingBatch
 	pptpUsageLoaded                  bool
 	pptpUsageLastAckedBatchID        string
+	ikev2UsageMu                     sync.Mutex
+	ikev2UsageBaseline               map[string]uint64
+	ikev2UsagePending                *ikev2UsagePendingBatch
+	ikev2UsageLoaded                 bool
+	ikev2UsageLastAckedBatchID       string
 	wireGuardUsageMu                 sync.Mutex
 	wireGuardUsageBaseline           map[string]uint64
 	wireGuardUsagePending            *wireGuardUsagePendingBatch
@@ -127,6 +135,9 @@ func New(cfg Config) *Server {
 		pptpRuntimes:                    make(map[string]*pptpProcess),
 		pptpTProxySpecs:                 make(map[string]openVPNTProxySpec),
 		pptpNATSpecs:                    make(map[string]openVPNNATSpec),
+		ikev2Runtimes:                   make(map[string]*ikev2Process),
+		ikev2TProxySpecs:                make(map[string]ikev2TProxySpec),
+		ikev2NATSpecs:                   make(map[string]openVPNNATSpec),
 		wireGuardRuntimes:               make(map[string]wireGuardRuntimeState),
 		amneziaWGRuntimes:               make(map[string]amneziaWGRuntimeState),
 		wireGuardDynamicSuppressedPeers: make(map[string]struct{}),
@@ -165,6 +176,9 @@ func (s *Server) Run(ctx context.Context) error {
 		s.stopAllPPTPRuntimes()
 		s.stopAllPPTPTProxySpecs()
 		s.stopAllPPTPNATSpecs()
+		s.stopAllIKEv2Runtimes()
+		s.stopAllIKEv2TProxySpecs()
+		s.stopAllIKEv2NATSpecs()
 		s.stopAllWireGuardRuntimes()
 		s.stopAllAmneziaWGRuntimes()
 		s.clearNativeSpeedLimitsLogged()
@@ -238,6 +252,9 @@ func (s *Server) RestartRuntime(
 	s.stopAllPPTPRuntimes()
 	s.stopAllPPTPTProxySpecs()
 	s.stopAllPPTPNATSpecs()
+	s.stopAllIKEv2Runtimes()
+	s.stopAllIKEv2TProxySpecs()
+	s.stopAllIKEv2NATSpecs()
 	s.stopAllWireGuardRuntimes()
 	s.stopAllAmneziaWGRuntimes()
 	s.clearNativeSpeedLimitsLogged()
@@ -259,6 +276,9 @@ func (s *Server) StopRuntime(
 	s.stopAllPPTPRuntimes()
 	s.stopAllPPTPTProxySpecs()
 	s.stopAllPPTPNATSpecs()
+	s.stopAllIKEv2Runtimes()
+	s.stopAllIKEv2TProxySpecs()
+	s.stopAllIKEv2NATSpecs()
 	s.stopAllWireGuardRuntimes()
 	s.stopAllAmneziaWGRuntimes()
 	s.clearNativeSpeedLimitsLogged()

@@ -1075,6 +1075,21 @@ ensure_vpn_binary_prerequisites() {
         packages+=("strongswan-pki")
     fi
 
+    # AntiMage IKEv2 accounting/online detection uses the strongSwan VICI API
+    # through swanctl --list-sas.
+    if ! command -v swanctl >/dev/null 2>&1; then
+        if package_available "strongswan-swanctl"; then
+            packages+=("strongswan-swanctl")
+        fi
+    fi
+
+    # EAP-MSCHAPv2 is required for native IKEv2 username/password auth.
+    if ! find /usr/lib /usr/lib64 -type f         -name 'libstrongswan-eap-mschapv2.so'         -print -quit 2>/dev/null | grep -q .; then
+        if package_available "libcharon-extauth-plugins"; then
+            packages+=("libcharon-extauth-plugins")
+        fi
+    fi
+
     if ! command -v ocserv >/dev/null 2>&1; then
         packages+=("ocserv")
     fi
@@ -1088,11 +1103,16 @@ ensure_vpn_binary_prerequisites() {
     local missing=()
     local command_name
 
-    for command_name in openvpn wg ip iptables nft sysctl xl2tpd pppd ipsec pki ocserv; do
+    for command_name in openvpn wg ip iptables nft sysctl xl2tpd pppd ipsec pki swanctl ocserv; do
         if ! command -v "$command_name" >/dev/null 2>&1; then
             missing+=("$command_name")
         fi
     done
+
+    if ! find /usr/lib /usr/lib64 -type f         -name 'libstrongswan-eap-mschapv2.so'         -print -quit 2>/dev/null | grep -q .; then
+        missing+=("strongswan-eap-mschapv2")
+    fi
+
     if [ "$pptp_required" = true ] && ! command -v pptpd >/dev/null 2>&1; then
         missing+=("pptpd")
     fi
