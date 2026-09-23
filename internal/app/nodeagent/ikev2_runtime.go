@@ -136,10 +136,11 @@ func (s *Server) prepareIKEv2Inbound(
 			identity = strings.TrimSpace(host)
 		}
 	}
-	if identity == "" {
+	if identity == "" || identity == "127.0.0.1" || identity == "::1" || strings.EqualFold(identity, "localhost") {
 		return ikev2RuntimeFiles{}, fmt.Errorf(
-			"ikev2 %q: server identity could not be resolved",
+			"ikev2 %q: invalid server identity %q; configure a public DNS name or reachable IP",
 			tag,
+			identity,
 		)
 	}
 
@@ -261,13 +262,20 @@ func renderIKEv2IPSecConfig(
 	ike := openVPNStringSetting(
 		inbound.Settings,
 		"ike_proposals",
-		"aes256-sha256-modp2048,aes256-sha384-modp3072,aes256gcm16-prfsha384-ecp384",
+		"aes256-sha256-modp2048,aes256-sha384-modp3072,aes256gcm16-prfsha384-ecp384,aes256-sha256-modp1024,aes128-sha256-modp1024,aes256-sha1-modp1024,aes128-sha1-modp1024",
 	)
 	esp := openVPNStringSetting(
 		inbound.Settings,
 		"esp_proposals",
-		"aes256-sha256,aes256gcm16-ecp384",
+		"aes256-sha256,aes256gcm16-ecp384,aes256-sha1,aes128-sha1",
 	)
+
+	if ike == "aes256-sha256-modp2048,aes256-sha384-modp3072,aes256gcm16-prfsha384-ecp384" {
+		ike = "aes256-sha256-modp2048,aes256-sha384-modp3072,aes256gcm16-prfsha384-ecp384,aes256-sha256-modp1024,aes128-sha256-modp1024,aes256-sha1-modp1024,aes128-sha1-modp1024"
+	}
+	if esp == "aes256-sha256,aes256gcm16-ecp384" {
+		esp = "aes256-sha256,aes256gcm16-ecp384,aes256-sha1,aes128-sha1"
+	}
 
 	fragmentation := openVPNStringSetting(
 		inbound.Settings,
@@ -282,10 +290,6 @@ func renderIKEv2IPSecConfig(
 	childLifetime := openVPNIntSetting(inbound.Settings, "child_lifetime")
 	if childLifetime <= 0 {
 		childLifetime = 3600
-	}
-	rekeyTime := openVPNIntSetting(inbound.Settings, "rekey_time")
-	if rekeyTime < 0 {
-		rekeyTime = 3000
 	}
 	dpdDelay := openVPNIntSetting(inbound.Settings, "dpd_delay")
 	if dpdDelay <= 0 {
@@ -359,7 +363,6 @@ func renderIKEv2IPSecConfig(
 
 	fmt.Fprintf(&b, "    ikelifetime=%ds\n", ikeLifetime)
 	fmt.Fprintf(&b, "    lifetime=%ds\n", childLifetime)
-	fmt.Fprintf(&b, "    rekeytime=%ds\n", rekeyTime)
 	fmt.Fprintf(&b, "    dpddelay=%ds\n", dpdDelay)
 	b.WriteString("    dpdaction=clear\n")
 	b.WriteString("    closeaction=clear\n")
