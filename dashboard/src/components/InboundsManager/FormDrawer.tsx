@@ -50,6 +50,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { JsonEditor } from "components/JsonEditor";
 import { SearchableTagSelect } from "components/common/SearchableTagSelect";
+import { getSubscriptionSettings } from "service/settings";
 import { shadowsocksMethods } from "constants/Proxies";
 import type { CoreConfigTarget } from "contexts/CoreSettingsContext";
 import {
@@ -360,6 +361,33 @@ export const InboundFormModal: FC<Props> = ({
 	const [vlessAuthLoading, setVlessAuthLoading] = useState(false);
 	const [ovCertLoading, setOVCertLoading] = useState(false);
 	const [anyConnectCertLoading, setAnyConnectCertLoading] = useState(false);
+	const [tlsSelfSignedName, setTlsSelfSignedName] = useState("");
+	const [tlsSelfSignedLoading, setTlsSelfSignedLoading] = useState<number | null>(null);
+	const [managedCertificateDomains, setManagedCertificateDomains] = useState<
+		string[]
+	>([]);
+	useEffect(() => {
+		if (!isOpen) return;
+		let active = true;
+		getSubscriptionSettings()
+			.then((bundle) => {
+				if (active)
+					setManagedCertificateDomains(
+						(bundle.certificates ?? [])
+							.filter(
+								(cert) =>
+									cert.status === "active" || cert.status === "expiring",
+							)
+							.map((cert) => cert.domain),
+					);
+			})
+			.catch(() => {
+				if (active) setManagedCertificateDomains([]);
+			});
+		return () => {
+			active = false;
+		};
+	}, [isOpen]);
 	const [wgKeyLoading, setWGKeyLoading] = useState(false);
 	const [activeTab, setActiveTab] = useState(0);
 	const [jsonText, setJsonText] = useState<string>("");
@@ -1210,6 +1238,27 @@ export const InboundFormModal: FC<Props> = ({
 			setAnyConnectCertLoading(false);
 		}
 	}, [form, t, toast]);
+
+	const handleGenerateTLSSelfSigned = useCallback(async (index: number) => {
+		const name = tlsSelfSignedName.trim();
+		if (!name) {
+			toast({ status: "error", title: "Enter a certificate domain first." });
+			return;
+		}
+		setTlsSelfSignedLoading(index);
+		try {
+			const certs = await generateAnyConnectSelfSigned([name]);
+			form.setValue(`tlsCertificates.${index}.managedDomain`, "", { shouldDirty: true });
+			form.setValue(`tlsCertificates.${index}.useFile`, false, { shouldDirty: true });
+			form.setValue(`tlsCertificates.${index}.cert`, certs.serverCertificate ?? "", { shouldDirty: true });
+			form.setValue(`tlsCertificates.${index}.key`, certs.serverKey ?? "", { shouldDirty: true });
+			toast({ status: "success", title: "Self-signed certificate generated." });
+		} catch (error) {
+			toast({ status: "error", title: "Certificate generation failed.", description: error instanceof Error ? error.message : undefined });
+		} finally {
+			setTlsSelfSignedLoading(null);
+		}
+	}, [form, tlsSelfSignedName, toast]);
 
 	const handleGenerateWGKeypair = useCallback(async () => {
 		setWGKeyLoading(true);
@@ -2352,6 +2401,7 @@ export const InboundFormModal: FC<Props> = ({
 														</Text>
 													)}
 												</FormControl>
+												{!watch("ovCertificateDomain") && (
 												<Box>
 													<Button
 														size="sm"
@@ -2362,6 +2412,35 @@ export const InboundFormModal: FC<Props> = ({
 														{t("inbounds.openvpn.generateSelfSigned")}
 													</Button>
 												</Box>
+												)}
+												<FormControl>
+													<FormLabel>Server certificate source</FormLabel>
+													<Controller
+														control={control}
+														name="ovCertificateDomain"
+														render={({ field }) => (
+															<SearchableTagSelect
+																value={field.value || ""}
+																onChange={field.onChange}
+																placeholder="Manual / self-signed PEM"
+																options={[
+																	{
+																		value: "",
+																		label: "Manual / self-signed PEM",
+																	},
+																	...managedCertificateDomains.map(
+																		(domain) => ({
+																			value: domain,
+																			label: domain,
+																		}),
+																	),
+																]}
+															/>
+														)}
+													/>
+												</FormControl>
+												{!watch("ovCertificateDomain") && (
+													<>
 												<FormControl
 													isRequired
 													isInvalid={Boolean(fieldValidationErrors.ovCA)}
@@ -2379,7 +2458,10 @@ export const InboundFormModal: FC<Props> = ({
 														</Text>
 													)}
 												</FormControl>
-												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+														<SimpleGrid
+															columns={{ base: 1, md: 2 }}
+															spacing={4}
+														>
 													<FormControl
 														isRequired
 														isInvalid={Boolean(
@@ -2414,7 +2496,10 @@ export const InboundFormModal: FC<Props> = ({
 															"inbounds.openvpn.help.serverKey",
 															"Private key for the OpenVPN server certificate. Keep it private; it is written only to the node's OpenVPN config.",
 														)}
-														<Textarea rows={4} {...register("ovServerKey")} />
+																<Textarea
+																	rows={4}
+																	{...register("ovServerKey")}
+																/>
 														{fieldValidationErrors.ovServerKey && (
 															<Text fontSize="xs" color="red.500" mt={1}>
 																{fieldValidationErrors.ovServerKey}
@@ -2422,6 +2507,8 @@ export const InboundFormModal: FC<Props> = ({
 														)}
 													</FormControl>
 												</SimpleGrid>
+													</>
+												)}
 												<FormControl>
 													{ovLabel(
 														"inbounds.openvpn.dh",
@@ -2918,6 +3005,7 @@ export const InboundFormModal: FC<Props> = ({
 																</Text>
 															)}
 														</FormControl>
+														{!watch("raCertificateDomain") && (
 														<Box>
 															<Button
 																size="sm"
@@ -2928,6 +3016,7 @@ export const InboundFormModal: FC<Props> = ({
 																{t("inbounds.anyconnect.generateSelfSigned")}
 															</Button>
 														</Box>
+														)}
 													</Stack>
 												)}
 												{currentProtocol === "ikev2" && (
@@ -2948,15 +3037,78 @@ export const InboundFormModal: FC<Props> = ({
 																	placeholder="Certificate mode"
 																	options={[
 																		{ value: "auto", label: "Auto-managed" },
-																		{ value: "manual", label: "Manual / custom PEM" },
+																		{
+																			value: "managed",
+																			label: "Certificate Store",
+																		},
+																		{
+																			value: "manual",
+																			label: "Manual / custom PEM",
+																		},
 																	]}
 																/>
 															)}
 														/>
 													</FormControl>
 												)}
+												{(currentProtocol === "anyconnect" ||
+													ikeCertMode === "managed") && (
+													<FormControl
+														isInvalid={Boolean(
+															fieldValidationErrors.raCertificateDomain,
+														)}
+													>
+														<FormLabel>Managed server certificate</FormLabel>
+														<Controller
+															control={control}
+															name="raCertificateDomain"
+															render={({ field }) => (
+																<SearchableTagSelect
+																	value={field.value || ""}
+																	onChange={field.onChange}
+																	placeholder="Select a domain"
+																	options={[
+																		{
+																			value: "",
+																			label: "Manual / self-signed PEM",
+																		},
+																		...managedCertificateDomains.map(
+																			(domain) => ({
+																				value: domain,
+																				label: domain,
+																			}),
+																		),
+																	]}
+																/>
+															)}
+														/>
+														{fieldValidationErrors.raCertificateDomain && (
+															<Text fontSize="xs" color="red.500">
+																{fieldValidationErrors.raCertificateDomain}
+															</Text>
+														)}
+													</FormControl>
+												)}
+												{currentProtocol === "anyconnect" &&
+													Boolean(watch("raCertificateDomain")) &&
+													watch("raAuthMode") !== "password" && (
+														<FormControl
+															isRequired
+															isInvalid={Boolean(fieldValidationErrors.raCA)}
+														>
+															<FormLabel>Client certificate CA</FormLabel>
+															<Textarea rows={4} {...register("raCA")} />
+															{fieldValidationErrors.raCA && (
+																<Text fontSize="xs" color="red.500">
+																	{fieldValidationErrors.raCA}
+																</Text>
+															)}
+														</FormControl>
+													)}
 												{(currentProtocol !== "ikev2" ||
-													ikeCertMode === "manual") && (
+													ikeCertMode === "manual") &&
+													(!watch("raCertificateDomain") ||
+														currentProtocol === "ikev2") && (
 													<>
 														<FormControl
 															isRequired={
@@ -3002,7 +3154,9 @@ export const InboundFormModal: FC<Props> = ({
 														</FormControl>
 														<FormControl
 															isRequired
-															isInvalid={Boolean(fieldValidationErrors.raServerKey)}
+																isInvalid={Boolean(
+																	fieldValidationErrors.raServerKey,
+																)}
 														>
 															{ovLabel(
 																"inbounds.remoteAccess.serverKey",
@@ -3010,7 +3164,10 @@ export const InboundFormModal: FC<Props> = ({
 																"inbounds.remoteAccess.help.serverKey",
 																"Unencrypted PEM private key matching the server certificate.",
 															)}
-															<Textarea rows={4} {...register("raServerKey")} />
+																<Textarea
+																	rows={4}
+																	{...register("raServerKey")}
+																/>
 															{fieldValidationErrors.raServerKey && (
 																<Text fontSize="xs" color="red.500">
 																	{fieldValidationErrors.raServerKey}
@@ -6254,6 +6411,44 @@ export const InboundFormModal: FC<Props> = ({
 																)}
 															</Flex>
 															<FormControl>
+																<FormLabel>Managed certificate</FormLabel>
+																<Controller
+																	control={control}
+																	name={
+																		`tlsCertificates.${index}.managedDomain` as const
+																	}
+																	render={({ field }) => (
+																		<SearchableTagSelect
+																			value={field.value || ""}
+																			onChange={field.onChange}
+																			placeholder="Manual certificate"
+																			options={[
+																				{
+																					value: "",
+																					label: "Manual certificate",
+																				},
+																				...managedCertificateDomains.map(
+																					(domain) => ({
+																						value: domain,
+																						label: domain,
+																					}),
+																				),
+																			]}
+																		/>
+																	)}
+																/>
+																	</FormControl>
+																	{!certConfig.managedDomain && (
+																		<HStack mt={2} mb={3} align="end">
+																			<FormControl>
+																				<FormLabel>Self-signed certificate domain</FormLabel>
+																				<Input value={tlsSelfSignedName} onChange={(event) => setTlsSelfSignedName(event.target.value)} placeholder="vpn.example.com" />
+																			</FormControl>
+																			<Button size="sm" onClick={() => handleGenerateTLSSelfSigned(index)} isLoading={tlsSelfSignedLoading === index} whiteSpace="nowrap">Generate</Button>
+																		</HStack>
+																	)}
+																	{!certConfig.managedDomain && (
+															<FormControl>
 																<FormLabel>
 																	{t("inbounds.tls.certificateSource")}
 																</FormLabel>
@@ -6270,16 +6465,21 @@ export const InboundFormModal: FC<Props> = ({
 																			}
 																		>
 																			<HStack spacing={4}>
-																				<Radio value="file">{t("path")}</Radio>
+																					<Radio value="file">
+																						{t("path")}
+																					</Radio>
 																				<Radio value="content">
-																					{t("inbounds.tls.certificateContent")}
+																						{t(
+																							"inbounds.tls.certificateContent",
+																						)}
 																				</Radio>
 																			</HStack>
 																		</RadioGroup>
 																	)}
 																/>
 															</FormControl>
-															{certConfig.useFile ? (
+															)}
+															{certConfig.managedDomain ? null : certConfig.useFile ? (
 																<SimpleGrid
 																	columns={{ base: 1, md: 2 }}
 																	spacing={3}

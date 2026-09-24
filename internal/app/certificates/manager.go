@@ -324,10 +324,10 @@ func (m *Manager) Issue(ctx context.Context, request IssueRequest) (Record, erro
 		// Newly issued managed certificates are SNI candidates by default. The
 		// ENV certificate remains the fallback; an explicit disable can still be
 		// applied afterwards through SetServeTLS.
-		"serve_tls":            "true",
-		"issued_at":            strconv.FormatInt(now.Unix(), 10),
-		"renewed_at":           strconv.FormatInt(now.Unix(), 10),
-		"status":               "active",
+		"serve_tls":  "true",
+		"issued_at":  strconv.FormatInt(now.Unix(), 10),
+		"renewed_at": strconv.FormatInt(now.Unix(), 10),
+		"status":     "active",
 	}
 	return m.store(ctx, domains[0], request.AdminID, &email, provider, domains[1:], fullchain, privateKey, metadata, now, now)
 }
@@ -363,8 +363,8 @@ func (m *Manager) Import(ctx context.Context, request ImportRequest) (Record, er
 	altNames := withoutName(domains, domain)
 	now := time.Now().UTC()
 	metadata := map[string]string{
-		"provider":   "manual",
-		"domains":    strings.Join(append([]string{domain}, altNames...), " "),
+		"provider": "manual",
+		"domains":  strings.Join(append([]string{domain}, altNames...), " "),
 		// Imported domain certificates are also managed SNI candidates by
 		// default, without changing the ENV fallback certificate.
 		"serve_tls":  "true",
@@ -405,11 +405,12 @@ func (m *Manager) Renew(ctx context.Context, domain string) (Record, error) {
 	return m.renewLocked(ctx, domain, true)
 }
 
-func (m *Manager) RenewDue(ctx context.Context, before time.Time) []error {
+func (m *Manager) RenewDue(ctx context.Context, before time.Time) (int, []error) {
 	records, err := m.List(ctx)
 	if err != nil {
-		return []error{err}
+		return 0, []error{err}
 	}
+	renewed := 0
 	errs := []error{}
 	for _, record := range records {
 		if !record.AutoRenew || record.NotAfter == nil || record.Status == "revoked" {
@@ -427,9 +428,11 @@ func (m *Manager) RenewDue(ctx context.Context, before time.Time) []error {
 		m.operationMutex.Unlock()
 		if renewErr != nil {
 			errs = append(errs, fmt.Errorf("renew %s: %w", record.Domain, renewErr))
+		} else {
+			renewed++
 		}
 	}
-	return errs
+	return renewed, errs
 }
 
 func (m *Manager) renewLocked(ctx context.Context, domain string, force bool) (Record, error) {

@@ -103,13 +103,36 @@ describe("AmneziaWG inbound form", () => {
 });
 
 describe("IKEv2 certificate mode", () => {
+	it("stores only the managed certificate reference for IKEv2 and AnyConnect", () => {
+		for (const protocol of ["ikev2", "anyconnect"] as const) {
+			const values = createDefaultInboundForm(protocol);
+			values.tag = `${protocol}-managed`;
+			values.raCertificateDomain = "vpn.example.com";
+			if (protocol === "ikev2") values.ikeCertMode = "managed";
+			const payload = buildInboundPayload(values);
+			expect(payload.settings.certificate_domain).toBe("vpn.example.com");
+			expect(payload.settings.server_certificate).toBeUndefined();
+			expect(payload.settings.server_key).toBeUndefined();
+			const restored = rawInboundToFormValues(payload);
+			expect(restored.raCertificateDomain).toBe("vpn.example.com");
+			expect(validateInboundFormFields(values).raServerKey).toBeUndefined();
+		}
+	});
+
+	it("requires a domain in managed IKEv2 mode", () => {
+		const values = createDefaultInboundForm("ikev2");
+		values.ikeCertMode = "managed";
+		expect(validateInboundFormFields(values).raCertificateDomain).toBeTruthy();
+	});
 	it("defaults to auto-managed certificates without requiring manual PEM fields", () => {
 		const values = createDefaultInboundForm("ikev2");
 		values.tag = "ikev2-main";
 
 		expect(values.ikeCertMode).toBe("auto");
 		expect(validateInboundFormFields(values).raCA).toBeUndefined();
-		expect(validateInboundFormFields(values).raServerCertificate).toBeUndefined();
+		expect(
+			validateInboundFormFields(values).raServerCertificate,
+		).toBeUndefined();
 		expect(validateInboundFormFields(values).raServerKey).toBeUndefined();
 		expect(validateInboundFormFields(values).raServerIdentity).toBeUndefined();
 
@@ -146,6 +169,37 @@ describe("IKEv2 certificate mode", () => {
 			server_key: "key",
 			server_identity: "vpn.example.com",
 		});
+	});
+});
+
+describe("managed certificates", () => {
+	it("round-trips an OpenVPN certificate without storing a private key", () => {
+		const values = createDefaultInboundForm("openvpn");
+		values.tag = "ov-managed";
+		values.ovCertificateDomain = "vpn.example.com";
+		const payload = buildInboundPayload(values);
+		expect(payload.settings.certificate_domain).toBe("vpn.example.com");
+		expect(payload.settings.server_key).toBeUndefined();
+		expect(rawInboundToFormValues(payload).ovCertificateDomain).toBe(
+			"vpn.example.com",
+		);
+		expect(validateInboundFormFields(values).ovCA).toBeUndefined();
+	});
+
+	it("round-trips a managed Xray TLS certificate", () => {
+		const values = createDefaultInboundForm("vless");
+		values.tag = "tls-managed";
+		values.streamSecurity = "tls";
+		values.tlsCertificates[0].managedDomain = "vpn.example.com";
+		const payload = buildInboundPayload(values);
+		const certificates = payload.streamSettings?.tlsSettings?.certificates;
+		expect(certificates?.[0]).toMatchObject({
+			managedDomain: "vpn.example.com",
+		});
+		expect(certificates?.[0].key).toBeUndefined();
+		expect(
+			rawInboundToFormValues(payload).tlsCertificates[0].managedDomain,
+		).toBe("vpn.example.com");
 	});
 });
 
@@ -421,7 +475,9 @@ describe("XHTTP inbound settings", () => {
 				},
 			},
 		});
-		expect(buildInboundPayload(grpc).streamSettings?.grpcSettings).toMatchObject({
+		expect(
+			buildInboundPayload(grpc).streamSettings?.grpcSettings,
+		).toMatchObject({
 			idle_timeout: 60,
 			health_check_timeout: 20,
 			permit_without_stream: true,
