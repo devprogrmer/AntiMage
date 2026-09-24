@@ -1,9 +1,29 @@
 {
   "schema_version": 1,
   "project": "AntiMage",
-  "latest": "dev-db91516",
-  "updated_at": "2026-09-24T22:18:52Z",
+  "latest": "dev-448038a",
+  "updated_at": "2026-09-24T23:18:43Z",
   "builds": [
+    {
+      "tag": "dev-448038a",
+      "sha": "448038a2f2122ce35a5d183361fd3470b37a49ed",
+      "branch": "dev",
+      "workflow": "Binary Build",
+      "run_id": "36071369218",
+      "run_number": "220",
+      "created_at": "2026-09-24T23:18:43Z",
+      "release_tag": "dev-builds",
+      "assets": {
+        "linux-amd64": {
+          "name": "antimage-linux-amd64-dev-448038a.tar.gz",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-linux-amd64-dev-448038a.tar.gz"
+        },
+        "windows-amd64": {
+          "name": "antimage-windows-amd64-dev-448038a.zip",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-448038a.zip"
+        }
+      }
+    },
     {
       "tag": "dev-db91516",
       "sha": "db9151681c25915341712d4ef7e8b89989de8245",
@@ -981,26 +1001,6 @@
         "windows-amd64": {
           "name": "antimage-windows-amd64-dev-8f556d4.zip",
           "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-8f556d4.zip"
-        }
-      }
-    },
-    {
-      "tag": "dev-d129b39",
-      "sha": "d129b39b73ce0fc5c81e03950229fe56ae5e6dbc",
-      "branch": "dev",
-      "workflow": "Binary Build",
-      "run_id": "34614581521",
-      "run_number": "102",
-      "created_at": "2026-09-11T15:17:58Z",
-      "release_tag": "dev-builds",
-      "assets": {
-        "linux-amd64": {
-          "name": "antimage-linux-amd64-dev-d129b39.tar.gz",
-          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-linux-amd64-dev-d129b39.tar.gz"
-        },
-        "windows-amd64": {
-          "name": "antimage-windows-amd64-dev-d129b39.zip",
-          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-d129b39.zip"
         }
       }
     }
