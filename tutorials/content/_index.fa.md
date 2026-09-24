@@ -1,3 +1,3 @@
 ---
-title: راهنمای ربکا
+title: راهنمای AntiMage
 ---
