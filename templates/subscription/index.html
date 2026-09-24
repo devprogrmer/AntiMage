@@ -3805,6 +3805,9 @@
         </section>
 
         <section class="am-overview am-panel-card" id="overview">
+            {% if user.subscription_message %}
+            <div class="am-subscription-message" role="status" dir="auto" style="margin: 0 0 18px; padding: 14px 18px; border: 1px solid var(--am-panel-border-strong); border-left: 3px solid var(--am-panel-accent); border-radius: 6px; color: var(--am-panel-text); white-space: pre-wrap; overflow-wrap: anywhere;">{{ user.subscription_message }}</div>
+            {% endif %}
             <div class="am-overview-header">
                 <div class="am-overview-meta">
                     <div class="am-username-row">

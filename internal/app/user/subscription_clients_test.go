@@ -12,6 +12,61 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func TestSubscriptionMessageIsScopedToUser(t *testing.T) {
+	service, key := newSubscriptionClientTestService(t)
+	ctx := context.Background()
+	if _, err := service.repo.db.ExecContext(ctx, `UPDATE users SET subscription_message = ?, note = ? WHERE username = 'alice'`, "Your plan renews tomorrow", "private admin note"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.repo.db.ExecContext(ctx, `INSERT INTO users (id, username, credential_key, status, used_traffic, created_at, service_id, admin_id) VALUES (2, 'bob', 'abcdef0123456789abcdef0123456789', 'active', 0, '2026-07-01 10:00:00', 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	alice, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, URL: "https://panel.example/sub/" + key, Accept: "text/html"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(alice.Body), "Your plan renews tomorrow") || strings.Contains(string(alice.Body), "private admin note") {
+		t.Fatal("HTML subscription did not isolate the public message from the admin note")
+	}
+	config, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: "v2ray"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := config.Headers["profile-title"]; got != "base64:"+base64.StdEncoding.EncodeToString([]byte("Your plan renews tomorrow")) {
+		t.Fatalf("wrong profile title: %q", got)
+	}
+	if strings.Contains(decodeSubscriptionTestBody(string(config.Body)), "Your plan renews tomorrow") {
+		t.Fatal("message must not create a fake connection")
+	}
+	bob, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: "abcdef0123456789abcdef0123456789", ClientType: "v2ray"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bob.Headers["profile-title"] == config.Headers["profile-title"] {
+		t.Fatal("another user inherited Alice's message")
+	}
+}
+
+func TestSubscriptionMessageIsEscapedInHTML(t *testing.T) {
+	template := readTestTemplateFile(t, filepath.Join("templates", "subscription", "index.html"))
+	message := `<script>alert("x")</script>`
+	html, err := renderSubscriptionPageTemplate(template, UserDetail{
+		Username:            "alice",
+		Status:              "active",
+		SubscriptionMessage: &message,
+	}, nil, "", "", "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, message) || !strings.Contains(html, "&lt;script&gt;") {
+		start := strings.Index(html, `class="am-subscription-message"`)
+		if start >= 0 && start+350 < len(html) {
+			t.Fatalf("subscription message was not escaped: %s", html[start:start+350])
+		}
+		t.Fatal("subscription message was not escaped")
+	}
+}
+
 func TestSubscriptionClientOutputsCoverExplicitFormatsAndAutoDetect(t *testing.T) {
 	service, key := newSubscriptionClientTestService(t)
 	ctx := context.Background()
@@ -670,6 +725,7 @@ func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 			data_limit_reset_strategy TEXT NULL,
 			flow TEXT NULL,
 			note TEXT NULL,
+			subscription_message TEXT NULL,
 			telegram_id TEXT NULL,
 			contact_number TEXT NULL,
 			sub_updated_at DATETIME NULL,

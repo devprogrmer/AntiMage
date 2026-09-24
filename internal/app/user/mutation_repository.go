@@ -65,6 +65,7 @@ func (r Repository) createUserMutation(ctx context.Context, admin adminapp.Admin
 			DataLimit:              payload.DataLimit,
 			DataLimitResetStrategy: payload.DataLimitResetStrategy,
 			Note:                   payload.Note,
+			SubscriptionMessage:    payload.SubscriptionMessage,
 			OnHoldTimeout:          payload.OnHoldTimeout,
 			OnHoldExpireDuration:   payload.OnHoldExpireDuration,
 			AutoDeleteInDays:       payload.AutoDeleteInDays,
@@ -113,11 +114,11 @@ func (r Repository) createUserMutation(ctx context.Context, admin adminapp.Admin
 	res, err := tx.ExecContext(ctx, `
 INSERT INTO users (
 	username, credential_key, subadress, flow, status, used_traffic, data_limit,
-	data_limit_reset_strategy, expire, admin_id, created_at, note, telegram_id,
+	data_limit_reset_strategy, expire, admin_id, created_at, note, subscription_message, telegram_id,
 	contact_number, on_hold_expire_duration, on_hold_timeout, ip_limit, device_limit,
 	upload_speed_limit, download_speed_limit,
 	auto_delete_in_days, last_status_change, service_id
-) VALUES (?, ?, '', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, '', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		payload.Username,
 		nullableStringValue(credentialKey),
 		nullableStringPtr(payload.Flow),
@@ -128,6 +129,7 @@ INSERT INTO users (
 		adminID,
 		dbTime(now),
 		nullableStringPtr(payload.Note),
+		nullableStringPtr(payload.SubscriptionMessage),
 		nullableStringPtr(payload.TelegramID),
 		nullableStringPtr(payload.ContactNumber),
 		nilIfZero(payload.OnHoldExpireDuration),
@@ -346,6 +348,10 @@ func (r Repository) updateUserMutation(ctx context.Context, admin adminapp.Admin
 	if rawFieldPresent(rawFields, "note") {
 		sets = append(sets, "note = ?")
 		args = append(args, nullableStringPtr(payload.Note))
+	}
+	if rawFieldPresent(rawFields, "subscription_message") {
+		sets = append(sets, "subscription_message = ?")
+		args = append(args, nullableStringPtr(payload.SubscriptionMessage))
 	}
 	if rawFieldPresent(rawFields, "telegram_id") {
 		sets = append(sets, "telegram_id = ?")

@@ -1190,11 +1190,15 @@ func selectSubscriptionClientType(userAgent string, settings SubscriptionSetting
 }
 
 func subscriptionHeaders(user UserDetail, req SubscriptionRenderRequest, settings SubscriptionSettings) map[string]string {
+	title := firstNonEmptyString(settings.SubscriptionProfileTitle, "Subscription")
+	if user.SubscriptionMessage != nil && strings.TrimSpace(*user.SubscriptionMessage) != "" {
+		title = strings.Join(strings.Fields(*user.SubscriptionMessage), " ")
+	}
 	return map[string]string{
 		"content-disposition":     `attachment; filename="` + user.Username + `"`,
 		"profile-web-page-url":    req.URL,
 		"support-url":             strings.TrimSpace(settings.SubscriptionSupportURL),
-		"profile-title":           "base64:" + base64.StdEncoding.EncodeToString([]byte(firstNonEmptyString(settings.SubscriptionProfileTitle, "Subscription"))),
+		"profile-title":           "base64:" + base64.StdEncoding.EncodeToString([]byte(title)),
 		"profile-update-interval": firstNonEmptyString(settings.SubscriptionUpdateInterval, "12"),
 		"subscription-userinfo":   fmt.Sprintf("upload=0; download=%d; total=%d; expire=%d", user.UsedTraffic, int64OrZero(user.DataLimit), int64OrZero(user.Expire)),
 	}
@@ -4092,6 +4096,7 @@ func subscriptionTemplateContext(user UserDetail, links []string, usageURL strin
 			"subscription_urls":         user.SubscriptionURLs,
 			"service_id":                user.ServiceID,
 			"service_name":              user.ServiceName,
+			"subscription_message":      user.SubscriptionMessage,
 		},
 		"links":             links,
 		"links_text":        legacyTemplateStringList(links),

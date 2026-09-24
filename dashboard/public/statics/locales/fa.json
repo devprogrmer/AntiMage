@@ -2267,6 +2267,7 @@
 	"fields.telegramId": "آیدی تلگرام",
 	"fields.contactNumber": "شماره تماس",
 	"fields.note": "یادداشت",
+	"fields.subscriptionMessage": "پیام اشتراک (فقط برای همین کاربر)",
 	"onHold.button": "در حالت انتظار",
 	"expires.selectDate": "انتخاب تاریخ انقضا",
 	"expires.days": "انقضا (روز)",

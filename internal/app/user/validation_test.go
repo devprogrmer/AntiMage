@@ -33,11 +33,11 @@ func TestUserPayloadValidation(t *testing.T) {
 			},
 		},
 		{
-			name: "zero device limit is unlimited",
+			name:    "zero device limit is unlimited",
 			payload: UserCreate{Username: "valid-user", UserPayloadBase: UserPayloadBase{DeviceLimit: &unlimitedDevices}},
 		},
 		{
-			name: "negative device limit is rejected",
+			name:    "negative device limit is rejected",
 			payload: UserCreate{Username: "valid-user", UserPayloadBase: UserPayloadBase{DeviceLimit: &negativeDevice}},
 			wantErr: "device_limit must be a non-negative integer",
 		},
@@ -169,6 +169,33 @@ func TestUserPayloadValidation(t *testing.T) {
 				t.Fatalf("error = %v, want contains %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestSubscriptionMessageValidation(t *testing.T) {
+	message := "  A personal message  "
+	payload := UserCreate{Username: "valid-user", UserPayloadBase: UserPayloadBase{SubscriptionMessage: &message}}
+	if err := ValidateUserCreate(&payload, MutationContext{}); err != nil {
+		t.Fatal(err)
+	}
+	if message != "A personal message" {
+		t.Fatalf("message was not trimmed: %q", message)
+	}
+	tooLong := strings.Repeat("م", 501)
+	modify := UserModify{UserPayloadBase: UserPayloadBase{SubscriptionMessage: &tooLong}}
+	if err := ValidateUserModify(&modify, MutationContext{}); err == nil || !strings.Contains(err.Error(), "subscription_message") {
+		t.Fatalf("expected message length error, got %v", err)
+	}
+	serviceMessage := "  Service user message  "
+	servicePayload := UserServiceCreate{
+		Username: "service-user", ServiceID: 1, SubscriptionMessage: &serviceMessage,
+	}
+	serviceContext := MutationContext{Services: map[int64]ServiceInfo{1: {ID: 1}}}
+	if err := ValidateUserServiceCreate(&servicePayload, serviceContext); err != nil {
+		t.Fatal(err)
+	}
+	if got := servicePayload.ToUserCreate(ServiceInfo{ID: 1}).SubscriptionMessage; got == nil || *got != "Service user message" {
+		t.Fatalf("service user message not preserved: %v", got)
 	}
 }
 

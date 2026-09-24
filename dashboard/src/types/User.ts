@@ -78,6 +78,7 @@ export type User = {
 	subscription_urls?: Record<string, string>;
 	inbounds: UserInbounds;
 	note: string;
+	subscription_message?: string | null;
 	telegram_id?: string | null;
 	contact_number?: string | null;
 	online_at: string;
@@ -125,6 +126,7 @@ export type UserCreate = Pick<
 	| "username"
 	| "status"
 	| "note"
+	| "subscription_message"
 	| "telegram_id"
 	| "contact_number"
 	| "flow"
@@ -147,6 +149,7 @@ export type UserCreateWithService = Pick<
 	| "data_limit_reset_strategy"
 	| "on_hold_expire_duration"
 	| "note"
+	| "subscription_message"
 	| "telegram_id"
 	| "contact_number"
 	| "flow"

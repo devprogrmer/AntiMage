@@ -2278,6 +2278,7 @@
 	"fields.telegramId": "Telegram ID",
 	"fields.contactNumber": "Contact number",
 	"fields.note": "Note",
+	"fields.subscriptionMessage": "Subscription message (visible to this user)",
 	"onHold.button": "On Hold",
 	"expires.selectDate": "Select expiration date",
 	"expires.days": "Expires in (days)",

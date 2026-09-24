@@ -33,6 +33,7 @@ func testUserReadServer(t *testing.T) (*Server, *sql.DB) {
 		`ALTER TABLE users ADD COLUMN data_limit BIGINT NULL`,
 		`ALTER TABLE users ADD COLUMN data_limit_reset_strategy TEXT NULL`,
 		`ALTER TABLE users ADD COLUMN note TEXT NULL`,
+		`ALTER TABLE users ADD COLUMN subscription_message TEXT NULL`,
 		`ALTER TABLE users ADD COLUMN telegram_id TEXT NULL`,
 		`ALTER TABLE users ADD COLUMN contact_number TEXT NULL`,
 		`ALTER TABLE users ADD COLUMN sub_updated_at DATETIME NULL`,

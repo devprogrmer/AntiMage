@@ -118,6 +118,32 @@ func TestUserMutationCreateUpdateDeleteQueuesOperations(t *testing.T) {
 	assertDBString(t, db, `SELECT status FROM users WHERE username = 'go_user'`, "deleted")
 }
 
+func TestUserSubscriptionMessageCreateEditAndClear(t *testing.T) {
+	server, db, token := testUserMutationServer(t)
+	rec := adminJSONRequest(t, server, http.MethodPost, "/api/user", token, `{"username":"message_user","service_id":1,"subscription_message":" Your plan is ready ","note":"admin only"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBString(t, db, `SELECT subscription_message FROM users WHERE username = 'message_user'`, "Your plan is ready")
+	rec = adminJSONRequest(t, server, http.MethodPut, "/api/user/message_user", token, `{"subscription_message":"Renew next week"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("edit status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBString(t, db, `SELECT subscription_message FROM users WHERE username = 'message_user'`, "Renew next week")
+	assertDBString(t, db, `SELECT note FROM users WHERE username = 'message_user'`, "admin only")
+	rec = adminJSONRequest(t, server, http.MethodPut, "/api/user/message_user", token, `{"subscription_message":""}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("clear status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBString(t, db, `SELECT COALESCE(subscription_message, '') FROM users WHERE username = 'message_user'`, "")
+
+	rec = adminJSONRequest(t, server, http.MethodPost, "/api/user", token, `{"username":"other_user","service_id":1}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("other create status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBString(t, db, `SELECT COALESCE(subscription_message, '') FROM users WHERE username = 'other_user'`, "")
+}
+
 func TestUserMutationResetRevokeAndActiveNext(t *testing.T) {
 	server, db, token := testUserMutationServer(t)
 	rec := adminJSONRequest(t, server, http.MethodPost, "/api/user", token, `{"username":"plan_user","service_id":1,"data_limit":1000}`)

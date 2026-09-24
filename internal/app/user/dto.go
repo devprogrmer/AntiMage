@@ -132,6 +132,7 @@ type UserDetail struct {
 	DataLimitResetStrategy string                    `json:"data_limit_reset_strategy,omitempty"`
 	Flow                   *string                   `json:"flow"`
 	Note                   *string                   `json:"note"`
+	SubscriptionMessage    *string                   `json:"subscription_message"`
 	TelegramID             *string                   `json:"telegram_id"`
 	ContactNumber          *string                   `json:"contact_number"`
 	SubUpdatedAt           *string                   `json:"sub_updated_at"`
