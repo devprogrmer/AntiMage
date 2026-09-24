@@ -448,11 +448,16 @@ func (r Repository) ResetNodeUsage(ctx context.Context, nodeID int64) (NodeRespo
 			return NodeResponse{}, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE nodes SET uplink = 0, downlink = 0, status = ?, message = NULL WHERE id = ? AND LOWER(COALESCE(status, '')) <> ?`, StatusConnected, nodeID, StatusDeleted); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE nodes SET uplink = 0, downlink = 0,
+		status = CASE WHEN LOWER(COALESCE(status, '')) = ? THEN ? ELSE status END,
+		message = CASE WHEN LOWER(COALESCE(status, '')) = ? THEN NULL ELSE message END
+		WHERE id = ? AND LOWER(COALESCE(status, '')) <> ?`, StatusLimited, StatusConnecting, StatusLimited, nodeID, StatusDeleted); err != nil {
 		return NodeResponse{}, err
 	}
-	if err := r.enqueueNodeOperationTx(ctx, tx, NodeOperationSyncConfig, &nodeID, nil, map[string]any{"node_id": nodeID, "usage_reset": true}, r.now().UTC()); err != nil {
-		return NodeResponse{}, err
+	if node.Status != StatusDisabled {
+		if err := r.enqueueNodeOperationTx(ctx, tx, NodeOperationSyncConfig, &nodeID, nil, map[string]any{"node_id": nodeID, "usage_reset": true}, r.now().UTC()); err != nil {
+			return NodeResponse{}, err
+		}
 	}
 	if err := r.recordRecentActionTx(ctx, tx, "node.usage_reset", node.Name, "Reset node usage"); err != nil {
 		return NodeResponse{}, err

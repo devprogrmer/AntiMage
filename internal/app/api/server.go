@@ -619,20 +619,15 @@ func (s *Server) handleNodeRuntimeUpdate(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	version := strings.TrimSpace(payload.Version)
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		_, _ = s.nodeController.UpdateRuntime(ctx, nodecontroller.Request{
-			NodeID:  nodeID,
-			Version: version,
-		})
-	}()
-	s.recordNodeRuntimeAction(r.Context(), nodeID, "node.runtime_update", "Started node core update")
-	writeJSON(w, http.StatusAccepted, map[string]any{
-		"status":  "accepted",
-		"node_id": nodeID,
-		"detail":  "Node core update started. Refresh the node list to see the final status.",
-	})
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+	result, err := s.nodeController.UpdateRuntime(ctx, nodecontroller.Request{NodeID: nodeID, Version: version})
+	if err != nil {
+		writeControllerError(w, err)
+		return
+	}
+	s.recordNodeRuntimeAction(r.Context(), nodeID, "node.runtime_update", "Updated node core")
+	writeJSON(w, http.StatusOK, flattenRuntimeResult(result))
 }
 
 func (s *Server) handleNodeGeoUpdate(w http.ResponseWriter, r *http.Request, nodeID int64) {

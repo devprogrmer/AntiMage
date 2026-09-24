@@ -1342,6 +1342,7 @@ export const NodesPage: FC = () => {
 							method: "POST",
 							headers: recentActionHeaders,
 							body: { version },
+							timeout: 5 * 60 * 1000,
 						});
 						results.push({ status: "fulfilled", node });
 					} catch (err) {
@@ -1393,6 +1394,7 @@ export const NodesPage: FC = () => {
 				await apiFetch(`/node/${targetNode.id}/xray/update`, {
 					method: "POST",
 					body: { version },
+					timeout: 5 * 60 * 1000,
 				});
 				generateSuccessMessage(
 					t("nodes.coreVersionDialog.nodeUpdateSuccess", {
@@ -1441,6 +1443,7 @@ export const NodesPage: FC = () => {
 				await apiFetch(`/node/${targetNode.id}/geo/update`, {
 					method: "POST",
 					body,
+					timeout: 5 * 60 * 1000,
 				});
 				generateSuccessMessage(
 					t("nodes.geoDialog.nodeUpdateSuccess", {
@@ -1483,6 +1486,7 @@ export const NodesPage: FC = () => {
 							method: "POST",
 							headers: recentActionHeaders,
 							body,
+							timeout: 5 * 60 * 1000,
 						});
 						success += 1;
 					} catch (err) {

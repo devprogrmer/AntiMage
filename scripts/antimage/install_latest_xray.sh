@@ -91,7 +91,7 @@ download_xray() {
     fi
     
     echo "Downloading Xray archive: $DOWNLOAD_LINK"
-    if ! curl -RL -H 'Cache-Control: no-cache' -o "$ZIP_FILE" "$DOWNLOAD_LINK"; then
+    if ! curl -fRL -H 'Cache-Control: no-cache' -o "$ZIP_FILE" "$DOWNLOAD_LINK"; then
         echo 'error: Download failed! Please check your network or try again.'
         return 1
     fi
@@ -110,9 +110,12 @@ extract_xray() {
 place_xray() {
     install -d "$INSTALL_DIR"
     install -d "$ASSETS_DIR"
-    install -m 755 "${TMP_DIRECTORY}/xray" "${INSTALL_DIR}/xray"
-    install -m 644 "${TMP_DIRECTORY}/geoip.dat" "${ASSETS_DIR}/geoip.dat"
-    install -m 644 "${TMP_DIRECTORY}/geosite.dat" "${ASSETS_DIR}/geosite.dat"
+    install -m 755 "${TMP_DIRECTORY}/xray" "${INSTALL_DIR}/.xray.new" || return 1
+    install -m 644 "${TMP_DIRECTORY}/geoip.dat" "${ASSETS_DIR}/.geoip.dat.new" || return 1
+    install -m 644 "${TMP_DIRECTORY}/geosite.dat" "${ASSETS_DIR}/.geosite.dat.new" || return 1
+    mv -f "${INSTALL_DIR}/.xray.new" "${INSTALL_DIR}/xray" || return 1
+    mv -f "${ASSETS_DIR}/.geoip.dat.new" "${ASSETS_DIR}/geoip.dat" || return 1
+    mv -f "${ASSETS_DIR}/.geosite.dat.new" "${ASSETS_DIR}/geosite.dat" || return 1
 
     # Backward-compatible links for tools that still look under /usr/local.
     install -d "/usr/local/bin" "/usr/local/share"
@@ -128,8 +131,8 @@ identify_the_operating_system_and_architecture
 TMP_DIRECTORY="$(mktemp -d)"
 ZIP_FILE="${TMP_DIRECTORY}/Xray-linux-$ARCH.zip"
 
-download_xray
-extract_xray
-place_xray
+download_xray || exit 1
+extract_xray || exit 1
+place_xray || exit 1
 
 "rm" -rf "$TMP_DIRECTORY"

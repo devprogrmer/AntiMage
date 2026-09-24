@@ -216,6 +216,20 @@ func (c Controller) Reconnect(ctx context.Context, req Request) (RuntimeResult, 
 	return c.Connect(ctx, req)
 }
 
+func (c Controller) StopNodeRuntime(ctx context.Context, nodeID int64) error {
+	unlock := c.lockNode(nodeID)
+	defer unlock()
+	client, _, err := c.dial(ctx, nodeID)
+	if err != nil {
+		return friendlyNodeError("stop runtime", nodeID, err)
+	}
+	_, err = client.Runtime().StopRuntime(ctx, &nodev1.StopRuntimeRequest{OperationId: newOperationID("stop", nodeID)})
+	if err != nil {
+		return friendlyNodeError("stop runtime", nodeID, err)
+	}
+	return nil
+}
+
 func (c Controller) Restart(ctx context.Context, req Request) (result RuntimeResult, err error) {
 	err = c.runDurableCommand(ctx, "restart_node", req, func(queued Request) error {
 		result, err = c.restartNow(ctx, queued)
