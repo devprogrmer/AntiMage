@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net"
 	"os"
@@ -818,12 +819,12 @@ func (r Repository) loadManagedHAProxyCertificate(ctx context.Context, domain, h
 	if !haproxyHostPattern.MatchString(domain) {
 		return nil, nil, fmt.Errorf("select a managed certificate")
 	}
-	var exists int
-	if err := r.db.QueryRowContext(ctx, `SELECT 1 FROM subscription_domains WHERE LOWER(domain) = ? LIMIT 1`, strings.ToLower(domain)).Scan(&exists); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil, fmt.Errorf("managed certificate not found")
-		}
-		return nil, nil, err
+	record, err := certificateapp.NewManager(r.db, certificateapp.Config{BaseDir: r.certificateBase}).Get(ctx, domain)
+	if err != nil {
+		return nil, nil, fmt.Errorf("managed certificate not found: %w", err)
+	}
+	if record.Status != "active" && record.Status != "expiring" {
+		return nil, nil, fmt.Errorf("managed certificate for %s is %s", domain, record.Status)
 	}
 	base := certificateapp.ManagedBaseDir(r.certificateBase)
 	fullchain, err := os.ReadFile(filepath.Join(base, domain, "fullchain.pem"))
@@ -842,7 +843,18 @@ func (r Repository) loadManagedHAProxyCertificate(ctx context.Context, domain, h
 	if err != nil || leaf.VerifyHostname(hostname) != nil {
 		return nil, nil, fmt.Errorf("managed certificate does not cover %s", hostname)
 	}
+	if now := time.Now(); now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) {
+		return nil, nil, fmt.Errorf("managed certificate for %s is not currently valid", hostname)
+	}
 	return fullchain, privateKey, nil
+}
+
+func managedCertificateTrustChain(fullchain []byte) []byte {
+	_, rest := pem.Decode(fullchain)
+	if len(bytes.TrimSpace(rest)) == 0 {
+		return fullchain
+	}
+	return bytes.TrimSpace(rest)
 }
 
 func normalizeHAProxyRoutes(listener *HAProxyListener, byTag map[string]HAProxyCandidate) error {

@@ -80,6 +80,19 @@ func (r Repository) remoteAccessRuntimeFromInbounds(ctx context.Context, nodeID 
 			continue
 		}
 		settings := OVMapValue(inbound["settings"])
+		if domain := strings.TrimSpace(OVStringValue(settings["certificate_domain"])); domain != "" {
+			certificate, key, err := r.loadManagedHAProxyCertificate(ctx, domain, domain)
+			if err != nil {
+				return RemoteAccessRuntime{}, fmt.Errorf("%s %q certificate: %w", protocol, tag, err)
+			}
+			settings["server_certificate"], settings["server_key"] = string(certificate), string(key)
+			if protocol == xrayconfig.IKEv2Protocol {
+				settings["certificate_mode"] = "manual"
+				settings["ca_certificate"] = string(managedCertificateTrustChain(certificate))
+				settings["server_identity"] = domain
+			}
+			delete(settings, "certificate_domain")
+		}
 		serviceIDs, err := r.OVServiceIDsForInbound(ctx, tag)
 		if err != nil {
 			return RemoteAccessRuntime{}, err

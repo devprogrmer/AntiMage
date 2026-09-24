@@ -44,6 +44,12 @@ func validateStreamCertificateFiles(item map[string]any) error {
 		return nil
 	}
 	for index, certificate := range certificates {
+		if domain := strings.TrimSpace(stringValue(certificate["managedDomain"])); domain != "" {
+			if !managedCertificateDomainPattern.MatchString(domain) || strings.Contains(domain, "..") {
+				return fmt.Errorf("certificate[%d]: managed domain is invalid", index)
+			}
+			continue
+		}
 		if err := validateCertificateFile(certificate, "certificate", []string{"certificateFile", "certFile", "certfile"}); err != nil {
 			return fmt.Errorf("certificate[%d]: %w", index, err)
 		}

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -29,6 +30,13 @@ const (
 	L2TPTunnelPort            = 1702
 	OVDCODataCiphers          = "AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305"
 )
+
+var managedCertificateDomainPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$`)
+
+func validManagedCertificateDomain(settings map[string]any) bool {
+	domain := strings.TrimSpace(stringValue(settings["certificate_domain"]))
+	return domain != "" && managedCertificateDomainPattern.MatchString(domain) && !strings.Contains(domain, "..")
+}
 
 func isManageableInboundProtocol(protocol string) bool {
 	if _, ok := proxyProtocols[protocol]; ok {
@@ -142,10 +150,13 @@ func normalizeIKEv2Settings(settings map[string]any) map[string]any {
 	}
 	out["auth_mode"] = authMode
 	certMode := strings.ToLower(strings.TrimSpace(stringValue(out["certificate_mode"])))
-	if certMode != "manual" && certMode != "custom" {
+	if certMode != "manual" && certMode != "custom" && certMode != "managed" {
 		certMode = "auto"
 	}
 	out["certificate_mode"] = certMode
+	if certMode == "managed" {
+		out["server_identity"] = strings.TrimSpace(stringValue(out["certificate_domain"]))
+	}
 	for key, fallback := range map[string]string{
 		"server_identity": "auto",
 		"ike_proposals":   "aes256-sha256-modp2048,aes256-sha384-modp3072,aes256gcm16-prfsha384-ecp384",
@@ -623,11 +634,17 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		}
 	}
 	if protocol == OVProtocol {
+		if strings.TrimSpace(stringValue(settings["certificate_domain"])) != "" && !validManagedCertificateDomain(settings) {
+			return fmt.Errorf("invalid inbound %q: OV certificate_domain is invalid", tag)
+		}
 		transport := stringValue(settings["transport"])
 		if transport != "tcp" && transport != "udp" {
 			return fmt.Errorf("invalid inbound %q: OV transport must be udp or tcp", tag)
 		}
 		for _, key := range []string{"ca", "server_certificate", "server_key"} {
+			if validManagedCertificateDomain(settings) {
+				break
+			}
 			if strings.TrimSpace(stringValue(settings[key])) == "" {
 				return fmt.Errorf("invalid inbound %q: OV %s is required", tag, key)
 			}
@@ -760,10 +777,17 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		if certMode == "" {
 			certMode = "auto"
 		}
-		if certMode != "auto" && certMode != "manual" && certMode != "custom" {
+		if certMode != "auto" && certMode != "manual" && certMode != "custom" && certMode != "managed" {
 			return fmt.Errorf("invalid inbound %q: IKEv2 certificate_mode is invalid", tag)
 		}
-		if certMode != "auto" {
+		if certMode == "managed" {
+			if !validManagedCertificateDomain(settings) {
+				return fmt.Errorf("invalid inbound %q: IKEv2 certificate_domain is invalid", tag)
+			}
+			if authMode != "password" {
+				return fmt.Errorf("invalid inbound %q: IKEv2 managed server certificate requires password authentication; client certificate authentication needs a separate client CA", tag)
+			}
+		} else if certMode != "auto" {
 			for _, key := range []string{"ca_certificate", "server_certificate", "server_key"} {
 				if strings.TrimSpace(stringValue(settings[key])) == "" {
 					return fmt.Errorf("invalid inbound %q: IKEv2 %s is required", tag, key)
@@ -802,11 +826,17 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		}
 	}
 	if protocol == AnyConnectProtocol {
+		if strings.TrimSpace(stringValue(settings["certificate_domain"])) != "" && !validManagedCertificateDomain(settings) {
+			return fmt.Errorf("invalid inbound %q: AnyConnect certificate_domain is invalid", tag)
+		}
 		authMode := stringValue(settings["auth_mode"])
 		if authMode != "password" && authMode != "certificate" && authMode != "password+certificate" {
 			return fmt.Errorf("invalid inbound %q: AnyConnect auth_mode is invalid", tag)
 		}
 		for _, key := range []string{"server_certificate", "server_key"} {
+			if validManagedCertificateDomain(settings) {
+				break
+			}
 			if strings.TrimSpace(stringValue(settings[key])) == "" {
 				return fmt.Errorf("invalid inbound %q: AnyConnect %s is required", tag, key)
 			}

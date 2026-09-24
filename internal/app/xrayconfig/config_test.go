@@ -1771,6 +1771,41 @@ func TestIKEv2AutoCertificateValidationDoesNotRequireManualPEM(t *testing.T) {
 	}
 }
 
+func TestManagedRemoteAccessCertificateValidation(t *testing.T) {
+	for _, test := range []struct {
+		protocol string
+		port     int
+		pool     string
+	}{
+		{OVProtocol, 1194, "10.66.0.0/24"},
+		{IKEv2Protocol, 500, "10.70.0.0/24"},
+		{AnyConnectProtocol, 443, "10.71.0.0/24"},
+	} {
+		settings := map[string]any{
+			"auth_mode": "password", "ipv4_pool_cidr": test.pool,
+			"tproxy_enabled": false, "certificate_domain": "vpn.example.com",
+			"server_identity": "vpn.example.com", "redirect_gateway": true,
+		}
+		if test.protocol == IKEv2Protocol {
+			settings["certificate_mode"] = "managed"
+			settings["ike_proposals"] = "aes256-sha256-modp2048"
+			settings["esp_proposals"] = "aes256-sha256"
+			settings["fragmentation"] = "yes"
+		}
+		if test.protocol == OVProtocol {
+			settings["transport"] = "udp"
+		}
+		inbound := map[string]any{"tag": test.protocol, "port": test.port, "protocol": test.protocol, "settings": settings}
+		if err := validateVirtualTunnelInbound(test.protocol, inbound); err != nil {
+			t.Fatalf("%s managed certificate: %v", test.protocol, err)
+		}
+		settings["certificate_domain"] = "../etc/passwd"
+		if err := validateVirtualTunnelInbound(test.protocol, inbound); err == nil {
+			t.Fatalf("%s accepted an invalid certificate domain", test.protocol)
+		}
+	}
+}
+
 func TestRemoteAccessInboundRejectsUnsafeSettings(t *testing.T) {
 	tests := []map[string]any{
 		{"tag": "ikev2", "port": 500, "protocol": IKEv2Protocol, "settings": map[string]any{"auth_mode": "password", "ipv4_pool_cidr": "10.70.0.0/24", "tproxy_enabled": false, "ca_certificate": "ca", "server_certificate": "cert", "server_key": "key", "server_identity": "vpn.example.com\nauto=start"}},

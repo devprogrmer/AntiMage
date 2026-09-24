@@ -35,6 +35,9 @@ func (s *Server) handleCertificateIssue(w http.ResponseWriter, r *http.Request) 
 		AdminID:  payload.AdminID,
 		Provider: payload.Provider,
 	})
+	if err == nil {
+		err = s.nodeController.QueueCertificateSync(r.Context())
+	}
 	writeCertificateResponse(w, record, err)
 }
 
@@ -60,6 +63,9 @@ func (s *Server) handleCertificateImport(w http.ResponseWriter, r *http.Request)
 		Fullchain:  payload.Fullchain,
 		PrivateKey: payload.PrivateKey,
 	})
+	if err == nil {
+		err = s.nodeController.QueueCertificateSync(r.Context())
+	}
 	writeCertificateResponse(w, record, err)
 }
 
@@ -80,6 +86,9 @@ func (s *Server) handleCertificateRenew(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	record, err := s.certificateManager.Renew(r.Context(), payload.Domain)
+	if err == nil {
+		err = s.nodeController.QueueCertificateSync(r.Context())
+	}
 	writeCertificateResponse(w, record, err)
 }
 
@@ -152,9 +161,15 @@ func (s *Server) runCertificateRenewalWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
-			for _, err := range s.certificateManager.RenewDue(ctx, time.Now().UTC().Add(30*24*time.Hour)) {
+			renewed, errs := s.certificateManager.RenewDue(ctx, time.Now().UTC().Add(30*24*time.Hour))
+			for _, err := range errs {
 				if !errors.Is(err, certificateapp.ErrBusy) {
 					logging.Warnf(logging.ComponentRuntime, "certificate auto-renewal warning: %v", err)
+				}
+			}
+			if renewed > 0 {
+				if err := s.nodeController.QueueCertificateSync(ctx); err != nil {
+					logging.Warnf(logging.ComponentRuntime, "certificate runtime sync warning: %v", err)
 				}
 			}
 			timer.Reset(interval)

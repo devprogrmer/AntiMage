@@ -143,6 +143,10 @@ func (c Controller) PrepareStartupFullSync(ctx context.Context) (int, error) {
 	return c.repo.ReplaceOpenQueueWithFullSync(ctx)
 }
 
+func (c Controller) QueueCertificateSync(ctx context.Context) error {
+	return c.repo.QueueSyncConfig(ctx, nil, nil)
+}
+
 func (c Controller) PruneFinishedOperations(ctx context.Context, retain, limit int) (int, error) {
 	return c.repo.PruneFinishedOperations(ctx, retain, limit)
 }

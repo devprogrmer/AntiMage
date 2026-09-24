@@ -70,6 +70,7 @@ export type FallbackForm = {
 };
 
 export type TlsCertificateForm = {
+	managedDomain: string;
 	useFile: boolean;
 	certFile: string;
 	keyFile: string;
@@ -369,6 +370,7 @@ export type InboundFormValues = {
 	ovRouteNoPull: boolean;
 	ovBlockOutsideDNS: boolean;
 	ovCA: string;
+	ovCertificateDomain: string;
 	ovServerCertificate: string;
 	ovServerKey: string;
 	ovDH: string;
@@ -420,11 +422,12 @@ export type InboundFormValues = {
 	raAccountingEnabled: boolean;
 	raRedirectGateway: boolean;
 	raCA: string;
+	raCertificateDomain: string;
 	raServerCertificate: string;
 	raServerKey: string;
 	raCertificateNames: string;
 	raServerIdentity: string;
-	ikeCertMode: "auto" | "manual";
+	ikeCertMode: "auto" | "manual" | "managed";
 	raMTU: string;
 	ikeProposals: string;
 	ikeEspProposals: string;
@@ -1161,13 +1164,16 @@ export const validateInboundFormFields = (
 					"Require DCO only supports AES-256-GCM, AES-128-GCM, or CHACHA20-POLY1305.";
 			}
 		}
-		if (!values.ovCA.trim()) {
+		if (!values.ovCertificateDomain.trim() && !values.ovCA.trim()) {
 			errors.ovCA = "CA certificate is required.";
 		}
-		if (!values.ovServerCertificate.trim()) {
+		if (
+			!values.ovCertificateDomain.trim() &&
+			!values.ovServerCertificate.trim()
+		) {
 			errors.ovServerCertificate = "Server certificate is required.";
 		}
-		if (!values.ovServerKey.trim()) {
+		if (!values.ovCertificateDomain.trim() && !values.ovServerKey.trim()) {
 			errors.ovServerKey = "Server key is required.";
 		}
 	}
@@ -1299,7 +1305,24 @@ export const validateInboundFormFields = (
 			errors.raTunnelPort = "Tunnel port must differ from the public port.";
 		}
 		const ikeManualCert =
-			values.protocol !== "ikev2" || values.ikeCertMode === "manual";
+			values.protocol === "ikev2"
+				? values.ikeCertMode === "manual"
+				: !values.raCertificateDomain.trim();
+		if (
+			(values.ikeCertMode === "managed" && values.protocol === "ikev2") ||
+			(values.protocol === "anyconnect" && values.raCertificateDomain.trim())
+		) {
+			if (!values.raCertificateDomain.trim())
+				errors.raCertificateDomain = "Select a managed certificate.";
+		}
+		if (
+			values.protocol === "ikev2" &&
+			values.ikeCertMode === "managed" &&
+			values.raAuthMode !== "password"
+		) {
+			errors.raAuthMode =
+				"Managed server certificates require password authentication; certificate authentication needs a separate client CA.";
+		}
 		if (ikeManualCert && !values.raServerCertificate.trim())
 			errors.raServerCertificate = "Server certificate is required.";
 		if (ikeManualCert && !values.raServerKey.trim())
@@ -1309,6 +1332,14 @@ export const validateInboundFormFields = (
 			(values.protocol === "ikev2" || values.raAuthMode !== "password")
 		) {
 			if (!values.raCA.trim()) errors.raCA = "CA certificate is required.";
+		}
+		if (
+			values.protocol === "anyconnect" &&
+			values.raCertificateDomain.trim() &&
+			values.raAuthMode !== "password" &&
+			!values.raCA.trim()
+		) {
+			errors.raCA = "Client certificate CA is required.";
 		}
 		if (
 			values.protocol === "ikev2" &&
@@ -1591,6 +1622,7 @@ const createDefaultProxyAccount = (): ProxyAccountForm => ({
 });
 
 export const createDefaultTlsCertificate = (): TlsCertificateForm => ({
+	managedDomain: "",
 	useFile: true,
 	certFile: "",
 	keyFile: "",
@@ -1641,6 +1673,7 @@ const certificateToForm = (
 		? certificate.key.join("\n")
 		: (certificate?.key ?? "");
 	return {
+		managedDomain: certificate?.managedDomain ?? "",
 		useFile: hasFile || (!certContent && !keyContent),
 		certFile: certificate?.certificateFile ?? "",
 		keyFile: certificate?.keyFile ?? "",
@@ -1656,6 +1689,12 @@ const certificateToForm = (
 const certificateFromForm = (
 	certificate: TlsCertificateForm,
 ): Record<string, any> => {
+	if (certificate.managedDomain.trim()) {
+		return {
+			managedDomain: certificate.managedDomain.trim(),
+			usage: certificate.usage || "encipherment",
+		};
+	}
 	if (certificate.useFile) {
 		return cleanObject({
 			certificateFile: certificate.certFile?.trim(),
@@ -1910,6 +1949,7 @@ export const createDefaultInboundForm = (
 	ovRouteNoPull: false,
 	ovBlockOutsideDNS: false,
 	ovCA: "",
+	ovCertificateDomain: "",
 	ovServerCertificate: "",
 	ovServerKey: "",
 	ovDH: "",
@@ -1957,6 +1997,7 @@ export const createDefaultInboundForm = (
 	raAccountingEnabled: true,
 	raRedirectGateway: true,
 	raCA: "",
+	raCertificateDomain: "",
 	raServerCertificate: "",
 	raServerKey: "",
 	raCertificateNames: "",
@@ -2715,6 +2756,8 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 				? Boolean(settings.block_outside_dns ?? base.ovBlockOutsideDNS)
 				: base.ovBlockOutsideDNS,
 		ovCA: protocol === "openvpn" ? (settings.ca ?? base.ovCA) : base.ovCA,
+		ovCertificateDomain:
+			protocol === "openvpn" ? (settings.certificate_domain ?? "") : "",
 		ovServerCertificate:
 			protocol === "openvpn"
 				? (settings.server_certificate ??
@@ -2896,6 +2939,10 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "ikev2" || protocol === "anyconnect"
 				? (settings.server_key ?? "")
 				: base.raServerKey,
+		raCertificateDomain:
+			protocol === "ikev2" || protocol === "anyconnect"
+				? (settings.certificate_domain ?? "")
+				: "",
 		raCertificateNames:
 			protocol === "anyconnect"
 				? joinLines(parseStringList(settings.certificate_names))
@@ -2906,14 +2953,16 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 				: base.raServerIdentity,
 		ikeCertMode:
 			protocol === "ikev2"
-				? ((settings.certificate_mode === "manual" ||
+				? settings.certificate_mode === "managed"
+					? "managed"
+					: (settings.certificate_mode === "manual" ||
 						settings.certificate_mode === "custom" ||
 						settings.ca_certificate ||
 						settings.server_certificate ||
 						settings.server_key) &&
 				  settings.certificate_mode !== "auto"
 						? "manual"
-						: "auto")
+						: "auto"
 				: base.ikeCertMode,
 		raMTU:
 			protocol === "ikev2" || protocol === "anyconnect"
@@ -4019,9 +4068,16 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.embed_credentials = values.ovEmbedCredentials;
 			base.route_nopull = values.ovRouteNoPull;
 			base.block_outside_dns = values.ovBlockOutsideDNS;
-			base.ca = values.ovCA.trim() || undefined;
-			base.server_certificate = values.ovServerCertificate.trim() || undefined;
-			base.server_key = values.ovServerKey.trim() || undefined;
+			base.certificate_domain = values.ovCertificateDomain.trim() || undefined;
+			base.ca = values.ovCertificateDomain.trim()
+				? undefined
+				: values.ovCA.trim() || undefined;
+			base.server_certificate = values.ovCertificateDomain.trim()
+				? undefined
+				: values.ovServerCertificate.trim() || undefined;
+			base.server_key = values.ovCertificateDomain.trim()
+				? undefined
+				: values.ovServerKey.trim() || undefined;
 			base.dh = values.ovDH.trim() || undefined;
 			base.tls_crypt = values.ovTlsCrypt.trim() || undefined;
 			base.tls_auth = values.ovTlsAuth.trim() || undefined;
@@ -4096,6 +4152,10 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 				: undefined;
 			if (values.protocol === "ikev2") {
 				base.certificate_mode = values.ikeCertMode;
+				base.certificate_domain =
+					values.ikeCertMode === "managed"
+						? values.raCertificateDomain.trim() || undefined
+						: undefined;
 				if (values.ikeCertMode === "manual") {
 					base.ca_certificate = values.raCA.trim() || undefined;
 					base.server_certificate =
@@ -4105,6 +4165,8 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 				base.server_identity =
 					values.ikeCertMode === "auto"
 						? values.raServerIdentity.trim() || "auto"
+						: values.ikeCertMode === "managed"
+							? values.raCertificateDomain.trim()
 						: values.raServerIdentity.trim();
 				base.ike_proposals = values.ikeProposals.trim();
 				base.esp_proposals = values.ikeEspProposals.trim();
@@ -4118,9 +4180,15 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 				base.dpd_delay = parseOptionalNumber(values.ikeDpdDelay);
 				base.routes = splitLines(values.ikeRoutes);
 			} else {
+				base.certificate_domain =
+					values.raCertificateDomain.trim() || undefined;
 				base.ca_certificate = values.raCA.trim() || undefined;
-				base.server_certificate = values.raServerCertificate.trim() || undefined;
-				base.server_key = values.raServerKey.trim() || undefined;
+				base.server_certificate = values.raCertificateDomain.trim()
+					? undefined
+					: values.raServerCertificate.trim() || undefined;
+				base.server_key = values.raCertificateDomain.trim()
+					? undefined
+					: values.raServerKey.trim() || undefined;
 				base.certificate_names = splitLines(values.raCertificateNames);
 				base.mtu = parseOptionalNumber(values.raMTU);
 				base.udp_enabled = values.acUDPEnabled;

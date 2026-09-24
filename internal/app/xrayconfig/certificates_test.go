@@ -24,6 +24,17 @@ func tlsInboundPayload(certificate map[string]any) map[string]any {
 	}
 }
 
+func TestValidateManagedCertificateReference(t *testing.T) {
+	payload := tlsInboundPayload(map[string]any{"managedDomain": "vpn.example.com"})
+	if err := ValidateCertificateFiles(payload); err != nil {
+		t.Fatal(err)
+	}
+	payload = tlsInboundPayload(map[string]any{"managedDomain": "../etc/passwd"})
+	if err := ValidateCertificateFiles(payload); err == nil {
+		t.Fatal("unsafe managed domain was accepted")
+	}
+}
+
 func TestValidateCertificateFilesMissingFile(t *testing.T) {
 	payload := tlsInboundPayload(map[string]any{
 		"certificateFile": "/nonexistent/fullchain.pem",

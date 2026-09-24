@@ -83,6 +83,14 @@ func (r Repository) ovRuntime(ctx context.Context, nodeID int64, inbounds []map[
 			continue
 		}
 		settings := OVRuntimeSettings(inbound)
+		if domain := strings.TrimSpace(OVStringValue(settings["certificate_domain"])); domain != "" {
+			certificate, key, err := r.loadManagedHAProxyCertificate(ctx, domain, domain)
+			if err != nil {
+				return OVRuntime{}, fmt.Errorf("openvpn %q certificate: %w", tag, err)
+			}
+			settings["ca"], settings["server_certificate"], settings["server_key"] = string(managedCertificateTrustChain(certificate)), string(certificate), string(key)
+			delete(settings, "certificate_domain")
+		}
 		serviceIDs, err := r.OVServiceIDsForInbound(ctx, tag)
 		if err != nil {
 			return OVRuntime{}, err

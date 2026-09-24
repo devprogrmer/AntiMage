@@ -148,6 +148,9 @@ func (c Controller) buildRuntimeConfigWithData(ctx context.Context, node NodeRow
 	if compatibilityWarning != "" {
 		logging.Warnf(logging.ComponentNode, "node=%d %s", node.ID, compatibilityWarning)
 	}
+	if err := c.resolveManagedTLSCertificates(ctx, raw); err != nil {
+		return "", err
+	}
 	if err := inlineTLSCertificateFiles(raw); err != nil {
 		return "", err
 	}
@@ -488,6 +491,38 @@ func inlineTLSCertificateFiles(raw map[string]any) error {
 				}
 				return fmt.Errorf("%s %s TLS certificate: %w", strings.TrimSuffix(section, "s"), tag, err)
 			}
+		}
+	}
+	return nil
+}
+
+func (c Controller) resolveManagedTLSCertificates(ctx context.Context, raw map[string]any) error {
+	for _, section := range []string{"inbounds", "outbounds"} {
+		for _, item := range listOfMaps(raw[section]) {
+			stream := mapValue(item["streamSettings"])
+			tlsSettings := mapValue(stream["tlsSettings"])
+			certificates, ok := certificateMaps(tlsSettings["certificates"])
+			if !ok {
+				continue
+			}
+			for _, certificate := range certificates {
+				domain := strings.TrimSpace(stringValue(certificate["managedDomain"]))
+				if domain == "" {
+					continue
+				}
+				chain, key, err := c.repo.loadManagedHAProxyCertificate(ctx, domain, domain)
+				if err != nil {
+					return fmt.Errorf("%s %q certificate: %w", section, stringValue(item["tag"]), err)
+				}
+				certificate["certificate"] = strings.Split(strings.TrimSpace(string(chain)), "\n")
+				certificate["key"] = strings.Split(strings.TrimSpace(string(key)), "\n")
+				delete(certificate, "managedDomain")
+				delete(certificate, "certificateFile")
+				delete(certificate, "keyFile")
+			}
+			tlsSettings["certificates"] = mapsToInterfaces(certificates)
+			stream["tlsSettings"] = tlsSettings
+			item["streamSettings"] = stream
 		}
 	}
 	return nil
