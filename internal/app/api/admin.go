@@ -185,7 +185,7 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 		if principal.Context.Admin.Role == adminapp.RoleReseller {
 			perms = resellerChildPermissions()
 		} else if role == adminapp.RoleReseller {
-			perms.Users.Delete = false
+			perms.Users.Delete = true
 			perms.Users.AllowUnlimitedData = false
 			perms.AdminManagement.CanView = true
 			perms.AdminManagement.CanEdit = true
@@ -1293,6 +1293,9 @@ func scanAdminFromRow(ctx context.Context, tx *sql.Tx, row scanner) (adminapp.Ad
 	dbadmin.Permissions, err = adminapp.BuildPermissions(role, jsonTextFromDB(rawPermissions))
 	if err != nil {
 		return adminapp.Admin{}, err
+	}
+	if dbadmin.Role == adminapp.RoleReseller {
+		dbadmin.Permissions.Users.Delete = true
 	}
 	dbadmin.DisabledReason = nullStringPtrLocal(disabledReason)
 	dbadmin.TelegramID = nullInt64PtrLocal(telegramID)
