@@ -570,6 +570,7 @@ func TestServiceHostChangeKeepsSubscriptionLinkAndChangesConfigOutput(t *testing
 	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN data_limit_reset_strategy TEXT NULL`)
 	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN online_at DATETIME NULL`)
 	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN note TEXT NULL`)
+	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN subscription_message TEXT NULL`)
 	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN telegram_id TEXT NULL`)
 	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN contact_number TEXT NULL`)
 	execTestSchemaStatement(t, db, `ALTER TABLE users ADD COLUMN sub_updated_at DATETIME NULL`)
