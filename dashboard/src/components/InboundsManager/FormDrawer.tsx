@@ -526,6 +526,10 @@ export const InboundFormModal: FC<Props> = ({
 		useWatch({ control, name: "raTproxyEnabled" }) ??
 		watch("raTproxyEnabled") ??
 		true;
+	const ikeCertMode =
+		useWatch({ control, name: "ikeCertMode" }) ||
+		watch("ikeCertMode") ||
+		"auto";
 	const autoOVTunnelPortRef = useRef("");
 	const autoWGTunnelPortRef = useRef("");
 	const autoL2TPTunnelPortRef = useRef("");
@@ -2926,69 +2930,99 @@ export const InboundFormModal: FC<Props> = ({
 														</Box>
 													</Stack>
 												)}
-												<FormControl
-													isRequired={
-														currentProtocol === "ikev2" ||
-														watch("raAuthMode") !== "password"
-													}
-													isInvalid={Boolean(fieldValidationErrors.raCA)}
-												>
-													{ovLabel(
-														"inbounds.remoteAccess.ca",
-														"CA certificate",
-														"inbounds.remoteAccess.help.ca",
-														"CA certificate used to verify client certificates and establish trust.",
-													)}
-													<Textarea rows={4} {...register("raCA")} />
-													{fieldValidationErrors.raCA && (
-														<Text fontSize="xs" color="red.500">
-															{fieldValidationErrors.raCA}
-														</Text>
-													)}
-												</FormControl>
-												<FormControl
-													isRequired
-													isInvalid={Boolean(
-														fieldValidationErrors.raServerCertificate,
-													)}
-												>
-													{ovLabel(
-														"inbounds.remoteAccess.serverCertificate",
-														"Server certificate",
-														"inbounds.remoteAccess.help.serverCertificate",
-														"PEM certificate presented by the server. Its SAN must match the host address.",
-													)}
-													<Textarea
-														rows={4}
-														{...register("raServerCertificate")}
-													/>
-													{fieldValidationErrors.raServerCertificate && (
-														<Text fontSize="xs" color="red.500">
-															{fieldValidationErrors.raServerCertificate}
-														</Text>
-													)}
-												</FormControl>
-												<FormControl
-													isRequired
-													isInvalid={Boolean(fieldValidationErrors.raServerKey)}
-												>
-													{ovLabel(
-														"inbounds.remoteAccess.serverKey",
-														"Server key",
-														"inbounds.remoteAccess.help.serverKey",
-														"Unencrypted PEM private key matching the server certificate.",
-													)}
-													<Textarea rows={4} {...register("raServerKey")} />
-													{fieldValidationErrors.raServerKey && (
-														<Text fontSize="xs" color="red.500">
-															{fieldValidationErrors.raServerKey}
-														</Text>
-													)}
-												</FormControl>
+												{currentProtocol === "ikev2" && (
+													<FormControl>
+														{ovLabel(
+															"inbounds.ikev2.certificateMode",
+															"Certificate mode",
+															"inbounds.ikev2.help.certificateMode",
+															"Auto creates and persists an RSA CA and server certificate on the node. Manual uses pasted PEM material.",
+														)}
+														<Controller
+															control={control}
+															name="ikeCertMode"
+															render={({ field }) => (
+																<SearchableTagSelect
+																	value={field.value}
+																	onChange={field.onChange}
+																	placeholder="Certificate mode"
+																	options={[
+																		{ value: "auto", label: "Auto-managed" },
+																		{ value: "manual", label: "Manual / custom PEM" },
+																	]}
+																/>
+															)}
+														/>
+													</FormControl>
+												)}
+												{(currentProtocol !== "ikev2" ||
+													ikeCertMode === "manual") && (
+													<>
+														<FormControl
+															isRequired={
+																currentProtocol === "ikev2" ||
+																watch("raAuthMode") !== "password"
+															}
+															isInvalid={Boolean(fieldValidationErrors.raCA)}
+														>
+															{ovLabel(
+																"inbounds.remoteAccess.ca",
+																"CA certificate",
+																"inbounds.remoteAccess.help.ca",
+																"CA certificate used to verify client certificates and establish trust.",
+															)}
+															<Textarea rows={4} {...register("raCA")} />
+															{fieldValidationErrors.raCA && (
+																<Text fontSize="xs" color="red.500">
+																	{fieldValidationErrors.raCA}
+																</Text>
+															)}
+														</FormControl>
+														<FormControl
+															isRequired
+															isInvalid={Boolean(
+																fieldValidationErrors.raServerCertificate,
+															)}
+														>
+															{ovLabel(
+																"inbounds.remoteAccess.serverCertificate",
+																"Server certificate",
+																"inbounds.remoteAccess.help.serverCertificate",
+																"PEM certificate presented by the server. Its SAN must match the host address.",
+															)}
+															<Textarea
+																rows={4}
+																{...register("raServerCertificate")}
+															/>
+															{fieldValidationErrors.raServerCertificate && (
+																<Text fontSize="xs" color="red.500">
+																	{fieldValidationErrors.raServerCertificate}
+																</Text>
+															)}
+														</FormControl>
+														<FormControl
+															isRequired
+															isInvalid={Boolean(fieldValidationErrors.raServerKey)}
+														>
+															{ovLabel(
+																"inbounds.remoteAccess.serverKey",
+																"Server key",
+																"inbounds.remoteAccess.help.serverKey",
+																"Unencrypted PEM private key matching the server certificate.",
+															)}
+															<Textarea rows={4} {...register("raServerKey")} />
+															{fieldValidationErrors.raServerKey && (
+																<Text fontSize="xs" color="red.500">
+																	{fieldValidationErrors.raServerKey}
+																</Text>
+															)}
+														</FormControl>
+													</>
+												)}
 												{currentProtocol === "ikev2" ? (
 													<Stack spacing={3}>
 														<FormControl
-															isRequired
+															isRequired={ikeCertMode === "manual"}
 															isInvalid={Boolean(
 																fieldValidationErrors.raServerIdentity,
 															)}
@@ -3001,7 +3035,11 @@ export const InboundFormModal: FC<Props> = ({
 															)}
 															<Input
 																{...register("raServerIdentity")}
-																placeholder="vpn.example.com"
+																placeholder={
+																	ikeCertMode === "auto"
+																		? "auto"
+																		: "vpn.example.com"
+																}
 															/>
 															{fieldValidationErrors.raServerIdentity && (
 																<Text fontSize="xs" color="red.500">

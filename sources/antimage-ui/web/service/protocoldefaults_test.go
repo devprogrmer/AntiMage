@@ -474,6 +474,9 @@ func TestDefaultSettingsForRoundTripsIntoTheProtocolStruct(t *testing.T) {
 	t.Run("ikev2", func(t *testing.T) {
 		var s ikev2Settings
 		unmarshalDefaults(t, model.IKEV2, &s)
+		if s.certificateMode() != "auto" {
+			t.Errorf("certificate mode: %q", s.certificateMode())
+		}
 		if s.authMode() != "eap-mschapv2" || s.Psk != "" || s.ServerAddr != "" {
 			t.Errorf("auth block: %q psk=%q addr=%q", s.authMode(), s.Psk, s.ServerAddr)
 		}
@@ -485,6 +488,13 @@ func TestDefaultSettingsForRoundTripsIntoTheProtocolStruct(t *testing.T) {
 		// so the form's control did nothing whatsoever.
 		if s.Mtu != 1400 || s.effectiveMtu() != 1400 || s.clampMss() != 1360 {
 			t.Errorf("mtu: stored=%d effective=%d mss=%d", s.Mtu, s.effectiveMtu(), s.clampMss())
+		}
+	})
+
+	t.Run("ikev2 legacy manual certificate", func(t *testing.T) {
+		s := ikev2Settings{Certificate: "cert", Key: "key", CaCert: "ca"}
+		if s.certificateMode() != "manual" {
+			t.Errorf("legacy certificate mode: %q", s.certificateMode())
 		}
 	})
 

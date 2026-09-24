@@ -1748,6 +1748,29 @@ func TestRemoteAccessInboundValidation(t *testing.T) {
 	}
 }
 
+func TestIKEv2AutoCertificateValidationDoesNotRequireManualPEM(t *testing.T) {
+	err := validateVirtualTunnelInbound(IKEv2Protocol, map[string]any{
+		"tag":      "ikev2",
+		"port":     500,
+		"protocol": IKEv2Protocol,
+		"settings": map[string]any{
+			"auth_mode":          "password",
+			"certificate_mode":   "auto",
+			"ipv4_pool_cidr":     "10.70.0.0/24",
+			"tproxy_enabled":     false,
+			"server_identity":    "auto",
+			"ike_proposals":      "aes256-sha256-modp2048",
+			"esp_proposals":      "aes256-sha256",
+			"fragmentation":      "yes",
+			"redirect_gateway":   true,
+			"accounting_enabled": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("auto-certificate IKEv2 validation failed: %v", err)
+	}
+}
+
 func TestRemoteAccessInboundRejectsUnsafeSettings(t *testing.T) {
 	tests := []map[string]any{
 		{"tag": "ikev2", "port": 500, "protocol": IKEv2Protocol, "settings": map[string]any{"auth_mode": "password", "ipv4_pool_cidr": "10.70.0.0/24", "tproxy_enabled": false, "ca_certificate": "ca", "server_certificate": "cert", "server_key": "key", "server_identity": "vpn.example.com\nauto=start"}},

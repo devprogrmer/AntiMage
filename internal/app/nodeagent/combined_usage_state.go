@@ -13,13 +13,15 @@ import (
 )
 
 type combinedUsagePendingBatch struct {
-	BatchID          string    `json:"batch_id"`
-	CoreBatchID      string    `json:"core_batch_id"`
-	WireGuardBatchID string    `json:"wireguard_batch_id"`
-	L2TPBatchID      string    `json:"l2tp_batch_id,omitempty"`
-	PPTPBatchID      string    `json:"pptp_batch_id,omitempty"`
-	AmneziaWGBatchID string    `json:"amneziawg_batch_id,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
+	BatchID           string    `json:"batch_id"`
+	CoreBatchID       string    `json:"core_batch_id"`
+	WireGuardBatchID  string    `json:"wireguard_batch_id"`
+	L2TPBatchID       string    `json:"l2tp_batch_id,omitempty"`
+	PPTPBatchID       string    `json:"pptp_batch_id,omitempty"`
+	AmneziaWGBatchID  string    `json:"amneziawg_batch_id,omitempty"`
+	IKEv2BatchID      string    `json:"ikev2_batch_id,omitempty"`
+	AnyConnectBatchID string    `json:"anyconnect_batch_id,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 type combinedUsageDiskState struct {
@@ -110,6 +112,8 @@ func (s *Server) combineUserUsageBatches(
 	var l2tpBatch *nodev1.UserUsageBatch
 	var pptpBatch *nodev1.UserUsageBatch
 	var awgBatch *nodev1.UserUsageBatch
+	var ikev2Batch *nodev1.UserUsageBatch
+	var anyConnectBatch *nodev1.UserUsageBatch
 	if len(optionalNative) > 0 {
 		l2tpBatch = optionalNative[0]
 	}
@@ -118,6 +122,12 @@ func (s *Server) combineUserUsageBatches(
 	}
 	if len(optionalNative) > 2 {
 		awgBatch = optionalNative[2]
+	}
+	if len(optionalNative) > 3 {
+		ikev2Batch = optionalNative[3]
+	}
+	if len(optionalNative) > 4 {
+		anyConnectBatch = optionalNative[4]
 	}
 	coreID := ""
 	if coreBatch != nil {
@@ -139,6 +149,14 @@ func (s *Server) combineUserUsageBatches(
 	if awgBatch != nil {
 		awgID = strings.TrimSpace(awgBatch.GetBatchId())
 	}
+	ikev2ID := ""
+	if ikev2Batch != nil {
+		ikev2ID = strings.TrimSpace(ikev2Batch.GetBatchId())
+	}
+	anyConnectID := ""
+	if anyConnectBatch != nil {
+		anyConnectID = strings.TrimSpace(anyConnectBatch.GetBatchId())
+	}
 
 	nonEmpty := 0
 	if coreID != "" {
@@ -156,6 +174,12 @@ func (s *Server) combineUserUsageBatches(
 	if awgID != "" {
 		nonEmpty++
 	}
+	if ikev2ID != "" {
+		nonEmpty++
+	}
+	if anyConnectID != "" {
+		nonEmpty++
+	}
 	if nonEmpty == 0 {
 		return &nodev1.UserUsageBatch{}, nil
 	}
@@ -171,6 +195,12 @@ func (s *Server) combineUserUsageBatches(
 		}
 		if awgID != "" {
 			return awgBatch, nil
+		}
+		if ikev2ID != "" {
+			return ikev2Batch, nil
+		}
+		if anyConnectID != "" {
+			return anyConnectBatch, nil
 		}
 		return pptpBatch, nil
 	}
@@ -212,6 +242,19 @@ func (s *Server) combineUserUsageBatches(
 			return nil, fmt.Errorf("combined AmneziaWG child batch changed before ACK")
 		}
 
+		if pending.IKEv2BatchID == "" {
+			ikev2Batch = nil
+		} else if pending.IKEv2BatchID != ikev2ID {
+			return nil, fmt.Errorf(
+				"combined IKEv2 child batch changed before ACK",
+			)
+		}
+		if pending.AnyConnectBatchID == "" {
+			anyConnectBatch = nil
+		} else if pending.AnyConnectBatchID != anyConnectID {
+			return nil, fmt.Errorf("combined AnyConnect child batch changed before ACK")
+		}
+
 		return buildCombinedUsageBatch(
 			pending.BatchID,
 			coreBatch,
@@ -219,6 +262,8 @@ func (s *Server) combineUserUsageBatches(
 			l2tpBatch,
 			pptpBatch,
 			awgBatch,
+			ikev2Batch,
+			anyConnectBatch,
 		), nil
 	}
 
@@ -227,12 +272,14 @@ func (s *Server) combineUserUsageBatches(
 			"combined-%d",
 			time.Now().UTC().UnixNano(),
 		),
-		CoreBatchID:      coreID,
-		WireGuardBatchID: wgID,
-		L2TPBatchID:      l2tpID,
-		PPTPBatchID:      pptpID,
-		AmneziaWGBatchID: awgID,
-		CreatedAt:        time.Now().UTC(),
+		CoreBatchID:       coreID,
+		WireGuardBatchID:  wgID,
+		L2TPBatchID:       l2tpID,
+		PPTPBatchID:       pptpID,
+		AmneziaWGBatchID:  awgID,
+		IKEv2BatchID:      ikev2ID,
+		AnyConnectBatchID: anyConnectID,
+		CreatedAt:         time.Now().UTC(),
 	}
 	s.combinedUsagePending = pending
 	if err := s.persistCombinedUsageStateLocked(); err != nil {
@@ -246,6 +293,8 @@ func (s *Server) combineUserUsageBatches(
 		l2tpBatch,
 		pptpBatch,
 		awgBatch,
+		ikev2Batch,
+		anyConnectBatch,
 	), nil
 }
 
@@ -258,6 +307,8 @@ func buildCombinedUsageBatch(
 	var l2tpBatch *nodev1.UserUsageBatch
 	var pptpBatch *nodev1.UserUsageBatch
 	var awgBatch *nodev1.UserUsageBatch
+	var ikev2Batch *nodev1.UserUsageBatch
+	var anyConnectBatch *nodev1.UserUsageBatch
 	if len(optionalNative) > 0 {
 		l2tpBatch = optionalNative[0]
 	}
@@ -266,6 +317,12 @@ func buildCombinedUsageBatch(
 	}
 	if len(optionalNative) > 2 {
 		awgBatch = optionalNative[2]
+	}
+	if len(optionalNative) > 3 {
+		ikev2Batch = optionalNative[3]
+	}
+	if len(optionalNative) > 4 {
+		anyConnectBatch = optionalNative[4]
 	}
 	stats := make([]*nodev1.UserUsageSample, 0,
 		len(coreBatch.GetStats())+
@@ -277,6 +334,8 @@ func buildCombinedUsageBatch(
 	stats = append(stats, wireGuardBatch.GetStats()...)
 	stats = append(stats, l2tpBatch.GetStats()...)
 	stats = append(stats, pptpBatch.GetStats()...)
+	stats = append(stats, ikev2Batch.GetStats()...)
+	stats = append(stats, anyConnectBatch.GetStats()...)
 
 	onlineIPs := make([]*nodev1.OnlineUserIP, 0,
 		len(coreBatch.GetOnlineIps())+
@@ -288,6 +347,11 @@ func buildCombinedUsageBatch(
 	onlineIPs = append(onlineIPs, wireGuardBatch.GetOnlineIps()...)
 	onlineIPs = append(onlineIPs, l2tpBatch.GetOnlineIps()...)
 	onlineIPs = append(onlineIPs, pptpBatch.GetOnlineIps()...)
+	onlineIPs = append(
+		onlineIPs,
+		ikev2Batch.GetOnlineIps()...,
+	)
+	onlineIPs = append(onlineIPs, anyConnectBatch.GetOnlineIps()...)
 
 	speeds := make([]*nodev1.UserTrafficSpeed, 0,
 		len(coreBatch.GetSpeeds())+
@@ -299,6 +363,8 @@ func buildCombinedUsageBatch(
 	speeds = append(speeds, wireGuardBatch.GetSpeeds()...)
 	speeds = append(speeds, l2tpBatch.GetSpeeds()...)
 	speeds = append(speeds, pptpBatch.GetSpeeds()...)
+	speeds = append(speeds, ikev2Batch.GetSpeeds()...)
+	speeds = append(speeds, anyConnectBatch.GetSpeeds()...)
 
 	return &nodev1.UserUsageBatch{
 		BatchId:   batchID,
@@ -383,6 +449,23 @@ func (s *Server) ackCombinedUserUsage(
 		}
 		pptpAck = resp.GetAcknowledged()
 	}
+	ikev2Ack := true
+	if strings.TrimSpace(pending.IKEv2BatchID) != "" {
+		resp, err := s.ackIKEv2UserUsage(
+			ctx,
+			&nodev1.AckUsageRequest{
+				BatchId: pending.IKEv2BatchID,
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"combined IKEv2 ACK failed: %w",
+				err,
+			)
+		}
+		ikev2Ack = resp.GetAcknowledged()
+	}
+
 	awgAck := true
 	if strings.TrimSpace(pending.AmneziaWGBatchID) != "" {
 		resp, err := s.ackAmneziaWGUserUsage(ctx, &nodev1.AckUsageRequest{BatchId: pending.AmneziaWGBatchID})
@@ -391,8 +474,22 @@ func (s *Server) ackCombinedUserUsage(
 		}
 		awgAck = resp.GetAcknowledged()
 	}
+	anyConnectAck := true
+	if strings.TrimSpace(pending.AnyConnectBatchID) != "" {
+		resp, err := s.ackAnyConnectUserUsage(ctx, &nodev1.AckUsageRequest{BatchId: pending.AnyConnectBatchID})
+		if err != nil {
+			return nil, fmt.Errorf("combined AnyConnect ACK failed: %w", err)
+		}
+		anyConnectAck = resp.GetAcknowledged()
+	}
 
-	if !coreAck || !wgAck || !l2tpAck || !pptpAck || !awgAck {
+	if !coreAck ||
+		!wgAck ||
+		!l2tpAck ||
+		!pptpAck ||
+		!awgAck ||
+		!ikev2Ack ||
+		!anyConnectAck {
 		return &nodev1.AckUsageResponse{Acknowledged: false}, nil
 	}
 
@@ -424,6 +521,9 @@ func (s *Server) ackUsageChildBatch(
 	case strings.HasPrefix(batchID, "pptp-"):
 		resp, err := s.ackPPTPUserUsage(ctx, req)
 		return resp.GetAcknowledged(), err
+	case strings.HasPrefix(batchID, "ikev2-"):
+		resp, err := s.ackIKEv2UserUsage(ctx, req)
+		return resp.GetAcknowledged(), err
 	case strings.HasPrefix(batchID, "xray-"):
 		resp, err := s.ackXrayUserUsage(ctx, req)
 		return resp.GetAcknowledged(), err
@@ -435,6 +535,9 @@ func (s *Server) ackUsageChildBatch(
 		return resp.GetAcknowledged(), err
 	case strings.HasPrefix(batchID, "amneziawg-"):
 		resp, err := s.ackAmneziaWGUserUsage(ctx, req)
+		return resp.GetAcknowledged(), err
+	case strings.HasPrefix(batchID, "anyconnect-"):
+		resp, err := s.ackAnyConnectUserUsage(ctx, req)
 		return resp.GetAcknowledged(), err
 	default:
 		return false, nil

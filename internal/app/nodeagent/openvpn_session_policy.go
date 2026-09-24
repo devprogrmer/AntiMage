@@ -37,9 +37,11 @@ func buildNativeSessionUserPolicies(
 			Status: strings.ToLower(
 				strings.TrimSpace(user.Status),
 			),
-			UsedTraffic: user.UsedTraffic,
-			DataLimit:   dataLimit,
-			Expire:      expire,
+			UsedTraffic:        user.UsedTraffic,
+			DataLimit:          dataLimit,
+			Expire:             expire,
+			UploadSpeedLimit:   user.UploadSpeedLimit,
+			DownloadSpeedLimit: user.DownloadSpeedLimit,
 		}
 	}
 

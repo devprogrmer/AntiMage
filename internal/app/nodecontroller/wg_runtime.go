@@ -40,6 +40,8 @@ type WGRuntimePeer struct {
 	DataLimit             *int64 `json:"data_limit,omitempty"`
 	Expire                *int64 `json:"expire,omitempty"`
 	DeviceLimit           int64  `json:"device_limit,omitempty"`
+	UploadSpeedLimit      int64  `json:"upload_speed_limit"`
+	DownloadSpeedLimit    int64  `json:"download_speed_limit"`
 }
 
 func (r Repository) WGRuntime(ctx context.Context, nodeID int64) (WGRuntime, error) {
@@ -210,7 +212,7 @@ func (r Repository) WGUsersForServices(ctx context.Context, inboundTag string, s
 		args = append(args, id)
 	}
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, username, COALESCE(credential_key, ''), status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(device_limit, 0)
+SELECT id, username, COALESCE(credential_key, ''), status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(device_limit, 0), COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0)
 FROM users
 WHERE status IN ('active', 'on_hold')
   AND service_id IN (`+strings.Join(placeholders, ",")+`)
@@ -228,7 +230,7 @@ ORDER BY id`, args...)
 		var item WGRuntimePeer
 		var credentialKey string
 		var dataLimit, expire sql.NullInt64
-		if err := rows.Scan(&item.UserID, &item.Username, &credentialKey, &item.Status, &item.UsedTraffic, &dataLimit, &expire, &item.DeviceLimit); err != nil {
+		if err := rows.Scan(&item.UserID, &item.Username, &credentialKey, &item.Status, &item.UsedTraffic, &dataLimit, &expire, &item.DeviceLimit, &item.UploadSpeedLimit, &item.DownloadSpeedLimit); err != nil {
 			return nil, err
 		}
 		item.DataLimit = nullableOVInt64(dataLimit)

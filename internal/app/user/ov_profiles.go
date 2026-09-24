@@ -110,6 +110,15 @@ func (s Service) generateOVProfile(ctx context.Context, user UserDetail, req Sub
 		return SubscriptionHTTPResponse{}, clientError(404, "OV profile not found")
 	}
 	profile := profiles[0]
+
+	_ = s.recordGenericSubscriptionDeviceMetadata(
+		ctx,
+		user.ID,
+		"ov",
+		profile.InboundTag,
+		req,
+	)
+
 	return SubscriptionHTTPResponse{
 		Status:    200,
 		MediaType: "application/x-openvpn-profile",

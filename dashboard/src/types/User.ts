@@ -64,6 +64,8 @@ export type User = {
 	data_limit: number | null;
 	ip_limit: number | null;
 	device_limit: number | null;
+	upload_speed_limit: number | null;
+	download_speed_limit: number | null;
 	data_limit_reset_strategy: DataLimitResetStrategy;
 	on_hold_expire_duration: number | null;
 	lifetime_used_traffic: number;
@@ -96,6 +98,8 @@ export type UserListItem = {
 	expire: number | null;
 	data_limit: number | null;
 	device_limit: number | null;
+	upload_speed_limit: number | null;
+	download_speed_limit: number | null;
 	data_limit_reset_strategy: DataLimitResetStrategy | null;
 	online_at?: string | null;
 	is_online: boolean;
@@ -128,6 +132,8 @@ export type UserCreate = Pick<
 	| "service_id"
 	| "auto_delete_in_days"
 > & {
+	upload_speed_limit?: number | null;
+	download_speed_limit?: number | null;
 	next_plans?: NextPlan[];
 };
 
@@ -150,6 +156,8 @@ export type UserCreateWithService = Pick<
 	next_plans?: NextPlan[];
 	credential_key?: string;
 	device_limit?: number | null;
+	upload_speed_limit?: number | null;
+	download_speed_limit?: number | null;
 };
 
 export type UserApi = {

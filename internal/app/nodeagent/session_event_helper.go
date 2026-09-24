@@ -30,6 +30,8 @@ type nativeSessionUserPolicy struct {
 	DataLimit             int64  `json:"data_limit"`
 	Expire                int64  `json:"expire"`
 	ReflectedUsageBatchID string `json:"reflected_usage_batch_id,omitempty"`
+	UploadSpeedLimit      int64  `json:"upload_speed_limit,omitempty"`
+	DownloadSpeedLimit    int64  `json:"download_speed_limit,omitempty"`
 }
 
 func nativeSessionUserPolicyAllowed(
@@ -93,7 +95,7 @@ func RunNativeSessionEventHelper(args []string) error {
 		protocol = "ov"
 	}
 
-	commonName := firstNonEmptyEnv("common_name", "PEERNAME")
+	commonName := firstNonEmptyEnv("common_name", "PEERNAME", "USERNAME")
 	if commonName == "" {
 		return fmt.Errorf("%s session username is missing", protocol)
 	}
@@ -111,11 +113,16 @@ func RunNativeSessionEventHelper(args []string) error {
 		"ifconfig_pool_remote_ip",
 		"IPREMOTE",
 		"PPP_REMOTE",
+		"IP_REMOTE",
 	)
 
-	clientIP := firstNonEmptyEnv("trusted_ip", "trusted_ip6", "CALLING_NUMBER")
+	interfaceName := firstNonEmptyEnv("IFNAME", "DEVICE")
+
+	clientIP := firstNonEmptyEnv("trusted_ip", "trusted_ip6", "CALLING_NUMBER", "IP_REAL")
 
 	trustedPort := firstNonEmptyEnv("trusted_port")
+
+	policy := cfg.Policies[commonName]
 
 	stateDir := strings.TrimSpace(cfg.StateDir)
 	if stateDir == "" {
@@ -141,6 +148,19 @@ func RunNativeSessionEventHelper(args []string) error {
 		stateDir,
 		stateKey+".session",
 	)
+
+	if eventName == "stop" {
+		if _, err := nativeSpeedHandlePPPSessionEvent(
+			protocol,
+			eventName,
+			interfaceName,
+			assignedIP,
+			userID,
+			policy,
+		); err != nil {
+			return err
+		}
+	}
 
 	sessionID := ""
 
@@ -174,6 +194,23 @@ func RunNativeSessionEventHelper(args []string) error {
 		}
 	}
 
+	shaped := false
+
+	if eventName == "start" {
+		shaped, err = nativeSpeedHandlePPPSessionEvent(
+			protocol,
+			eventName,
+			interfaceName,
+			assignedIP,
+			userID,
+			policy,
+		)
+		if err != nil {
+			_ = os.Remove(statePath)
+			return err
+		}
+	}
+
 	node := &Server{}
 
 	err = node.sendNativeSessionEvent(
@@ -186,12 +223,19 @@ func RunNativeSessionEventHelper(args []string) error {
 			SessionID:  sessionID,
 			AssignedIP: assignedIP,
 			ClientIP:   clientIP,
+			DeviceID:   nativeSessionDeviceID(protocol, sessionID),
+			DeviceType: nativeSessionDeviceType(protocol),
+			ClientName: nativeSessionClientName(protocol),
+			Platform:   "Unknown",
 			Event:      eventName,
 		},
 	)
 
 	if err != nil {
 		if eventName == "start" {
+			if shaped && interfaceName != "" {
+				nativeSpeedClearInterface(interfaceName)
+			}
 			_ = os.Remove(statePath)
 		}
 		return err
@@ -204,6 +248,38 @@ func RunNativeSessionEventHelper(args []string) error {
 	return nil
 }
 
+func nativeSessionDeviceID(protocol string, sessionID string) string {
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	switch protocol {
+	case "ov", "openvpn":
+		sum := sha256.Sum256([]byte(strings.TrimSpace(sessionID)))
+		return "ov-" + hex.EncodeToString(sum[:8])
+	default:
+		return ""
+	}
+}
+
+func nativeSessionDeviceType(protocol string) string {
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "ov", "openvpn":
+		return "VPN Session"
+	default:
+		return "Unknown"
+	}
+}
+
+func nativeSessionClientName(protocol string) string {
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "ov", "openvpn":
+		return "OpenVPN"
+	case "l2tp":
+		return "L2TP"
+	case "pptp":
+		return "PPTP"
+	default:
+		return "Unknown"
+	}
+}
 func firstNonEmptyEnv(keys ...string) string {
 	for _, key := range keys {
 		if value := strings.TrimSpace(os.Getenv(key)); value != "" {

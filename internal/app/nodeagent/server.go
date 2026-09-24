@@ -38,6 +38,7 @@ type Server struct {
 	lastConfig                       string
 	lastRuntime                      *exec.Cmd
 	openVPNRuntimes                  map[string]*openVPNProcess
+	anyConnectRuntimes               map[string]*anyConnectProcess
 	openVPNTProxySpecs               map[string]openVPNTProxySpec
 	openVPNNATSpecs                  map[string]openVPNNATSpec
 	l2TPRuntimes                     map[string]*l2TPProcess
@@ -46,6 +47,9 @@ type Server struct {
 	pptpRuntimes                     map[string]*pptpProcess
 	pptpTProxySpecs                  map[string]openVPNTProxySpec
 	pptpNATSpecs                     map[string]openVPNNATSpec
+	ikev2Runtimes                    map[string]*ikev2Process
+	ikev2TProxySpecs                 map[string]ikev2TProxySpec
+	ikev2NATSpecs                    map[string]openVPNNATSpec
 	openVPNTProxyStartupReconciled   bool
 	wireGuardRuntimes                map[string]wireGuardRuntimeState
 	amneziaWGRuntimes                map[string]amneziaWGRuntimeState
@@ -55,6 +59,11 @@ type Server struct {
 	openVPNUsagePending              *openVPNUsagePendingBatch
 	openVPNUsageLoaded               bool
 	openVPNUsageLastAckedBatchID     string
+	anyConnectUsageMu                sync.Mutex
+	anyConnectUsageBaseline          map[string]uint64
+	anyConnectUsagePending           *anyConnectUsagePendingBatch
+	anyConnectUsageLoaded            bool
+	anyConnectUsageLastAckedBatchID  string
 	l2TPUsageMu                      sync.Mutex
 	l2TPUsageBaseline                map[string]uint64
 	l2TPUsagePending                 *l2TPUsagePendingBatch
@@ -65,6 +74,11 @@ type Server struct {
 	pptpUsagePending                 *pptpUsagePendingBatch
 	pptpUsageLoaded                  bool
 	pptpUsageLastAckedBatchID        string
+	ikev2UsageMu                     sync.Mutex
+	ikev2UsageBaseline               map[string]uint64
+	ikev2UsagePending                *ikev2UsagePendingBatch
+	ikev2UsageLoaded                 bool
+	ikev2UsageLastAckedBatchID       string
 	wireGuardUsageMu                 sync.Mutex
 	wireGuardUsageBaseline           map[string]uint64
 	wireGuardUsagePending            *wireGuardUsagePendingBatch
@@ -119,6 +133,7 @@ func New(cfg Config) *Server {
 		xrayAPIPortFallback:             cfg.XrayAPIPort,
 		startedAt:                       time.Now(),
 		openVPNRuntimes:                 make(map[string]*openVPNProcess),
+		anyConnectRuntimes:              make(map[string]*anyConnectProcess),
 		openVPNTProxySpecs:              make(map[string]openVPNTProxySpec),
 		openVPNNATSpecs:                 make(map[string]openVPNNATSpec),
 		l2TPRuntimes:                    make(map[string]*l2TPProcess),
@@ -127,10 +142,14 @@ func New(cfg Config) *Server {
 		pptpRuntimes:                    make(map[string]*pptpProcess),
 		pptpTProxySpecs:                 make(map[string]openVPNTProxySpec),
 		pptpNATSpecs:                    make(map[string]openVPNNATSpec),
+		ikev2Runtimes:                   make(map[string]*ikev2Process),
+		ikev2TProxySpecs:                make(map[string]ikev2TProxySpec),
+		ikev2NATSpecs:                   make(map[string]openVPNNATSpec),
 		wireGuardRuntimes:               make(map[string]wireGuardRuntimeState),
 		amneziaWGRuntimes:               make(map[string]amneziaWGRuntimeState),
 		wireGuardDynamicSuppressedPeers: make(map[string]struct{}),
 		openVPNUsageBaseline:            make(map[string]uint64),
+		anyConnectUsageBaseline:         make(map[string]uint64),
 		l2TPUsageBaseline:               make(map[string]uint64),
 		pptpUsageBaseline:               make(map[string]uint64),
 		wireGuardUsageBaseline:          make(map[string]uint64),
@@ -157,6 +176,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	defer func() {
 		s.stopAllOpenVPNRuntimes()
+		s.stopAllAnyConnectRuntimes()
 		s.stopAllOpenVPNTProxySpecs()
 		s.stopAllOpenVPNNATSpecs()
 		s.stopAllL2TPRuntimes()
@@ -165,8 +185,12 @@ func (s *Server) Run(ctx context.Context) error {
 		s.stopAllPPTPRuntimes()
 		s.stopAllPPTPTProxySpecs()
 		s.stopAllPPTPNATSpecs()
+		s.stopAllIKEv2Runtimes()
+		s.stopAllIKEv2TProxySpecs()
+		s.stopAllIKEv2NATSpecs()
 		s.stopAllWireGuardRuntimes()
 		s.stopAllAmneziaWGRuntimes()
+		s.clearNativeSpeedLimitsLogged()
 		_ = s.stopRuntime()
 	}()
 
@@ -229,6 +253,7 @@ func (s *Server) RestartRuntime(
 	req *nodev1.RuntimeConfigRequest,
 ) (*nodev1.RuntimeActionResponse, error) {
 	s.stopAllOpenVPNRuntimes()
+	s.stopAllAnyConnectRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
 	s.stopAllOpenVPNNATSpecs()
 	s.stopAllL2TPRuntimes()
@@ -237,8 +262,12 @@ func (s *Server) RestartRuntime(
 	s.stopAllPPTPRuntimes()
 	s.stopAllPPTPTProxySpecs()
 	s.stopAllPPTPNATSpecs()
+	s.stopAllIKEv2Runtimes()
+	s.stopAllIKEv2TProxySpecs()
+	s.stopAllIKEv2NATSpecs()
 	s.stopAllWireGuardRuntimes()
 	s.stopAllAmneziaWGRuntimes()
+	s.clearNativeSpeedLimitsLogged()
 	_ = s.stopRuntime()
 
 	return s.applyConfig(ctx, req, "restarted")
@@ -249,6 +278,7 @@ func (s *Server) StopRuntime(
 	*nodev1.StopRuntimeRequest,
 ) (*nodev1.RuntimeActionResponse, error) {
 	s.stopAllOpenVPNRuntimes()
+	s.stopAllAnyConnectRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
 	s.stopAllOpenVPNNATSpecs()
 	s.stopAllL2TPRuntimes()
@@ -257,8 +287,12 @@ func (s *Server) StopRuntime(
 	s.stopAllPPTPRuntimes()
 	s.stopAllPPTPTProxySpecs()
 	s.stopAllPPTPNATSpecs()
+	s.stopAllIKEv2Runtimes()
+	s.stopAllIKEv2TProxySpecs()
+	s.stopAllIKEv2NATSpecs()
 	s.stopAllWireGuardRuntimes()
 	s.stopAllAmneziaWGRuntimes()
+	s.clearNativeSpeedLimitsLogged()
 	_ = s.stopRuntime()
 
 	return s.action("", "stopped"), nil
@@ -422,6 +456,9 @@ func (s *Server) AckUserUsage(
 	// Try WireGuard ACK
 	if strings.HasPrefix(batchID, "wireguard-") {
 		return s.ackWireGuardUserUsage(ctx, req)
+	}
+	if strings.HasPrefix(batchID, "amneziawg-") {
+		return s.ackAmneziaWGUserUsage(ctx, req)
 	}
 
 	// Try combined OpenVPN/Xray + WireGuard ACK

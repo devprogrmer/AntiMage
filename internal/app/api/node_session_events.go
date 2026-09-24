@@ -147,7 +147,9 @@ WHERE user_id = ? AND ended_at IS NULL
 			dbTimestamp(now), dbTimestamp(now), payload.UserID); err != nil {
 			return err
 		}
-		if normalizedVPNProtocol(payload.Protocol) == "ov" && strings.TrimSpace(payload.AssignedIP) != "" {
+		if normalizedVPNProtocol(payload.Protocol) == "ov" &&
+			strings.TrimSpace(payload.AssignedIP) != "" &&
+			strings.TrimSpace(payload.DeviceID) == "" {
 			if _, err := tx.ExecContext(ctx, `
 UPDATE vpn_user_sessions
 SET last_seen_at = ?, ended_at = ?
@@ -238,7 +240,10 @@ WHERE user_id = ? AND ended_at IS NULL`, payload.UserID)
 
 func supportsHardDeviceIdentity(protocol string) bool {
 	switch normalizedVPNProtocol(protocol) {
-	case "wg", "amneziawg":
+	case "wg", "amneziawg", "ov":
+		// WG/AWG use stable cryptographic peer identity.
+		// OpenVPN uses a per-concurrent-session identity because the stock
+		// protocol does not expose a hardware-stable device identifier.
 		return true
 	default:
 		return false

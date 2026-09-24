@@ -28,17 +28,19 @@ type AWGRuntimeInbound struct {
 }
 
 type AWGRuntimePeer struct {
-	UserID       int64  `json:"user_id"`
-	Username     string `json:"username"`
-	DeviceIndex  int    `json:"device_index"`
-	PublicKey    string `json:"public_key"`
-	PresharedKey string `json:"preshared_key,omitempty"`
-	Address      string `json:"address"`
-	Status       string `json:"status"`
-	UsedTraffic  int64  `json:"used_traffic"`
-	DataLimit    *int64 `json:"data_limit,omitempty"`
-	Expire       *int64 `json:"expire,omitempty"`
-	DeviceLimit  int64  `json:"device_limit,omitempty"`
+	UserID             int64  `json:"user_id"`
+	Username           string `json:"username"`
+	DeviceIndex        int    `json:"device_index"`
+	PublicKey          string `json:"public_key"`
+	PresharedKey       string `json:"preshared_key,omitempty"`
+	Address            string `json:"address"`
+	Status             string `json:"status"`
+	UsedTraffic        int64  `json:"used_traffic"`
+	DataLimit          *int64 `json:"data_limit,omitempty"`
+	Expire             *int64 `json:"expire,omitempty"`
+	DeviceLimit        int64  `json:"device_limit,omitempty"`
+	UploadSpeedLimit   int64  `json:"upload_speed_limit"`
+	DownloadSpeedLimit int64  `json:"download_speed_limit"`
 }
 
 func (r Repository) AWGRuntime(ctx context.Context, nodeID int64) (AWGRuntime, error) {
@@ -104,7 +106,7 @@ func (r Repository) AWGUsersForServices(ctx context.Context, inboundTag string, 
 		marks[i], args[i] = "?", id
 	}
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, username, status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(device_limit, 0)
+SELECT id, username, status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(device_limit, 0), COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0)
 FROM users
 WHERE status IN ('active', 'on_hold') AND service_id IN (`+strings.Join(marks, ",")+`)
 ORDER BY id`, args...)
@@ -115,11 +117,11 @@ ORDER BY id`, args...)
 	peers := []AWGRuntimePeer{}
 	deviceRepo := userapp.NewRepository(r.db, r.dialect)
 	for rows.Next() {
-		var userID, deviceLimit int64
+		var userID, deviceLimit, uploadSpeedLimit, downloadSpeedLimit int64
 		var username, status string
 		var used int64
 		var dataLimit, expire sql.NullInt64
-		if err := rows.Scan(&userID, &username, &status, &used, &dataLimit, &expire, &deviceLimit); err != nil {
+		if err := rows.Scan(&userID, &username, &status, &used, &dataLimit, &expire, &deviceLimit, &uploadSpeedLimit, &downloadSpeedLimit); err != nil {
 			return nil, err
 		}
 		limit := int(deviceLimit)
@@ -134,7 +136,7 @@ ORDER BY id`, args...)
 			peers = append(peers, AWGRuntimePeer{
 				UserID: userID, Username: username, DeviceIndex: device.DeviceIndex,
 				PublicKey: device.PublicKey, PresharedKey: device.PresharedKey, Address: device.Address,
-				Status: status, UsedTraffic: used, DataLimit: nullableOVInt64(dataLimit), Expire: nullableOVInt64(expire), DeviceLimit: deviceLimit,
+				Status: status, UsedTraffic: used, DataLimit: nullableOVInt64(dataLimit), Expire: nullableOVInt64(expire), DeviceLimit: deviceLimit, UploadSpeedLimit: uploadSpeedLimit, DownloadSpeedLimit: downloadSpeedLimit,
 			})
 		}
 	}

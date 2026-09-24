@@ -70,6 +70,9 @@ func ValidateUserServiceCreate(payload *UserServiceCreate, catalog MutationConte
 		OnHoldExpireDuration:   payload.OnHoldExpireDuration,
 		OnHoldTimeout:          payload.OnHoldTimeout,
 		IPLimit:                payload.IPLimit,
+		DeviceLimit:            payload.DeviceLimit,
+		UploadSpeedLimit:       payload.UploadSpeedLimit,
+		DownloadSpeedLimit:     payload.DownloadSpeedLimit,
 		AutoDeleteInDays:       payload.AutoDeleteInDays,
 		NextPlans:              payload.NextPlans,
 	}
@@ -292,6 +295,12 @@ func validateUserBase(payload *UserPayloadBase, catalog MutationContext) error {
 	}
 	if payload.DeviceLimit != nil && *payload.DeviceLimit < 0 {
 		return ValidationError{Detail: "device_limit must be a non-negative integer"}
+	}
+	if payload.UploadSpeedLimit != nil && *payload.UploadSpeedLimit < 0 {
+		return ValidationError{Detail: "upload_speed_limit must be greater than or equal to 0"}
+	}
+	if payload.DownloadSpeedLimit != nil && *payload.DownloadSpeedLimit < 0 {
+		return ValidationError{Detail: "download_speed_limit must be greater than or equal to 0"}
 	}
 	if payload.OnHoldExpireDuration != nil && *payload.OnHoldExpireDuration <= 0 {
 		payload.OnHoldExpireDuration = nil

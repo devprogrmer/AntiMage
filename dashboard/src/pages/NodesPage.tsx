@@ -660,7 +660,7 @@ export const NodesPage: FC = () => {
 	const panelInstallMode =
 		maintenanceInfo?.panel?.mode ||
 		maintenanceInfo?.panel?.install_mode ||
-		"docker";
+		"unknown";
 	const hostActionsAvailable = panelInstallMode === "binary";
 	const defaultInboundSummaries = useMemo(
 		() =>
@@ -2782,7 +2782,7 @@ export const NodesPage: FC = () => {
 				</Stack>
 			</Stack>
 
-			{!hostActionsAvailable && (
+			{panelInstallMode === "docker" && (
 				<Alert status="warning" variant="subtle" borderRadius="md">
 					<AlertIcon />
 					<AlertDescription>

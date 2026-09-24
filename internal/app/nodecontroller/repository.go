@@ -380,6 +380,7 @@ func (r Repository) RuntimeSessionCallback(ctx context.Context, node NodeRow) (R
 		}
 		node = full
 	}
+
 	base := strings.TrimSpace(os.Getenv("ANTIMAGE_NODE_SESSION_CALLBACK_URL"))
 	if base == "" {
 		base = strings.TrimSpace(os.Getenv("ANTIMAGE_PUBLIC_URL"))
@@ -389,16 +390,29 @@ func (r Repository) RuntimeSessionCallback(ctx context.Context, node NodeRow) (R
 	}
 	if base == "" && r.tableExistsSilent(ctx, "subscription_settings") {
 		var prefix sql.NullString
-		_ = r.db.QueryRowContext(ctx, `SELECT subscription_url_prefix FROM subscription_settings ORDER BY id LIMIT 1`).Scan(&prefix)
+		_ = r.db.QueryRowContext(
+			ctx,
+			`SELECT subscription_url_prefix FROM subscription_settings ORDER BY id LIMIT 1`,
+		).Scan(&prefix)
 		base = strings.TrimSpace(prefix.String)
 	}
 	if base == "" {
+		inferred, err := runtimeSessionCallbackFallbackBase()
+		if err != nil {
+			return RuntimeSessionCallback{}, err
+		}
+		base = inferred
+	}
+
+	normalized, err := normalizeRuntimeSessionCallbackBase(base)
+	if err != nil {
+		return RuntimeSessionCallback{}, err
+	}
+	if normalized == "" {
 		return RuntimeSessionCallback{}, nil
 	}
-	base = strings.TrimRight(base, "/")
-	if strings.HasSuffix(base, "/internal/node/session-event") {
-		base = strings.TrimSuffix(base, "/internal/node/session-event")
-	}
+	base = normalized
+
 	secret, err := r.callbackSecret(ctx)
 	if err != nil {
 		return RuntimeSessionCallback{}, err
@@ -406,13 +420,13 @@ func (r Repository) RuntimeSessionCallback(ctx context.Context, node NodeRow) (R
 	if secret == "" || strings.TrimSpace(node.Certificate) == "" {
 		return RuntimeSessionCallback{}, nil
 	}
+
 	return RuntimeSessionCallback{
 		URL:    base + "/internal/node/session-event",
 		Token:  NodeSessionEventToken(secret, node.ID, node.Certificate),
 		NodeID: node.ID,
 	}, nil
 }
-
 func (r Repository) callbackSecret(ctx context.Context) (string, error) {
 	if !r.tableExistsSilent(ctx, "jwt") {
 		return "", nil

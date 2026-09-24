@@ -27,6 +27,8 @@ func testServiceServer(t *testing.T) (*Server, *sql.DB, string) {
 	server.usageService = usage.NewService(usage.NewRepository(db, "sqlite"))
 	server.userService = userapp.NewService(userapp.NewRepository(db, "sqlite"))
 	statements := []string{
+		`ALTER TABLE users ADD COLUMN upload_speed_limit BIGINT NOT NULL DEFAULT 0`,
+		`ALTER TABLE users ADD COLUMN download_speed_limit BIGINT NOT NULL DEFAULT 0`,
 		`ALTER TABLE admins_services ADD COLUMN created_at DATETIME NULL`,
 		`ALTER TABLE admins_services ADD COLUMN updated_at DATETIME NULL`,
 		`DROP TABLE services`,

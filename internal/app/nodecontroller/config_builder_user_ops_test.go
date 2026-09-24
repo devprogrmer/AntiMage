@@ -59,20 +59,47 @@ INSERT INTO service_hosts (service_id, host_id) VALUES (10, 1);
 }
 
 func TestUpdateUserOperationCanUseTargetedRPC(t *testing.T) {
-	controller := Controller{}
-	requiresSync, err := controller.userOperationRequiresConfigSync(
-		context.Background(),
-		NodeRow{},
-		OperationRow{
-			OperationType: "update_user",
-			UserID:        sql.NullInt64{Int64: 42, Valid: true},
+	const target = "node-test"
+
+	serviceTags := map[int64]map[string]bool{
+		10: {
+			"xray-in": true,
+			"wg-in":   true,
 		},
-	)
-	if err != nil {
-		t.Fatal(err)
 	}
-	if requiresSync {
-		t.Fatal("update_user should use the targeted RPC when the node advertises support")
+
+	xrayOnly := []map[string]any{
+		{
+			"tag":      "xray-in",
+			"protocol": "vless",
+			"targets":  []any{target},
+		},
+	}
+
+	if serviceRequiresFullUserSync(
+		10,
+		serviceTags,
+		xrayOnly,
+		target,
+	) {
+		t.Fatal("Xray-only update_user should keep targeted RPC")
+	}
+
+	native := []map[string]any{
+		{
+			"tag":      "wg-in",
+			"protocol": "wireguard",
+			"targets":  []any{target},
+		},
+	}
+
+	if !serviceRequiresFullUserSync(
+		10,
+		serviceTags,
+		native,
+		target,
+	) {
+		t.Fatal("native update_user must trigger full runtime sync")
 	}
 }
 

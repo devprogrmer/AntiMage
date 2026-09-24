@@ -28,15 +28,17 @@ type RemoteAccessRuntimeInbound struct {
 }
 
 type RemoteAccessRuntimeUser struct {
-	UserID      int64  `json:"user_id"`
-	Username    string `json:"username"`
-	Password    string `json:"password"`
-	IPv4Address string `json:"ipv4_address"`
-	Status      string `json:"status"`
-	UsedTraffic int64  `json:"used_traffic"`
-	DataLimit   *int64 `json:"data_limit,omitempty"`
-	Expire      *int64 `json:"expire,omitempty"`
-	DeviceLimit int64  `json:"device_limit,omitempty"`
+	UserID             int64  `json:"user_id"`
+	Username           string `json:"username"`
+	Password           string `json:"password"`
+	IPv4Address        string `json:"ipv4_address"`
+	Status             string `json:"status"`
+	UsedTraffic        int64  `json:"used_traffic"`
+	DataLimit          *int64 `json:"data_limit,omitempty"`
+	Expire             *int64 `json:"expire,omitempty"`
+	DeviceLimit        int64  `json:"device_limit,omitempty"`
+	UploadSpeedLimit   int64  `json:"upload_speed_limit"`
+	DownloadSpeedLimit int64  `json:"download_speed_limit"`
 }
 
 func (r Repository) IKEv2Runtime(ctx context.Context, nodeID int64) (RemoteAccessRuntime, error) {
@@ -104,7 +106,7 @@ func (r Repository) remoteAccessUsers(ctx context.Context, inboundTag string, se
 	for i, id := range serviceIDs {
 		placeholders[i], args[i] = "?", id
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, username, COALESCE(credential_key, ''), status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(ip_limit, 0) FROM users WHERE status IN ('active', 'on_hold') AND service_id IN (`+strings.Join(placeholders, ",")+`) ORDER BY id`, args...)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, username, COALESCE(credential_key, ''), status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(ip_limit, 0), COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0) FROM users WHERE status IN ('active', 'on_hold') AND service_id IN (`+strings.Join(placeholders, ",")+`) ORDER BY id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +116,18 @@ func (r Repository) remoteAccessUsers(ctx context.Context, inboundTag string, se
 		var item RemoteAccessRuntimeUser
 		var credential string
 		var limit, expire sql.NullInt64
-		if err := rows.Scan(&item.UserID, &item.Username, &credential, &item.Status, &item.UsedTraffic, &limit, &expire, &item.DeviceLimit); err != nil {
+		if err := rows.Scan(
+			&item.UserID,
+			&item.Username,
+			&credential,
+			&item.Status,
+			&item.UsedTraffic,
+			&limit,
+			&expire,
+			&item.DeviceLimit,
+			&item.UploadSpeedLimit,
+			&item.DownloadSpeedLimit,
+		); err != nil {
 			return nil, err
 		}
 		if protocol == xrayconfig.IKEv2Protocol {

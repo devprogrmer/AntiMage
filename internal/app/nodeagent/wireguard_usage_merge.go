@@ -15,10 +15,18 @@ func (s *Server) collectUserUsageWithWireGuard(
 	awgBatch, awgErr := s.collectAmneziaWGUserUsage(ctx, req)
 	l2tpBatch, l2tpErr := s.collectL2TPUserUsage(ctx, req)
 	pptpBatch, pptpErr := s.collectPPTPUserUsage(ctx, req)
+	ikev2Batch, ikev2Err := s.collectIKEv2UserUsage(ctx, req)
+	anyConnectBatch, anyConnectErr := s.collectAnyConnectUserUsage(ctx, req)
 
-	if coreErr != nil && wgErr != nil && awgErr != nil && l2tpErr != nil && pptpErr != nil {
+	if coreErr != nil &&
+		wgErr != nil &&
+		awgErr != nil &&
+		l2tpErr != nil &&
+		pptpErr != nil &&
+		ikev2Err != nil && anyConnectErr != nil {
 		return nil, coreErr
 	}
+
 	if coreErr != nil {
 		coreBatch = &nodev1.UserUsageBatch{}
 	}
@@ -34,12 +42,21 @@ func (s *Server) collectUserUsageWithWireGuard(
 	if pptpErr != nil {
 		pptpBatch = &nodev1.UserUsageBatch{}
 	}
+	if ikev2Err != nil {
+		ikev2Batch = &nodev1.UserUsageBatch{}
+	}
+	if anyConnectErr != nil {
+		anyConnectBatch = &nodev1.UserUsageBatch{}
+	}
+
 	return s.combineUserUsageBatches(
 		coreBatch,
 		wgBatch,
 		l2tpBatch,
 		pptpBatch,
 		awgBatch,
+		ikev2Batch,
+		anyConnectBatch,
 	)
 }
 

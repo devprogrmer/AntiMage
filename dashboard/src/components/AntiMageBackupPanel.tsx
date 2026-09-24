@@ -27,14 +27,16 @@ import {
 	ArrowUpTrayIcon,
 } from "@heroicons/react/24/outline";
 import { PanelSelect as Select } from "components/common/PanelSelect";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "react-query";
 import {
 	exportAntiMageBackup,
 	importAntiMageBackup,
+	importVPNUIBackup,
 	type AntiMageBackupScope,
 } from "service/settings";
+import { useServicesStore } from "contexts/ServicesContext";
 import {
 	generateErrorMessage,
 	generateSuccessMessage,
@@ -46,7 +48,7 @@ const buildBackupFilename = (scope: AntiMageBackupScope) => {
 	return `antimage-${scope}-${timestamp}.rbbackup`;
 };
 
-type BackupDialog = "import" | "export" | null;
+type BackupDialog = "import" | "export" | "vpn-ui" | null;
 
 export const DashboardBackupControls = ({
 	isBinaryRuntime,
@@ -64,7 +66,15 @@ export const DashboardBackupControls = ({
 		useState<AntiMageBackupScope>("database");
 	const [selectedFile, setSelectedFile] = useState<File | null>(null);
 	const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+	const [vpnUIServiceID, setVPNUIServiceID] = useState("");
+	const [duplicatePolicy, setDuplicatePolicy] = useState<"skip" | "rename">("skip");
+	const serviceOptions = useServicesStore((state) => state.serviceOptions);
+	const fetchServiceOptions = useServicesStore((state) => state.fetchServiceOptions);
 	const backupActionsAvailable = isBinaryRuntime && !runtimeLoading;
+
+	useEffect(() => {
+		if (dialog === "vpn-ui") void fetchServiceOptions();
+	}, [dialog, fetchServiceOptions]);
 
 	const exportMutation = useMutation(exportAntiMageBackup, {
 		onSuccess: (blob, scope) => {
@@ -115,6 +125,43 @@ export const DashboardBackupControls = ({
 		},
 	);
 
+	const vpnUIImportMutation = useMutation(
+		(file: File) =>
+			importVPNUIBackup(
+				file,
+				Number(vpnUIServiceID),
+				duplicatePolicy,
+				setUploadProgress,
+			),
+		{
+			onMutate: () => setUploadProgress(0),
+			onSuccess: (result) => {
+				generateSuccessMessage(
+					t("settings.backup.vpnUIImportDone", {
+						imported: result.imported,
+						skipped: result.skipped,
+					}),
+					toast,
+				);
+				if (result.warnings.length) {
+					toast({
+						status: "warning",
+						title: t("settings.backup.importWarnings"),
+						description: result.warnings.join("\n"),
+						duration: 10000,
+						isClosable: true,
+					});
+				}
+				setSelectedFile(null);
+				setDialog(null);
+			},
+			onError: (error) => {
+				generateErrorMessage(error, toast);
+			},
+			onSettled: () => setUploadProgress(null),
+		},
+	);
+
 	const openDialog = (nextDialog: Exclude<BackupDialog, null>) => {
 		setMenuOpen(false);
 		setDialog(nextDialog);
@@ -126,6 +173,18 @@ export const DashboardBackupControls = ({
 			return;
 		}
 		importMutation.mutate(selectedFile);
+	};
+
+	const handleVPNUIImport = () => {
+		if (!selectedFile) {
+			toast({ status: "warning", title: t("settings.backup.vpnUIFileRequired") });
+			return;
+		}
+		if (!vpnUIServiceID) {
+			toast({ status: "warning", title: t("settings.backup.vpnUIServiceRequired") });
+			return;
+		}
+		vpnUIImportMutation.mutate(selectedFile);
 	};
 
 	return (
@@ -142,7 +201,7 @@ export const DashboardBackupControls = ({
 						variant="outline"
 						borderRadius="full"
 						leftIcon={<ArchiveBoxIcon width={16} height={16} />}
-						isDisabled={!backupActionsAvailable}
+						isDisabled={runtimeLoading}
 						isLoading={runtimeLoading}
 						w="full"
 					>
@@ -164,6 +223,7 @@ export const DashboardBackupControls = ({
 								justifyContent="flex-start"
 								leftIcon={<ArrowUpTrayIcon width={18} height={18} />}
 								onClick={() => openDialog("import")}
+								isDisabled={!backupActionsAvailable}
 							>
 								{t("settings.backup.import")}
 							</Button>
@@ -172,8 +232,17 @@ export const DashboardBackupControls = ({
 								justifyContent="flex-start"
 								leftIcon={<ArrowDownTrayIcon width={18} height={18} />}
 								onClick={() => openDialog("export")}
+								isDisabled={!backupActionsAvailable}
 							>
 								{t("settings.backup.exportTitle")}
+							</Button>
+							<Button
+								variant="ghost"
+								justifyContent="flex-start"
+								leftIcon={<ArrowUpTrayIcon width={18} height={18} />}
+								onClick={() => openDialog("vpn-ui")}
+							>
+								{t("settings.backup.vpnUIImport")}
 							</Button>
 						</Stack>
 					</PopoverBody>
@@ -258,6 +327,49 @@ export const DashboardBackupControls = ({
 						>
 							{t("settings.backup.import")}
 						</Button>
+					</ModalFooter>
+				</ModalContent>
+			</Modal>
+
+			<Modal
+				isOpen={dialog === "vpn-ui"}
+				onClose={() => setDialog(null)}
+				isCentered
+				size="xl"
+				closeOnOverlayClick={!vpnUIImportMutation.isLoading}
+			>
+				<ModalOverlay bg="blackAlpha.500" />
+				<ModalContent borderWidth="1px" borderColor={borderColor} borderRadius="2xl" boxShadow="2xl" mx={{ base: 4, sm: 0 }}>
+					<ModalHeader>{t("settings.backup.vpnUIImport")}</ModalHeader>
+					<ModalCloseButton isDisabled={vpnUIImportMutation.isLoading} />
+					<ModalBody>
+						<Stack spacing={4}>
+							<Text fontSize="sm" color="panel.textMuted">{t("settings.backup.vpnUIHint")}</Text>
+							<Alert status="warning" borderRadius="lg"><AlertIcon /><Text fontSize="sm">{t("settings.backup.vpnUIWarning")}</Text></Alert>
+							<FormControl isRequired>
+								<FormLabel>{t("settings.backup.vpnUIFile")}</FormLabel>
+								<FileDropzone accept=".db,.sqlite,.sqlite3,application/x-sqlite3" isDisabled={vpnUIImportMutation.isLoading} selectedFile={selectedFile} title={t("settings.backup.vpnUIDropTitle")} description={t("settings.backup.vpnUIDropHint")} emptyText={t("settings.backup.selectFile")} onFileSelect={setSelectedFile} />
+							</FormControl>
+							<FormControl isRequired>
+								<FormLabel>{t("settings.backup.vpnUIService")}</FormLabel>
+								<Select value={vpnUIServiceID} showSearch onChange={(event) => setVPNUIServiceID(event.target.value)}>
+									<option value="">{t("settings.backup.vpnUIServicePlaceholder")}</option>
+									{serviceOptions.filter((service) => service.has_hosts).map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+								</Select>
+							</FormControl>
+							<FormControl>
+								<FormLabel>{t("settings.backup.vpnUIDuplicates")}</FormLabel>
+								<Select value={duplicatePolicy} showSearch={false} onChange={(event) => setDuplicatePolicy(event.target.value as "skip" | "rename")}>
+									<option value="skip">{t("settings.backup.vpnUIDuplicateSkip")}</option>
+									<option value="rename">{t("settings.backup.vpnUIDuplicateRename")}</option>
+								</Select>
+							</FormControl>
+							{vpnUIImportMutation.isLoading && uploadProgress !== null && <Progress value={uploadProgress} isIndeterminate={uploadProgress >= 100} colorScheme="pink" borderRadius="full" size="sm" />}
+						</Stack>
+					</ModalBody>
+					<ModalFooter gap={2} borderTopWidth="1px" borderColor={borderColor}>
+						<Button variant="ghost" onClick={() => setDialog(null)} isDisabled={vpnUIImportMutation.isLoading}>{t("cancel")}</Button>
+						<Button colorScheme="primary" leftIcon={<ArrowUpTrayIcon width={16} height={16} />} onClick={handleVPNUIImport} isLoading={vpnUIImportMutation.isLoading}>{t("settings.backup.vpnUIImport")}</Button>
 					</ModalFooter>
 				</ModalContent>
 			</Modal>

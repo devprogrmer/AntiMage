@@ -20,10 +20,10 @@ export const TutorialsPage = () => {
 		<Box
 			borderWidth="1px"
 			borderColor={borderColor}
-			borderRadius="md"
+			borderRadius="lg"
 			overflow="hidden"
 			position="relative"
-			h={{ base: "calc(100dvh - 172px)", md: "calc(100dvh - 96px)" }}
+			h={{ base: "calc(100dvh - 156px)", md: "calc(100dvh - 88px)" }}
 			minH={{ base: "420px", md: "560px" }}
 			bg={frameBg}
 		>

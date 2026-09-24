@@ -1075,6 +1075,21 @@ ensure_vpn_binary_prerequisites() {
         packages+=("strongswan-pki")
     fi
 
+    # AntiMage IKEv2 accounting/online detection uses the strongSwan VICI API
+    # through swanctl --list-sas.
+    if ! command -v swanctl >/dev/null 2>&1; then
+        if package_available "strongswan-swanctl"; then
+            packages+=("strongswan-swanctl")
+        fi
+    fi
+
+    # EAP-MSCHAPv2 is required for native IKEv2 username/password auth.
+    if ! find /usr/lib /usr/lib64 -type f         -name 'libstrongswan-eap-mschapv2.so'         -print -quit 2>/dev/null | grep -q .; then
+        if package_available "libcharon-extauth-plugins"; then
+            packages+=("libcharon-extauth-plugins")
+        fi
+    fi
+
     if ! command -v ocserv >/dev/null 2>&1; then
         packages+=("ocserv")
     fi
@@ -1088,11 +1103,16 @@ ensure_vpn_binary_prerequisites() {
     local missing=()
     local command_name
 
-    for command_name in openvpn wg ip iptables nft sysctl xl2tpd pppd ipsec pki ocserv; do
+    for command_name in openvpn wg ip iptables nft sysctl xl2tpd pppd ipsec pki swanctl ocserv; do
         if ! command -v "$command_name" >/dev/null 2>&1; then
             missing+=("$command_name")
         fi
     done
+
+    if ! find /usr/lib /usr/lib64 -type f         -name 'libstrongswan-eap-mschapv2.so'         -print -quit 2>/dev/null | grep -q .; then
+        missing+=("strongswan-eap-mschapv2")
+    fi
+
     if [ "$pptp_required" = true ] && ! command -v pptpd >/dev/null 2>&1; then
         missing+=("pptpd")
     fi
@@ -1846,6 +1866,57 @@ is_antimage_node_up() {
     fi
 }
 
+optimize_antimage_server() {
+    local sysctl_file="/etc/sysctl.d/99-antimage-network.conf"
+    local available_cc=""
+
+    mkdir -p /etc/sysctl.d
+    if command -v modprobe >/dev/null 2>&1; then
+        modprobe tcp_bbr >/dev/null 2>&1 || true
+    fi
+    available_cc=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
+
+    {
+        echo "net.ipv4.ip_forward=1"
+        echo "net.core.default_qdisc=fq"
+        echo "net.core.somaxconn=4096"
+        echo "net.core.netdev_max_backlog=16384"
+        echo "net.core.rmem_max=16777216"
+        echo "net.core.wmem_max=16777216"
+        echo "net.ipv4.udp_rmem_min=8192"
+        echo "net.ipv4.udp_wmem_min=8192"
+        echo "net.ipv4.tcp_mtu_probing=1"
+        if [[ " $available_cc " == *" bbr "* ]]; then
+            echo "net.ipv4.tcp_congestion_control=bbr"
+        fi
+    } > "$sysctl_file"
+    sysctl -p "$sysctl_file" >/dev/null 2>&1 || colorized_echo yellow "Some network tuning values are unavailable on this kernel."
+
+    if command -v iptables >/dev/null 2>&1; then
+        iptables -t mangle -N ANTIMAGE_MSS >/dev/null 2>&1 || true
+        iptables -t mangle -C ANTIMAGE_MSS -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu >/dev/null 2>&1 || \
+            iptables -t mangle -A ANTIMAGE_MSS -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+        iptables -t mangle -C FORWARD -j ANTIMAGE_MSS >/dev/null 2>&1 || iptables -t mangle -A FORWARD -j ANTIMAGE_MSS
+    fi
+
+    if command -v swapon >/dev/null 2>&1 && [ -r /proc/meminfo ] && ! swapon --show=NAME --noheadings 2>/dev/null | grep -q .; then
+        local memory_kb disk_kb swap_mb
+        memory_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+        disk_kb=$(df -Pk / | awk 'NR==2 {print $4}')
+        if [ "${memory_kb:-0}" -lt 3145728 ] && [ "${disk_kb:-0}" -gt 1572864 ]; then
+            swap_mb=1024
+            [ "$memory_kb" -lt 1572864 ] && swap_mb=2048
+            if [ ! -f /swapfile ]; then
+                fallocate -l "${swap_mb}M" /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count="$swap_mb" status=none
+                chmod 600 /swapfile
+                mkswap /swapfile >/dev/null
+            fi
+            swapon /swapfile >/dev/null 2>&1 || true
+            grep -qE '^/swapfile[[:space:]]' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+        fi
+    fi
+}
+
 install_command() {
     check_running_as_root
     local install_mode
@@ -1883,6 +1954,7 @@ install_command() {
     colorized_echo blue "Selected release channel: $node_version"
 
     detect_os
+    optimize_antimage_server
     if ! command -v jq >/dev/null 2>&1; then
         install_package jq
     fi

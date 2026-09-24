@@ -20,7 +20,7 @@ languages:
     languageCode: fa
     languageDirection: rtl
     weight: 2
-    title: راهنمای ربکا
+    title: راهنمای AntiMage
     params:
       tutorialVersion: "04-06-1405 11:21"
 

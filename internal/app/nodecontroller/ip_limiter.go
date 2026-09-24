@@ -58,8 +58,14 @@ type UserOnlineIPRecord struct {
 	SessionID         string    `json:"session_id,omitempty"`
 	DeviceID          string    `json:"device_id,omitempty"`
 	DeviceType        string    `json:"device_type,omitempty"`
+	Manufacturer      string    `json:"manufacturer,omitempty"`
+	Model             string    `json:"model,omitempty"`
+	OSName            string    `json:"os_name,omitempty"`
+	OSVersion         string    `json:"os_version,omitempty"`
 	ClientName        string    `json:"client_name,omitempty"`
+	ClientVersion     string    `json:"client_version,omitempty"`
 	Platform          string    `json:"platform,omitempty"`
+	MetadataSource    string    `json:"metadata_source,omitempty"`
 	IP                string    `json:"ip,omitempty"`
 	AssignedIP        string    `json:"assigned_ip,omitempty"`
 	AssignedIPs       []string  `json:"assigned_ips,omitempty"`
@@ -298,48 +304,469 @@ ORDER BY vus.last_seen_at DESC, vus.node_id, vus.protocol, vus.session_id`,
 	return result, nil
 }
 
-func (r Repository) UserDeviceHistory(ctx context.Context, userID int64) ([]UserOnlineIPRecord, error) {
+func (r Repository) UserDeviceHistory(
+	ctx context.Context,
+	userID int64,
+) ([]UserOnlineIPRecord, error) {
 	if userID <= 0 {
 		return nil, nil
 	}
-	if ok, err := r.tableExists(ctx, "vpn_user_sessions"); err != nil || !ok {
-		return nil, err
-	}
-	rows, err := r.db.QueryContext(ctx, `SELECT vus.node_id, COALESCE(n.name,''), vus.user_id, vus.protocol,
-COALESCE(vus.inbound_tag,''), vus.session_id, COALESCE(vus.device_id,''), COALESCE(vus.device_type,'Unknown'),
-COALESCE(vus.client_name,'Unknown'), COALESCE(vus.platform,'Unknown'), COALESCE(vus.assigned_ip,''),
-COALESCE(vus.client_ip,''), vus.started_at, vus.last_seen_at, vus.ended_at
-FROM vpn_user_sessions vus LEFT JOIN nodes n ON n.id=vus.node_id WHERE vus.user_id=?
-AND (n.id IS NULL OR LOWER(COALESCE(n.status,'')) <> 'deleted') ORDER BY vus.last_seen_at DESC`, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+
 	result := []UserOnlineIPRecord{}
 	cutoff := onlineIPActiveCutoff()
-	for rows.Next() {
-		var item UserOnlineIPRecord
-		var started, seen any
-		var ended sql.NullTime
-		if err := rows.Scan(&item.NodeID, &item.NodeName, &item.UserID, &item.Protocol, &item.InboundTag, &item.SessionID, &item.DeviceID, &item.DeviceType, &item.ClientName, &item.Platform, &item.AssignedIP, &item.IP, &started, &seen, &ended); err != nil {
+
+	hasMetadata := false
+	hasMetadataClientIP := false
+
+	if ok, err := r.tableExists(
+		ctx,
+		"vpn_device_metadata",
+	); err != nil {
+		return nil, err
+	} else {
+		hasMetadata = ok
+	}
+
+	if hasMetadata {
+		if ok, err := r.tableHasColumn(
+			ctx,
+			"vpn_device_metadata",
+			"client_ip",
+		); err != nil {
+			return nil, err
+		} else {
+			hasMetadataClientIP = ok
+		}
+	}
+
+	if ok, err := r.tableExists(
+		ctx,
+		"vpn_user_sessions",
+	); err != nil {
+		return nil, err
+	} else if ok {
+
+		deviceTypeExpr :=
+			"COALESCE(vus.device_type,'Unknown')"
+		manufacturerExpr := "''"
+		modelExpr := "''"
+		osNameExpr := "''"
+		osVersionExpr := "''"
+		clientNameExpr :=
+			"COALESCE(vus.client_name,'Unknown')"
+		clientVersionExpr := "''"
+		platformExpr :=
+			"COALESCE(vus.platform,'Unknown')"
+		metadataSourceExpr := "''"
+		metadataJoin := ""
+
+		if hasMetadata {
+			match := `
+(
+	(
+		COALESCE(vus.device_id,'') <> ''
+		AND vdm.device_id =
+			COALESCE(vus.device_id,'')
+	)`
+
+			match2 := `
+	OR (
+		COALESCE(vus.client_ip,'') <> ''
+		AND vdm.client_ip =
+			COALESCE(vus.client_ip,'')
+	)`
+
+			if hasMetadataClientIP {
+				match += match2
+			}
+
+			match += `
+)`
+
+			latestMatch := `
+(
+	(
+		COALESCE(vus.device_id,'') <> ''
+		AND vdm2.device_id =
+			COALESCE(vus.device_id,'')
+	)`
+
+			if hasMetadataClientIP {
+				latestMatch += `
+	OR (
+		COALESCE(vus.client_ip,'') <> ''
+		AND vdm2.client_ip =
+			COALESCE(vus.client_ip,'')
+	)`
+			}
+
+			latestMatch += `
+)`
+
+			metadataJoin = `
+LEFT JOIN vpn_device_metadata vdm
+	ON vdm.user_id = vus.user_id
+	AND vdm.protocol = vus.protocol
+	AND vdm.inbound_tag =
+		COALESCE(vus.inbound_tag,'')
+	AND ` + match + `
+	AND vdm.last_seen_at = (
+		SELECT MAX(vdm2.last_seen_at)
+		FROM vpn_device_metadata vdm2
+		WHERE vdm2.user_id = vus.user_id
+		  AND vdm2.protocol = vus.protocol
+		  AND vdm2.inbound_tag =
+			COALESCE(vus.inbound_tag,'')
+		  AND ` + latestMatch + `
+	)`
+
+			deviceTypeExpr =
+				`COALESCE(
+					NULLIF(vdm.device_type,''),
+					NULLIF(vus.device_type,''),
+					'Unknown'
+				)`
+
+			manufacturerExpr =
+				"COALESCE(vdm.manufacturer,'')"
+
+			modelExpr =
+				"COALESCE(vdm.model,'')"
+
+			osNameExpr =
+				"COALESCE(vdm.os_name,'')"
+
+			osVersionExpr =
+				"COALESCE(vdm.os_version,'')"
+
+			clientNameExpr =
+				`COALESCE(
+					NULLIF(vdm.client_name,''),
+					NULLIF(vus.client_name,''),
+					'Unknown'
+				)`
+
+			clientVersionExpr =
+				"COALESCE(vdm.client_version,'')"
+
+			platformExpr =
+				`COALESCE(
+					NULLIF(vdm.platform,''),
+					NULLIF(vus.platform,''),
+					'Unknown'
+				)`
+
+			metadataSourceExpr =
+				"COALESCE(vdm.metadata_source,'')"
+		}
+
+		query := `
+SELECT
+	vus.node_id,
+	COALESCE(n.name,''),
+	vus.user_id,
+	vus.protocol,
+	COALESCE(vus.inbound_tag,''),
+	vus.session_id,
+	COALESCE(vus.device_id,''),
+	` + deviceTypeExpr + `,
+	` + manufacturerExpr + `,
+	` + modelExpr + `,
+	` + osNameExpr + `,
+	` + osVersionExpr + `,
+	` + clientNameExpr + `,
+	` + clientVersionExpr + `,
+	` + platformExpr + `,
+	` + metadataSourceExpr + `,
+	COALESCE(vus.assigned_ip,''),
+	COALESCE(vus.client_ip,''),
+	vus.started_at,
+	vus.last_seen_at,
+	vus.ended_at
+FROM vpn_user_sessions vus
+LEFT JOIN nodes n
+	ON n.id = vus.node_id
+` + metadataJoin + `
+WHERE vus.user_id = ?
+  AND (
+	n.id IS NULL
+	OR LOWER(COALESCE(n.status,'')) <> 'deleted'
+  )
+ORDER BY vus.last_seen_at DESC`
+
+		rows, err :=
+			r.db.QueryContext(
+				ctx,
+				query,
+				userID,
+			)
+
+		if err != nil {
 			return nil, err
 		}
-		if item.IP == "" {
-			item.IP = item.AssignedIP
-		}
-		if parsed := usageDBTime(started); parsed != nil {
-			item.FirstSeenAt = *parsed
-		}
-		if parsed := usageDBTime(seen); parsed != nil {
-			item.LastSeenAt = *parsed
-			item.LastOnlineAt = *parsed
-		}
-		item.Online = !ended.Valid && !item.LastSeenAt.Before(cutoff)
-		result = append(result, item)
-	}
-	return result, rows.Err()
-}
 
+		for rows.Next() {
+			var item UserOnlineIPRecord
+			var started any
+			var seen any
+			var ended sql.NullTime
+
+			if err := rows.Scan(
+				&item.NodeID,
+				&item.NodeName,
+				&item.UserID,
+				&item.Protocol,
+				&item.InboundTag,
+				&item.SessionID,
+				&item.DeviceID,
+				&item.DeviceType,
+				&item.Manufacturer,
+				&item.Model,
+				&item.OSName,
+				&item.OSVersion,
+				&item.ClientName,
+				&item.ClientVersion,
+				&item.Platform,
+				&item.MetadataSource,
+				&item.AssignedIP,
+				&item.IP,
+				&started,
+				&seen,
+				&ended,
+			); err != nil {
+				rows.Close()
+				return nil, err
+			}
+
+			if item.IP == "" {
+				item.IP = item.AssignedIP
+			}
+
+			if parsed :=
+				usageDBTime(started); parsed != nil {
+				item.FirstSeenAt = *parsed
+			}
+
+			if parsed :=
+				usageDBTime(seen); parsed != nil {
+				item.LastSeenAt = *parsed
+				item.LastOnlineAt = *parsed
+			}
+
+			item.Online =
+				!ended.Valid &&
+					!item.LastSeenAt.Before(cutoff)
+
+			result = append(
+				result,
+				item,
+			)
+		}
+
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+
+	// Xray doesn't create vpn_user_sessions. Its real online
+	// source is user_online_ips, so enrich it by public IP.
+	if hasMetadata &&
+		hasMetadataClientIP {
+
+		if ok, err := r.tableExists(
+			ctx,
+			"user_online_ips",
+		); err != nil {
+			return nil, err
+		} else if ok {
+
+			rows, err :=
+				r.db.QueryContext(
+					ctx,
+					`
+SELECT
+	uoi.node_id,
+	COALESCE(n.name,''),
+	uoi.user_id,
+	uoi.ip,
+	uoi.last_seen_at,
+	COALESCE(vdm.device_id,''),
+	COALESCE(vdm.device_type,'Unknown'),
+	COALESCE(vdm.manufacturer,''),
+	COALESCE(vdm.model,''),
+	COALESCE(vdm.os_name,''),
+	COALESCE(vdm.os_version,''),
+	COALESCE(vdm.client_name,'Unknown'),
+	COALESCE(vdm.client_version,''),
+	COALESCE(vdm.platform,'Unknown'),
+	COALESCE(vdm.metadata_source,'')
+FROM user_online_ips uoi
+LEFT JOIN nodes n
+	ON n.id = uoi.node_id
+LEFT JOIN vpn_device_metadata vdm
+	ON vdm.user_id = uoi.user_id
+	AND vdm.protocol = 'xray'
+	AND vdm.client_ip = uoi.ip
+	AND vdm.last_seen_at = (
+		SELECT MAX(vdm2.last_seen_at)
+		FROM vpn_device_metadata vdm2
+		WHERE vdm2.user_id = uoi.user_id
+		  AND vdm2.protocol = 'xray'
+		  AND vdm2.client_ip = uoi.ip
+	)
+WHERE uoi.user_id = ?
+  AND uoi.protocol = 'xray'
+  AND (
+	n.id IS NULL
+	OR LOWER(COALESCE(n.status,'')) <> 'deleted'
+  )
+ORDER BY uoi.last_seen_at DESC`,
+					userID,
+				)
+
+			if err != nil {
+				return nil, err
+			}
+
+			for rows.Next() {
+				var item UserOnlineIPRecord
+				var seen any
+
+				if err := rows.Scan(
+					&item.NodeID,
+					&item.NodeName,
+					&item.UserID,
+					&item.IP,
+					&seen,
+					&item.DeviceID,
+					&item.DeviceType,
+					&item.Manufacturer,
+					&item.Model,
+					&item.OSName,
+					&item.OSVersion,
+					&item.ClientName,
+					&item.ClientVersion,
+					&item.Platform,
+					&item.MetadataSource,
+				); err != nil {
+					rows.Close()
+					return nil, err
+				}
+
+				item.Protocol = "xray"
+
+				if parsed :=
+					usageDBTime(seen); parsed != nil {
+					item.LastSeenAt = *parsed
+					item.LastOnlineAt = *parsed
+				}
+
+				item.Online =
+					!item.LastSeenAt.Before(cutoff)
+
+				result = append(
+					result,
+					item,
+				)
+			}
+
+			if err := rows.Close(); err != nil {
+				return nil, err
+			}
+		}
+
+		// IKEv2 / AnyConnect registration can exist before
+		// their daemon runtime is available. Show the registered
+		// device as offline rather than fabricating a live session.
+		rows, err :=
+			r.db.QueryContext(
+				ctx,
+				`
+SELECT
+	user_id,
+	protocol,
+	inbound_tag,
+	device_id,
+	device_type,
+	manufacturer,
+	model,
+	os_name,
+	os_version,
+	client_name,
+	client_version,
+	platform,
+	metadata_source,
+	client_ip,
+	last_seen_at
+FROM vpn_device_metadata
+WHERE user_id = ?
+  AND protocol IN ('ikev2','anyconnect')
+ORDER BY last_seen_at DESC`,
+				userID,
+			)
+
+		if err != nil {
+			return nil, err
+		}
+
+		for rows.Next() {
+			var item UserOnlineIPRecord
+			var seen any
+
+			if err := rows.Scan(
+				&item.UserID,
+				&item.Protocol,
+				&item.InboundTag,
+				&item.DeviceID,
+				&item.DeviceType,
+				&item.Manufacturer,
+				&item.Model,
+				&item.OSName,
+				&item.OSVersion,
+				&item.ClientName,
+				&item.ClientVersion,
+				&item.Platform,
+				&item.MetadataSource,
+				&item.IP,
+				&seen,
+			); err != nil {
+				rows.Close()
+				return nil, err
+			}
+
+			if parsed :=
+				usageDBTime(seen); parsed != nil {
+				item.LastSeenAt = *parsed
+				item.LastOnlineAt = *parsed
+			}
+
+			item.Online = false
+
+			result = append(
+				result,
+				item,
+			)
+		}
+
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+
+	sort.SliceStable(
+		result,
+		func(i, j int) bool {
+			return result[i].
+				LastSeenAt.
+				After(
+					result[j].
+						LastSeenAt,
+				)
+		},
+	)
+
+	return result, nil
+}
 func (c Controller) UserDeviceHistory(ctx context.Context, userID int64) ([]UserOnlineIPRecord, error) {
 	return c.repo.UserDeviceHistory(ctx, userID)
 }

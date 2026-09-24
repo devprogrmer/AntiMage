@@ -106,6 +106,14 @@ func (s Service) generateAWGProfile(ctx context.Context, user UserDetail, req Su
 	for _, profile := range profiles {
 		candidate := fmt.Sprintf("%s-device-%d", profile.HostTag, profile.DeviceIndex+1)
 		if requested == "" || WGSafePathComponent(requested) == WGSafePathComponent(candidate) {
+			_ = s.recordSubscriptionDeviceMetadata(
+				ctx,
+				user.ID,
+				"amneziawg",
+				profile.InboundTag,
+				profile.ClientPublicKey,
+				req,
+			)
 			return SubscriptionHTTPResponse{Status: 200, MediaType: "application/x-amneziawg-profile", Headers: map[string]string{"content-disposition": `attachment; filename="` + profile.Filename + `"`}, Body: []byte(profile.Body)}, nil
 		}
 	}
