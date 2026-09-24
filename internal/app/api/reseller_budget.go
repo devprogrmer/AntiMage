@@ -24,7 +24,7 @@ func selfAdminBudgetOrPrivilegeChange(fields map[string]json.RawMessage) bool {
 
 func resellerChildPermissions() adminapp.AdminPermissions {
 	perms := adminapp.RoleDefaultPermissions(adminapp.RoleStandard)
-	perms.Users.Delete = false
+	perms.Users.Delete = true
 	perms.Users.AllowUnlimitedData = false
 	return perms
 }
