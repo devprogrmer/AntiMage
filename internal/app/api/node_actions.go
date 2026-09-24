@@ -75,7 +75,8 @@ func (s *Server) handleNodeUpdate(w http.ResponseWriter, r *http.Request, nodeID
 		writeNodeMutationError(w, err)
 		return
 	}
-	if payload.Status != nil && strings.TrimSpace(*payload.Status) == nodeapp.StatusDisabled && before.Status != nodeapp.StatusDisabled {
+	stopRuntime := payload.Status != nil && strings.TrimSpace(*payload.Status) == nodeapp.StatusDisabled && before.Status == nodeapp.StatusConnected
+	if stopRuntime {
 		if err := s.nodeController.StopNodeRuntime(ctx, nodeID); err != nil {
 			writeControllerError(w, err)
 			return
@@ -83,7 +84,7 @@ func (s *Server) handleNodeUpdate(w http.ResponseWriter, r *http.Request, nodeID
 	}
 	node, err := s.nodeMutations.UpdateNode(ctx, nodeID, payload)
 	if err != nil {
-		if payload.Status != nil && strings.TrimSpace(*payload.Status) == nodeapp.StatusDisabled && before.Status != nodeapp.StatusDisabled {
+		if stopRuntime {
 			go func() {
 				recoverCtx, recoverCancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer recoverCancel()
