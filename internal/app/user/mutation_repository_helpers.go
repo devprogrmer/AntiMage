@@ -150,135 +150,113 @@ func ensureCanAccessUser(admin adminapp.Admin, user existingUserRow) error {
 	return clientError(403, "You're not allowed")
 }
 
-func (r Repository) ensureResellerUserDeleteAllowedTx(ctx context.Context, tx *sql.Tx, actor adminapp.Admin) error {
-	if actor.Role == adminapp.RoleReseller {
-		return clientError(403, "Reseller users cannot be deleted; disable them instead")
-	}
-	if actor.Role != adminapp.RoleStandard || actor.CreatedBy == "" || strings.EqualFold(actor.CreatedBy, "root") {
-		return nil
-	}
-	var creatorRole string
-	err := tx.QueryRowContext(ctx, `SELECT role FROM admins WHERE username = ?`, actor.CreatedBy).Scan(&creatorRole)
-	if err == sql.ErrNoRows {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if creatorRole == string(adminapp.RoleReseller) {
-		return clientError(403, "Reseller subadmin users cannot be deleted; disable them instead")
-	}
-	return nil
-}
-
-
 var errResellerBudgetExhausted = stderrors.New("reseller traffic budget exhausted")
 
 func (r Repository) resellerBudgetOwnerTx(
-ctx context.Context,
-tx *sql.Tx,
-adminID *int64,
+	ctx context.Context,
+	tx *sql.Tx,
+	adminID *int64,
 ) (bool, error) {
-if adminID == nil || *adminID <= 0 {
-return false, nil
-}
+	if adminID == nil || *adminID <= 0 {
+		return false, nil
+	}
 
-var role string
-var createdBy string
+	var role string
+	var createdBy string
 
-err := tx.QueryRowContext(
-ctx,
-`SELECT COALESCE(role, 'standard'), COALESCE(created_by, 'root')
+	err := tx.QueryRowContext(
+		ctx,
+		`SELECT COALESCE(role, 'standard'), COALESCE(created_by, 'root')
    FROM admins
   WHERE id = ? AND status != ?`,
-*adminID,
-string(adminapp.StatusDeleted),
-).Scan(&role, &createdBy)
+		*adminID,
+		string(adminapp.StatusDeleted),
+	).Scan(&role, &createdBy)
 
-if err == sql.ErrNoRows {
-return false, nil
-}
-if err != nil {
-return false, err
-}
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
 
-if role == string(adminapp.RoleReseller) {
-return true, nil
-}
+	if role == string(adminapp.RoleReseller) {
+		return true, nil
+	}
 
-if createdBy == "" || strings.EqualFold(createdBy, "root") {
-return false, nil
-}
+	if createdBy == "" || strings.EqualFold(createdBy, "root") {
+		return false, nil
+	}
 
-var parentRole string
-err = tx.QueryRowContext(
-ctx,
-`SELECT COALESCE(role, 'standard')
+	var parentRole string
+	err = tx.QueryRowContext(
+		ctx,
+		`SELECT COALESCE(role, 'standard')
    FROM admins
   WHERE LOWER(username) = LOWER(?)
     AND status != ?
   LIMIT 1`,
-createdBy,
-string(adminapp.StatusDeleted),
-).Scan(&parentRole)
+		createdBy,
+		string(adminapp.StatusDeleted),
+	).Scan(&parentRole)
 
-if err == sql.ErrNoRows {
-return false, nil
-}
-if err != nil {
-return false, err
-}
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
 
-return parentRole == string(adminapp.RoleReseller), nil
+	return parentRole == string(adminapp.RoleReseller), nil
 }
 
 func resellerFreshGrant(
-currentLimit *int64,
-usedTraffic int64,
-newLimit int64,
+	currentLimit *int64,
+	usedTraffic int64,
+	newLimit int64,
 ) int64 {
-if newLimit <= 0 {
-return 0
-}
+	if newLimit <= 0 {
+		return 0
+	}
 
-current := int64PtrValue(currentLimit)
-if current <= 0 {
-return newLimit
-}
+	current := int64PtrValue(currentLimit)
+	if current <= 0 {
+		return newLimit
+	}
 
-remaining := current - usedTraffic
-if remaining < 0 {
-remaining = 0
-}
+	remaining := current - usedTraffic
+	if remaining < 0 {
+		remaining = 0
+	}
 
-if newLimit <= remaining {
-return 0
-}
+	if newLimit <= remaining {
+		return 0
+	}
 
-return newLimit - remaining
+	return newLimit - remaining
 }
 
 func (r Repository) tryReserveResellerOwnedTrafficTx(
-ctx context.Context,
-tx *sql.Tx,
-adminID *int64,
-serviceID *int64,
-amount int64,
-action string,
-now time.Time,
+	ctx context.Context,
+	tx *sql.Tx,
+	adminID *int64,
+	serviceID *int64,
+	amount int64,
+	action string,
+	now time.Time,
 ) (bool, error) {
-owner, err := r.resellerBudgetOwnerTx(ctx, tx, adminID)
-if err != nil {
-return false, err
-}
+	owner, err := r.resellerBudgetOwnerTx(ctx, tx, adminID)
+	if err != nil {
+		return false, err
+	}
 
-if !owner || amount <= 0 {
-return true, nil
-}
+	if !owner || amount <= 0 {
+		return true, nil
+	}
 
-result, err := tx.ExecContext(
-ctx,
-`UPDATE admins
+	result, err := tx.ExecContext(
+		ctx,
+		`UPDATE admins
     SET created_traffic = COALESCE(created_traffic, 0) + ?
   WHERE id = ?
     AND status = ?
@@ -288,69 +266,69 @@ ctx,
     AND data_limit > 0
     AND data_limit >= ?
     AND COALESCE(created_traffic, 0) <= data_limit - ?`,
-amount,
-*adminID,
-string(adminapp.StatusActive),
-string(adminapp.TrafficLimitCreatedTraffic),
-amount,
-amount,
-)
+		amount,
+		*adminID,
+		string(adminapp.StatusActive),
+		string(adminapp.TrafficLimitCreatedTraffic),
+		amount,
+		amount,
+	)
 
-if err != nil {
-return false, err
-}
+	if err != nil {
+		return false, err
+	}
 
-changed, err := result.RowsAffected()
-if err != nil {
-return false, err
-}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
 
-if changed != 1 {
-return false, nil
-}
+	if changed != 1 {
+		return false, nil
+	}
 
-_, err = tx.ExecContext(
-ctx,
-`INSERT INTO admin_created_traffic_logs
+	_, err = tx.ExecContext(
+		ctx,
+		`INSERT INTO admin_created_traffic_logs
 (admin_id, service_id, amount, action, created_at)
  VALUES (?, ?, ?, ?, ?)`,
-*adminID,
-nullableInt64Ptr(serviceID),
-amount,
-action,
-dbTime(now),
-)
+		*adminID,
+		nullableInt64Ptr(serviceID),
+		amount,
+		action,
+		dbTime(now),
+	)
 
-if err != nil {
-return false, err
-}
+	if err != nil {
+		return false, err
+	}
 
-return true, nil
+	return true, nil
 }
 
 func (r Repository) ensureResellerOwnedFiniteLimitTx(
-ctx context.Context,
-tx *sql.Tx,
-adminID *int64,
-dataLimit *int64,
+	ctx context.Context,
+	tx *sql.Tx,
+	adminID *int64,
+	dataLimit *int64,
 ) (bool, error) {
-owner, err := r.resellerBudgetOwnerTx(ctx, tx, adminID)
-if err != nil {
-return false, err
-}
+	owner, err := r.resellerBudgetOwnerTx(ctx, tx, adminID)
+	if err != nil {
+		return false, err
+	}
 
-if !owner {
-return false, nil
-}
+	if !owner {
+		return false, nil
+	}
 
-if dataLimit == nil || *dataLimit <= 0 {
-return true, clientError(
-403,
-"Reseller-owned users must always have a finite positive traffic limit",
-)
-}
+	if dataLimit == nil || *dataLimit <= 0 {
+		return true, clientError(
+			403,
+			"Reseller-owned users must always have a finite positive traffic limit",
+		)
+	}
 
-return true, nil
+	return true, nil
 }
 func (r Repository) createMutationContextTx(ctx context.Context, tx *sql.Tx, admin adminapp.Admin, payload UserCreate, serviceID *int64) (MutationContext, error) {
 	if admin.Role != adminapp.RoleFullAccess || serviceID != nil {
@@ -1218,7 +1196,28 @@ func (r Repository) recordCreatedTrafficTx(ctx context.Context, tx *sql.Tx, admi
 }
 
 func (r Repository) recordDeletedUserUsageCreditTx(ctx context.Context, tx *sql.Tx, admin adminapp.Admin, user UserSnapshot, now time.Time) error {
-	if admin.ID <= 0 || user.UsedTraffic <= 0 {
+	if admin.ID <= 0 {
+		return nil
+	}
+	resellerOwned, err := r.resellerBudgetOwnerTx(ctx, tx, &admin.ID)
+	if err != nil {
+		return err
+	}
+	if resellerOwned {
+		unused := int64PtrValue(user.DataLimit) - user.UsedTraffic
+		if unused < 0 {
+			unused = 0
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE admins
+SET deleted_users_usage = COALESCE(deleted_users_usage, 0) + ?,
+    created_traffic = CASE WHEN COALESCE(created_traffic, 0) < ? THEN 0 ELSE COALESCE(created_traffic, 0) - ? END
+WHERE id = ?`, user.UsedTraffic, unused, unused, admin.ID); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO admin_created_traffic_logs (admin_id, service_id, amount, action, created_at) VALUES (?, ?, ?, ?, ?)`, admin.ID, nullableInt64Ptr(user.ServiceID), -unused, "user_delete_unused_refund", dbTime(now))
+		return err
+	}
+	if user.UsedTraffic <= 0 {
 		return nil
 	}
 	scope, ok := adminTrafficScope(admin, user.ServiceID)
@@ -1270,6 +1269,6 @@ WHERE id = ?`,
 		return nil
 	}
 
-	_, err := tx.ExecContext(ctx, `INSERT INTO admin_created_traffic_logs (admin_id, service_id, amount, action, created_at) VALUES (?, ?, ?, ?, ?)`, admin.ID, nullableInt64Ptr(user.ServiceID), -amount, "user_delete_credit", dbTime(now))
+	_, err = tx.ExecContext(ctx, `INSERT INTO admin_created_traffic_logs (admin_id, service_id, amount, action, created_at) VALUES (?, ?, ?, ?, ?)`, admin.ID, nullableInt64Ptr(user.ServiceID), -amount, "user_delete_credit", dbTime(now))
 	return err
 }

@@ -305,9 +305,6 @@ func (r Repository) bulkDeleteFilter(targetAdmin *adminapp.Admin, payload BulkUs
 
 func (r Repository) ensureBulkActionAllowedTx(ctx context.Context, tx *sql.Tx, requester adminapp.Admin, targetAdmin *adminapp.Admin, payload BulkUsersActionRequest) error {
 	if payload.Action == AdvancedUserActionDeleteUsers {
-		if err := r.ensureResellerUserDeleteAllowedTx(ctx, tx, requester); err != nil {
-			return err
-		}
 		if err := EnsureUserPermission(requester, UserPermissionDelete); err != nil {
 			return permissionHTTPError(err)
 		}

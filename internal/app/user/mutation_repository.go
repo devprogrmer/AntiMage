@@ -454,9 +454,6 @@ func (r Repository) deleteUserMutation(ctx context.Context, admin adminapp.Admin
 		return MutationResult{}, err
 	}
 	defer rollbackQuiet(tx)
-	if err := r.ensureResellerUserDeleteAllowedTx(ctx, tx, admin); err != nil {
-		return MutationResult{}, err
-	}
 	existing, err := r.existingUserTx(ctx, tx, username)
 	if err != nil {
 		return MutationResult{}, err
