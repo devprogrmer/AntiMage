@@ -74,6 +74,7 @@ type UserPayloadBase struct {
 	DataLimitResetStrategy UserDataLimitResetStrategy `json:"data_limit_reset_strategy,omitempty"`
 	Inbounds               map[string][]string        `json:"inbounds,omitempty"`
 	Note                   *string                    `json:"note,omitempty"`
+	SubscriptionMessage    *string                    `json:"subscription_message,omitempty"`
 	TelegramID             *string                    `json:"telegram_id,omitempty"`
 	ContactNumber          *string                    `json:"contact_number,omitempty"`
 	OnHoldExpireDuration   *int64                     `json:"on_hold_expire_duration,omitempty"`
@@ -100,6 +101,7 @@ type UserServiceCreate struct {
 	DataLimit              *int64                     `json:"data_limit,omitempty"`
 	DataLimitResetStrategy UserDataLimitResetStrategy `json:"data_limit_reset_strategy,omitempty"`
 	Note                   *string                    `json:"note,omitempty"`
+	SubscriptionMessage    *string                    `json:"subscription_message,omitempty"`
 	OnHoldTimeout          *string                    `json:"on_hold_timeout,omitempty"`
 	OnHoldExpireDuration   *int64                     `json:"on_hold_expire_duration,omitempty"`
 	AutoDeleteInDays       *int64                     `json:"auto_delete_in_days,omitempty"`
@@ -191,6 +193,7 @@ func (p UserServiceCreate) ToUserCreate(service ServiceInfo) UserCreate {
 			DataLimitResetStrategy: p.DataLimitResetStrategy,
 			Inbounds:               map[string][]string{},
 			Note:                   p.Note,
+			SubscriptionMessage:    p.SubscriptionMessage,
 			OnHoldExpireDuration:   p.OnHoldExpireDuration,
 			OnHoldTimeout:          p.OnHoldTimeout,
 			IPLimit:                p.IPLimit,

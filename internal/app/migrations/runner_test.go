@@ -56,7 +56,7 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertTableColumns(t, ctx, db, "sqlite", "admin_api_keys", []string{"id", "admin_id", "key_hash", "created_at", "expires_at", "last_used_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "admin_usage_logs", []string{"admin_id", "used_traffic_at_reset", "created_traffic_at_reset", "reset_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "admin_created_traffic_logs", []string{"admin_id", "service_id", "amount", "action", "created_at"})
-	assertTableColumns(t, ctx, db, "sqlite", "users", []string{"id", "username", "credential_key", "subadress", "flow", "sub_revoked_at", "sub_updated_at", "sub_last_user_agent", "ip_limit", "upload_speed_limit", "download_speed_limit", "admin_disabled_at", "service_limit_disabled_at"})
+	assertTableColumns(t, ctx, db, "sqlite", "users", []string{"id", "username", "credential_key", "subadress", "flow", "sub_revoked_at", "sub_updated_at", "sub_last_user_agent", "ip_limit", "upload_speed_limit", "download_speed_limit", "subscription_message", "admin_disabled_at", "service_limit_disabled_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "user_presence", []string{"user_id", "online_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "user_subscription_access", []string{"user_id", "updated_at", "user_agent"})
 	assertTableColumns(t, ctx, db, "sqlite", "node_usage_user_queue", []string{"processed_at", "history_processed_at"})

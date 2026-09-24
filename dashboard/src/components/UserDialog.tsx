@@ -199,6 +199,7 @@ type BaseFormFields = Pick<
 	| "data_limit_reset_strategy"
 	| "on_hold_expire_duration"
 	| "note"
+	| "subscription_message"
 	| "telegram_id"
 	| "contact_number"
 	| "flow"
@@ -228,6 +229,7 @@ const formatUser = (user: User): FormType => {
 
 	return {
 		...user,
+		subscription_message: user.subscription_message ?? "",
 		flow: user.flow ?? "",
 
 		data_limit: user.data_limit
@@ -301,6 +303,7 @@ const getDefaultValues = (): FormType => {
 		on_hold_expire_duration: null,
 
 		note: "",
+		subscription_message: "",
 
 		service_id: null,
 
@@ -423,6 +426,7 @@ const buildSchema = (isEditing: boolean) => {
 			if (typeof value !== "string") return "";
 			return value;
 		}),
+		subscription_message: z.string().max(500, "Maximum 500 characters"),
 
 		telegram_id: z
 			.union([z.string(), z.null(), z.undefined()])
@@ -1746,6 +1750,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 				service_id: effectiveServiceId,
 
 				note: values.note,
+				subscription_message: values.subscription_message,
 
 				telegram_id: values.telegram_id,
 
@@ -1839,6 +1844,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 		const body: Record<string, unknown> = {
 			...rest,
+			subscription_message: values.subscription_message,
 
 			data_limit: data_limit,
 
@@ -3739,6 +3745,15 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																w="full"
 																minW={0}
 															>
+																<FormControl isInvalid={!!form.formState.errors.subscription_message} w="full">
+																	<FormLabel textAlign={isRTL ? "right" : "left"}>{t("fields.subscriptionMessage")}</FormLabel>
+																	<Textarea
+																		{...form.register("subscription_message")}
+																		maxLength={500}
+																		textAlign={isRTL ? "right" : "left"}
+																	/>
+																	<FormErrorMessage>{form.formState.errors.subscription_message?.message}</FormErrorMessage>
+																</FormControl>
 																<FormControl
 																	isInvalid={!!form.formState.errors.note}
 																	w="full"

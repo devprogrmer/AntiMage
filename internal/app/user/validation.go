@@ -65,6 +65,7 @@ func ValidateUserServiceCreate(payload *UserServiceCreate, catalog MutationConte
 		DataLimit:              payload.DataLimit,
 		DataLimitResetStrategy: payload.DataLimitResetStrategy,
 		Note:                   payload.Note,
+		SubscriptionMessage:    payload.SubscriptionMessage,
 		TelegramID:             nil,
 		ContactNumber:          nil,
 		OnHoldExpireDuration:   payload.OnHoldExpireDuration,
@@ -245,6 +246,13 @@ func validateUserBase(payload *UserPayloadBase, catalog MutationContext) error {
 			return ValidationError{Detail: "User's note can be a maximum of 500 character"}
 		}
 		*payload.Note = note
+	}
+	if payload.SubscriptionMessage != nil {
+		message := strings.TrimSpace(*payload.SubscriptionMessage)
+		if len([]rune(message)) > 500 {
+			return ValidationError{Detail: "subscription_message can be a maximum of 500 characters"}
+		}
+		*payload.SubscriptionMessage = message
 	}
 	if payload.CredentialKey != nil {
 		value := strings.TrimSpace(*payload.CredentialKey)

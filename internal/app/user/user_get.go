@@ -142,6 +142,7 @@ func (r Repository) userDetailRow(ctx context.Context, username string) (UserDet
 	u.data_limit_reset_strategy,
 	u.flow,
 	u.note,
+	u.subscription_message,
 	u.telegram_id,
 	u.contact_number,
 	COALESCE((SELECT usa.updated_at FROM user_subscription_access usa WHERE usa.user_id = u.id), u.sub_updated_at),
@@ -166,7 +167,7 @@ WHERE %s AND u.status != ?
 LIMIT 1`
 	var row UserDetail
 	var createdAt, subUpdatedAt, onlineAt, onHoldTimeout any
-	var credentialKey, resetStrategy, flow, note, telegramID, contactNumber, userAgent, subadress sql.NullString
+	var credentialKey, resetStrategy, flow, note, subscriptionMessage, telegramID, contactNumber, userAgent, subadress sql.NullString
 	var expire, dataLimit, holdDuration, autoDelete, serviceID, adminID sql.NullInt64
 	var serviceName, adminUsername sql.NullString
 	scan := func(where string) error {
@@ -184,6 +185,7 @@ LIMIT 1`
 			&resetStrategy,
 			&flow,
 			&note,
+			&subscriptionMessage,
 			&telegramID,
 			&contactNumber,
 			&subUpdatedAt,
@@ -220,6 +222,7 @@ LIMIT 1`
 	row.DataLimitResetStrategy = nullStringValue(resetStrategy)
 	row.Flow = stringPtr(flow)
 	row.Note = stringPtr(note)
+	row.SubscriptionMessage = stringPtr(subscriptionMessage)
 	row.TelegramID = stringPtr(telegramID)
 	row.ContactNumber = stringPtr(contactNumber)
 	if value := dbTimeString(subUpdatedAt); value != "" {
