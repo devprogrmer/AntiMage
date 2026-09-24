@@ -215,6 +215,9 @@ FROM admins ` + where + ` LIMIT 1`
 	if err != nil {
 		return Admin{}, false, err
 	}
+	if admin.Role == RoleReseller {
+		admin.Permissions.Users.Delete = true
+	}
 	admin.DisabledReason = nullStringPtr(disabledReason)
 	admin.TelegramID = nullInt64Ptr(telegramID)
 	admin.SubscriptionDomain = nullStringPtr(subscriptionDomain)

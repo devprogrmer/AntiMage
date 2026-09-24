@@ -47,6 +47,7 @@ func RoleDefaultPermissions(role AdminRole) AdminPermissions {
 		baseSections = allSectionPermissions()
 		baseSudo = allSudoPermissions()
 	case RoleReseller:
+		baseUsers.Delete = true
 		baseUsers.AllowUnlimitedData = false
 		baseAdminManagement.CanView = true
 		baseAdminManagement.CanEdit = true
