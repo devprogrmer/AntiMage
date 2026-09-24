@@ -86,11 +86,19 @@ func TestNodeRepositoryCreateUpdateResetDeleteAndRegenerate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResetNodeUsage error: %v", err)
 	}
-	if reset.Uplink != 0 || reset.Downlink != 0 || reset.Status != StatusConnected {
+	if reset.Uplink != 0 || reset.Downlink != 0 || reset.Status != StatusDisabled {
 		t.Fatalf("unexpected reset node: %#v", reset)
 	}
 	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_usages WHERE node_id = 1`, 0)
 	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_user_usages WHERE node_id = 1`, 0)
+	limited := StatusLimited
+	if _, err := repo.UpdateNode(ctx, created.ID, NodeModify{Status: &limited}); err != nil {
+		t.Fatal(err)
+	}
+	resetLimited, err := repo.ResetNodeUsage(ctx, created.ID)
+	if err != nil || resetLimited.Status != StatusConnecting {
+		t.Fatalf("limited node reset should reconnect: status=%q err=%v", resetLimited.Status, err)
+	}
 
 	before := *reset.NodeCertificate
 	regenerated, err := repo.RegenerateNodeCertificate(ctx, created.ID)

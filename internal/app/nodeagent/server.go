@@ -34,6 +34,7 @@ type Server struct {
 	cfg                              Config
 	xrayAPIPortFallback              int
 	mu                               sync.Mutex
+	maintenanceMu                    sync.Mutex
 	startedAt                        time.Time
 	lastConfig                       string
 	lastRuntime                      *exec.Cmd
@@ -322,10 +323,6 @@ func (s *Server) PublicIPs(context.Context, *nodev1.PublicIPsRequest) (*nodev1.P
 	return &nodev1.PublicIPsResponse{}, nil
 }
 
-func (s *Server) RestartService(context.Context, *nodev1.ServiceRestartRequest) (*nodev1.RuntimeActionResponse, error) {
-	return s.action("", "service restart acknowledged"), nil
-}
-
 func (s *Server) ApplyTorProxy(ctx context.Context, req *nodev1.TorProxyRequest) (*nodev1.RuntimeActionResponse, error) {
 	port := req.GetSocksPort()
 	if port < 1024 || port > 65535 {
@@ -395,22 +392,6 @@ func (s *Server) ApplyTorProxy(ctx context.Context, req *nodev1.TorProxyRequest)
 		message += " exit=" + country
 	}
 	return s.action(req.GetOperationId(), message), nil
-}
-
-func (s *Server) UpdateRuntime(context.Context, *nodev1.RuntimeUpdateRequest) (*nodev1.RuntimeActionResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "runtime update is managed by the installer")
-}
-
-func (s *Server) UpdateGeo(context.Context, *nodev1.GeoUpdateRequest) (*nodev1.RuntimeActionResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "geo update is managed by the installer")
-}
-
-func (s *Server) UpdateService(context.Context, *nodev1.ServiceUpdateRequest) (*nodev1.RuntimeActionResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "service update is managed by the installer")
-}
-
-func (s *Server) RebootHost(context.Context, *nodev1.HostRebootRequest) (*nodev1.RuntimeActionResponse, error) {
-	return nil, status.Error(codes.PermissionDenied, "host reboot is disabled by default")
 }
 
 func (s *Server) CollectOnlineUsers(context.Context, *nodev1.Empty) (*nodev1.OnlineUsersResponse, error) {

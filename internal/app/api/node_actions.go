@@ -7,6 +7,7 @@ import (
 	"time"
 
 	nodeapp "github.com/antimage/antimage/internal/app/node"
+	"github.com/antimage/antimage/internal/app/nodecontroller"
 	telegramapp "github.com/antimage/antimage/internal/app/telegram"
 )
 
@@ -69,9 +70,26 @@ func (s *Server) handleNodeUpdate(w http.ResponseWriter, r *http.Request, nodeID
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	before, _ := s.nodeMutations.GetNode(ctx, nodeID)
+	before, err := s.nodeMutations.GetNode(ctx, nodeID)
+	if err != nil {
+		writeNodeMutationError(w, err)
+		return
+	}
+	if payload.Status != nil && strings.TrimSpace(*payload.Status) == nodeapp.StatusDisabled && before.Status != nodeapp.StatusDisabled {
+		if err := s.nodeController.StopNodeRuntime(ctx, nodeID); err != nil {
+			writeControllerError(w, err)
+			return
+		}
+	}
 	node, err := s.nodeMutations.UpdateNode(ctx, nodeID, payload)
 	if err != nil {
+		if payload.Status != nil && strings.TrimSpace(*payload.Status) == nodeapp.StatusDisabled && before.Status != nodeapp.StatusDisabled {
+			go func() {
+				recoverCtx, recoverCancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer recoverCancel()
+				_, _ = s.nodeController.Connect(recoverCtx, nodecontroller.Request{NodeID: nodeID})
+			}()
+		}
 		writeNodeMutationError(w, err)
 		return
 	}

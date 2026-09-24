@@ -7,8 +7,6 @@ import (
 	"time"
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func (c Controller) UpdateRuntime(ctx context.Context, req Request) (result RuntimeResult, err error) {
@@ -124,11 +122,11 @@ func (c Controller) updateRuntimeNow(ctx context.Context, req Request) (RuntimeR
 		Version:     strings.TrimSpace(req.Version),
 	})
 	if err != nil {
-		if isInstallerManagedOperationError(err) {
-			return installerManagedRuntimeResult(node, "runtime update"), nil
-		}
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("update runtime", req.NodeID, err)
+	}
+	if err := requireAcceptedMaintenanceResponse(res, "update runtime"); err != nil {
+		return RuntimeResult{}, err
 	}
 	return c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
 }
@@ -148,11 +146,11 @@ func (c Controller) updateGeoNow(ctx context.Context, req Request) (RuntimeResul
 		Files:       files,
 	})
 	if err != nil {
-		if isInstallerManagedOperationError(err) {
-			return installerManagedRuntimeResult(node, "geo update"), nil
-		}
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("update geo", req.NodeID, err)
+	}
+	if err := requireAcceptedMaintenanceResponse(res, "update geo"); err != nil {
+		return RuntimeResult{}, err
 	}
 	return c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
 }
@@ -170,6 +168,9 @@ func (c Controller) restartServiceNow(ctx context.Context, req Request) (Runtime
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("restart service", req.NodeID, err)
 	}
+	if err := requireAcceptedMaintenanceResponse(res, "restart service"); err != nil {
+		return RuntimeResult{}, err
+	}
 	return runtimeResult(node, res.GetRuntime(), nil), nil
 }
 
@@ -185,39 +186,20 @@ func (c Controller) updateServiceNow(ctx context.Context, req Request) (RuntimeR
 		Version:     strings.TrimSpace(req.Version),
 	})
 	if err != nil {
-		if isInstallerManagedOperationError(err) {
-			return installerManagedRuntimeResult(node, "service update"), nil
-		}
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("update service", req.NodeID, err)
 	}
-	if res == nil {
-		return RuntimeResult{}, fmt.Errorf("node %d update service returned no response", req.NodeID)
+	if err := requireAcceptedMaintenanceResponse(res, "update service"); err != nil {
+		return RuntimeResult{}, err
 	}
 	return runtimeResult(node, res.GetRuntime(), nil), nil
 }
 
-func isInstallerManagedOperationError(err error) bool {
-	if err == nil {
-		return false
+func requireAcceptedMaintenanceResponse(res *nodev1.RuntimeActionResponse, action string) error {
+	if res == nil || !res.GetAccepted() {
+		return fmt.Errorf("node %s was not accepted", action)
 	}
-	if st, ok := status.FromError(err); ok && st.Code() != codes.Unimplemented {
-		return false
-	}
-	return strings.Contains(strings.ToLower(err.Error()), "managed by the installer")
-}
-
-func installerManagedRuntimeResult(node NodeRow, action string) RuntimeResult {
-	message := action + " is managed by the installer; skipped"
-	result := runtimeResult(node, &nodev1.RuntimeState{
-		Connected:   true,
-		Started:     true,
-		CoreVersion: node.XrayVersion,
-		Message:     message,
-	}, nil)
-	result.Status = "connected"
-	result.Message = message
-	return result
+	return nil
 }
 
 func (c Controller) rebootHostNow(ctx context.Context, req Request) (RuntimeResult, error) {
@@ -232,6 +214,9 @@ func (c Controller) rebootHostNow(ctx context.Context, req Request) (RuntimeResu
 	if err != nil {
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("reboot host", req.NodeID, err)
+	}
+	if err := requireAcceptedMaintenanceResponse(res, "reboot host"); err != nil {
+		return RuntimeResult{}, err
 	}
 	return runtimeResult(node, res.GetRuntime(), nil), nil
 }

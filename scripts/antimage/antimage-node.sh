@@ -1359,12 +1359,25 @@ EOF
     systemctl daemon-reload
 }
 
+refresh_xray_installer_script() {
+    local temp_script
+    mkdir -p "$APP_DIR/scripts"
+    temp_script=$(mktemp) || return 1
+    if ! curl -fsSL "$ANTIMAGE_SCRIPT_BASE_URL/install_latest_xray.sh" -o "$temp_script"; then
+        rm -f "$temp_script"
+        return 1
+    fi
+    sed -i 's/\r$//' "$temp_script"
+    install -m 755 "$temp_script" "$APP_DIR/scripts/install_latest_xray.sh"
+    local result=$?
+    rm -f "$temp_script"
+    return "$result"
+}
+
 install_latest_xray_for_binary_node() {
-    mkdir -p "$APP_DIR/scripts" "$DATA_DIR/xray-core"
+    mkdir -p "$DATA_DIR/xray-core"
     colorized_echo blue "Installing Xray core ${XRAY_CORE_VERSION:-$DEFAULT_XRAY_CORE_VERSION} for binary node"
-    curl -fsSL "$ANTIMAGE_SCRIPT_BASE_URL/install_latest_xray.sh" -o "$APP_DIR/scripts/install_latest_xray.sh"
-    sed -i 's/\r$//' "$APP_DIR/scripts/install_latest_xray.sh"
-    chmod +x "$APP_DIR/scripts/install_latest_xray.sh"
+    refresh_xray_installer_script || return 1
     ANTIMAGE_DATA_DIR="$DATA_DIR" XRAY_INSTALL_DIR="$DATA_DIR/xray-core" XRAY_ASSETS_DIR="$DATA_DIR/xray-core" XRAY_CORE_VERSION="${XRAY_CORE_VERSION:-$DEFAULT_XRAY_CORE_VERSION}" bash "$APP_DIR/scripts/install_latest_xray.sh"
 }
 
@@ -2278,6 +2291,9 @@ update_command() {
         colorized_echo blue "Pulling node image $DOCKER_IMAGE"
     fi
     update_antimage_node "$node_version"
+    if is_binary_install; then
+        refresh_xray_installer_script || { colorized_echo red "Failed to refresh Xray installer"; return 1; }
+    fi
 
     colorized_echo blue "Restarting AntiMage-node services"
     down_antimage_node
