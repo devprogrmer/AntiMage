@@ -60,15 +60,15 @@ func TestAnyConnectOcpasswdHelper(t *testing.T) {
 		}
 	}
 	args = args[separator+1:]
-	if len(args) < 3 {
+	if len(args) != 5 || args[0] != "-c" || args[2] != "-g" || args[3] != "antimage" {
 		os.Exit(2)
 	}
-	path := args[len(args)-2]
+	path := args[1]
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		os.Exit(3)
 	}
-	_, _ = file.WriteString(args[len(args)-1] + ":antimage:hashed\n")
+	_, _ = file.WriteString(args[4] + ":antimage:hashed\n")
 	_ = file.Close()
 	os.Exit(0)
 }

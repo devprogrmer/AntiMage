@@ -113,35 +113,46 @@ ORDER BY id`, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	peers := []AWGRuntimePeer{}
-	deviceRepo := userapp.NewRepository(r.db, r.dialect)
+	type runtimeUser struct {
+		id, deviceLimit, uploadSpeedLimit, downloadSpeedLimit int64
+		username, status                                      string
+		used                                                  int64
+		dataLimit, expire                                     sql.NullInt64
+	}
+	users := []runtimeUser{}
 	for rows.Next() {
-		var userID, deviceLimit, uploadSpeedLimit, downloadSpeedLimit int64
-		var username, status string
-		var used int64
-		var dataLimit, expire sql.NullInt64
-		if err := rows.Scan(&userID, &username, &status, &used, &dataLimit, &expire, &deviceLimit, &uploadSpeedLimit, &downloadSpeedLimit); err != nil {
+		var item runtimeUser
+		if err := rows.Scan(&item.id, &item.username, &item.status, &item.used, &item.dataLimit, &item.expire, &item.deviceLimit, &item.uploadSpeedLimit, &item.downloadSpeedLimit); err != nil {
+			rows.Close()
 			return nil, err
 		}
-		limit := int(deviceLimit)
-		if limit <= 0 {
-			limit = 1
-		}
-		devices, err := deviceRepo.ReconcileAmneziaWGDevices(ctx, inboundTag, userID, limit, pool, serverAddress, pskEnabled)
-		if err != nil {
-			return nil, fmt.Errorf("user %d AmneziaWG devices: %w", userID, err)
-		}
-		for _, device := range devices {
-			peers = append(peers, AWGRuntimePeer{
-				UserID: userID, Username: username, DeviceIndex: device.DeviceIndex,
-				PublicKey: device.PublicKey, PresharedKey: device.PresharedKey, Address: device.Address,
-				Status: status, UsedTraffic: used, DataLimit: nullableOVInt64(dataLimit), Expire: nullableOVInt64(expire), DeviceLimit: deviceLimit, UploadSpeedLimit: uploadSpeedLimit, DownloadSpeedLimit: downloadSpeedLimit,
-			})
-		}
+		users = append(users, item)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+
+	peers := []AWGRuntimePeer{}
+	deviceRepo := userapp.NewRepository(r.db, r.dialect)
+	for _, item := range users {
+		limit := int(item.deviceLimit)
+		if limit <= 0 {
+			limit = 1
+		}
+		devices, err := deviceRepo.ReconcileAmneziaWGDevices(ctx, inboundTag, item.id, limit, pool, serverAddress, pskEnabled)
+		if err != nil {
+			return nil, fmt.Errorf("user %d AmneziaWG devices: %w", item.id, err)
+		}
+		for _, device := range devices {
+			peers = append(peers, AWGRuntimePeer{
+				UserID: item.id, Username: item.username, DeviceIndex: device.DeviceIndex,
+				PublicKey: device.PublicKey, PresharedKey: device.PresharedKey, Address: device.Address,
+				Status: item.status, UsedTraffic: item.used, DataLimit: nullableOVInt64(item.dataLimit), Expire: nullableOVInt64(item.expire), DeviceLimit: item.deviceLimit, UploadSpeedLimit: item.uploadSpeedLimit, DownloadSpeedLimit: item.downloadSpeedLimit,
+			})
+		}
 	}
 	return peers, nil
 }

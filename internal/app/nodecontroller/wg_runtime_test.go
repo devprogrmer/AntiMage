@@ -107,3 +107,38 @@ func TestProtocolRuntimeKeepsAmneziaWGIndependent(t *testing.T) {
 		t.Fatal("AmneziaWG runtime must have an independent type")
 	}
 }
+
+func TestAWGUsersForServicesClosesUserRowsBeforeReconcilingDevices(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "awg-runtime.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`
+CREATE TABLE users (
+ id INTEGER PRIMARY KEY, username TEXT, status TEXT, used_traffic INTEGER,
+ data_limit INTEGER, expire INTEGER, device_limit INTEGER,
+ upload_speed_limit INTEGER, download_speed_limit INTEGER, service_id INTEGER
+);
+CREATE TABLE amneziawg_devices (
+ inbound_tag TEXT NOT NULL, user_id INTEGER NOT NULL, device_index INTEGER NOT NULL,
+ private_key TEXT NOT NULL, public_key TEXT NOT NULL, preshared_key TEXT NOT NULL DEFAULT '',
+ address TEXT NOT NULL, generation INTEGER NOT NULL DEFAULT 1,
+ PRIMARY KEY (inbound_tag, user_id, device_index),
+ UNIQUE (inbound_tag, address)
+);
+INSERT INTO users (id, username, status, used_traffic, device_limit, upload_speed_limit, download_speed_limit, service_id)
+VALUES (282, 'awg-user', 'active', 0, 1, 0, 0, 7);`); err != nil {
+		t.Fatal(err)
+	}
+
+	peers, err := NewRepository(db, "sqlite").AWGUsersForServices(
+		context.Background(), "awg-main", []int64{7}, "10.68.0.0/24", "10.68.0.1/24", false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(peers) != 1 || peers[0].UserID != 282 || peers[0].Address != "10.68.0.2" {
+		t.Fatalf("unexpected peers: %#v", peers)
+	}
+}
