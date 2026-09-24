@@ -29,6 +29,8 @@ func TestRenderAnyConnectConfig(t *testing.T) {
 		ServerCert:    "/run/antimage/server.crt",
 		ServerKey:     "/run/antimage/server.key",
 		UserConfigDir: "/run/antimage/users",
+		ControlSocket: "/run/antimage/ocserv.sock",
+		PIDFile:       "/run/antimage/ocserv.pid",
 	}
 
 	config, err := renderAnyConnectConfig(inbound, files)
@@ -44,6 +46,8 @@ func TestRenderAnyConnectConfig(t *testing.T) {
 		"dns = 1.1.1.1",
 		"dns = 8.8.8.8",
 		"config-per-user = /run/antimage/users",
+		"socket-file = /run/antimage/ocserv.sock",
+		"pid-file = /run/antimage/ocserv.pid",
 	} {
 		if !strings.Contains(config, expected) {
 			t.Fatalf("missing %q in config:\n%s", expected, config)
