@@ -60,7 +60,6 @@ func (s *Server) prepareAnyConnectInbound(inbound anyConnectRuntimeInbound, call
 	_ = os.Remove(files.PasswordFile)
 	users := make(map[string]int64, len(inbound.Users))
 	policies := make(map[string]nativeSessionUserPolicy, len(inbound.Users))
-	first := true
 	for _, user := range inbound.Users {
 		username := strings.TrimSpace(user.Username)
 		if err := validateOpenVPNUsername(username); err != nil || username == "" || user.Password == "" {
@@ -72,11 +71,7 @@ func (s *Server) prepareAnyConnectInbound(inbound anyConnectRuntimeInbound, call
 		if !nativeSessionUserAllowed(user) {
 			continue
 		}
-		args := []string{"-g", "antimage", files.PasswordFile, username}
-		if first {
-			args = append([]string{"-c"}, args...)
-			first = false
-		}
+		args := []string{"-c", files.PasswordFile, "-g", "antimage", username}
 		cmd := anyConnectCommand("ocpasswd", args...)
 		cmd.Stdin = strings.NewReader(user.Password + "\n" + user.Password + "\n")
 		if output, err := cmd.CombinedOutput(); err != nil {
