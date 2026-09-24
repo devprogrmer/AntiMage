@@ -25,7 +25,7 @@ type nativeRuntimePayload struct {
 	WireGuardInbounds  []wireGuardRuntimeInbound `json:"wg_inbounds"`
 	AmneziaWGInbounds  []amneziaWGRuntimeInbound `json:"awg_inbounds"`
 	IKEv2Inbounds      []ikev2RuntimeInbound     `json:"ikev2_inbounds"`
-	AnyConnectInbounds []json.RawMessage         `json:"anyconnect_inbounds"`
+	AnyConnectInbounds []anyConnectRuntimeInbound `json:"anyconnect_inbounds"`
 
 	HAProxy json.RawMessage `json:"haproxy"`
 }
