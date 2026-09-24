@@ -42,9 +42,24 @@ for SCRIPT in "$ROOT/antimage-node.sh" "$ROOT/antimage-node-binary.sh"; do
     grep -Fq 'ensure_vpn_binary_prerequisites()' "$SCRIPT"
     grep -Fq '    ensure_vpn_binary_prerequisites' "$SCRIPT"
     grep -Fq '    ensure_vpn_host_prerequisites' "$SCRIPT"
+	grep -Fq 'optimize_antimage_server()' "$SCRIPT"
+	grep -Fq '    optimize_antimage_server' "$SCRIPT"
+	grep -Fq '/etc/sysctl.d/99-antimage-network.conf' "$SCRIPT"
+	grep -Fq 'tcp_congestion_control=bbr' "$SCRIPT"
+	grep -Fq 'ANTIMAGE_MSS' "$SCRIPT"
+	grep -Fq '/swapfile none swap sw 0 0' "$SCRIPT"
     grep -Fq '    cap_add:' "$SCRIPT"
     grep -Fq '      - NET_ADMIN' "$SCRIPT"
     grep -Fq '      - /dev/net/tun:/dev/net/tun' "$SCRIPT"
+done
+
+for SCRIPT in "$ROOT/antimage.sh" "$ROOT/antimage-binary.sh"; do
+	bash -n "$SCRIPT"
+	grep -Fq 'optimize_antimage_server()' "$SCRIPT"
+	grep -Fq 'optimize_antimage_server' "$SCRIPT"
+	grep -Fq '/etc/sysctl.d/99-antimage-network.conf' "$SCRIPT"
+	grep -Fq 'tcp_congestion_control=bbr' "$SCRIPT"
+	grep -Fq '/swapfile none swap sw 0 0' "$SCRIPT"
 done
 
 NODE_DOCKERFILE="$ROOT/../../Dockerfile.node"

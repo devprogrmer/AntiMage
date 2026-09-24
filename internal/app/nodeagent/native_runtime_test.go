@@ -81,17 +81,17 @@ func TestParseNativeRuntimePayloadEmpty(t *testing.T) {
 	}
 }
 
-func TestApplyNativeRuntimeRejectsUnsupportedDaemonPayload(t *testing.T) {
+func TestApplyNativeRuntimeValidatesAnyConnectPayload(t *testing.T) {
 	server := New(Config{DataDir: t.TempDir()})
 
 	err := server.applyNativeRuntime(
 		`{"anyconnect_inbounds":[{"tag":"anyconnect-main"}]}`,
 	)
 	if err == nil {
-		t.Fatal("expected unsupported daemon runtime error")
+		t.Fatal("expected AnyConnect validation error")
 	}
-	if !strings.Contains(err.Error(), "unsupported daemon inbounds") {
-		t.Fatalf("error = %v, want unsupported daemon inbounds", err)
+	if !strings.Contains(err.Error(), "server certificate and private key are required") {
+		t.Fatalf("error = %v, want certificate validation error", err)
 	}
 }
 

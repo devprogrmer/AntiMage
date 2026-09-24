@@ -38,6 +38,7 @@ type Server struct {
 	lastConfig                       string
 	lastRuntime                      *exec.Cmd
 	openVPNRuntimes                  map[string]*openVPNProcess
+	anyConnectRuntimes               map[string]*anyConnectProcess
 	openVPNTProxySpecs               map[string]openVPNTProxySpec
 	openVPNNATSpecs                  map[string]openVPNNATSpec
 	l2TPRuntimes                     map[string]*l2TPProcess
@@ -58,6 +59,11 @@ type Server struct {
 	openVPNUsagePending              *openVPNUsagePendingBatch
 	openVPNUsageLoaded               bool
 	openVPNUsageLastAckedBatchID     string
+	anyConnectUsageMu                sync.Mutex
+	anyConnectUsageBaseline          map[string]uint64
+	anyConnectUsagePending           *anyConnectUsagePendingBatch
+	anyConnectUsageLoaded            bool
+	anyConnectUsageLastAckedBatchID  string
 	l2TPUsageMu                      sync.Mutex
 	l2TPUsageBaseline                map[string]uint64
 	l2TPUsagePending                 *l2TPUsagePendingBatch
@@ -127,6 +133,7 @@ func New(cfg Config) *Server {
 		xrayAPIPortFallback:             cfg.XrayAPIPort,
 		startedAt:                       time.Now(),
 		openVPNRuntimes:                 make(map[string]*openVPNProcess),
+		anyConnectRuntimes:              make(map[string]*anyConnectProcess),
 		openVPNTProxySpecs:              make(map[string]openVPNTProxySpec),
 		openVPNNATSpecs:                 make(map[string]openVPNNATSpec),
 		l2TPRuntimes:                    make(map[string]*l2TPProcess),
@@ -142,6 +149,7 @@ func New(cfg Config) *Server {
 		amneziaWGRuntimes:               make(map[string]amneziaWGRuntimeState),
 		wireGuardDynamicSuppressedPeers: make(map[string]struct{}),
 		openVPNUsageBaseline:            make(map[string]uint64),
+		anyConnectUsageBaseline:         make(map[string]uint64),
 		l2TPUsageBaseline:               make(map[string]uint64),
 		pptpUsageBaseline:               make(map[string]uint64),
 		wireGuardUsageBaseline:          make(map[string]uint64),
@@ -168,6 +176,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	defer func() {
 		s.stopAllOpenVPNRuntimes()
+		s.stopAllAnyConnectRuntimes()
 		s.stopAllOpenVPNTProxySpecs()
 		s.stopAllOpenVPNNATSpecs()
 		s.stopAllL2TPRuntimes()
@@ -244,6 +253,7 @@ func (s *Server) RestartRuntime(
 	req *nodev1.RuntimeConfigRequest,
 ) (*nodev1.RuntimeActionResponse, error) {
 	s.stopAllOpenVPNRuntimes()
+	s.stopAllAnyConnectRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
 	s.stopAllOpenVPNNATSpecs()
 	s.stopAllL2TPRuntimes()
@@ -268,6 +278,7 @@ func (s *Server) StopRuntime(
 	*nodev1.StopRuntimeRequest,
 ) (*nodev1.RuntimeActionResponse, error) {
 	s.stopAllOpenVPNRuntimes()
+	s.stopAllAnyConnectRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
 	s.stopAllOpenVPNNATSpecs()
 	s.stopAllL2TPRuntimes()

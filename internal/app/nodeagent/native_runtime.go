@@ -19,13 +19,13 @@ type nativeRuntimePayload struct {
 	Target          string                       `json:"target"`
 	SessionCallback nativeRuntimeSessionCallback `json:"session_callback,omitempty"`
 
-	OpenVPNInbounds    []openVPNRuntimeInbound   `json:"inbounds"`
-	L2TPInbounds       []l2TPRuntimeInbound      `json:"l2tp_inbounds"`
-	PPTPInbounds       []pptpRuntimeInbound      `json:"pptp_inbounds"`
-	WireGuardInbounds  []wireGuardRuntimeInbound `json:"wg_inbounds"`
-	AmneziaWGInbounds  []amneziaWGRuntimeInbound `json:"awg_inbounds"`
-	IKEv2Inbounds      []ikev2RuntimeInbound     `json:"ikev2_inbounds"`
-	AnyConnectInbounds []json.RawMessage         `json:"anyconnect_inbounds"`
+	OpenVPNInbounds    []openVPNRuntimeInbound    `json:"inbounds"`
+	L2TPInbounds       []l2TPRuntimeInbound       `json:"l2tp_inbounds"`
+	PPTPInbounds       []pptpRuntimeInbound       `json:"pptp_inbounds"`
+	WireGuardInbounds  []wireGuardRuntimeInbound  `json:"wg_inbounds"`
+	AmneziaWGInbounds  []amneziaWGRuntimeInbound  `json:"awg_inbounds"`
+	IKEv2Inbounds      []ikev2RuntimeInbound      `json:"ikev2_inbounds"`
+	AnyConnectInbounds []anyConnectRuntimeInbound `json:"anyconnect_inbounds"`
 
 	HAProxy json.RawMessage `json:"haproxy"`
 }
@@ -389,6 +389,25 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		0,
 		len(payload.IKEv2Inbounds),
 	)
+	anyConnectDesired := make(map[string]struct{}, len(payload.AnyConnectInbounds))
+	anyConnectNetworkDesired := make(map[string]struct{}, len(payload.AnyConnectInbounds))
+	anyConnectPrepared := make([]preparedAnyConnectRuntime, 0, len(payload.AnyConnectInbounds))
+	for _, inbound := range payload.AnyConnectInbounds {
+		tag := strings.TrimSpace(inbound.Tag)
+		if tag == "" {
+			return fmt.Errorf("anyconnect inbound tag is required")
+		}
+		if _, exists := anyConnectDesired[tag]; exists {
+			return fmt.Errorf("duplicate anyconnect runtime tag %q", tag)
+		}
+		prepared, err := s.prepareAnyConnectInbound(inbound, payload.SessionCallback)
+		if err != nil {
+			return err
+		}
+		anyConnectDesired[tag] = struct{}{}
+		anyConnectNetworkDesired["anyconnect:"+tag] = struct{}{}
+		anyConnectPrepared = append(anyConnectPrepared, prepared)
+	}
 
 	for _, inbound := range payload.IKEv2Inbounds {
 		tag := strings.TrimSpace(inbound.Tag)
@@ -448,11 +467,8 @@ func (s *Server) applyNativeRuntime(raw string) error {
 	if err := preflightIKEv2Runtimes(ikev2Prepared); err != nil {
 		return err
 	}
-	if len(payload.AnyConnectInbounds) > 0 {
-		return fmt.Errorf(
-			"native runtime contains unsupported daemon inbounds: anyconnect=%d",
-			len(payload.AnyConnectInbounds),
-		)
+	if err := preflightAnyConnectRuntimes(anyConnectPrepared); err != nil {
+		return err
 	}
 
 	if err := s.syncWireGuardUsageConfigs(
@@ -465,8 +481,16 @@ func (s *Server) applyNativeRuntime(raw string) error {
 	s.stopRemovedWireGuardRuntimes(wgDesired)
 	s.stopRemovedAmneziaWGRuntimes(awgDesired)
 	s.stopRemovedOpenVPNRuntimes(ovDesired)
-	s.stopRemovedOpenVPNTProxySpecs(ovDesired)
-	s.stopRemovedOpenVPNNATSpecs(ovDesired)
+	s.stopRemovedAnyConnectRuntimes(anyConnectDesired)
+	sharedNetworkDesired := make(map[string]struct{}, len(ovDesired)+len(anyConnectNetworkDesired))
+	for tag := range ovDesired {
+		sharedNetworkDesired[tag] = struct{}{}
+	}
+	for tag := range anyConnectNetworkDesired {
+		sharedNetworkDesired[tag] = struct{}{}
+	}
+	s.stopRemovedOpenVPNTProxySpecs(sharedNetworkDesired)
+	s.stopRemovedOpenVPNNATSpecs(sharedNetworkDesired)
 	s.stopRemovedL2TPRuntimes(l2tpDesired)
 	s.stopRemovedL2TPTProxySpecs(l2tpDesired)
 	s.stopRemovedL2TPNATSpecs(l2tpDesired)
@@ -514,6 +538,21 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		); err != nil {
 			_ = s.removeOpenVPNTProxyForTag(runtime.Tag)
 			_ = s.removeOpenVPNNATForTag(runtime.Tag)
+			return err
+		}
+	}
+	for _, runtime := range anyConnectPrepared {
+		networkTag := "anyconnect:" + runtime.Tag
+		if err := s.applyOpenVPNTProxy(networkTag, runtime.TProxy); err != nil {
+			return err
+		}
+		if err := s.applyOpenVPNNAT(networkTag, runtime.NAT); err != nil {
+			_ = s.removeOpenVPNTProxyForTag(networkTag)
+			return err
+		}
+		if err := s.startAnyConnectInbound(runtime); err != nil {
+			_ = s.removeOpenVPNTProxyForTag(networkTag)
+			_ = s.removeOpenVPNNATForTag(networkTag)
 			return err
 		}
 	}
@@ -589,10 +628,11 @@ func (s *Server) applyNativeRuntime(raw string) error {
 	); err != nil {
 		return err
 	}
-	if len(ovPrepared) > 0 || len(wgPrepared) > 0 || len(awgPrepared) > 0 || len(l2tpPrepared) > 0 || len(pptpPrepared) > 0 || len(ikev2Prepared) > 0 {
+	if len(ovPrepared) > 0 || len(anyConnectPrepared) > 0 || len(wgPrepared) > 0 || len(awgPrepared) > 0 || len(l2tpPrepared) > 0 || len(pptpPrepared) > 0 || len(ikev2Prepared) > 0 {
 		s.appendLog(fmt.Sprintf(
-			"native runtime applied: openvpn=%d wireguard=%d amneziawg=%d l2tp=%d pptp=%d ikev2=%d",
+			"native runtime applied: openvpn=%d anyconnect=%d wireguard=%d amneziawg=%d l2tp=%d pptp=%d ikev2=%d",
 			len(ovPrepared),
+			len(anyConnectPrepared),
 			len(wgPrepared),
 			len(awgPrepared),
 			len(l2tpPrepared),

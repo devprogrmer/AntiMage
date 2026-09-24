@@ -95,7 +95,7 @@ func RunNativeSessionEventHelper(args []string) error {
 		protocol = "ov"
 	}
 
-	commonName := firstNonEmptyEnv("common_name", "PEERNAME")
+	commonName := firstNonEmptyEnv("common_name", "PEERNAME", "USERNAME")
 	if commonName == "" {
 		return fmt.Errorf("%s session username is missing", protocol)
 	}
@@ -113,11 +113,12 @@ func RunNativeSessionEventHelper(args []string) error {
 		"ifconfig_pool_remote_ip",
 		"IPREMOTE",
 		"PPP_REMOTE",
+		"IP_REMOTE",
 	)
 
-	interfaceName := firstNonEmptyEnv("IFNAME")
+	interfaceName := firstNonEmptyEnv("IFNAME", "DEVICE")
 
-	clientIP := firstNonEmptyEnv("trusted_ip", "trusted_ip6", "CALLING_NUMBER")
+	clientIP := firstNonEmptyEnv("trusted_ip", "trusted_ip6", "CALLING_NUMBER", "IP_REAL")
 
 	trustedPort := firstNonEmptyEnv("trusted_port")
 
