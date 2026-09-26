@@ -859,8 +859,9 @@ detect_compose() {
 
 install_package_impl() {
     local PACKAGE="$1"
+    local reinstall="${2:-}"
     if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
-        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER -y -qq install "$PACKAGE" \
+        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER -y -qq install ${reinstall:+--reinstall} "$PACKAGE" \
             -o Dpkg::Options::="--force-confdef" \
             -o Dpkg::Options::="--force-confold"
     elif [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]]; then
@@ -885,6 +886,13 @@ install_package () {
 
     local PACKAGE="$1"
     ui_spinner_run "Installing $PACKAGE" install_package_impl "$PACKAGE"
+}
+
+reinstall_package() {
+    if [ -z "$PKG_MANAGER" ]; then
+        detect_and_update_package_manager
+    fi
+    ui_spinner_run "Reinstalling $1" install_package_impl "$1" reinstall
 }
 
 package_available() {
@@ -1083,8 +1091,15 @@ ensure_vpn_binary_prerequisites() {
         fi
     fi
 
-    if ! command -v ocserv >/dev/null 2>&1; then
-        packages+=("ocserv")
+    if ! command -v ocserv >/dev/null 2>&1 ||
+       ! command -v ocpasswd >/dev/null 2>&1 ||
+       ! command -v occtl >/dev/null 2>&1; then
+        if command -v ocserv >/dev/null 2>&1 &&
+           { [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; }; then
+            reinstall_package "ocserv"
+        else
+            packages+=("ocserv")
+        fi
     fi
 
     for package in "${packages[@]}"; do
@@ -1096,7 +1111,7 @@ ensure_vpn_binary_prerequisites() {
     local missing=()
     local command_name
 
-    for command_name in openvpn wg ip iptables nft sysctl xl2tpd pppd ipsec pki swanctl ocserv; do
+    for command_name in openvpn wg ip iptables nft sysctl xl2tpd pppd ipsec pki swanctl ocserv ocpasswd occtl; do
         if ! command -v "$command_name" >/dev/null 2>&1; then
             missing+=("$command_name")
         fi

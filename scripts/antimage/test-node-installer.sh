@@ -102,4 +102,7 @@ for installer in \
     grep -q 'command -v xl2tpd' "$installer"
     grep -q 'command -v pppd' "$installer"
     grep -q 'command -v ipsec' "$installer"
+    grep -q 'command -v ocpasswd' "$installer"
+    grep -q 'command -v occtl' "$installer"
+    grep -q 'reinstall_package "ocserv"' "$installer"
 done
