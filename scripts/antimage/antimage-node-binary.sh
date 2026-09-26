@@ -149,7 +149,7 @@ fi
 ANTIMAGE_SCRIPT_BASE_URL="${ANTIMAGE_SCRIPT_BASE_URL:-https://raw.githubusercontent.com/${ANTIMAGE_REPO}/${ANTIMAGE_REF}/scripts/antimage}"
 ANTIMAGE_NODE_RELEASE_REPO="${ANTIMAGE_NODE_RELEASE_REPO:-devprogrmer/AntiMage}"
 ANTIMAGE_NODE_BINARY_DEV_BRANCH="${ANTIMAGE_NODE_BINARY_DEV_BRANCH:-dev}"
-ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG="${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG:-dev-binaries}"
+ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG="${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG:-dev-builds}"
 ANTIMAGE_NODE_BINARY_WORKFLOW_NAME="${ANTIMAGE_NODE_BINARY_WORKFLOW_NAME:-binary-build}"
 ANTIMAGE_NODE_BINARY_ARTIFACT_PREFIX="${ANTIMAGE_NODE_BINARY_ARTIFACT_PREFIX:-antimage-node-binaries}"
 DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-v26.7.11}"
@@ -1418,6 +1418,9 @@ install_binary_antimage_node() {
     local node_asset_url
     local artifact_url
     local tmp_dir
+    local rollback_binary=""
+    local rollback_metadata=""
+    local binary_installed=0
 
     detect_os
     for package in curl jq unzip; do
@@ -1456,7 +1459,33 @@ install_binary_antimage_node() {
     fi
 
     mkdir -p "$BINARY_BIN_DIR" "$DATA_DIR" "$APP_DIR"
+    if [ "$configure" != "1" ]; then
+        if [ -x "$BINARY_NODE" ]; then
+            rollback_binary="$tmp_dir/antimage-node.rollback"
+            cp -p "$BINARY_NODE" "$rollback_binary"
+        fi
+        if [ -f "$BINARY_METADATA_FILE" ]; then
+            rollback_metadata="$tmp_dir/binary-release.rollback.json"
+            cp -p "$BINARY_METADATA_FILE" "$rollback_metadata"
+        fi
+        rollback_binary_update() {
+            if [ "$binary_installed" -eq 1 ]; then
+                if [ -n "$rollback_binary" ] && [ -f "$rollback_binary" ]; then
+                    install -m 755 "$rollback_binary" "$BINARY_NODE" || true
+                else
+                    rm -f "$BINARY_NODE"
+                fi
+                if [ -n "$rollback_metadata" ] && [ -f "$rollback_metadata" ]; then
+                    install -m 644 "$rollback_metadata" "$BINARY_METADATA_FILE" || true
+                else
+                    rm -f "$BINARY_METADATA_FILE"
+                fi
+            fi
+        }
+        trap 'rollback_binary_update' RETURN
+    fi
     install -m 755 "$tmp_dir/antimage-node" "$BINARY_NODE"
+    binary_installed=1
 
     if [ "$configure" = "1" ]; then
         configure_binary_node_env
@@ -1468,6 +1497,8 @@ install_binary_antimage_node() {
     write_node_binary_release_metadata "${resolved_version:-$node_version}" "$binary_arch" "${artifact_url:-${node_asset_url:-}}"
     echo "binary" > "$INSTALL_MODE_FILE"
     create_binary_antimage_node_service
+    binary_installed=0
+    trap - RETURN
     rm -rf "$tmp_dir"
     colorized_echo green "AntiMage-node binary files installed successfully"
 }
@@ -2146,6 +2177,9 @@ logs_command() {
 update_command() {
     check_running_as_root
     local node_version=""
+    local service_rollback_dir=""
+    local service_rollback_binary=""
+    local service_rollback_metadata=""
 
     if ! is_antimage_node_installed; then
         colorized_echo red "AntiMage-node not installed!"
@@ -2179,6 +2213,15 @@ update_command() {
 
     if is_binary_install; then
         colorized_echo blue "Updating AntiMage-node binary files"
+        service_rollback_dir=$(mktemp -d)
+        if [ -x "$BINARY_NODE" ]; then
+            service_rollback_binary="$service_rollback_dir/antimage-node.rollback"
+            cp -p "$BINARY_NODE" "$service_rollback_binary"
+        fi
+        if [ -f "$BINARY_METADATA_FILE" ]; then
+            service_rollback_metadata="$service_rollback_dir/binary-release.rollback.json"
+            cp -p "$BINARY_METADATA_FILE" "$service_rollback_metadata"
+        fi
     else
         colorized_echo blue "Pulling node image $DOCKER_IMAGE"
     fi
@@ -2190,6 +2233,24 @@ update_command() {
     colorized_echo blue "Restarting AntiMage-node services"
     down_antimage_node
     up_antimage_node
+    if ! is_antimage_node_up; then
+        colorized_echo red "AntiMage-node update failed: service did not become active after restart"
+        if is_binary_install && [ -n "$service_rollback_dir" ]; then
+            colorized_echo yellow "Restoring previous AntiMage-node binary"
+            if [ -n "$service_rollback_binary" ] && [ -f "$service_rollback_binary" ]; then
+                install -m 755 "$service_rollback_binary" "$BINARY_NODE" || true
+            fi
+            if [ -n "$service_rollback_metadata" ] && [ -f "$service_rollback_metadata" ]; then
+                install -m 644 "$service_rollback_metadata" "$BINARY_METADATA_FILE" || true
+            fi
+            up_antimage_node || true
+            rm -rf "$service_rollback_dir"
+        fi
+        exit 1
+    fi
+    if [ -n "$service_rollback_dir" ]; then
+        rm -rf "$service_rollback_dir"
+    fi
 
     colorized_echo blue "AntiMage-node updated successfully"
 }
