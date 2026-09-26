@@ -14,6 +14,21 @@ for SCRIPT in "$ROOT/antimage-node.sh" "$ROOT/antimage-node-binary.sh"; do
     select_node_version latest
     [ "$SELECTED_NODE_VERSION" = "latest" ]
 
+    eval "$(sed -n '/^get_node_binary_dev_artifact_metadata() {$/,/^}$/p' "$SCRIPT")"
+    ANTIMAGE_NODE_RELEASE_REPO="devprogrmer/AntiMage"
+    ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG="dev-builds"
+    ANTIMAGE_NODE_BINARY_DEV_BRANCH="dev"
+    curl() {
+        case "$*" in
+            *releases/tags*) return 22 ;;
+            *releases/download/dev-builds/antimage-node-dev-linux-amd64*) return 0 ;;
+            *) return 1 ;;
+        esac
+    }
+    dev_asset=$(get_node_binary_dev_artifact_metadata amd64)
+    unset -f curl
+    [ "$dev_asset" = "dev-dev|https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-node-dev-linux-amd64" ]
+
     eval "$(sed -n '/^read_node_certificate_bundle() {$/,/^}$/p' "$SCRIPT")"
     CERT_FILE="$TMP/cert.pem"
     CERT_KEY_FILE="$TMP/cert.key"
