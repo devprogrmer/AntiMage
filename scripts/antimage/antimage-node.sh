@@ -1247,6 +1247,13 @@ get_node_binary_dev_artifact_metadata() {
         fi
     fi
 
+    # The release asset has a stable URL even when the release metadata API is unavailable.
+    release_asset_url="https://github.com/${ANTIMAGE_NODE_RELEASE_REPO}/releases/download/${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG}/${release_asset_name}"
+    if curl -fsSIL --connect-timeout 10 --max-time 25 "$release_asset_url" >/dev/null 2>&1; then
+        printf '%s|%s\n' "dev-${ANTIMAGE_NODE_BINARY_DEV_BRANCH}" "$release_asset_url"
+        return 0
+    fi
+
     nightly_workflow="$ANTIMAGE_NODE_BINARY_WORKFLOW_NAME"
     case "$nightly_workflow" in
         *.yml|*.yaml) ;;
