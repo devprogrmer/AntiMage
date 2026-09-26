@@ -23,10 +23,15 @@ for SCRIPT in "$ROOT/antimage-node.sh" "$ROOT/antimage-node-binary.sh"; do
     unset -f curl
     [ "$dev_asset" = "dev-dev|https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-node-dev-linux-amd64" ]
     grep -Fq 'Downloading AntiMage-node dev release binary' "$SCRIPT"
+    grep -Fq 'ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG="${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG:-dev-builds}"' "$SCRIPT"
     if grep -Fq 'Downloading AntiMage-node dev binary artifact' "$SCRIPT"; then
         echo "Node dev update must not fall back to Actions artifacts" >&2
         exit 1
     fi
+    grep -Fq 'rollback_binary_update()' "$SCRIPT"
+    grep -Fq "trap 'rollback_binary_update' RETURN" "$SCRIPT"
+    grep -Fq 'service did not become active after restart' "$SCRIPT"
+    grep -Fq 'Restoring previous AntiMage-node binary' "$SCRIPT"
 
     eval "$(sed -n '/^read_node_certificate_bundle() {$/,/^}$/p' "$SCRIPT")"
     CERT_FILE="$TMP/cert.pem"
