@@ -866,8 +866,9 @@ detect_compose() {
 
 install_package_impl() {
     local PACKAGE="$1"
+    local reinstall="${2:-}"
     if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
-        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER -y -qq install "$PACKAGE" \
+        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER -y -qq install ${reinstall:+--reinstall} "$PACKAGE" \
             -o Dpkg::Options::="--force-confdef" \
             -o Dpkg::Options::="--force-confold"
     elif [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]]; then
@@ -892,6 +893,13 @@ install_package () {
 
     local PACKAGE="$1"
     ui_spinner_run "Installing $PACKAGE" install_package_impl "$PACKAGE"
+}
+
+reinstall_package() {
+    if [ -z "$PKG_MANAGER" ]; then
+        detect_and_update_package_manager
+    fi
+    ui_spinner_run "Reinstalling $1" install_package_impl "$1" reinstall
 }
 
 package_available() {
@@ -1090,8 +1098,15 @@ ensure_vpn_binary_prerequisites() {
         fi
     fi
 
-    if ! command -v ocserv >/dev/null 2>&1; then
-        packages+=("ocserv")
+    if ! command -v ocserv >/dev/null 2>&1 ||
+       ! command -v ocpasswd >/dev/null 2>&1 ||
+       ! command -v occtl >/dev/null 2>&1; then
+        if command -v ocserv >/dev/null 2>&1 &&
+           { [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; }; then
+            reinstall_package "ocserv"
+        else
+            packages+=("ocserv")
+        fi
     fi
 
     for package in "${packages[@]}"; do
@@ -1103,7 +1118,7 @@ ensure_vpn_binary_prerequisites() {
     local missing=()
     local command_name
 
-    for command_name in openvpn wg ip iptables nft sysctl xl2tpd pppd ipsec pki swanctl ocserv; do
+    for command_name in openvpn wg ip iptables nft sysctl xl2tpd pppd ipsec pki swanctl ocserv ocpasswd occtl; do
         if ! command -v "$command_name" >/dev/null 2>&1; then
             missing+=("$command_name")
         fi
@@ -1215,18 +1230,6 @@ get_node_binary_dev_artifact_metadata() {
     local release_asset_name
     local release_asset_url
     local release_target
-    local workflow_runs_api
-    local workflow_runs_payload
-    local matching_runs
-    local run_json
-    local run_id
-    local head_sha
-    local artifacts_api
-    local artifacts_payload
-    local artifact_name
-    local artifact_url
-    local nightly_workflow
-    local workflow_path
 
     release_asset_name="antimage-node-dev-linux-${binary_arch}"
     release_api="https://api.github.com/repos/${ANTIMAGE_NODE_RELEASE_REPO}/releases/tags/${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG}"
@@ -1247,72 +1250,9 @@ get_node_binary_dev_artifact_metadata() {
         fi
     fi
 
-    # The release asset has a stable URL even when the release metadata API is unavailable.
+    # A failed HEAD request must not divert a usable release download to Actions artifacts.
     release_asset_url="https://github.com/${ANTIMAGE_NODE_RELEASE_REPO}/releases/download/${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG}/${release_asset_name}"
-    if curl -fsSIL --connect-timeout 10 --max-time 25 "$release_asset_url" >/dev/null 2>&1; then
-        printf '%s|%s\n' "dev-${ANTIMAGE_NODE_BINARY_DEV_BRANCH}" "$release_asset_url"
-        return 0
-    fi
-
-    nightly_workflow="$ANTIMAGE_NODE_BINARY_WORKFLOW_NAME"
-    case "$nightly_workflow" in
-        *.yml|*.yaml) ;;
-        *) nightly_workflow="${nightly_workflow}.yml" ;;
-    esac
-    workflow_path=".github/workflows/${nightly_workflow}"
-    workflow_runs_api="https://api.github.com/repos/${ANTIMAGE_NODE_RELEASE_REPO}/actions/runs?per_page=50"
-    workflow_runs_payload=$(curl -fsSL "$workflow_runs_api") || {
-        colorized_echo red "Unable to read AntiMage-node binary workflow metadata: $workflow_runs_api" >&2
-        exit 1
-    }
-
-    matching_runs=$(echo "$workflow_runs_payload" | jq -c --arg branch "$ANTIMAGE_NODE_BINARY_DEV_BRANCH" --arg workflow_path "$workflow_path" '
-        .workflow_runs[]?
-        | select(
-            .head_branch == $branch
-            and (.event == "push" or .event == "workflow_dispatch")
-            and .conclusion == "success"
-            and .path == $workflow_path
-        )
-    ')
-
-    if [ -z "$matching_runs" ]; then
-        colorized_echo red "No successful AntiMage-node binary workflow run was found on branch ${ANTIMAGE_NODE_BINARY_DEV_BRANCH}." >&2
-        exit 1
-    fi
-
-    while IFS= read -r run_json; do
-        [ -n "$run_json" ] || continue
-
-        run_id=$(echo "$run_json" | jq -r '.id // empty')
-        head_sha=$(echo "$run_json" | jq -r '.head_sha // empty')
-        artifacts_api="https://api.github.com/repos/${ANTIMAGE_NODE_RELEASE_REPO}/actions/runs/${run_id}/artifacts"
-        if ! artifacts_payload=$(curl -fsSL "$artifacts_api"); then
-            colorized_echo yellow "Unable to read AntiMage-node binary artifacts for workflow run ${run_id}; checking an older successful run." >&2
-            continue
-        fi
-
-        artifact_name=$(echo "$artifacts_payload" | jq -r --arg preferred "${ANTIMAGE_NODE_BINARY_ARTIFACT_PREFIX}-linux-${binary_arch}" --arg arch "linux-${binary_arch}" '
-            [
-                .artifacts[]?
-                | select((.expired | not) and (.name == $preferred or ((.name | startswith("antimage-node")) and (.name | contains($arch)))))
-            ]
-            | sort_by(if .name == $preferred then 0 else 1 end, .created_at)
-            | .[0].name // empty
-        ')
-
-        if [ -n "$artifact_name" ]; then
-            artifact_url="https://nightly.link/${ANTIMAGE_NODE_RELEASE_REPO}/workflows/${nightly_workflow}/${ANTIMAGE_NODE_BINARY_DEV_BRANCH}/${artifact_name}.zip"
-            printf '%s|%s\n' "dev-${head_sha:0:7}" "$artifact_url"
-            return 0
-        fi
-
-        colorized_echo yellow "AntiMage-node binary workflow run ${run_id} has no usable linux-${binary_arch} artifact; checking an older successful run." >&2
-    done <<< "$matching_runs"
-
-    colorized_echo red "No usable AntiMage-node linux-${binary_arch} dev artifact was found on branch ${ANTIMAGE_NODE_BINARY_DEV_BRANCH}." >&2
-    colorized_echo yellow "The dev binary workflow must publish ${ANTIMAGE_NODE_BINARY_ARTIFACT_PREFIX}-linux-${binary_arch} before this server can install the dev binary." >&2
-    exit 1
+    printf '%s|%s\n' "dev-${ANTIMAGE_NODE_BINARY_DEV_BRANCH}" "$release_asset_url"
 }
 
 write_node_binary_release_metadata() {
@@ -1469,39 +1409,6 @@ configure_binary_node_env() {
     set_env_value "XRAY_ASSETS_PATH" "$DATA_DIR/xray-core"
 }
 
-normalize_node_dev_artifact() {
-    local tmp_dir="$1"
-    local binary_arch="$2"
-    local candidate
-
-    if [ -f "$tmp_dir/antimage-node" ]; then
-        chmod +x "$tmp_dir/antimage-node"
-        return 0
-    fi
-
-    while IFS= read -r archive; do
-        [ -n "$archive" ] || continue
-        tar -xzf "$archive" -C "$tmp_dir" >/dev/null 2>&1 || true
-    done < <(find "$tmp_dir" -maxdepth 3 -type f \( -name "*.tar.gz" -o -name "*.tgz" \) 2>/dev/null)
-
-    candidate=$(
-        find "$tmp_dir" -maxdepth 5 -type f \
-            \( -name "antimage-node" -o -name "antimage-node*linux-${binary_arch}" -o -name "antimage-node-*" \) \
-            ! -name "*.sha256" ! -name "*.zip" ! -name "*.tar.gz" ! -name "*.tgz" 2>/dev/null \
-        | while IFS= read -r file; do
-            size=$(wc -c < "$file" 2>/dev/null || echo 0)
-            printf '%s\t%s\n' "$size" "$file"
-        done \
-        | sort -nr \
-        | cut -f2- \
-        | head -n 1
-    )
-
-    if [ -n "$candidate" ]; then
-        install -m 755 "$candidate" "$tmp_dir/antimage-node"
-    fi
-}
-
 install_binary_antimage_node() {
     local node_version="$1"
     local configure="${2:-1}"
@@ -1510,7 +1417,6 @@ install_binary_antimage_node() {
     local node_asset_url
     local artifact_url
     local tmp_dir
-    local package_path
 
     detect_os
     for package in curl jq unzip; do
@@ -1535,15 +1441,8 @@ install_binary_antimage_node() {
         artifact_url="local-override"
     elif [ "$node_version" = "dev" ]; then
         IFS='|' read -r resolved_version artifact_url < <(get_node_binary_dev_artifact_metadata "$binary_arch")
-        if [[ "$artifact_url" == *.zip ]]; then
-            package_path="$tmp_dir/antimage-node-binaries.zip"
-            ui_spinner_run "Downloading AntiMage-node dev binary artifact" curl -fL "$artifact_url" -o "$package_path"
-            ui_spinner_run "Extracting AntiMage-node dev artifact" unzip -j -o "$package_path" -d "$tmp_dir"
-            normalize_node_dev_artifact "$tmp_dir" "$binary_arch"
-        else
-            ui_spinner_run "Downloading AntiMage-node dev binary" curl -fL "$artifact_url" -o "$tmp_dir/antimage-node"
-            chmod +x "$tmp_dir/antimage-node"
-        fi
+        ui_spinner_run "Downloading AntiMage-node dev release binary" curl -fL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 "$artifact_url" -o "$tmp_dir/antimage-node"
+        chmod +x "$tmp_dir/antimage-node"
     else
         IFS='|' read -r resolved_version node_asset_url < <(get_node_binary_release_asset_metadata "$node_version" "$binary_arch")
         ui_spinner_run "Downloading AntiMage-node binary" curl -fL "$node_asset_url" -o "$tmp_dir/antimage-node"

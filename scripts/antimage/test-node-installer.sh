@@ -18,16 +18,15 @@ for SCRIPT in "$ROOT/antimage-node.sh" "$ROOT/antimage-node-binary.sh"; do
     ANTIMAGE_NODE_RELEASE_REPO="devprogrmer/AntiMage"
     ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG="dev-builds"
     ANTIMAGE_NODE_BINARY_DEV_BRANCH="dev"
-    curl() {
-        case "$*" in
-            *releases/tags*) return 22 ;;
-            *releases/download/dev-builds/antimage-node-dev-linux-amd64*) return 0 ;;
-            *) return 1 ;;
-        esac
-    }
+    curl() { return 22; }
     dev_asset=$(get_node_binary_dev_artifact_metadata amd64)
     unset -f curl
     [ "$dev_asset" = "dev-dev|https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-node-dev-linux-amd64" ]
+    grep -Fq 'Downloading AntiMage-node dev release binary' "$SCRIPT"
+    if grep -Fq 'Downloading AntiMage-node dev binary artifact' "$SCRIPT"; then
+        echo "Node dev update must not fall back to Actions artifacts" >&2
+        exit 1
+    fi
 
     eval "$(sed -n '/^read_node_certificate_bundle() {$/,/^}$/p' "$SCRIPT")"
     CERT_FILE="$TMP/cert.pem"
@@ -103,4 +102,7 @@ for installer in \
     grep -q 'command -v xl2tpd' "$installer"
     grep -q 'command -v pppd' "$installer"
     grep -q 'command -v ipsec' "$installer"
+    grep -q 'command -v ocpasswd' "$installer"
+    grep -q 'command -v occtl' "$installer"
+    grep -q 'reinstall_package "ocserv"' "$installer"
 done
