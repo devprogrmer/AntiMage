@@ -25,13 +25,15 @@ type nativeSessionHelperConfig struct {
 }
 
 type nativeSessionUserPolicy struct {
-	Status                string `json:"status"`
-	UsedTraffic           int64  `json:"used_traffic"`
-	DataLimit             int64  `json:"data_limit"`
-	Expire                int64  `json:"expire"`
-	ReflectedUsageBatchID string `json:"reflected_usage_batch_id,omitempty"`
-	UploadSpeedLimit      int64  `json:"upload_speed_limit,omitempty"`
-	DownloadSpeedLimit    int64  `json:"download_speed_limit,omitempty"`
+	Status                string  `json:"status"`
+	UsedTraffic           int64   `json:"used_traffic"`
+	DataLimit             int64   `json:"data_limit"`
+	Expire                int64   `json:"expire"`
+	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	UploadSpeedLimit      int64   `json:"upload_speed_limit,omitempty"`
+	DownloadSpeedLimit    int64   `json:"download_speed_limit,omitempty"`
+	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
+	InboundCoefficient    float64 `json:"inbound_coefficient,omitempty"`
 }
 
 func nativeSessionUserPolicyAllowed(

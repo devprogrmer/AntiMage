@@ -60,6 +60,17 @@ func (c Controller) runtimeConfigRequestFromInbounds(ctx context.Context, node N
 	if err != nil {
 		return nil, fmt.Errorf("AnyConnect runtime: %w", err)
 	}
+	applyNativeRuntimeUsageFactors(
+		node.UsageCoefficient,
+		inbounds,
+		&ovRuntime,
+		&l2tpRuntime,
+		&pptpRuntime,
+		&wgRuntime,
+		&awgRuntime,
+		&ikev2Runtime,
+		&anyConnectRuntime,
+	)
 	haproxyRuntime, err := c.repo.HAProxyRuntimeForNode(ctx, node.ID)
 	if err != nil {
 		return nil, fmt.Errorf("HAProxy runtime: %w", err)
@@ -88,6 +99,103 @@ func (c Controller) runtimeConfigRequestFromInbounds(ctx context.Context, node N
 	}
 	req.OvRuntimeJson = string(raw)
 	return req, nil
+}
+
+func applyNativeRuntimeUsageFactors(
+	nodeCoefficient float64,
+	sourceInbounds []map[string]any,
+	ovRuntime *OVRuntime,
+	l2tpRuntime *L2TPRuntime,
+	pptpRuntime *PPTPRuntime,
+	wgRuntime *WGRuntime,
+	awgRuntime *AWGRuntime,
+	ikev2Runtime *RemoteAccessRuntime,
+	anyConnectRuntime *RemoteAccessRuntime,
+) {
+	nodeCoefficient = normalizeUsageFactor(nodeCoefficient)
+	inboundCoefficients := runtimeInboundUsageCoefficients(sourceInbounds)
+	for inboundIndex := range ovRuntime.Inbounds {
+		coefficient := inboundCoefficients[ovRuntime.Inbounds[inboundIndex].Tag]
+		for userIndex := range ovRuntime.Inbounds[inboundIndex].Users {
+			ovRuntime.Inbounds[inboundIndex].Users[userIndex].UsageCoefficient = nodeCoefficient
+			ovRuntime.Inbounds[inboundIndex].Users[userIndex].InboundCoefficient = coefficient
+		}
+	}
+	for inboundIndex := range l2tpRuntime.Inbounds {
+		coefficient := inboundCoefficients[l2tpRuntime.Inbounds[inboundIndex].Tag]
+		for userIndex := range l2tpRuntime.Inbounds[inboundIndex].Users {
+			l2tpRuntime.Inbounds[inboundIndex].Users[userIndex].UsageCoefficient = nodeCoefficient
+			l2tpRuntime.Inbounds[inboundIndex].Users[userIndex].InboundCoefficient = coefficient
+		}
+	}
+	for inboundIndex := range pptpRuntime.Inbounds {
+		coefficient := inboundCoefficients[pptpRuntime.Inbounds[inboundIndex].Tag]
+		for userIndex := range pptpRuntime.Inbounds[inboundIndex].Users {
+			pptpRuntime.Inbounds[inboundIndex].Users[userIndex].UsageCoefficient = nodeCoefficient
+			pptpRuntime.Inbounds[inboundIndex].Users[userIndex].InboundCoefficient = coefficient
+		}
+	}
+	for inboundIndex := range wgRuntime.Inbounds {
+		coefficient := inboundCoefficients[wgRuntime.Inbounds[inboundIndex].Tag]
+		for peerIndex := range wgRuntime.Inbounds[inboundIndex].Peers {
+			wgRuntime.Inbounds[inboundIndex].Peers[peerIndex].UsageCoefficient = nodeCoefficient
+			wgRuntime.Inbounds[inboundIndex].Peers[peerIndex].InboundCoefficient = coefficient
+		}
+	}
+	for inboundIndex := range awgRuntime.Inbounds {
+		coefficient := inboundCoefficients[awgRuntime.Inbounds[inboundIndex].Tag]
+		for peerIndex := range awgRuntime.Inbounds[inboundIndex].Peers {
+			awgRuntime.Inbounds[inboundIndex].Peers[peerIndex].UsageCoefficient = nodeCoefficient
+			awgRuntime.Inbounds[inboundIndex].Peers[peerIndex].InboundCoefficient = coefficient
+		}
+	}
+	for inboundIndex := range ikev2Runtime.Inbounds {
+		coefficient := inboundCoefficients[ikev2Runtime.Inbounds[inboundIndex].Tag]
+		for userIndex := range ikev2Runtime.Inbounds[inboundIndex].Users {
+			ikev2Runtime.Inbounds[inboundIndex].Users[userIndex].UsageCoefficient = nodeCoefficient
+			ikev2Runtime.Inbounds[inboundIndex].Users[userIndex].InboundCoefficient = coefficient
+		}
+	}
+	for inboundIndex := range anyConnectRuntime.Inbounds {
+		coefficient := inboundCoefficients[anyConnectRuntime.Inbounds[inboundIndex].Tag]
+		for userIndex := range anyConnectRuntime.Inbounds[inboundIndex].Users {
+			anyConnectRuntime.Inbounds[inboundIndex].Users[userIndex].UsageCoefficient = nodeCoefficient
+			anyConnectRuntime.Inbounds[inboundIndex].Users[userIndex].InboundCoefficient = coefficient
+		}
+	}
+}
+
+func runtimeInboundUsageCoefficients(inbounds []map[string]any) map[string]float64 {
+	result := make(map[string]float64, len(inbounds))
+	for _, inbound := range inbounds {
+		tag := strings.TrimSpace(OVStringValue(inbound["tag"]))
+		if tag == "" {
+			continue
+		}
+		result[tag] = normalizeUsageFactor(OVFloatValue(inbound["usage_coefficient"]))
+	}
+	return result
+}
+
+func OVFloatValue(value any) float64 {
+	switch typed := value.(type) {
+	case float64:
+		return typed
+	case float32:
+		return float64(typed)
+	case int:
+		return float64(typed)
+	case int64:
+		return float64(typed)
+	case json.Number:
+		parsed, _ := typed.Float64()
+		return parsed
+	case string:
+		parsed, _ := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		return parsed
+	default:
+		return 0
+	}
 }
 
 func operationRevision(operationID string) uint64 {

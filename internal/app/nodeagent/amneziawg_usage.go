@@ -165,7 +165,15 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 			}
 			policy := cfg.Policies[publicKey]
 			allowed, _ := nativeSessionUserPolicyAllowed(policy, now)
-			if allowed && policy.DataLimit > 0 && policy.UsedTraffic+int64(delta) >= policy.DataLimit {
+			effectiveDelta := nativeSessionEffectiveLiveUsage(
+				policy,
+				delta,
+			)
+			if allowed && policy.DataLimit > 0 &&
+				nativeSessionPolicyWouldExceedDataLimit(
+					policy,
+					effectiveDelta,
+				) {
 				_ = amneziaWGRemovePeer(cfg.InterfaceName, publicKey)
 			}
 		}

@@ -166,7 +166,15 @@ func ikev2PolicyReason(
 			return "data limit reached"
 		}
 
-		if currentDelta >= limit-used {
+		effectiveDelta := nativeSessionEffectiveLiveUsage(
+			nativeSessionUserPolicy{
+				UsageCoefficient:   user.UsageCoefficient,
+				InboundCoefficient: user.InboundCoefficient,
+			},
+			currentDelta,
+		)
+
+		if effectiveDelta >= limit-used {
 			return "data limit reached"
 		}
 	}

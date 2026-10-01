@@ -167,6 +167,57 @@ func TestIdempotentChildACK(t *testing.T) {
 	}
 }
 
+func TestAckUserUsageRoutesEveryProtocolBatch(t *testing.T) {
+	server := New(Config{DataDir: t.TempDir()})
+	ctx := context.Background()
+
+	server.openVPNUsageLoaded = true
+	server.openVPNUsagePending = &openVPNUsagePendingBatch{BatchID: "openvpn-route", NextBaseline: map[string]uint64{"ov": 1}}
+	server.xrayUsageLoaded = true
+	server.xrayUsagePending = &xrayUsagePendingBatch{BatchID: "xray-route", NextBaseline: map[string]uint64{"xr": 2}}
+	server.wireGuardUsageLoaded = true
+	server.wireGuardUsagePending = &wireGuardUsagePendingBatch{BatchID: "wireguard-route", NextBaseline: map[string]uint64{"wg": 3}}
+	server.amneziaWGUsageLoaded = true
+	server.amneziaWGUsagePending = &amneziaWGUsagePendingBatch{BatchID: "amneziawg-route", NextBaseline: map[string]uint64{"awg": 4}}
+	server.l2TPUsageLoaded = true
+	server.l2TPUsagePending = &l2TPUsagePendingBatch{BatchID: "l2tp-route", NextBaseline: map[string]uint64{"l2tp": 5}}
+	server.pptpUsageLoaded = true
+	server.pptpUsagePending = &pptpUsagePendingBatch{BatchID: "pptp-route", NextBaseline: map[string]uint64{"pptp": 6}}
+	server.ikev2UsageLoaded = true
+	server.ikev2UsagePending = &ikev2UsagePendingBatch{BatchID: "ikev2-route", NextBaseline: map[string]uint64{"ikev2": 7}}
+	server.anyConnectUsageLoaded = true
+	server.anyConnectUsagePending = &anyConnectUsagePendingBatch{BatchID: "anyconnect-route", NextBaseline: map[string]uint64{"anyconnect": 8}}
+
+	for _, batchID := range []string{
+		"openvpn-route",
+		"xray-route",
+		"wireguard-route",
+		"amneziawg-route",
+		"l2tp-route",
+		"pptp-route",
+		"ikev2-route",
+		"anyconnect-route",
+	} {
+		resp, err := server.AckUserUsage(
+			ctx,
+			&nodev1.AckUsageRequest{BatchId: batchID},
+		)
+		if err != nil {
+			t.Fatalf("%s ACK returned error: %v", batchID, err)
+		}
+		if !resp.GetAcknowledged() {
+			t.Fatalf("%s was not acknowledged", batchID)
+		}
+	}
+
+	if server.ikev2UsagePending != nil {
+		t.Fatal("IKEv2 pending batch was not cleared")
+	}
+	if server.anyConnectUsagePending != nil {
+		t.Fatal("AnyConnect pending batch was not cleared")
+	}
+}
+
 // TestProcessRestartBetweenChildACKs simulates process restart
 func TestProcessRestartBetweenChildACKs(t *testing.T) {
 	dataDir := t.TempDir()

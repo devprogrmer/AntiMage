@@ -28,19 +28,21 @@ type AWGRuntimeInbound struct {
 }
 
 type AWGRuntimePeer struct {
-	UserID             int64  `json:"user_id"`
-	Username           string `json:"username"`
-	DeviceIndex        int    `json:"device_index"`
-	PublicKey          string `json:"public_key"`
-	PresharedKey       string `json:"preshared_key,omitempty"`
-	Address            string `json:"address"`
-	Status             string `json:"status"`
-	UsedTraffic        int64  `json:"used_traffic"`
-	DataLimit          *int64 `json:"data_limit,omitempty"`
-	Expire             *int64 `json:"expire,omitempty"`
-	DeviceLimit        int64  `json:"device_limit,omitempty"`
-	UploadSpeedLimit   int64  `json:"upload_speed_limit"`
-	DownloadSpeedLimit int64  `json:"download_speed_limit"`
+	UserID             int64   `json:"user_id"`
+	Username           string  `json:"username"`
+	DeviceIndex        int     `json:"device_index"`
+	PublicKey          string  `json:"public_key"`
+	PresharedKey       string  `json:"preshared_key,omitempty"`
+	Address            string  `json:"address"`
+	Status             string  `json:"status"`
+	UsedTraffic        int64   `json:"used_traffic"`
+	DataLimit          *int64  `json:"data_limit,omitempty"`
+	Expire             *int64  `json:"expire,omitempty"`
+	DeviceLimit        int64   `json:"device_limit,omitempty"`
+	UploadSpeedLimit   int64   `json:"upload_speed_limit"`
+	DownloadSpeedLimit int64   `json:"download_speed_limit"`
+	UsageCoefficient   float64 `json:"usage_coefficient,omitempty"`
+	InboundCoefficient float64 `json:"inbound_coefficient,omitempty"`
 }
 
 func (r Repository) AWGRuntime(ctx context.Context, nodeID int64) (AWGRuntime, error) {
