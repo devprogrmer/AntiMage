@@ -167,13 +167,16 @@ func TestHostActionsScheduleExpectedCommands(t *testing.T) {
 	if _, err := server.UpdateService(ctx, &nodev1.ServiceUpdateRequest{Channel: "dev"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := server.UpdateService(ctx, &nodev1.ServiceUpdateRequest{Channel: "latest"}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := server.RebootHost(ctx, &nodev1.HostRebootRequest{}); err != nil {
 		t.Fatal(err)
 	}
-	if len(commands) != 3 {
+	if len(commands) != 4 {
 		t.Fatalf("scheduled commands = %d", len(commands))
 	}
-	for i, expected := range []string{"systemctl restart node-1.service", "/usr/local/bin/node-1 update --dev", "systemctl reboot"} {
+	for i, expected := range []string{"systemctl restart node-1.service", "/usr/local/bin/node-1 update --dev", "/usr/local/bin/node-1 update", "systemctl reboot"} {
 		joined := strings.Join(commands[i], " ")
 		if !strings.Contains(joined, expected) || !strings.Contains(joined, "--setenv=ANTIMAGE_NODE_APP_NAME=node-1") {
 			t.Fatalf("unexpected scheduled command: %s", joined)

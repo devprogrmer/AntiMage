@@ -242,6 +242,9 @@ func (s *Server) UpdateService(ctx context.Context, req *nodev1.ServiceUpdateReq
 		return nil, err
 	}
 	channel := strings.ToLower(strings.TrimSpace(req.GetChannel()))
+	if channel == "latest" {
+		channel = "stable"
+	}
 	if channel != "" && channel != "stable" && channel != "dev" {
 		return nil, status.Error(codes.InvalidArgument, "invalid node update channel")
 	}
