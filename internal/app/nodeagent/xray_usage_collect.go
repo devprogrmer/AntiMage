@@ -92,11 +92,6 @@ func (s *Server) collectXrayUserUsage(
 		return nil, err
 	}
 
-	// If there's a pending batch, return it (waiting for ACK)
-	if s.xrayUsagePending != nil {
-		return xrayUsageBatchProto(s.xrayUsagePending), nil
-	}
-
 	// Check if Xray runtime is actually running
 	s.mu.Lock()
 	xrayRunning := s.lastRuntime != nil
@@ -105,16 +100,47 @@ func (s *Server) collectXrayUserUsage(
 	s.mu.Unlock()
 
 	if !xrayRunning {
-		return &nodev1.UserUsageBatch{}, nil
+		if s.xrayUsagePending != nil {
+			return xrayUsageBatchProto(s.xrayUsagePending), nil
+		}
+		if len(s.xrayAccountingCounters) == 0 {
+			return &nodev1.UserUsageBatch{}, nil
+		}
 	}
 
 	// Query Xray stats via CLI for traffic counters
 	client := newXrayStatsClient(xrayPath, xrayAPIPort)
 
-	stats, err := client.queryStats(ctx, "user>>>", false)
-	if err != nil {
-		s.appendLog("xray user stats query failed: " + err.Error())
-		return &nodev1.UserUsageBatch{}, nil
+	var stats []xrayStat
+	if xrayRunning {
+		var err error
+		stats, err = client.queryStats(ctx, "user>>>", false)
+		if err != nil {
+			s.appendLog("xray user stats query failed: " + err.Error())
+			if s.xrayUsagePending != nil {
+				return xrayUsageBatchProto(s.xrayUsagePending), nil
+			}
+			if len(s.xrayAccountingCounters) == 0 {
+				return &nodev1.UserUsageBatch{}, nil
+			}
+			xrayRunning = false
+		}
+	}
+	if err := s.checkpointXrayStatsLocked(stats); err != nil {
+		return nil, err
+	}
+	if s.xrayUsagePending != nil {
+		return xrayUsageBatchProto(s.xrayUsagePending), nil
+	}
+	// A runtime restart or user removal may hide previously sampled series.
+	// Bill from the durable totals, not just keys in the current API response.
+	stats = stats[:0]
+	for key := range s.xrayAccountingCounters {
+		separator := strings.LastIndexByte(key, ':')
+		if separator < 0 {
+			return nil, fmt.Errorf("invalid persisted xray accounting key %q", key)
+		}
+		stats = append(stats, xrayStat{Name: "user>>>" + key[:separator] + ">>>traffic>>>" + key[separator+1:]})
 	}
 
 	if s.xrayUsageBaseline == nil {
@@ -164,10 +190,7 @@ func (s *Server) collectXrayUserUsage(
 		baseline, exists := s.xrayUsageBaseline[sessionKey]
 
 		// Convert to uint64 for safe arithmetic
-		currentValue := uint64(0)
-		if stat.Value >= 0 {
-			currentValue = uint64(stat.Value)
-		}
+		currentValue := s.xrayAccountingCounters[sessionKey].Total
 
 		delta := currentValue
 
@@ -215,7 +238,11 @@ func (s *Server) collectXrayUserUsage(
 
 	// Try bulk query first. Besides the online count, the bulk API is the
 	// source of truth for real client IPs used by device/IP enforcement.
-	bulkOnline, bulkErr := onlineClient.queryAllOnlineUsers(ctx)
+	var bulkOnline map[string]xrayOnlineUserState
+	var bulkErr error
+	if xrayRunning {
+		bulkOnline, bulkErr = onlineClient.queryAllOnlineUsers(ctx)
+	}
 	useBulk := bulkErr == nil && len(bulkOnline) > 0
 
 	// Track online state per email. The per-user fallback can recover the
@@ -224,7 +251,7 @@ func (s *Server) collectXrayUserUsage(
 
 	if useBulk {
 		emailOnlineState = bulkOnline
-	} else {
+	} else if xrayRunning {
 		for email := range uniqueEmails {
 			count, err := onlineClient.queryOnlineCount(ctx, email)
 			if err != nil {
@@ -293,7 +320,7 @@ func (s *Server) collectXrayUserUsage(
 	// Activity-based fallback for users where online query failed
 	// If online query didn't provide state, use delta > 0 as heuristic
 	for key, sample := range aggregated {
-		if !sample.Online && sample.Value > 0 {
+		if xrayRunning && !sample.Online && sample.Value > 0 {
 			// User has traffic delta but online query didn't confirm
 			// Use activity as fallback (degraded mode)
 			sample.Online = true

@@ -95,6 +95,7 @@ type Server struct {
 	xrayUsageMu                      sync.Mutex
 	xrayUsageBaseline                map[string]uint64
 	xrayUsagePending                 *xrayUsagePendingBatch
+	xrayAccountingCounters           map[string]accountingCounter
 	xrayUsageLoaded                  bool
 	xrayUsageLastAckedBatchID        string
 	xrayUsageBaselineAt              time.Time
@@ -165,6 +166,10 @@ func New(cfg Config) *Server {
 }
 
 func (s *Server) Run(ctx context.Context) error {
+	checkpointInterval, err := nodeAccountingCheckpointInterval()
+	if err != nil {
+		return err
+	}
 	cert, err := tls.LoadX509KeyPair(s.cfg.CertFile, s.cfg.KeyFile)
 	if err != nil {
 		return fmt.Errorf("load node certificate: %w", err)
@@ -205,6 +210,16 @@ func (s *Server) Run(ctx context.Context) error {
 	nodev1.RegisterNodeRuntimeServiceServer(grpcServer, s)
 	nodev1.RegisterNodeUsageServiceServer(grpcServer, s)
 	nodev1.RegisterNodeLogsServiceServer(grpcServer, s)
+	accountingCtx, stopAccounting := context.WithCancel(ctx)
+	accountingDone := make(chan struct{})
+	go func() {
+		defer close(accountingDone)
+		s.runXrayAccountingCheckpoints(accountingCtx, checkpointInterval)
+	}()
+	defer func() {
+		stopAccounting()
+		<-accountingDone
+	}()
 
 	errCh := make(chan error, 1)
 	go func() {
