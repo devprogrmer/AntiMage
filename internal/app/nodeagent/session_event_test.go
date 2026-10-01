@@ -6,7 +6,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestSendNativeSessionEvent(t *testing.T) {
@@ -65,6 +67,44 @@ func TestSendNativeSessionEvent(t *testing.T) {
 	}
 	if received.Event != "start" {
 		t.Fatalf("unexpected event: %q", received.Event)
+	}
+}
+
+func TestDispatchNativeSessionEventsUsesIndependentTimeouts(t *testing.T) {
+	previousClient := nativeSessionHTTPClient
+	nativeSessionHTTPClient = &http.Client{Timeout: 40 * time.Millisecond}
+	t.Cleanup(func() { nativeSessionHTTPClient = previousClient })
+
+	var mu sync.Mutex
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests++
+		requestNumber := requests
+		mu.Unlock()
+		if requestNumber == 1 {
+			time.Sleep(80 * time.Millisecond)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	done := make(chan error, 2)
+	node := New(Config{DataDir: t.TempDir()})
+	node.dispatchNativeSessionEvents(nativeRuntimeSessionCallback{
+		URL: server.URL, NodeID: 1,
+	}, []nativeSessionEvent{
+		{UserID: 1, Protocol: "ov", SessionID: "one", Event: "seen"},
+		{UserID: 1, Protocol: "ov", SessionID: "two", Event: "seen"},
+	}, func(_ nativeSessionEvent, err error) { done <- err })
+
+	first := <-done
+	second := <-done
+	if first == nil {
+		t.Fatal("first event should time out")
+	}
+	if second != nil {
+		t.Fatalf("second event inherited the first timeout: %v", second)
 	}
 }
 

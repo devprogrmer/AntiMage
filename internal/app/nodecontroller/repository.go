@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -381,12 +380,13 @@ func (r Repository) RuntimeSessionCallback(ctx context.Context, node NodeRow) (R
 		node = full
 	}
 
-	base := strings.TrimSpace(os.Getenv("ANTIMAGE_NODE_SESSION_CALLBACK_URL"))
+	env := runtimeSessionCallbackEnvironment()
+	base := strings.TrimSpace(env["ANTIMAGE_NODE_SESSION_CALLBACK_URL"])
 	if base == "" {
-		base = strings.TrimSpace(os.Getenv("ANTIMAGE_PUBLIC_URL"))
+		base = strings.TrimSpace(env["ANTIMAGE_PUBLIC_URL"])
 	}
 	if base == "" {
-		base = strings.TrimSpace(os.Getenv("PUBLIC_URL"))
+		base = strings.TrimSpace(env["PUBLIC_URL"])
 	}
 	if base == "" && r.tableExistsSilent(ctx, "subscription_settings") {
 		var prefix sql.NullString
@@ -397,7 +397,7 @@ func (r Repository) RuntimeSessionCallback(ctx context.Context, node NodeRow) (R
 		base = strings.TrimSpace(prefix.String)
 	}
 	if base == "" {
-		inferred, err := runtimeSessionCallbackFallbackBase()
+		inferred, err := runtimeSessionCallbackFallbackBase(env)
 		if err != nil {
 			return RuntimeSessionCallback{}, err
 		}

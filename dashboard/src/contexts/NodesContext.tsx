@@ -171,8 +171,21 @@ type NodeServiceUpdateRequest = NodeType & {
 	version?: string;
 };
 
-export const normalizeNodeUpdateChannel = (channel?: string) =>
-	channel?.trim().toLowerCase() === "latest" ? "stable" : channel;
+export const normalizeNodeUpdateChannel = (channel?: string) => {
+	switch (channel?.trim().toLowerCase()) {
+		case "latest":
+		case "release":
+		case "master":
+		case "stable":
+			return "stable";
+		case "development":
+		case "dev-builds":
+		case "dev":
+			return "dev";
+		default:
+			return channel?.trim().toLowerCase();
+	}
+};
 
 export const getNodeDefaultValues = (): NodeType => ({
 	name: "",

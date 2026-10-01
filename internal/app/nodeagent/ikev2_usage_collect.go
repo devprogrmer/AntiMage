@@ -618,11 +618,8 @@ func (s *Server) collectIKEv2UserUsage(
 			sample.Online = true
 		}
 
-		for _, vip := range sa.RemoteVIPs {
-			sample.IPs = ikev2AppendUniqueIP(
-				sample.IPs,
-				vip,
-			)
+		if remoteHost := strings.TrimSpace(sa.RemoteHost); remoteHost != "" {
+			sample.IPs = ikev2AppendUniqueIP(sample.IPs, remoteHost)
 		}
 
 		for _, child := range sa.Children {

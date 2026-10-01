@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // xrayUsageSample represents a single user's usage sample
@@ -31,10 +32,13 @@ type xrayOnlineUserSnapshot struct {
 
 // xrayUsagePendingBatch represents a pending batch awaiting ACK.
 type xrayUsagePendingBatch struct {
-	BatchID      string
-	Samples      []xrayUsageSample
-	OnlineUsers  []xrayOnlineUserSnapshot
-	NextBaseline map[string]uint64
+	BatchID          string
+	Samples          []xrayUsageSample
+	OnlineUsers      []xrayOnlineUserSnapshot
+	NextBaseline     map[string]uint64
+	IntervalSeconds  float64
+	NextBaselineAt   time.Time
+	SpeedUnitVersion int
 }
 
 // xrayUsageDiskState is the persisted state on disk
@@ -42,6 +46,7 @@ type xrayUsageDiskState struct {
 	Baseline         map[string]uint64      `json:"baseline,omitempty"`
 	Pending          *xrayUsagePendingBatch `json:"pending,omitempty"`
 	LastAckedBatchID string                 `json:"last_acked_batch_id,omitempty"`
+	BaselineAt       time.Time              `json:"baseline_at,omitempty"`
 }
 
 func (s *Server) xrayUsageStatePath() string {
@@ -98,6 +103,7 @@ func (s *Server) ensureXrayUsageStateLoadedLocked() error {
 	s.xrayUsageBaseline = state.Baseline
 	s.xrayUsagePending = state.Pending
 	s.xrayUsageLastAckedBatchID = state.LastAckedBatchID
+	s.xrayUsageBaselineAt = state.BaselineAt
 	s.xrayUsageLoaded = true
 
 	return nil
@@ -117,6 +123,7 @@ func (s *Server) persistXrayUsageStateLocked() error {
 		Baseline:         s.xrayUsageBaseline,
 		Pending:          s.xrayUsagePending,
 		LastAckedBatchID: s.xrayUsageLastAckedBatchID,
+		BaselineAt:       s.xrayUsageBaselineAt,
 	}
 
 	raw, err := json.Marshal(state)

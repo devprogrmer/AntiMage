@@ -175,11 +175,18 @@ func renderAnyConnectUserConfig(user anyConnectRuntimeUser, settings map[string]
 	if limit > 0 {
 		lines = append(lines, "max-same-clients = "+strconv.FormatInt(limit, 10))
 	}
-	if user.DownloadSpeedLimit > 0 {
-		lines = append(lines, "rx-data-per-sec = "+strconv.FormatInt(user.DownloadSpeedLimit, 10))
-	}
 	if user.UploadSpeedLimit > 0 {
-		lines = append(lines, "tx-data-per-sec = "+strconv.FormatInt(user.UploadSpeedLimit, 10))
+		lines = append(lines, "rx-data-per-sec = "+strconv.FormatInt(bitsToBytesPerSecond(user.UploadSpeedLimit), 10))
+	}
+	if user.DownloadSpeedLimit > 0 {
+		lines = append(lines, "tx-data-per-sec = "+strconv.FormatInt(bitsToBytesPerSecond(user.DownloadSpeedLimit), 10))
 	}
 	return strings.Join(lines, "\n") + "\n"
+}
+
+func bitsToBytesPerSecond(bits int64) int64 {
+	if bits <= 0 {
+		return 0
+	}
+	return (bits + 7) / 8
 }

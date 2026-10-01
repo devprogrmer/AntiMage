@@ -97,6 +97,7 @@ type Server struct {
 	xrayUsagePending                 *xrayUsagePendingBatch
 	xrayUsageLoaded                  bool
 	xrayUsageLastAckedBatchID        string
+	xrayUsageBaselineAt              time.Time
 	xrayOutboundUsageMu              sync.Mutex
 	xrayOutboundUsageBaseline        map[string]uint64
 	xrayOutboundUsagePending         *xrayOutboundUsagePendingBatch

@@ -327,14 +327,25 @@ func (s *Server) collectXrayUserUsage(
 		samples = append(samples, aggregated[key])
 	}
 
+	collectedAt := time.Now().UTC()
+	intervalSeconds := 0.0
+	if !s.xrayUsageBaselineAt.IsZero() {
+		intervalSeconds = collectedAt.Sub(s.xrayUsageBaselineAt).Seconds()
+		if intervalSeconds < 0 {
+			intervalSeconds = 0
+		}
+	}
 	pending := &xrayUsagePendingBatch{
 		BatchID: fmt.Sprintf(
 			"xray-%d",
 			time.Now().UTC().UnixNano(),
 		),
-		Samples:      samples,
-		OnlineUsers:  onlineUsers,
-		NextBaseline: nextBaseline,
+		Samples:          samples,
+		OnlineUsers:      onlineUsers,
+		NextBaseline:     nextBaseline,
+		IntervalSeconds:  intervalSeconds,
+		NextBaselineAt:   collectedAt,
+		SpeedUnitVersion: 1,
 	}
 
 	s.xrayUsagePending = pending
@@ -382,15 +393,18 @@ func (s *Server) ackXrayUserUsage(
 
 	previousBaseline := s.xrayUsageBaseline
 	previousLastAcked := s.xrayUsageLastAckedBatchID
+	previousBaselineAt := s.xrayUsageBaselineAt
 
 	s.xrayUsageBaseline = pending.NextBaseline
 	s.xrayUsagePending = nil
 	s.xrayUsageLastAckedBatchID = batchID
+	s.xrayUsageBaselineAt = pending.NextBaselineAt
 
 	if err := s.persistXrayUsageStateLocked(); err != nil {
 		s.xrayUsageBaseline = previousBaseline
 		s.xrayUsagePending = pending
 		s.xrayUsageLastAckedBatchID = previousLastAcked
+		s.xrayUsageBaselineAt = previousBaselineAt
 		return nil, err
 	}
 
@@ -439,10 +453,15 @@ func xrayUsageBatchProto(
 		if sample.Upload == 0 && sample.Download == 0 {
 			continue
 		}
+		upload, download := sample.Upload, sample.Download
+		if pending.SpeedUnitVersion > 0 {
+			upload = usageBytesPerSecond(upload, pending.IntervalSeconds)
+			download = usageBytesPerSecond(download, pending.IntervalSeconds)
+		}
 		speeds = append(speeds, &nodev1.UserTrafficSpeed{
 			Uid:      "xray:" + strconv.FormatInt(sample.UserID, 10),
-			Upload:   sample.Upload,
-			Download: sample.Download,
+			Upload:   upload,
+			Download: download,
 		})
 	}
 
@@ -475,4 +494,11 @@ func xrayUsageBatchProto(
 		Speeds:    speeds,
 		OnlineIps: onlineIPs,
 	}
+}
+
+func usageBytesPerSecond(delta uint64, elapsedSeconds float64) uint64 {
+	if delta == 0 || elapsedSeconds <= 0 {
+		return 0
+	}
+	return uint64(float64(delta) / elapsedSeconds)
 }

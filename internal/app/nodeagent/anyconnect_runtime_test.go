@@ -75,3 +75,16 @@ func TestRenderAnyConnectConfigRejectsInvalidPool(t *testing.T) {
 		t.Fatal("expected invalid pool error")
 	}
 }
+
+func TestRenderAnyConnectUserConfigConvertsBitsAndDirections(t *testing.T) {
+	config := renderAnyConnectUserConfig(anyConnectRuntimeUser{
+		UploadSpeedLimit:   3_000_000,
+		DownloadSpeedLimit: 10_000_000,
+	}, nil)
+	if !strings.Contains(config, "rx-data-per-sec = 375000") {
+		t.Fatalf("upload limit was not mapped to ocserv RX bytes/sec: %s", config)
+	}
+	if !strings.Contains(config, "tx-data-per-sec = 1250000") {
+		t.Fatalf("download limit was not mapped to ocserv TX bytes/sec: %s", config)
+	}
+}
