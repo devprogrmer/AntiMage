@@ -171,6 +171,9 @@ type NodeServiceUpdateRequest = NodeType & {
 	version?: string;
 };
 
+export const normalizeNodeUpdateChannel = (channel?: string) =>
+	channel?.trim().toLowerCase() === "latest" ? "stable" : channel;
+
 export const getNodeDefaultValues = (): NodeType => ({
 	name: "",
 	note: "",
@@ -448,7 +451,7 @@ export const useNodes = create<NodeStore>((set, get) => ({
 		return fetch(`/node/${body.id}/service/update`, {
 			method: "POST",
 			body: {
-				channel: body.channel,
+				channel: normalizeNodeUpdateChannel(body.channel),
 				version: body.version,
 			},
 		});
