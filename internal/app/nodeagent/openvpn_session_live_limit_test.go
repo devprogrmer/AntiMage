@@ -64,3 +64,40 @@ func TestNativeSessionUserPolicyAllowedWithLiveUsage(
 		)
 	}
 }
+
+func TestNativeSessionPolicyLiveUsageUsesEffectiveCoefficients(
+	t *testing.T,
+) {
+	policy := nativeSessionUserPolicy{
+		Status:             "active",
+		UsedTraffic:        900,
+		DataLimit:          1000,
+		UsageCoefficient:   1.5,
+		InboundCoefficient: 2,
+	}
+
+	allowed, reason := nativeSessionUserPolicyAllowedWithLiveUsage(
+		policy,
+		34,
+		time.Now().UTC(),
+	)
+	if allowed {
+		t.Fatalf("expected effective live usage to exceed quota")
+	}
+	if reason != "data limit reached" {
+		t.Fatalf("reason = %q", reason)
+	}
+
+	rawAllowed, _ := nativeSessionUserPolicyAllowedWithLiveUsage(
+		nativeSessionUserPolicy{
+			Status:      "active",
+			UsedTraffic: 900,
+			DataLimit:   1000,
+		},
+		34,
+		time.Now().UTC(),
+	)
+	if !rawAllowed {
+		t.Fatal("raw live usage without coefficients should remain below quota")
+	}
+}

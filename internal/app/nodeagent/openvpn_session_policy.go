@@ -1,6 +1,7 @@
 package nodeagent
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +43,8 @@ func buildNativeSessionUserPolicies(
 			Expire:             expire,
 			UploadSpeedLimit:   user.UploadSpeedLimit,
 			DownloadSpeedLimit: user.DownloadSpeedLimit,
+			UsageCoefficient:   user.UsageCoefficient,
+			InboundCoefficient: user.InboundCoefficient,
 		}
 	}
 
@@ -69,25 +72,64 @@ func nativeSessionUserPolicyAllowedWithLiveUsage(
 		return true, ""
 	}
 
-	usedTraffic := policy.UsedTraffic
-	if usedTraffic < 0 {
-		usedTraffic = 0
-	}
-
-	if usedTraffic >= policy.DataLimit {
-		return false, "data limit reached"
-	}
-
-	remaining := uint64(
-		policy.DataLimit - usedTraffic,
-	)
-
-	if liveBytes >= remaining {
+	effectiveLiveBytes := nativeSessionEffectiveLiveUsage(policy, liveBytes)
+	if nativeSessionPolicyWouldExceedDataLimit(
+		policy,
+		effectiveLiveBytes,
+	) {
 		return false, "data limit reached"
 	}
 
 	return true, ""
 }
+
+func nativeSessionEffectiveLiveUsage(
+	policy nativeSessionUserPolicy,
+	rawLiveBytes uint64,
+) uint64 {
+	if rawLiveBytes == 0 {
+		return 0
+	}
+	factor := nativeSessionUsageFactor(policy.UsageCoefficient) *
+		nativeSessionUsageFactor(policy.InboundCoefficient)
+	if factor == 1 {
+		return rawLiveBytes
+	}
+	scaled := math.Round(float64(rawLiveBytes) * factor)
+	if scaled <= 0 {
+		return 0
+	}
+	if scaled >= float64(^uint64(0)) {
+		return ^uint64(0)
+	}
+	return uint64(scaled)
+}
+
+func nativeSessionUsageFactor(value float64) float64 {
+	if value <= 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return 1
+	}
+	return value
+}
+
+func nativeSessionPolicyWouldExceedDataLimit(
+	policy nativeSessionUserPolicy,
+	effectiveDelta uint64,
+) bool {
+	if policy.DataLimit <= 0 {
+		return false
+	}
+	usedTraffic := policy.UsedTraffic
+	if usedTraffic < 0 {
+		usedTraffic = 0
+	}
+	if usedTraffic >= policy.DataLimit {
+		return true
+	}
+	remaining := uint64(policy.DataLimit - usedTraffic)
+	return effectiveDelta >= remaining
+}
+
 func (s *Server) enforceOpenVPNClientPolicy(
 	tag string,
 	cfg nativeSessionHelperConfig,

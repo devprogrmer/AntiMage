@@ -26,6 +26,8 @@ func wireGuardRuntimePeerPolicy(
 		ReflectedUsageBatchID: strings.TrimSpace(peer.ReflectedUsageBatchID),
 		DataLimit:             dataLimit,
 		Expire:                expire,
+		UsageCoefficient:      peer.UsageCoefficient,
+		InboundCoefficient:    peer.InboundCoefficient,
 	}
 }
 

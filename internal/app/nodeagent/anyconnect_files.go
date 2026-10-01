@@ -156,7 +156,7 @@ func anyConnectSessionPolicy(user anyConnectRuntimeUser) nativeSessionUserPolicy
 	if user.Expire != nil {
 		expire = *user.Expire
 	}
-	return nativeSessionUserPolicy{Status: user.Status, UsedTraffic: user.UsedTraffic, DataLimit: limit, Expire: expire, UploadSpeedLimit: user.UploadSpeedLimit, DownloadSpeedLimit: user.DownloadSpeedLimit}
+	return nativeSessionUserPolicy{Status: user.Status, UsedTraffic: user.UsedTraffic, DataLimit: limit, Expire: expire, UploadSpeedLimit: user.UploadSpeedLimit, DownloadSpeedLimit: user.DownloadSpeedLimit, UsageCoefficient: user.UsageCoefficient, InboundCoefficient: user.InboundCoefficient}
 }
 
 func writeAtomicMode(path string, data []byte, mode os.FileMode) error {
