@@ -247,6 +247,31 @@ func TestPrepareAmneziaWGInboundPreservesObfuscationAndDevices(t *testing.T) {
 	}
 }
 
+func TestPrepareAmneziaWGInboundPreservesAllPeerEnforcementFields(t *testing.T) {
+	s := New(Config{DataDir: t.TempDir()})
+	limit := int64(50 * 1024 * 1024)
+	expire := int64(2_000_000_000)
+	inbound := amneziaWGRuntimeInbound{
+		Tag: "awg-policy", ListenPort: 51821,
+		Settings: map[string]any{"private_key": awgTestKey('s'), "address_pool": "10.72.0.0/24", "server_address": "10.72.0.1/24", "h1": "101", "h2": "102", "h3": "103", "h4": "104"},
+		Peers: []amneziaWGRuntimePeer{{
+			UserID: 7, PublicKey: awgTestKey('p'), Address: "10.72.0.2", Status: "active",
+			DataLimit: &limit, Expire: &expire, DeviceLimit: 3, IPLimit: 2,
+			UploadSpeedLimit: 1234, DownloadSpeedLimit: 5678, UsageCoefficient: 1.5, InboundCoefficient: 2,
+		}},
+	}
+	prepared, err := s.prepareAmneziaWGInbound(inbound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := prepared.UsageConfig.Policies[inbound.Peers[0].PublicKey]
+	if policy.DataLimit != limit || policy.Expire != expire || policy.DeviceLimit != 3 || policy.IPLimit != 2 ||
+		policy.UploadSpeedLimit != 1234 || policy.DownloadSpeedLimit != 5678 ||
+		policy.UsageCoefficient != 1.5 || policy.InboundCoefficient != 2 {
+		t.Fatalf("AWG enforcement fields were not preserved: %+v", policy)
+	}
+}
+
 func TestPrepareAmneziaWGInboundRejectsDuplicatePeerAddress(t *testing.T) {
 	s := New(Config{DataDir: t.TempDir()})
 	inbound := amneziaWGRuntimeInbound{
