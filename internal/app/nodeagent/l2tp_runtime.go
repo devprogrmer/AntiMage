@@ -363,6 +363,8 @@ func l2TPUsersAsOpenVPNUsers(users []l2TPRuntimeUser) []openVPNRuntimeUser {
 			ReflectedUsageBatchID: user.ReflectedUsageBatchID,
 			UploadSpeedLimit:      user.UploadSpeedLimit,
 			DownloadSpeedLimit:    user.DownloadSpeedLimit,
+			UsageCoefficient:      user.UsageCoefficient,
+			InboundCoefficient:    user.InboundCoefficient,
 		})
 	}
 	return result
