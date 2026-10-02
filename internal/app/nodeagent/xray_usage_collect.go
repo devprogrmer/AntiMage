@@ -2,9 +2,7 @@ package nodeagent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,61 +11,24 @@ import (
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
-// xrayStatsClient queries Xray's local stats API via xray api statsquery command
+// xrayStatsClient reuses a local gRPC connection for aggregate counter queries.
 type xrayStatsClient struct {
 	xrayPath string
 	apiPort  int
+	rpc      *xrayRPCConnection
 }
 
 func newXrayStatsClient(xrayPath string, apiPort int) *xrayStatsClient {
 	return &xrayStatsClient{
 		xrayPath: xrayPath,
 		apiPort:  apiPort,
+		rpc:      &xrayRPCConnection{port: apiPort},
 	}
 }
 
-// queryStats queries Xray stats via 'xray api statsquery' command
-// Returns structured stats parsed from JSON output
+// queryStats never resets native counters; ACKs advance separate logical baselines.
 func (c *xrayStatsClient) queryStats(ctx context.Context, pattern string, reset bool) ([]xrayStat, error) {
-	// Build command: xray api statsquery --server=127.0.0.1:apiPort [--pattern=...] [--reset]
-	args := []string{
-		"api", "statsquery",
-		fmt.Sprintf("--server=127.0.0.1:%d", c.apiPort),
-	}
-
-	if pattern != "" {
-		args = append(args, fmt.Sprintf("--pattern=%s", pattern))
-	}
-
-	if reset {
-		args = append(args, "--reset")
-	}
-
-	cmd := exec.CommandContext(ctx, c.xrayPath, args...)
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("xray api statsquery command failed: %w", err)
-	}
-
-	// Parse JSON output - reuse existing xrayStatsQueryResponse from route_stats.go
-	var response xrayStatsQueryResponse
-	if err := json.Unmarshal(output, &response); err != nil {
-		return nil, fmt.Errorf("parse xray stats JSON: %w", err)
-	}
-
-	stats := make([]xrayStat, 0, len(response.Stat))
-	for _, s := range response.Stat {
-		value, err := parseXrayStatValue(s.Value)
-		if err != nil {
-			continue
-		}
-		stats = append(stats, xrayStat{
-			Name:  s.Name,
-			Value: value,
-		})
-	}
-
-	return stats, nil
+	return c.queryStatsRPC(ctx, pattern, reset)
 }
 
 type xrayStat struct {
@@ -97,6 +58,7 @@ func (s *Server) collectXrayUserUsage(
 	xrayRunning := s.lastRuntime != nil
 	xrayPath := s.cfg.XrayPath
 	xrayAPIPort := s.cfg.XrayAPIPort
+	generation := s.xrayRuntimeGeneration
 	s.mu.Unlock()
 
 	if !xrayRunning {
@@ -108,8 +70,8 @@ func (s *Server) collectXrayUserUsage(
 		}
 	}
 
-	// Query Xray stats via CLI for traffic counters
-	client := newXrayStatsClient(xrayPath, xrayAPIPort)
+	// Query one aggregate snapshot without spawning the CLI.
+	client := s.cachedXrayStatsClient(xrayPath, xrayAPIPort)
 
 	var stats []xrayStat
 	if xrayRunning {
@@ -126,7 +88,13 @@ func (s *Server) collectXrayUserUsage(
 			xrayRunning = false
 		}
 	}
-	if err := s.checkpointXrayStatsLocked(stats); err != nil {
+	s.mu.Lock()
+	unchanged := generation == s.xrayRuntimeGeneration
+	s.mu.Unlock()
+	if !unchanged {
+		return nil, fmt.Errorf("xray runtime changed during usage collection")
+	}
+	if err := s.checkpointXrayGenerationLocked(stats, generation); err != nil {
 		return nil, err
 	}
 	if s.xrayUsagePending != nil {

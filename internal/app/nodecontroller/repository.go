@@ -259,20 +259,8 @@ func (r Repository) runtimeUsers(ctx context.Context, userID int64, protocols []
 	if protocolQuery == "" {
 		return nil, nil
 	}
-	vpnDeviceExpr := `
-      CASE
-        WHEN COALESCE(vus.client_ip, '') != '' THEN 'client:' || vus.client_ip
-        WHEN COALESCE(vus.assigned_ip, '') != '' THEN 'assigned:' || vus.assigned_ip
-        ELSE 'session:' || vus.session_id
-      END`
-	if r.dialect == "mysql" || r.dialect == "mariadb" {
-		vpnDeviceExpr = `
-      CASE
-        WHEN COALESCE(vus.client_ip, '') != '' THEN CONCAT('client:', vus.client_ip)
-        WHEN COALESCE(vus.assigned_ip, '') != '' THEN CONCAT('assigned:', vus.assigned_ip)
-        ELSE CONCAT('session:', vus.session_id)
-      END`
-	}
+	// A virtual address or session ID is not a remote IP or a physical device.
+	vpnIPExpr := "NULLIF(vus.client_ip, '')"
 	query := `
 SELECT
 	u.id,
@@ -288,11 +276,11 @@ LEFT JOIN proxies p ON u.id = p.user_id AND LOWER(p.type) = protocols.type`
 	if excludeVPNSessions {
 		query += `
 LEFT JOIN (
-	SELECT user_id, COUNT(DISTINCT ` + vpnDeviceExpr + `) AS open_devices
+	SELECT user_id, COUNT(DISTINCT ` + vpnIPExpr + `) AS open_ips
 	FROM vpn_user_sessions vus
 	WHERE vus.ended_at IS NULL
 	GROUP BY user_id
-) vpn_devices ON vpn_devices.user_id = u.id`
+) vpn_ips ON vpn_ips.user_id = u.id`
 	}
 	query += `
 WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.service_id > 0`
@@ -301,7 +289,7 @@ WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.servi
 		query += `
   AND (
     COALESCE(u.ip_limit, 0) <= 0
-    OR COALESCE(vpn_devices.open_devices, 0) < COALESCE(u.ip_limit, 0)
+    OR COALESCE(vpn_ips.open_ips, 0) < COALESCE(u.ip_limit, 0)
   )`
 	}
 	if userID > 0 {

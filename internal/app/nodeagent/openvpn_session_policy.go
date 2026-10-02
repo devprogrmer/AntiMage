@@ -2,6 +2,8 @@ package nodeagent
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -38,13 +40,16 @@ func buildNativeSessionUserPolicies(
 			Status: strings.ToLower(
 				strings.TrimSpace(user.Status),
 			),
-			UsedTraffic:        user.UsedTraffic,
-			DataLimit:          dataLimit,
-			Expire:             expire,
-			UploadSpeedLimit:   user.UploadSpeedLimit,
-			DownloadSpeedLimit: user.DownloadSpeedLimit,
-			UsageCoefficient:   user.UsageCoefficient,
-			InboundCoefficient: user.InboundCoefficient,
+			UsedTraffic:           user.UsedTraffic,
+			DeviceLimit:           user.DeviceLimit,
+			IPLimit:               user.IPLimit,
+			ReflectedUsageBatchID: user.ReflectedUsageBatchID,
+			DataLimit:             dataLimit,
+			Expire:                expire,
+			UploadSpeedLimit:      user.UploadSpeedLimit,
+			DownloadSpeedLimit:    user.DownloadSpeedLimit,
+			UsageCoefficient:      user.UsageCoefficient,
+			InboundCoefficient:    user.InboundCoefficient,
 		}
 	}
 
@@ -152,11 +157,20 @@ func (s *Server) enforceOpenVPNClientPolicy(
 		liveBytes = 0
 	}
 
-	allowed, reason := nativeSessionUserPolicyAllowedWithLiveUsage(
+	if cfg.OfflineRawUsage != nil {
+		liveBytes = cfg.OfflineRawUsage[userID]
+	}
+
+	allowed, reason := s.localQuotaAllowed(
+		"openvpn", userID, cfg.InboundTag,
 		policy,
 		liveBytes,
 		time.Now().UTC(),
 	)
+	if cfg.OfflineIPDenied[client.ClientID] {
+		allowed = false
+		reason = "IP limit reached"
+	}
 	if allowed {
 		return false
 	}
@@ -169,6 +183,18 @@ func (s *Server) enforceOpenVPNClientPolicy(
 				strconv.FormatInt(userID, 10),
 		)
 		return true
+	}
+
+	marker := filepath.Join(cfg.OfflineRuntimeRoot, "policy-denials",
+		nativeSessionStateKey(tag, userID, client.ClientID, client.ConnectedSince, client.RealAddress)+".json")
+	if info, err := os.Stat(marker); err == nil && time.Since(info.ModTime()) < 30*time.Second {
+		return true
+	}
+	if cfg.OfflineBeforeDisconnect != nil {
+		if err := cfg.OfflineBeforeDisconnect(); err != nil {
+			s.appendLog("openvpn disconnect checkpoint failed: " + err.Error())
+			return true
+		}
 	}
 
 	if err := openVPNManagementClientKill(
@@ -191,6 +217,9 @@ func (s *Server) enforceOpenVPNClientPolicy(
 			strconv.FormatInt(userID, 10) +
 			" (" + reason + ")",
 	)
+	if err := offlineDurableJSON(marker, clientID); err != nil {
+		s.appendLog("openvpn policy cooldown persistence: " + err.Error())
+	}
 
 	return true
 }

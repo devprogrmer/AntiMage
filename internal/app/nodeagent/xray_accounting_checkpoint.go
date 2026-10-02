@@ -20,6 +20,40 @@ func accountingCheckpointInterval(value string) (time.Duration, error) {
 }
 
 func (s *Server) checkpointXrayStatsLocked(stats []xrayStat) error {
+	return s.checkpointXrayGenerationLocked(stats, s.xrayAccountingGeneration)
+}
+
+func (s *Server) checkpointXrayGenerationLocked(stats []xrayStat, generation string) error {
+	if generation == "" {
+		generation = s.xrayAccountingGeneration
+	}
+	next, err := s.previewXrayAccountingCountersLocked(stats, generation)
+	if err != nil {
+		return err
+	}
+	changed := len(next) != len(s.xrayAccountingCounters) || generation != s.xrayAccountingGeneration
+	for key, counter := range next {
+		if s.xrayAccountingCounters[key] != counter {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		return nil
+	}
+	previous, previousGeneration := s.xrayAccountingCounters, s.xrayAccountingGeneration
+	s.xrayAccountingCounters, s.xrayAccountingGeneration = next, generation
+	if err := s.persistXrayUsageStateLocked(); err != nil {
+		s.xrayAccountingCounters, s.xrayAccountingGeneration = previous, previousGeneration
+		return err
+	}
+	return nil
+}
+
+func (s *Server) previewXrayAccountingCountersLocked(stats []xrayStat, generation string) (map[string]accountingCounter, error) {
+	if generation == "" {
+		generation = s.xrayAccountingGeneration
+	}
 	native := make(map[string]uint64)
 	seeds := make(map[string]uint64, len(s.xrayUsageBaseline))
 	for key, value := range s.xrayUsageBaseline {
@@ -45,27 +79,16 @@ func (s *Server) checkpointXrayStatsLocked(stats []xrayStat) error {
 		}
 		native[name.Email+":"+name.Direction] = uint64(stat.Value)
 	}
-	next, err := advanceAccountingCounters(s.xrayAccountingCounters, native, seeds)
-	if err != nil {
-		return err
-	}
-	changed := len(next) != len(s.xrayAccountingCounters)
-	for key, counter := range next {
-		if s.xrayAccountingCounters[key] != counter {
-			changed = true
-			break
+	previousCounters := s.xrayAccountingCounters
+	generationChanged := generation != "" && generation != s.xrayAccountingGeneration && len(s.xrayAccountingCounters) > 0
+	if generationChanged {
+		previousCounters = make(map[string]accountingCounter, len(s.xrayAccountingCounters))
+		for key, counter := range s.xrayAccountingCounters {
+			counter.Native = 0
+			previousCounters[key] = counter
 		}
 	}
-	if !changed {
-		return nil
-	}
-	previous := s.xrayAccountingCounters
-	s.xrayAccountingCounters = next
-	if err := s.persistXrayUsageStateLocked(); err != nil {
-		s.xrayAccountingCounters = previous
-		return err
-	}
-	return nil
+	return advanceAccountingCounters(previousCounters, native, seeds)
 }
 
 func (s *Server) checkpointXrayAccounting(ctx context.Context) error {
@@ -77,15 +100,22 @@ func (s *Server) checkpointXrayAccounting(ctx context.Context) error {
 	s.mu.Lock()
 	running := s.lastRuntime != nil
 	path, port := s.cfg.XrayPath, s.cfg.XrayAPIPort
+	generation := s.xrayRuntimeGeneration
 	s.mu.Unlock()
 	if !running {
 		return nil
 	}
-	stats, err := newXrayStatsClient(path, port).queryStats(ctx, "user>>>", false)
+	stats, err := s.cachedXrayStatsClient(path, port).queryStats(ctx, "user>>>", false)
 	if err != nil {
 		return err
 	}
-	return s.checkpointXrayStatsLocked(stats)
+	s.mu.Lock()
+	unchanged := generation == s.xrayRuntimeGeneration
+	s.mu.Unlock()
+	if !unchanged {
+		return fmt.Errorf("xray runtime changed during accounting snapshot")
+	}
+	return s.checkpointXrayGenerationLocked(stats, generation)
 }
 
 func (s *Server) runXrayAccountingCheckpoints(ctx context.Context, interval time.Duration) {
@@ -99,8 +129,8 @@ func (s *Server) runXrayAccountingCheckpoints(ctx context.Context, interval time
 			sampleCtx, cancel := context.WithTimeout(ctx, interval)
 			err := s.checkpointXrayAccounting(sampleCtx)
 			cancel()
-			if err != nil && ctx.Err() == nil {
-				s.appendLog("xray accounting checkpoint failed: " + err.Error())
+			if ctx.Err() == nil {
+				s.recordLocalAccountingHealth("xray", err)
 			}
 		}
 	}

@@ -1,13 +1,116 @@
 package nodeagent
 
 import (
+	"context"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestAmneziaWGControlledApplyGenerationResetAndFence(t *testing.T) {
+	s := New(Config{DataDir: t.TempDir()})
+	key := awgTestKey('p')
+	inbound := amneziaWGRuntimeInbound{Tag: "controlled", ListenPort: 51821, Settings: map[string]any{"private_key": awgTestKey('s'), "h1": "101", "h2": "102", "h3": "103", "h4": "104"}, Peers: []amneziaWGRuntimePeer{{UserID: 7, PublicKey: key, Address: "10.72.0.2", Status: "active", ReflectedUsageBatchID: "root-marker"}}}
+	oldApply, oldAll, oldIdentity := amneziaWGApplyRuntime, amneziaWGSnapshotAll, amneziaWGInterfaceIdentity
+	t.Cleanup(func() {
+		amneziaWGApplyRuntime, amneziaWGSnapshotAll, amneziaWGInterfaceIdentity = oldApply, oldAll, oldIdentity
+	})
+	value := uint64(0)
+	amneziaWGInterfaceIdentity = func(string) (string, error) { return "boot:1", nil }
+	amneziaWGSnapshotAll = func(_ context.Context, names []string) (map[string][]wireGuardPeerCounters, error) {
+		out := map[string][]wireGuardPeerCounters{}
+		for _, name := range names {
+			out[name] = []wireGuardPeerCounters{{PublicKey: key, ReceivedBytes: value}}
+		}
+		return out, nil
+	}
+	fail := false
+	amneziaWGApplyRuntime = func(p preparedAmneziaWGRuntime) error {
+		raw, err := os.ReadFile(filepath.Join(filepath.Dir(p.ConfigPath), "usage-helper.json"))
+		if err != nil {
+			return err
+		}
+		var cfg amneziaWGUsageRuntimeConfig
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			return err
+		}
+		if !cfg.Transitioning {
+			t.Fatal("kernel reset has no durable generation fence")
+		}
+		if fail {
+			return errors.New("partial kernel apply")
+		}
+		value = 150
+		return nil
+	}
+	first, err := s.prepareAmneziaWGInbound(inbound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.UsageConfig.Generation == "" || first.UsageConfig.PeerGenerations[key] == "" {
+		t.Fatal("missing lifecycle generation")
+	}
+	if err := s.applyAmneziaWGRuntime(first); err != nil {
+		t.Fatal(err)
+	}
+	value = 100
+	if err := s.checkpointAmneziaWGOffline(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.prepareAmneziaWGInbound(inbound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.UsageConfig.Generation == first.UsageConfig.Generation {
+		t.Fatal("generation reused")
+	}
+	helperPath := filepath.Join(filepath.Dir(first.ConfigPath), "usage-helper.json")
+	raw, err := os.ReadFile(helperPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var active amneziaWGUsageRuntimeConfig
+	if err := json.Unmarshal(raw, &active); err != nil {
+		t.Fatal(err)
+	}
+	if active.Generation != first.UsageConfig.Generation {
+		t.Fatal("prepare overwrote active generation before checkpoint")
+	}
+	if active.Policies[key].ReflectedUsageBatchID != "root-marker" {
+		t.Fatal("reflection marker not propagated")
+	}
+	if err := s.applyAmneziaWGRuntime(second); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.checkpointAmneziaWGOffline(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	state, err := s.readAmneziaWGOfflineState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := state.Counters["controlled\x00"+first.InterfaceName+"\x00"+key].Total; got != 250 {
+		t.Fatalf("reset-over-old total %d want 250", got)
+	}
+	fail = true
+	third, err := s.prepareAmneziaWGInbound(inbound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.applyAmneziaWGRuntime(third); err == nil {
+		t.Fatal("expected apply failure")
+	}
+	reloaded := New(Config{DataDir: s.cfg.DataDir})
+	if err := reloaded.checkpointAmneziaWGOffline(context.Background()); err == nil || !strings.Contains(err.Error(), "interrupted generation transition") {
+		t.Fatalf("ambiguous reset not fenced: %v", err)
+	}
+}
 
 func awgTestKey(fill byte) string {
 	return base64.StdEncoding.EncodeToString([]byte(strings.Repeat(string(fill), 32)))

@@ -37,7 +37,7 @@ func (s *Server) ensureCombinedUsageStateLoadedLocked() error {
 	if s.combinedUsageLoaded {
 		return nil
 	}
-	raw, err := os.ReadFile(s.combinedUsageStatePath())
+	raw, err := readOfflineAccountingState(s.combinedUsageStatePath())
 	if err != nil {
 		if os.IsNotExist(err) {
 			s.combinedUsageLoaded = true
@@ -70,38 +70,7 @@ func (s *Server) persistCombinedUsageStateLocked() error {
 		return fmt.Errorf("marshal combined usage state: %w", err)
 	}
 
-	path := s.combinedUsageStatePath()
-	tmp := path + ".tmp"
-	file, err := os.OpenFile(
-		tmp,
-		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
-		0600,
-	)
-	if err != nil {
-		return fmt.Errorf("open temporary combined usage state: %w", err)
-	}
-
-	cleanup := func() {
-		_ = file.Close()
-		_ = os.Remove(tmp)
-	}
-	if _, err := file.Write(raw); err != nil {
-		cleanup()
-		return fmt.Errorf("write temporary combined usage state: %w", err)
-	}
-	if err := file.Sync(); err != nil {
-		cleanup()
-		return fmt.Errorf("sync temporary combined usage state: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("close temporary combined usage state: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("replace combined usage state: %w", err)
-	}
-	return nil
+	return writeAccountingState(s.combinedUsageStatePath(), raw)
 }
 
 func (s *Server) combineUserUsageBatches(

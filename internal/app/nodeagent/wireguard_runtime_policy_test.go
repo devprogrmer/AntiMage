@@ -12,6 +12,7 @@ import (
 func TestWireGuardStaticPolicyFilterOmitsDeniedPeerFromRuntimeConfig(
 	t *testing.T,
 ) {
+	mockWireGuardGenerationIdentity(t)
 	server := New(Config{DataDir: t.TempDir()})
 
 	disabledKey := wireGuardTestKey(2)
@@ -85,6 +86,7 @@ func TestWireGuardStaticPolicyFilterOmitsDeniedPeerFromRuntimeConfig(
 func TestWireGuardDynamicSuppressionOmitsPeerUntilDesiredRemoval(
 	t *testing.T,
 ) {
+	mockWireGuardGenerationIdentity(t)
 	server := New(Config{DataDir: t.TempDir()})
 
 	suppressedKey := wireGuardTestKey(2)
@@ -162,6 +164,7 @@ func TestWireGuardDynamicSuppressionOmitsPeerUntilDesiredRemoval(
 func TestApplyWireGuardRuntimeSnapshotsSuppressedPeerBeforeSyncconf(
 	t *testing.T,
 ) {
+	mockWireGuardGenerationIdentity(t)
 	server := New(Config{DataDir: t.TempDir()})
 	server.wireGuardUsageLoaded = true
 
@@ -272,6 +275,7 @@ func TestApplyWireGuardRuntimeSnapshotsSuppressedPeerBeforeSyncconf(
 func TestApplyWireGuardRuntimeBlocksSyncconfWhenSuppressedSnapshotFails(
 	t *testing.T,
 ) {
+	mockWireGuardGenerationIdentity(t)
 	server := New(Config{DataDir: t.TempDir()})
 
 	configPath := filepath.Join(t.TempDir(), "wg.conf")

@@ -1600,7 +1600,7 @@ VALUES
 	}
 }
 
-func TestRepositoryRuntimeUsersExcludesUsersAtSessionLimit(t *testing.T) {
+func TestRepositoryRuntimeUsersExcludesUsersAtRealIPLimit(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "runtime-users-limit.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
@@ -1644,8 +1644,9 @@ INSERT INTO proxies (id, user_id, type, settings) VALUES
 	(1, 1, 'vless', '{}'),
 	(2, 2, 'vless', '{}');
 INSERT INTO vpn_user_sessions (node_id, user_id, protocol, session_id, assigned_ip, client_ip, started_at, last_seen_at, ended_at) VALUES
-	(7, 1, 'ov', 'ov-one', '10.66.0.2', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL),
-	(7, 2, 'ov', 'ov-two', '10.66.0.3', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL);
+	(7, 1, 'ov', 'ov-one', '10.66.0.2', '198.51.100.1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL),
+	(7, 2, 'ov', 'ov-two', '10.66.0.3', '198.51.100.2', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL),
+	(7, 2, 'ov', 'ov-two-shared-ip', '10.66.0.4', '198.51.100.2', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL);
 `)
 	if err != nil {
 		t.Fatal(err)
@@ -1671,6 +1672,13 @@ INSERT INTO vpn_user_sessions (node_id, user_id, protocol, session_id, assigned_
 	}
 	if len(rows) != 1 || rows[0].ID != 2 || rows[0].Protocol != "shadowsocks" {
 		t.Fatalf("expected synthesized shadowsocks credentials for the eligible service user, got %#v", rows)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE vpn_user_sessions SET client_ip='' WHERE user_id=1`); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = repo.RuntimeUsersForProtocols(ctx, []string{"shadowsocks"})
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("virtual address/session ID incorrectly counted as remote IP: %v %v", rows, err)
 	}
 }
 

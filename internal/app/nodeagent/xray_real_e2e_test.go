@@ -319,6 +319,29 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 		t.Fatalf("idle connected user count=%d, want >0", idleCount)
 	}
 
+	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	err = statsClient.removeUserRPC(ctx, "vless-e2e", userEmail)
+	cancel()
+	if err != nil {
+		t.Fatalf("remove real Xray user: %v", err)
+	}
+	// Removing authentication does not terminate an already authenticated stream.
+	continued := []byte("existing-stream-after-user-removal")
+	if err := upstreamConn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := clientConn.Write(continued); err != nil {
+		t.Fatalf("write existing stream after user removal: %v", err)
+	}
+	gotContinued := make([]byte, len(continued))
+	if _, err := io.ReadFull(upstreamConn, gotContinued); err != nil {
+		t.Fatalf("read existing stream after user removal: %v", err)
+	}
+	if !bytes.Equal(gotContinued, continued) {
+		t.Fatalf("existing stream payload=%q, want %q", gotContinued, continued)
+	}
+	t.Log("native user removal succeeded, but the existing VLESS stream still transfers traffic; hard per-user quota requires a stream termination hook")
+
 	if err := clientConn.Close(); err != nil {
 		t.Fatalf("close client connection: %v", err)
 	}

@@ -166,3 +166,33 @@ func TestAccountingCheckpointInterval(t *testing.T) {
 		}
 	}
 }
+
+func TestXrayGenerationDetectsResetThatOvertakesOldCounter(t *testing.T) {
+	const gigabyte = uint64(1024 * 1024 * 1024)
+	key := "42.alice:uplink"
+	dir := t.TempDir()
+	s := New(Config{DataDir: dir})
+	if err := s.ensureXrayUsageStateLoadedLocked(); err != nil {
+		t.Fatal(err)
+	}
+	sample := func(server *Server, value uint64, generation string) {
+		t.Helper()
+		if err := server.checkpointXrayGenerationLocked([]xrayStat{{Name: "user>>>42.alice>>>traffic>>>uplink", Value: int64(value)}}, generation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sample(s, 10*gigabyte, "runtime-A")
+	s = New(Config{DataDir: dir})
+	if err := s.ensureXrayUsageStateLoadedLocked(); err != nil {
+		t.Fatal(err)
+	}
+	sample(s, 11*gigabyte, "runtime-B")
+	sample(s, 12*gigabyte, "runtime-B")
+	if got := s.xrayAccountingCounters[key].Total; got != 22*gigabyte {
+		t.Fatalf("generation reset total = %d, want 22GB", got)
+	}
+	batch, err := s.CollectUserUsage(context.Background(), &nodev1.CollectUsageRequest{})
+	if err != nil || len(batch.GetStats()) != 1 || batch.GetStats()[0].GetValue() != 22*gigabyte {
+		t.Fatalf("generation reconnect batch = %v, %v", batch, err)
+	}
+}
