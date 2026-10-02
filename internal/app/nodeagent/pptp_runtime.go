@@ -335,6 +335,8 @@ func pptpUsersAsOpenVPNUsers(users []pptpRuntimeUser) []openVPNRuntimeUser {
 			ReflectedUsageBatchID: user.ReflectedUsageBatchID,
 			UploadSpeedLimit:      user.UploadSpeedLimit,
 			DownloadSpeedLimit:    user.DownloadSpeedLimit,
+			UsageCoefficient:      user.UsageCoefficient,
+			InboundCoefficient:    user.InboundCoefficient,
 		})
 	}
 	return result
