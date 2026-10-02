@@ -433,6 +433,9 @@ func (s *Server) syncWireGuardUsageConfigs(
 
 				Expire: expire,
 
+				UploadSpeedLimit:   peer.UploadSpeedLimit,
+				DownloadSpeedLimit: peer.DownloadSpeedLimit,
+
 				UsageCoefficient: peer.UsageCoefficient,
 
 				InboundCoefficient: peer.InboundCoefficient,
