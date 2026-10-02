@@ -757,13 +757,6 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 		s.recordLocalAccountingHealth("xray", checkpointErr)
 		return nil, status.Error(codes.FailedPrecondition, "checkpoint before runtime change: "+checkpointErr.Error())
 	}
-	// Persist validated desired policy before allowing runtimes to change. A
-	// restart can retry activation locally without depending on panel access.
-	if err := s.persistRuntimePolicy(req); err != nil {
-		s.recordLocalAccountingHealth("policy", err)
-		return nil, status.Error(codes.FailedPrecondition, "persist offline policy: "+err.Error())
-	}
-	s.recordLocalAccountingHealth("policy", nil)
 	guarded, err := s.guardOfflineRuntimePolicy(req)
 	if err != nil {
 		s.recordLocalAccountingHealth("policy", err)
@@ -771,6 +764,14 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	}
 	req = guarded
 	configJSON = req.GetConfigJson()
+	// Persist the exact guarded policy that will be activated. Persisting the
+	// unguarded panel policy first would let a node restart offline and restore
+	// credentials that the durable quota guard had just denied.
+	if err := s.persistRuntimePolicy(req); err != nil {
+		s.recordLocalAccountingHealth("policy", err)
+		return nil, status.Error(codes.FailedPrecondition, "persist offline policy: "+err.Error())
+	}
+	s.recordLocalAccountingHealth("policy", nil)
 
 	if err := os.MkdirAll(s.cfg.DataDir, 0755); err != nil {
 		return nil, err
