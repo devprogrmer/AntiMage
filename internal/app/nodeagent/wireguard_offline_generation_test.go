@@ -113,6 +113,32 @@ func TestWireGuardOfflineGenerationManagedPeerRecreation(t *testing.T) {
 	}
 }
 
+func TestWireGuardOfflineGenerationRemovalAheadOfCheckpoint(t *testing.T) {
+	server, value, _ := wireGuardGenerationFixture(t)
+	first := wireGuardGenerationCollect(t, server)
+	server.wireGuardUsageMu.Lock()
+	err := server.updateWireGuardUsageCarryLocked("wg", "wg-test", "peer", 42, 12_000_000_000, false)
+	if err == nil {
+		err = server.persistWireGuardUsageStateLocked()
+	}
+	server.wireGuardUsageMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared := preparedWireGuardRuntime{Tag: "wg", InterfaceName: "wg-test"}
+	if err := server.markWireGuardRemovedGenerations(prepared); err != nil {
+		t.Fatal(err)
+	}
+	*value = 11_000_000_000
+	restarted := New(Config{DataDir: server.cfg.DataDir})
+	retry := wireGuardGenerationCollect(t, restarted)
+	wireGuardGenerationAck(t, restarted, retry)
+	second := wireGuardGenerationCollect(t, restarted)
+	if len(second.Stats) != 1 || first.Stats[0].Value+second.Stats[0].Value != 23_000_000_000 {
+		t.Fatalf("stale generation rebilled after removal: first=%v second=%v", first, second)
+	}
+}
+
 func TestWireGuardOfflineGenerationObservedAbsence(t *testing.T) {
 	server, value, _ := wireGuardGenerationFixture(t)
 	first := wireGuardGenerationCollect(t, server)

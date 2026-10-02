@@ -103,9 +103,14 @@ func (s *Server) checkpointWireGuardGenerationLocked(cfg wireGuardUsageRuntimeCo
 			if v, ok := s.wireGuardUsageCarry[key]; ok {
 				reference = v.NextBaseline
 			}
-			delta := old.Total
-			if old.Total >= reference {
-				delta -= reference
+			// The carry may already have advanced beyond the last persisted
+			// generation total (for example, removal starts after a final
+			// collection but before the next generation checkpoint). In that
+			// case the old snapshot contributes no additional bytes; treating
+			// it as a counter reset would rebill the entire prior generation.
+			delta := uint64(0)
+			if old.Total > reference {
+				delta = old.Total - reference
 			}
 			if ^uint64(0)-carry.Value < delta {
 				s.wireGuardUsageCarry = previous
