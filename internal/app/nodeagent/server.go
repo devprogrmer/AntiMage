@@ -112,6 +112,7 @@ type Server struct {
 	xrayUsageBaselineAt              time.Time
 	xrayOutboundUsageMu              sync.Mutex
 	xrayOutboundUsageBaseline        map[string]uint64
+	xrayOutboundUsageGeneration      string
 	xrayOutboundUsagePending         *xrayOutboundUsagePendingBatch
 	xrayOutboundUsageLoaded          bool
 	mergedUsageMu                    sync.Mutex
@@ -549,6 +550,7 @@ func (s *Server) CollectOutboundUsage(ctx context.Context, req *nodev1.CollectUs
 	xrayRunning := s.lastRuntime != nil
 	xrayPath := s.cfg.XrayPath
 	xrayAPIPort := s.cfg.XrayAPIPort
+	xrayGeneration := s.xrayRuntimeGeneration
 	s.mu.Unlock()
 
 	if !xrayRunning {
@@ -577,61 +579,23 @@ func (s *Server) CollectOutboundUsage(ctx context.Context, req *nodev1.CollectUs
 		nextBaseline[key] = value
 	}
 
-	type outboundTraffic struct {
-		upDelta   uint64
-		downDelta uint64
-	}
+	byTag, nextBaseline := xrayOutboundUsageDeltas(
+		stats,
+		s.xrayOutboundUsageBaseline,
+		nextBaseline,
+		s.xrayOutboundUsageGeneration,
+		xrayGeneration,
+	)
 
-	byTag := make(map[string]*outboundTraffic)
-
-	for _, stat := range stats {
-		statName, ok := parseXrayStatName(stat.Name)
-		if !ok || statName.Type != "outbound" {
-			continue
-		}
-
-		tag := statName.Tag
-		if tag == "" {
-			continue
-		}
-
-		// Build baseline key: tag:direction
-		baselineKey := tag + ":" + statName.Direction
-
-		baseline, exists := s.xrayOutboundUsageBaseline[baselineKey]
-
-		currentValue := uint64(0)
-		if stat.Value >= 0 {
-			currentValue = uint64(stat.Value)
-		}
-
-		delta := currentValue
-		if exists && currentValue >= baseline {
-			delta = currentValue - baseline
-		}
-
-		// Counter reset detection
-		if exists && currentValue < baseline {
-			delta = currentValue
-		}
-
-		nextBaseline[baselineKey] = currentValue
-
-		traffic := byTag[tag]
-		if traffic == nil {
-			traffic = &outboundTraffic{}
-			byTag[tag] = traffic
-		}
-
-		switch statName.Direction {
-		case "uplink":
-			traffic.upDelta = delta
-		case "downlink":
-			traffic.downDelta = delta
-		}
-	}
+	// A process generation is part of the counter identity. Persist it even
+	// when this sample has no traffic, so the first later counter is not
+	// compared with the previous Xray process.
+	s.xrayOutboundUsageGeneration = xrayGeneration
 
 	if len(byTag) == 0 {
+		if err := s.persistXrayOutboundUsageStateLocked(); err != nil {
+			return nil, err
+		}
 		return &nodev1.OutboundUsageBatch{
 			BatchId: fmt.Sprintf("outbound-%d", time.Now().Unix()),
 		}, nil
@@ -639,18 +603,19 @@ func (s *Server) CollectOutboundUsage(ctx context.Context, req *nodev1.CollectUs
 
 	samples := make([]xrayOutboundUsageSample, 0, len(byTag))
 	for tag, traffic := range byTag {
-		if traffic.upDelta == 0 && traffic.downDelta == 0 {
+		if traffic.Up == 0 && traffic.Down == 0 {
 			continue
 		}
 		samples = append(samples, xrayOutboundUsageSample{
 			Tag:  tag,
-			Up:   traffic.upDelta,
-			Down: traffic.downDelta,
+			Up:   traffic.Up,
+			Down: traffic.Down,
 		})
 	}
 
 	pending := &xrayOutboundUsagePendingBatch{
 		BatchID:      fmt.Sprintf("outbound-%d", time.Now().UTC().UnixNano()),
+		Generation:   xrayGeneration,
 		Samples:      samples,
 		NextBaseline: nextBaseline,
 	}
@@ -687,6 +652,7 @@ func (s *Server) AckOutboundUsage(ctx context.Context, req *nodev1.AckUsageReque
 	previousBaseline := s.xrayOutboundUsageBaseline
 
 	s.xrayOutboundUsageBaseline = pending.NextBaseline
+	s.xrayOutboundUsageGeneration = pending.Generation
 	s.xrayOutboundUsagePending = nil
 
 	if err := s.persistXrayOutboundUsageStateLocked(); err != nil {
