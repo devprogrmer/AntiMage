@@ -1,0 +1,87 @@
+name: Native Protocol E2E
+
+on:
+  pull_request:
+    branches: ['**']
+    paths:
+      - 'internal/app/nodeagent/**'
+      - 'internal/proto/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/native-protocol-e2e.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native-runtime-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install native runtime dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            iproute2 iptables ppp wireguard-tools openvpn strongswan xl2tpd pptpd ocserv
+          for binary in ip wg openvpn ipsec xl2tpd pptpd ocserv; do
+            command -v "$binary"
+          done
+
+      - name: Create isolated Linux network namespace
+        run: |
+          set -euxo pipefail
+          sudo ip netns add antimage-e2e
+          sudo ip link add antimage-veth-host type veth peer name antimage-veth-peer
+          sudo ip link set antimage-veth-peer netns antimage-e2e
+          sudo ip addr add 10.250.0.1/24 dev antimage-veth-host
+          sudo ip link set antimage-veth-host up
+          sudo ip netns exec antimage-e2e ip addr add 10.250.0.2/24 dev antimage-veth-peer
+          sudo ip netns exec antimage-e2e ip link set lo up
+          sudo ip netns exec antimage-e2e ip link set antimage-veth-peer up
+          sudo ip netns exec antimage-e2e ip route add default via 10.250.0.1
+
+      - name: Run real Xray protocol E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='v26.7.11'
+          archive="$RUNNER_TEMP/Xray-linux-64-${version}.zip"
+          dir="$RUNNER_TEMP/xray-${version}"
+          curl --fail --location --retry 3 --output "$archive" \
+            "https://github.com/XTLS/Xray-core/releases/download/${version}/Xray-linux-64.zip"
+          echo 'aa11c3685c71da0ffc71e511db50404609e7e963bb914b048f59a6a00af8930e  '"$archive" | sha256sum --check -
+          mkdir -p "$dir"
+          python3 -m zipfile -e "$archive" "$dir"
+          chmod +x "$dir/xray"
+          ANTIMAGE_XRAY_E2E_BINARY="$dir/xray" \
+            go test ./internal/app/nodeagent -run '^TestRealXrayOnlineAndStatsE2E$' -count=1 -v
+
+      - name: Run protocol policy and durable-state integration suites
+        run: |
+          go test ./internal/app/nodeagent -run 'Test(AmneziaWG|OpenVPN|L2TP|PPTP|IKEv2|AnyConnect|WireGuard|Xray)' -count=1 -v
+
+      - name: Run Linux race verification
+        run: |
+          go test -race -timeout 30m ./internal/... -count=1
+
+      - name: Collect native runtime evidence
+        if: always()
+        run: |
+          sudo ip netns exec antimage-e2e ip addr || true
+          sudo wg show || true
+          sudo ipsec statusall || true
+          sudo systemctl status openvpn --no-pager || true
+
+      - name: Remove isolated namespace
+        if: always()
+        run: |
+          sudo ip netns del antimage-e2e 2>/dev/null || true
+          sudo ip link del antimage-veth-host 2>/dev/null || true
