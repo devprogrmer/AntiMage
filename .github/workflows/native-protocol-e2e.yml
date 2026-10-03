@@ -31,8 +31,8 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            iproute2 iptables ppp wireguard-tools openvpn strongswan xl2tpd ocserv netcat-openbsd
-          for binary in ip wg openvpn ipsec xl2tpd ocserv; do
+            iproute2 iptables ppp wireguard-tools openvpn strongswan xl2tpd ocserv openconnect openssl netcat-openbsd
+          for binary in ip wg openvpn ipsec xl2tpd ocserv openconnect openssl; do
             command -v "$binary"
           done
 
@@ -55,6 +55,10 @@ jobs:
       - name: Run real WireGuard and OpenVPN drivers
         run: |
           sudo bash scripts/ci/native-vpn-drivers.sh
+
+      - name: Run real AnyConnect and ocserv driver
+        run: |
+          sudo bash scripts/ci/native-anyconnect-driver.sh
 
       - name: Run protocol policy and durable-state integration suites
         run: |
