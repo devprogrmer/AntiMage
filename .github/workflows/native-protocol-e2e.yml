@@ -30,8 +30,8 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            iproute2 iptables ppp wireguard-tools openvpn strongswan xl2tpd pptpd ocserv
-          for binary in ip wg openvpn ipsec xl2tpd pptpd ocserv; do
+            iproute2 iptables ppp wireguard-tools openvpn strongswan xl2tpd ocserv
+          for binary in ip wg openvpn ipsec xl2tpd ocserv; do
             command -v "$binary"
           done
 
