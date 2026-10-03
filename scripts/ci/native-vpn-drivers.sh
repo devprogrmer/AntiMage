@@ -89,6 +89,8 @@ port 11940
 ifconfig 10.210.0.1 10.210.0.2
 persist-key
 persist-tun
+cipher AES-256-GCM
+data-ciphers AES-256-GCM:CHACHA20-POLY1305
 verb 0
 EOF
   cat >"$ROOT/client.conf" <<EOF
@@ -99,6 +101,8 @@ proto udp
 ifconfig 10.210.0.2 10.210.0.1
 persist-key
 persist-tun
+cipher AES-256-GCM
+data-ciphers AES-256-GCM:CHACHA20-POLY1305
 verb 0
 EOF
   openvpn --config "$ROOT/server.conf" >/"$ROOT/openvpn-server.log" 2>&1 &
