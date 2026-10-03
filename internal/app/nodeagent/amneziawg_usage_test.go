@@ -14,6 +14,13 @@ import (
 )
 
 func TestAmneziaWGPresenceCallbackDoesNotBlockAccounting(t *testing.T) {
+	oldCredit, oldIdentity := amneziaWGAwaitingReflectionUsage, amneziaWGInterfaceIdentity
+	amneziaWGAwaitingReflectionUsage = func(*Server, int64, string, string, string) (uint64, error) { return 0, nil }
+	amneziaWGInterfaceIdentity = func(string) (string, error) { return "fixture", nil }
+	defer func() { amneziaWGAwaitingReflectionUsage, amneziaWGInterfaceIdentity = oldCredit, oldIdentity }()
+	oldAll := amneziaWGSnapshotAll
+	amneziaWGSnapshotAll = nil
+	defer func() { amneziaWGSnapshotAll = oldAll }()
 	callbackStarted := make(chan struct{}, 1)
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		callbackStarted <- struct{}{}
@@ -68,6 +75,13 @@ func writeAWGUsageConfig(t *testing.T, dataDir string, cfg amneziaWGUsageRuntime
 }
 
 func TestAmneziaWGUsageDeltaACKRestartOnlineAndQuota(t *testing.T) {
+	oldCredit, oldIdentity := amneziaWGAwaitingReflectionUsage, amneziaWGInterfaceIdentity
+	amneziaWGAwaitingReflectionUsage = func(*Server, int64, string, string, string) (uint64, error) { return 0, nil }
+	amneziaWGInterfaceIdentity = func(string) (string, error) { return "fixture", nil }
+	defer func() { amneziaWGAwaitingReflectionUsage, amneziaWGInterfaceIdentity = oldCredit, oldIdentity }()
+	oldAll := amneziaWGSnapshotAll
+	amneziaWGSnapshotAll = nil
+	defer func() { amneziaWGSnapshotAll = oldAll }()
 	dataDir := t.TempDir()
 	key := awgTestKey('p')
 	writeAWGUsageConfig(t, dataDir, amneziaWGUsageRuntimeConfig{InboundTag: "awg-main", InterfaceName: "awg0", Peers: map[string]int64{key: 7}, PeerAddresses: map[string]string{key: "10.72.0.2"}, Policies: map[string]nativeSessionUserPolicy{key: {Status: "active", UsedTraffic: 90, DataLimit: 100}}, AccountingEnabled: true})

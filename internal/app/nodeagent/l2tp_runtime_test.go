@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -108,6 +109,38 @@ func TestPrepareL2TPInboundRendersDaemonConfigs(t *testing.T) {
 	if !strings.Contains(string(rawSecrets), `"alice-vpn"`) ||
 		!strings.Contains(string(rawSecrets), "10.67.0.42") {
 		t.Fatalf("chap secrets missing user binding:\n%s", rawSecrets)
+	}
+}
+
+func TestPrepareL2TPInboundPersistsAllSessionEnforcementFields(t *testing.T) {
+	server := New(Config{DataDir: t.TempDir()})
+	limit := int64(50 * 1024 * 1024)
+	expire := int64(2_000_000_000)
+	files, err := server.prepareL2TPInbound(l2TPRuntimeInbound{
+		Tag: "l2tp-policy", Port: 1701,
+		Settings: map[string]any{"ipsec_psk": "shared secret", "ipv4_pool_cidr": "10.67.0.0/24"},
+		Users: []l2TPRuntimeUser{{
+			UserID: 42, Username: "alice", VPNUsername: "alice-vpn", Password: "secret", IPv4Address: "10.67.0.42", Status: "active",
+			DataLimit: &limit, Expire: &expire, DeviceLimit: 3, IPLimit: 2,
+			UploadSpeedLimit: 1234, DownloadSpeedLimit: 5678, UsageCoefficient: 1.5, InboundCoefficient: 2,
+		}},
+	}, nativeRuntimeSessionCallback{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(files.SessionConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg nativeSessionHelperConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	policy := cfg.Policies["alice-vpn"]
+	if policy.DataLimit != limit || policy.Expire != expire || policy.DeviceLimit != 3 || policy.IPLimit != 2 ||
+		policy.UploadSpeedLimit != 1234 || policy.DownloadSpeedLimit != 5678 ||
+		policy.UsageCoefficient != 1.5 || policy.InboundCoefficient != 2 {
+		t.Fatalf("L2TP enforcement fields were not persisted: %+v", policy)
 	}
 }
 

@@ -117,7 +117,7 @@ func TestAWGUsersForServicesClosesUserRowsBeforeReconcilingDevices(t *testing.T)
 	if _, err := db.Exec(`
 CREATE TABLE users (
  id INTEGER PRIMARY KEY, username TEXT, status TEXT, used_traffic INTEGER,
- data_limit INTEGER, expire INTEGER, device_limit INTEGER,
+ data_limit INTEGER, expire INTEGER, device_limit INTEGER, ip_limit INTEGER,
  upload_speed_limit INTEGER, download_speed_limit INTEGER, service_id INTEGER
 );
 CREATE TABLE amneziawg_devices (

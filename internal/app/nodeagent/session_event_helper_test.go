@@ -157,6 +157,12 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 	t.Setenv("PEERNAME", "alice-vpn")
 	t.Setenv("IPREMOTE", "10.67.0.10")
 	t.Setenv("CALLING_NUMBER", "203.0.113.10")
+	t.Setenv("IFNAME", "ppp0")
+	t.Setenv("PPPD_PID", "123")
+	previousIdentity, previousProcess := pppOfflineReadIdentity, pppOfflineReadProcess
+	pppOfflineReadIdentity = func(string) (string, error) { return "fixture-boot:1", nil }
+	pppOfflineReadProcess = func(string) (string, error) { return "fixture-boot:123:456", nil }
+	t.Cleanup(func() { pppOfflineReadIdentity = previousIdentity; pppOfflineReadProcess = previousProcess })
 
 	if err := RunNativeSessionEventHelper([]string{configPath, "start"}); err != nil {
 		t.Fatal(err)

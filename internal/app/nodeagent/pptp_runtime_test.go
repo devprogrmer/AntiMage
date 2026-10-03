@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/netip"
 	"os"
@@ -101,6 +102,38 @@ func TestPreparePPTPInboundRendersDaemonConfigs(t *testing.T) {
 	}
 	if strings.Contains(string(rawPPP), "chap-secrets") {
 		t.Fatalf("ppp options must not render unsupported chap-secrets option:\n%s", rawPPP)
+	}
+}
+
+func TestPreparePPTPInboundPersistsAllSessionEnforcementFields(t *testing.T) {
+	server := New(Config{DataDir: t.TempDir()})
+	limit := int64(50 * 1024 * 1024)
+	expire := int64(2_000_000_000)
+	configPath, err := server.preparePPTPInbound(pptpRuntimeInbound{
+		Tag: "pptp-policy", Port: 1723,
+		Settings: map[string]any{"ipv4_pool_cidr": "10.68.0.0/24"},
+		Users: []pptpRuntimeUser{{
+			UserID: 42, Username: "alice", VPNUsername: "alice-vpn", Password: "secret", IPv4Address: "10.68.0.42", Status: "active",
+			DataLimit: &limit, Expire: &expire, DeviceLimit: 3, IPLimit: 2,
+			UploadSpeedLimit: 1234, DownloadSpeedLimit: 5678, UsageCoefficient: 1.5, InboundCoefficient: 2,
+		}},
+	}, nativeRuntimeSessionCallback{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(configPath), "session-helper.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg nativeSessionHelperConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	policy := cfg.Policies["alice-vpn"]
+	if policy.DataLimit != limit || policy.Expire != expire || policy.DeviceLimit != 3 || policy.IPLimit != 2 ||
+		policy.UploadSpeedLimit != 1234 || policy.DownloadSpeedLimit != 5678 ||
+		policy.UsageCoefficient != 1.5 || policy.InboundCoefficient != 2 {
+		t.Fatalf("PPTP enforcement fields were not persisted: %+v", policy)
 	}
 }
 

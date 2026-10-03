@@ -80,3 +80,14 @@ func TestRenderIKEv2SpeedRules(t *testing.T) {
 		}
 	}
 }
+
+func TestIKEv2PolicyPreservesLimitsAndSpeedBindings(t *testing.T) {
+	user := ikev2RuntimeUser{UserID: 42, Status: "active", DeviceLimit: 3, IPLimit: 2, UploadSpeedLimit: 1234, DownloadSpeedLimit: 5678}
+	if user.DeviceLimit != 3 || user.IPLimit != 2 {
+		t.Fatalf("IKEv2 limits changed: %+v", user)
+	}
+	bindings := []ikev2SpeedBinding{{UserID: user.UserID, IPv4: "10.70.0.42", UploadRate: user.UploadSpeedLimit, DownloadRate: user.DownloadSpeedLimit}}
+	if bindings[0].UploadRate != 1234 || bindings[0].DownloadRate != 5678 {
+		t.Fatalf("IKEv2 speed binding lost user limits: %+v", bindings[0])
+	}
+}

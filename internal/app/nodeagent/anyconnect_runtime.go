@@ -18,19 +18,21 @@ type anyConnectRuntimeInbound struct {
 }
 
 type anyConnectRuntimeUser struct {
-	UserID             int64   `json:"user_id"`
-	Username           string  `json:"username"`
-	Password           string  `json:"password"`
-	IPv4Address        string  `json:"ipv4_address"`
-	Status             string  `json:"status"`
-	UsedTraffic        int64   `json:"used_traffic"`
-	DataLimit          *int64  `json:"data_limit,omitempty"`
-	Expire             *int64  `json:"expire,omitempty"`
-	DeviceLimit        int64   `json:"device_limit,omitempty"`
-	UploadSpeedLimit   int64   `json:"upload_speed_limit"`
-	DownloadSpeedLimit int64   `json:"download_speed_limit"`
-	UsageCoefficient   float64 `json:"usage_coefficient,omitempty"`
-	InboundCoefficient float64 `json:"inbound_coefficient,omitempty"`
+	UserID                int64   `json:"user_id"`
+	Username              string  `json:"username"`
+	Password              string  `json:"password"`
+	IPv4Address           string  `json:"ipv4_address"`
+	Status                string  `json:"status"`
+	UsedTraffic           int64   `json:"used_traffic"`
+	DataLimit             *int64  `json:"data_limit,omitempty"`
+	Expire                *int64  `json:"expire,omitempty"`
+	DeviceLimit           int64   `json:"device_limit,omitempty"`
+	IPLimit               int64   `json:"ip_limit,omitempty"`
+	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
+	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
+	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
+	InboundCoefficient    float64 `json:"inbound_coefficient,omitempty"`
 }
 
 type anyConnectRuntimeFiles struct {
@@ -175,11 +177,18 @@ func renderAnyConnectUserConfig(user anyConnectRuntimeUser, settings map[string]
 	if limit > 0 {
 		lines = append(lines, "max-same-clients = "+strconv.FormatInt(limit, 10))
 	}
-	if user.DownloadSpeedLimit > 0 {
-		lines = append(lines, "rx-data-per-sec = "+strconv.FormatInt(user.DownloadSpeedLimit, 10))
-	}
 	if user.UploadSpeedLimit > 0 {
-		lines = append(lines, "tx-data-per-sec = "+strconv.FormatInt(user.UploadSpeedLimit, 10))
+		lines = append(lines, "rx-data-per-sec = "+strconv.FormatInt(bitsToBytesPerSecond(user.UploadSpeedLimit), 10))
+	}
+	if user.DownloadSpeedLimit > 0 {
+		lines = append(lines, "tx-data-per-sec = "+strconv.FormatInt(bitsToBytesPerSecond(user.DownloadSpeedLimit), 10))
 	}
 	return strings.Join(lines, "\n") + "\n"
+}
+
+func bitsToBytesPerSecond(bits int64) int64 {
+	if bits <= 0 {
+		return 0
+	}
+	return (bits + 7) / 8
 }

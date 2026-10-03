@@ -1,0 +1,83 @@
+name: Native Protocol E2E
+
+on:
+  pull_request:
+    branches: ['**']
+    paths:
+      - 'internal/app/nodeagent/**'
+      - 'internal/proto/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'scripts/ci/**'
+      - '.github/workflows/native-protocol-e2e.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native-runtime-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install native runtime dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            iproute2 iptables ppp wireguard-tools openvpn strongswan xl2tpd ocserv openconnect openssl netcat-openbsd
+          for binary in ip wg openvpn ipsec xl2tpd ocserv ocpasswd openconnect openssl; do
+            command -v "$binary"
+          done
+
+      - name: Run real Xray protocol E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='v26.7.11'
+          archive="$RUNNER_TEMP/Xray-linux-64-${version}.zip"
+          dir="$RUNNER_TEMP/xray-${version}"
+          curl --fail --location --retry 3 --output "$archive" \
+            "https://github.com/XTLS/Xray-core/releases/download/${version}/Xray-linux-64.zip"
+          echo 'aa11c3685c71da0ffc71e511db50404609e7e963bb914b048f59a6a00af8930e  '"$archive" | sha256sum --check -
+          mkdir -p "$dir"
+          python3 -m zipfile -e "$archive" "$dir"
+          chmod +x "$dir/xray"
+          ANTIMAGE_XRAY_E2E_BINARY="$dir/xray" \
+            go test ./internal/app/nodeagent -run '^TestRealXrayOnlineAndStatsE2E$' -count=1 -v
+
+      - name: Run real WireGuard and OpenVPN drivers
+        run: |
+          sudo bash scripts/ci/native-vpn-drivers.sh
+
+      - name: Run real AnyConnect and ocserv driver
+        run: |
+          sudo bash scripts/ci/native-anyconnect-driver.sh
+
+      - name: Run protocol policy and durable-state integration suites
+        run: |
+          go test ./internal/app/nodeagent -run 'Test(AmneziaWG|OpenVPN|L2TP|PPTP|IKEv2|AnyConnect|WireGuard|Xray)' -count=1 -v
+
+      - name: Run Linux race verification
+        run: |
+          go test -race -timeout 30m ./internal/... -count=1
+
+      - name: Collect native runtime evidence
+        if: always()
+        run: |
+          sudo ip netns exec antimage-vpn-client ip addr || true
+          sudo wg show || true
+          sudo ipsec statusall || true
+          sudo systemctl status openvpn --no-pager || true
+
+      - name: Remove isolated namespace
+        if: always()
+        run: |
+          sudo ip netns del antimage-vpn-client 2>/dev/null || true
+          sudo ip link del avpn-vh 2>/dev/null || true

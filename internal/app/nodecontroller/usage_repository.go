@@ -992,6 +992,9 @@ func (r Repository) touchUsersOnline(ctx context.Context, userIDs []int64) error
 }
 
 func (r Repository) insertStagedUserUsage(ctx context.Context, tx *sql.Tx, nodeID int64, batchID string, usageByUser map[int64]int64, now time.Time) error {
+	if pruned, err := r.lockUsageBatch(ctx, tx, nodeID, batchID, "user"); err != nil || pruned {
+		return err
+	}
 	userIDs := keysInt64(usageByUser)
 	return forEachInt64Chunk(userIDs, usagePersistBatchSize, func(chunk []int64) error {
 		var builder strings.Builder
@@ -1015,6 +1018,9 @@ func (r Repository) insertStagedUserUsage(ctx context.Context, tx *sql.Tx, nodeI
 }
 
 func (r Repository) insertStagedOutboundUsage(ctx context.Context, tx *sql.Tx, nodeID int64, batchID string, outbounds map[string]OutboundUsageDelta, inbounds map[string]InboundUsageDelta, now time.Time) error {
+	if pruned, err := r.lockUsageBatch(ctx, tx, nodeID, batchID, "outbound"); err != nil || pruned {
+		return err
+	}
 	tagSet := make(map[string]struct{}, len(outbounds)+len(inbounds))
 	for tag := range outbounds {
 		tagSet[tag] = struct{}{}
@@ -1910,8 +1916,12 @@ ON DUPLICATE KEY UPDATE
 }
 
 func isWireGuardReflectionBatchID(batchID string) bool {
-	return strings.HasPrefix(batchID, "wireguard-") ||
-		strings.HasPrefix(batchID, "combined-")
+	for _, prefix := range []string{"wireguard-", "combined-", "merged-", "xray-", "amneziawg-", "openvpn-", "l2tp-", "pptp-", "ikev2-", "anyconnect-"} {
+		if strings.HasPrefix(batchID, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r Repository) pendingStagedUserUsage(ctx context.Context, limit int) ([]stagedUserUsageRow, error) {
@@ -2039,32 +2049,67 @@ func (r Repository) PruneProcessedUsageQueue(ctx context.Context, cutoff time.Ti
 	if limit <= 0 {
 		limit = 1000
 	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
 	total := 0
-	for _, table := range []string{"node_usage_user_queue", "node_usage_outbound_queue"} {
-		rows, err := r.db.QueryContext(ctx, `SELECT id FROM `+table+`
+	for index, table := range []string{"node_usage_user_queue", "node_usage_outbound_queue"} {
+		kind := []string{"user", "outbound"}[index]
+		rows, err := tx.QueryContext(ctx, `SELECT id, node_id, batch_id FROM `+table+`
 WHERE processed_at IS NOT NULL AND history_processed_at IS NOT NULL AND processed_at < ?
 ORDER BY id LIMIT ?`, r.timeArg(cutoff), limit)
 		if err != nil {
-			return total, err
+			return 0, err
 		}
 		ids := make([]int64, 0, limit)
+		type batchKey struct {
+			nodeID  int64
+			batchID string
+		}
+		batches := map[batchKey]struct{}{}
 		for rows.Next() {
 			var id int64
-			if err := rows.Scan(&id); err != nil {
+			var batch batchKey
+			if err := rows.Scan(&id, &batch.nodeID, &batch.batchID); err != nil {
 				rows.Close()
-				return total, err
+				return 0, err
 			}
 			ids = append(ids, id)
+			batches[batch] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return 0, err
 		}
 		if err := rows.Close(); err != nil {
-			return total, err
+			return 0, err
 		}
 		if len(ids) == 0 {
 			continue
 		}
+		keys := make([]batchKey, 0, len(batches))
+		for key := range batches {
+			keys = append(keys, key)
+		}
+		sort.Slice(keys, func(i, j int) bool {
+			if keys[i].nodeID != keys[j].nodeID {
+				return keys[i].nodeID < keys[j].nodeID
+			}
+			return keys[i].batchID < keys[j].batchID
+		})
+		for _, key := range keys {
+			if _, err := r.lockUsageBatch(ctx, tx, key.nodeID, key.batchID, kind); err != nil {
+				return 0, err
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE node_usage_batch_tombstones SET pruned = 1 WHERE node_id = ? AND batch_id = ? AND kind = ?`, key.nodeID, key.batchID, kind); err != nil {
+				return 0, err
+			}
+		}
 		if err := forEachInt64Chunk(ids, usagePersistBatchSize, func(chunk []int64) error {
 			query := `DELETE FROM ` + table + ` WHERE id IN (` + placeholders(len(chunk)) + `)`
-			result, err := r.db.ExecContext(ctx, query, int64Args(chunk)...)
+			result, err := tx.ExecContext(ctx, query, int64Args(chunk)...)
 			if err != nil {
 				return err
 			}
@@ -2073,10 +2118,34 @@ ORDER BY id LIMIT ?`, r.timeArg(cutoff), limit)
 			}
 			return nil
 		}); err != nil {
-			return total, err
+			return 0, err
 		}
 	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
 	return total, nil
+}
+
+// Persistent guard rows serialize staging and pruning before a batch is pruned.
+// Write before reading so concurrent transactions cannot use a stale snapshot.
+func (r Repository) lockUsageBatch(ctx context.Context, tx *sql.Tx, nodeID int64, batchID, kind string) (bool, error) {
+	query := `INSERT INTO node_usage_batch_tombstones (node_id, batch_id, kind, pruned) VALUES (?, ?, ?, 0)
+ON CONFLICT(node_id, batch_id, kind) DO UPDATE SET pruned = node_usage_batch_tombstones.pruned`
+	if r.dialect != "sqlite" {
+		query = `INSERT INTO node_usage_batch_tombstones (node_id, batch_id, kind, pruned) VALUES (?, ?, ?, 0)
+ON DUPLICATE KEY UPDATE pruned = pruned`
+	}
+	if _, err := tx.ExecContext(ctx, query, nodeID, batchID, kind); err != nil {
+		return false, err
+	}
+	query = `SELECT pruned FROM node_usage_batch_tombstones WHERE node_id = ? AND batch_id = ? AND kind = ?`
+	if r.dialect != "sqlite" {
+		query += ` FOR UPDATE`
+	}
+	var pruned int
+	err := tx.QueryRowContext(ctx, query, nodeID, batchID, kind).Scan(&pruned)
+	return pruned != 0, err
 }
 
 func groupStagedUsersByNode(rows []stagedUserUsageRow) map[int64][]stagedUserUsageRow {

@@ -170,7 +170,13 @@ func (s *Server) disconnectWireGuardPeerAccountingSafeLocked(
 		}
 	}
 
+	if err := s.transitionWireGuardPeerGenerationLocked(cfg.InboundTag, interfaceName, publicKey, true); err != nil {
+		return err
+	}
 	if err := removeWireGuardPeer(interfaceName, publicKey); err != nil {
+		return err
+	}
+	if err := s.transitionWireGuardPeerGenerationLocked(cfg.InboundTag, interfaceName, publicKey, false); err != nil {
 		return err
 	}
 

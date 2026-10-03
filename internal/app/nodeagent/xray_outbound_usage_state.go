@@ -17,14 +17,16 @@ type xrayOutboundUsageSample struct {
 // xrayOutboundUsagePendingBatch represents a pending outbound batch awaiting ACK
 type xrayOutboundUsagePendingBatch struct {
 	BatchID      string
+	Generation   string
 	Samples      []xrayOutboundUsageSample
 	NextBaseline map[string]uint64
 }
 
 // xrayOutboundUsageDiskState is the persisted outbound state on disk
 type xrayOutboundUsageDiskState struct {
-	Baseline map[string]uint64              `json:"baseline,omitempty"`
-	Pending  *xrayOutboundUsagePendingBatch `json:"pending,omitempty"`
+	Generation string                         `json:"generation,omitempty"`
+	Baseline   map[string]uint64              `json:"baseline,omitempty"`
+	Pending    *xrayOutboundUsagePendingBatch `json:"pending,omitempty"`
 }
 
 func (s *Server) xrayOutboundUsageStatePath() string {
@@ -72,6 +74,12 @@ func (s *Server) ensureXrayOutboundUsageStateLoadedLocked() error {
 	}
 
 	s.xrayOutboundUsageBaseline = state.Baseline
+	// Generation identifies the Xray process that produced the native
+	// counters. A counter value is not comparable across generations.
+	if state.Pending != nil && state.Pending.Generation == "" {
+		state.Pending.Generation = state.Generation
+	}
+	s.xrayOutboundUsageGeneration = state.Generation
 	s.xrayOutboundUsagePending = state.Pending
 	s.xrayOutboundUsageLoaded = true
 
@@ -89,8 +97,9 @@ func (s *Server) persistXrayOutboundUsageStateLocked() error {
 	}
 
 	state := xrayOutboundUsageDiskState{
-		Baseline: s.xrayOutboundUsageBaseline,
-		Pending:  s.xrayOutboundUsagePending,
+		Generation: s.xrayOutboundUsageGeneration,
+		Baseline:   s.xrayOutboundUsageBaseline,
+		Pending:    s.xrayOutboundUsagePending,
 	}
 
 	raw, err := json.Marshal(state)

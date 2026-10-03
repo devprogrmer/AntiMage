@@ -9,22 +9,32 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type nativeSessionHelperConfig struct {
-	Callback          nativeRuntimeSessionCallback       `json:"callback"`
-	InboundTag        string                             `json:"inbound_tag"`
-	Protocol          string                             `json:"protocol,omitempty"`
-	Users             map[string]int64                   `json:"users"`
-	Policies          map[string]nativeSessionUserPolicy `json:"policies,omitempty"`
-	StateDir          string                             `json:"state_dir"`
-	ManagementNetwork string                             `json:"management_network,omitempty"`
-	ManagementAddress string                             `json:"management_address,omitempty"`
+	OfflineIPDenied         map[string]bool                    `json:"-"`
+	OfflineClientsReady     bool                               `json:"-"`
+	OfflineClients          []openVPNStatusClient              `json:"-"`
+	OfflineBeforeDisconnect func() error                       `json:"-"`
+	OfflineRuntimeRoot      string                             `json:"-"`
+	OfflineRawUsage         map[int64]uint64                   `json:"-"`
+	OfflinePolicyOnly       bool                               `json:"-"`
+	Callback                nativeRuntimeSessionCallback       `json:"callback"`
+	InboundTag              string                             `json:"inbound_tag"`
+	Protocol                string                             `json:"protocol,omitempty"`
+	Users                   map[string]int64                   `json:"users"`
+	Policies                map[string]nativeSessionUserPolicy `json:"policies,omitempty"`
+	StateDir                string                             `json:"state_dir"`
+	ManagementNetwork       string                             `json:"management_network,omitempty"`
+	ManagementAddress       string                             `json:"management_address,omitempty"`
 }
 
 type nativeSessionUserPolicy struct {
+	DeviceLimit           int64   `json:"device_limit,omitempty"`
+	IPLimit               int64   `json:"ip_limit,omitempty"`
 	Status                string  `json:"status"`
 	UsedTraffic           int64   `json:"used_traffic"`
 	DataLimit             int64   `json:"data_limit"`
@@ -102,8 +112,26 @@ func RunNativeSessionEventHelper(args []string) error {
 		return fmt.Errorf("%s session username is missing", protocol)
 	}
 
-	userID, ok := cfg.Users[commonName]
-	if !ok || userID <= 0 {
+	userID := cfg.Users[commonName]
+	if eventName == "stop" && nativeSpeedIsPPPProtocol(protocol) {
+		iface := firstNonEmptyEnv("IFNAME", "DEVICE")
+		if !l2TPPPPInterfacePattern.MatchString(iface) {
+			return fmt.Errorf("invalid PPP stop interface")
+		}
+		raw, readErr := os.ReadFile(filepath.Join(filepath.Dir(configPath), "ppp-accounting", "active", iface+".json"))
+		if readErr != nil {
+			return readErr
+		}
+		var record pppOfflineSession
+		if err := json.Unmarshal(raw, &record); err != nil {
+			return err
+		}
+		if record.InboundTag != cfg.InboundTag {
+			return fmt.Errorf("PPP stop inbound mismatch")
+		}
+		userID = record.UserID
+	}
+	if userID <= 0 {
 		return fmt.Errorf(
 			"%s user %q is not present in runtime state",
 			protocol,
@@ -150,6 +178,57 @@ func RunNativeSessionEventHelper(args []string) error {
 		stateDir,
 		stateKey+".session",
 	)
+
+	if (protocol == "ov" || protocol == "openvpn") && eventName == "start" {
+		if pid := firstNonEmptyEnv("daemon_pid"); pid != "" {
+			identity, err := offlineProcessIdentity(pid)
+			if err != nil {
+				return fmt.Errorf("OpenVPN daemon identity: %w", err)
+			}
+			if start := firstNonEmptyEnv("daemon_start_time"); start != "" {
+				identity += ":daemon:" + start
+			}
+			if err := offlineDurableJSON(filepath.Join(filepath.Dir(configPath), "accounting-generation.json"), identity); err != nil {
+				return err
+			}
+		}
+	}
+
+	if protocol == "l2tp" || protocol == "pptp" {
+		process, identityErr := pppOfflineReadProcess(firstNonEmptyEnv("PPPD_PID"))
+		if identityErr != nil {
+			return fmt.Errorf("PPP process identity: %w", identityErr)
+		}
+		record := pppOfflineSession{UserID: userID, InboundTag: cfg.InboundTag, Interface: interfaceName, PeerIP: assignedIP, Process: process, ClientIP: clientIP}
+		if eventName == "start" {
+			record.ID, err = newNativeSessionID()
+			if err != nil {
+				return err
+			}
+			record.Identity, err = pppOfflineReadIdentity(interfaceName)
+			if err != nil {
+				return err
+			}
+		} else if eventName == "stop" {
+			sent, parseErr := strconv.ParseUint(firstNonEmptyEnv("BYTES_SENT"), 10, 64)
+			if parseErr != nil {
+				return fmt.Errorf("PPP BYTES_SENT: %w", parseErr)
+			}
+			received, parseErr := strconv.ParseUint(firstNonEmptyEnv("BYTES_RCVD"), 10, 64)
+			if parseErr != nil {
+				return fmt.Errorf("PPP BYTES_RCVD: %w", parseErr)
+			}
+			if ^uint64(0)-sent < received {
+				return fmt.Errorf("PPP final counter overflow")
+			}
+			record.Total = sent + received
+		}
+		if eventName != "seen" {
+			if err := pppOfflineSessionEvent(filepath.Dir(configPath), eventName, record); err != nil {
+				return err
+			}
+		}
+	}
 
 	if eventName == "stop" {
 		if _, err := nativeSpeedHandlePPPSessionEvent(
@@ -214,6 +293,10 @@ func RunNativeSessionEventHelper(args []string) error {
 	}
 
 	node := &Server{}
+
+	if strings.TrimSpace(cfg.Callback.URL) == "" {
+		return nil
+	}
 
 	err = node.sendNativeSessionEvent(
 		context.Background(),
