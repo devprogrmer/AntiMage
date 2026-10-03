@@ -31,6 +31,11 @@ wait_for() {
   local name="$1"; shift
   for _ in $(seq 1 100); do "$@" >/dev/null 2>&1 && return 0; sleep .1; done
   echo "timeout waiting for $name" >&2
+  for log in "$ROOT"/*.log; do
+    [ -f "$log" ] || continue
+    echo "--- $log ---" >&2
+    cat "$log" >&2
+  done
   return 1
 }
 
