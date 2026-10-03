@@ -29,7 +29,7 @@ ip netns exec "$NS" ip link set lo up
 ip netns exec "$NS" ip link set aoc-vn up
 test -c /dev/net/tun
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=antimage-ocserv' -keyout "$ROOT/key.pem" -out "$ROOT/cert.pem" >/dev/null 2>&1
-SERVERCERT="sha256:$(openssl x509 -in "$ROOT/cert.pem" -noout -fingerprint -sha256 | tr -d ':' | cut -d= -f2)"
+SERVERCERT="pin-sha256:$(openssl x509 -in "$ROOT/cert.pem" -pubkey -noout | openssl pkey -pubin -outform DER 2>/dev/null | openssl dgst -sha256 -binary | base64 -w0)"
 printf 'native-password\nnative-password\n' | ocpasswd -c "$ROOT/ocpasswd" native-user >/dev/null
 cat >"$ROOT/ocserv.conf" <<EOF
 auth = plain[passwd=$ROOT/ocpasswd]
