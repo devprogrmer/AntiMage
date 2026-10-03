@@ -30,23 +30,10 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            iproute2 iptables ppp wireguard-tools openvpn strongswan xl2tpd ocserv
+            iproute2 iptables ppp wireguard-tools openvpn strongswan xl2tpd ocserv netcat-openbsd
           for binary in ip wg openvpn ipsec xl2tpd ocserv; do
             command -v "$binary"
           done
-
-      - name: Create isolated Linux network namespace
-        run: |
-          set -euxo pipefail
-          sudo ip netns add antimage-e2e
-          sudo ip link add am-veth-h type veth peer name am-veth-p
-          sudo ip link set am-veth-p netns antimage-e2e
-          sudo ip addr add 10.250.0.1/24 dev am-veth-h
-          sudo ip link set am-veth-h up
-          sudo ip netns exec antimage-e2e ip addr add 10.250.0.2/24 dev am-veth-p
-          sudo ip netns exec antimage-e2e ip link set lo up
-          sudo ip netns exec antimage-e2e ip link set am-veth-p up
-          sudo ip netns exec antimage-e2e ip route add default via 10.250.0.1
 
       - name: Run real Xray protocol E2E
         shell: bash
@@ -64,6 +51,10 @@ jobs:
           ANTIMAGE_XRAY_E2E_BINARY="$dir/xray" \
             go test ./internal/app/nodeagent -run '^TestRealXrayOnlineAndStatsE2E$' -count=1 -v
 
+      - name: Run real WireGuard and OpenVPN drivers
+        run: |
+          sudo bash scripts/ci/native-vpn-drivers.sh
+
       - name: Run protocol policy and durable-state integration suites
         run: |
           go test ./internal/app/nodeagent -run 'Test(AmneziaWG|OpenVPN|L2TP|PPTP|IKEv2|AnyConnect|WireGuard|Xray)' -count=1 -v
@@ -75,7 +66,7 @@ jobs:
       - name: Collect native runtime evidence
         if: always()
         run: |
-          sudo ip netns exec antimage-e2e ip addr || true
+          sudo ip netns exec antimage-vpn-client ip addr || true
           sudo wg show || true
           sudo ipsec statusall || true
           sudo systemctl status openvpn --no-pager || true
@@ -83,5 +74,5 @@ jobs:
       - name: Remove isolated namespace
         if: always()
         run: |
-          sudo ip netns del antimage-e2e 2>/dev/null || true
-          sudo ip link del am-veth-h 2>/dev/null || true
+          sudo ip netns del antimage-vpn-client 2>/dev/null || true
+          sudo ip link del avpn-vh 2>/dev/null || true
