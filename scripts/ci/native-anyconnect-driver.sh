@@ -29,6 +29,7 @@ ip netns exec "$NS" ip link set lo up
 ip netns exec "$NS" ip link set aoc-vn up
 test -c /dev/net/tun
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=antimage-ocserv' -keyout "$ROOT/key.pem" -out "$ROOT/cert.pem" >/dev/null 2>&1
+SERVERCERT="sha256:$(openssl x509 -in "$ROOT/cert.pem" -noout -fingerprint -sha256 | tr -d ':' | cut -d= -f2)"
 printf 'native-password\nnative-password\n' | ocpasswd -c "$ROOT/ocpasswd" native-user >/dev/null
 cat >"$ROOT/ocserv.conf" <<EOF
 auth = plain[passwd=$ROOT/ocpasswd]
@@ -49,7 +50,7 @@ ocserv --foreground --config="$ROOT/ocserv.conf" >"$ROOT/ocserv.log" 2>&1 &
 PIDS+=("$!")
 for _ in $(seq 1 80); do ss -lnt '( sport = :4433 )' | grep -q 4433 && break; sleep .25; done
 ss -lnt '( sport = :4433 )' | grep -q 4433
-ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --no-cert-check --no-dtls --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect.log" 2>&1 &
+ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --servercert '$SERVERCERT' --no-dtls --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect.log" 2>&1 &
 PIDS+=("$!")
 for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1 && break; sleep .25; done
 ip netns exec "$NS" ip link show vpn-native >/dev/null
@@ -57,7 +58,7 @@ ip netns exec "$NS" ip addr show vpn-native
 ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
 kill "${PIDS[1]}" 2>/dev/null || true
 sleep 1
-ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --no-cert-check --no-dtls --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect-reconnect.log" 2>&1 &
+ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --servercert '$SERVERCERT' --no-dtls --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect-reconnect.log" 2>&1 &
 PIDS+=("$!")
 for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1 && break; sleep .25; done
 ip netns exec "$NS" ip link show vpn-native >/dev/null
