@@ -3,7 +3,20 @@ set -euo pipefail
 ROOT="${ROOT:-$(mktemp -d)}"
 NS="${NS:-antimage-anyconnect-client}"
 PIDS=()
-cleanup() { set +e; for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done; ip netns del "$NS" 2>/dev/null || true; rm -rf "$ROOT"; }
+cleanup() {
+  local rc=$?
+  if [ "$rc" -ne 0 ]; then
+    for log in "$ROOT"/*.log; do
+      [ -f "$log" ] || continue
+      echo "--- $log ---" >&2
+      cat "$log" >&2 || true
+    done
+  fi
+  set +e
+  for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
+  ip netns del "$NS" 2>/dev/null || true
+  rm -rf "$ROOT"
+}
 trap cleanup EXIT
 mkdir -p "$ROOT"
 ip netns add "$NS"
@@ -14,6 +27,7 @@ ip link set aoc-vh up
 ip netns exec "$NS" ip addr add 10.253.0.2/24 dev aoc-vn
 ip netns exec "$NS" ip link set lo up
 ip netns exec "$NS" ip link set aoc-vn up
+test -c /dev/net/tun
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=antimage-ocserv' -keyout "$ROOT/key.pem" -out "$ROOT/cert.pem" >/dev/null 2>&1
 printf 'native-user:$(openssl passwd -6 native-password)\n' > "$ROOT/ocpasswd"
 cat >"$ROOT/ocserv.conf" <<EOF
@@ -33,14 +47,15 @@ EOF
 ocserv --foreground --config="$ROOT/ocserv.conf" >"$ROOT/ocserv.log" 2>&1 &
 PIDS+=("$!")
 for _ in $(seq 1 80); do ss -lnt '( sport = :4433 )' | grep -q 4433 && break; sleep .25; done
-ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --no-cert-check --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect.log" 2>&1 &
+ss -lnt '( sport = :4433 )' | grep -q 4433
+ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --no-cert-check --no-dtls --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect.log" 2>&1 &
 PIDS+=("$!")
 for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1 && break; sleep .25; done
 ip netns exec "$NS" ip link show vpn-native >/dev/null
 ip netns exec "$NS" ip addr show vpn-native
 kill "${PIDS[1]}" 2>/dev/null || true
 sleep 1
-ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --no-cert-check --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect-reconnect.log" 2>&1 &
+ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --no-cert-check --no-dtls --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect-reconnect.log" 2>&1 &
 PIDS+=("$!")
 for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1 && break; sleep .25; done
 ip netns exec "$NS" ip link show vpn-native >/dev/null
