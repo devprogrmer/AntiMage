@@ -8,6 +8,7 @@ on:
       - 'internal/proto/**'
       - 'go.mod'
       - 'go.sum'
+      - 'scripts/ci/**'
       - '.github/workflows/native-protocol-e2e.yml'
 
 permissions:
