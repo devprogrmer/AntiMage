@@ -28,8 +28,14 @@ def install_swanctl_wrapper():
     wrapper=write('bin/swanctl', '#!/bin/sh\nexec /usr/sbin/swanctl "$@" --uri unix://'+str(SOCKET_DIR/'server.vici')+'\n')
     wrapper.chmod(0o755)
     return wrapper.parent
-def start(args,ns,conf,log):
-    f=open(R/log,'w');p=sp.Popen(['ip','netns','exec',ns]+list(map(str,args)),env={**os.environ,'PATH':str(R/'bin')+':'+os.environ['PATH'],'STRONGSWAN_CONF':str(R/conf)},stdout=f,stderr=sp.STDOUT,start_new_session=True);f.close();processes.append(p);return p
+def start(args,ns,conf,log,config_path=None):
+    f=open(R/log,'w');p=sp.Popen(['ip','netns','exec',ns]+list(map(str,args)),env={**os.environ,'PATH':str(R/'bin')+':'+os.environ['PATH'],'STRONGSWAN_CONF':config_path or str(R/conf)},stdout=f,stderr=sp.STDOUT,start_new_session=True);f.close();processes.append(p);return p
+def start_isolated(args,ns,conf,log,mount_run=False):
+    setup='mount -t tmpfs tmpfs /run && ' if mount_run else ''
+    wrapper=['unshare','--mount','--fork','--propagation','private','sh','-c',
+             'mount --bind "$1" /etc/strongswan.conf && '+setup+'shift && exec "$@"',
+             'antimage-ikev2',str(R/conf),*map(str,args)]
+    return start(wrapper,ns,conf,log,config_path='/etc/strongswan.conf')
 def stop(p,timeout=15):
     if p.poll() is not None:return
     try:os.killpg(p.pid,signal.SIGTERM)
@@ -157,7 +163,7 @@ pools {
             p=start(['unshare','--mount','--pid','--fork','--mount-proc','--kill-child','python3',pathlib.Path(__file__).with_name('ikev2-provision-worker.py'),R],S,'server.conf','server.stdout')
             wait(lambda:(R/'provision-ready').exists() or p.poll() is not None,'production applyIKEv2Runtimes')
         else:
-            p=start(['unshare','--mount','--fork','--propagation','private','sh','-c','mount -t tmpfs tmpfs /run && exec /usr/lib/ipsec/charon'],S,'server.conf','server.stdout')
+            p=start_isolated(['/usr/lib/ipsec/charon'],S,'server.conf','server.stdout',mount_run=True)
         try:
             wait(lambda:(SOCKET_DIR/'server.vici').is_socket() or p.poll() is not None,'server VICI')
         except RuntimeError:
@@ -174,7 +180,7 @@ pools {
             print((R/'server.stdout').read_text(),flush=True)
         return p
     def client(ns=C,side='client',host='10.80.0.1',identity='client'):
-        p=start(['charon-cmd','--host',host,'--identity',identity,'--remote-identity','server','--p12',R/(identity+'.p12'),'--profile','ikev2-pub','--remote-ts','10.81.0.1/32','--ike-proposal','aes256-sha256-modp2048','--esp-proposal','aes256-sha256'],ns,side+'.conf',side+'.stdout')
+        p=start_isolated(['charon-cmd','--host',host,'--identity',identity,'--remote-identity','server','--p12',R/(identity+'.p12'),'--profile','ikev2-pub','--remote-ts','10.81.0.1/32','--ike-proposal','aes256-sha256-modp2048','--esp-proposal','aes256-sha256'],ns,side+'.conf',side+'.stdout')
         wait(lambda:'INSTALLED' in sas(),'CHILD_SA');return p
     srv=server();cli=client();traffic('initial')
     before=sas();print(sw('--rekey','--child',CONN if os.environ.get('ANTIMAGE_IKEV2_PROVISION') else 'tunnel'),flush=True)
