@@ -80,9 +80,10 @@ try:
     run(['ip','route','add','10.81.0.1/32','via','10.80.0.1'],C)
     for side in ['server','client','client2']:
         write(side+'.conf',f'''charon {{
- load_modular = no
+ load_modular = yes
  pid_file = {R}/{side}.pid
  plugins {{
+  include /etc/strongswan.d/charon/*.conf
   vici {{
    socket = unix://{SOCKET_DIR}/{side}.vici
   }}
@@ -101,8 +102,9 @@ charon-systemd {{
  }}
 }}
 charon-cmd {{
- load_modular = no
+ load_modular = yes
  plugins {{
+  include /etc/strongswan.d/charon/*.conf
   vici {{
    socket = unix://{SOCKET_DIR}/{side}.vici
   }}
