@@ -10,7 +10,8 @@ root = pathlib.Path(sys.argv[1])
 if os.getpid() != 1:
     raise SystemExit('requires unshare --pid --fork --mount-proc')
 subprocess.run(['mount', '--make-rprivate', '/'], check=True)
-subprocess.run(['mount', '-t', 'tmpfs', 'tmpfs', '/run'], check=True)
+# The parent native driver already isolates /run from the host. Keep that
+# private filesystem shared here so VICI sockets remain reachable by the driver.
 (root/'private-ipsec.d').mkdir(exist_ok=True)
 subprocess.run(['mount', '--bind', str(root/'private-ipsec.d'), '/etc/ipsec.d'], check=True)
 # The production `ipsec start` launcher reads strongswan.conf for VICI and

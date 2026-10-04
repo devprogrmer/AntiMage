@@ -7,15 +7,27 @@ Set ANTIMAGE_IKEV2_TEST_BINARY and ANTIMAGE_IKEV2_PANEL_BINARY to compiled
 nodeagent/nodecontroller test executables for accounting/DB coverage.
 This is NOT a full running Panel HTTP/gRPC/browser deployment test.
 """
-import os, pathlib, signal, subprocess as sp, tempfile, time, json, hashlib, re
+import os, pathlib, signal, subprocess as sp, tempfile, time, json, hashlib, re, sys
+
+# Isolate the host daemon's fixed /run/charon.pid while keeping test VICI
+# sockets visible to the driver and allowed by Ubuntu's charon AppArmor rule.
+if os.environ.get('ANTIMAGE_IKEV2_PRIVATE_RUN') != '1':
+    env={**os.environ,'ANTIMAGE_IKEV2_PRIVATE_RUN':'1'}
+    command=['unshare','--mount','--fork','--propagation','private','sh','-c',
+             'mount -t tmpfs tmpfs /run && exec "$@"','antimage-ikev2',
+             sys.executable,str(pathlib.Path(__file__).resolve()),*sys.argv[1:]]
+    os.execvpe(command[0],command,env)
 CONN='antimage-ikev2-'+hashlib.sha256(b'native').hexdigest()[:16]
 expected=0
 temp_parent=os.environ.get('ANTIMAGE_IKEV2_TEMP_DIR','/var/tmp')
 pathlib.Path(temp_parent).mkdir(parents=True,exist_ok=True)
 R=pathlib.Path(tempfile.mkdtemp(prefix='antimage-ikev2-', dir=temp_parent))
 socket_parent=os.environ.get('ANTIMAGE_IKEV2_SOCKET_DIR')
-SOCKET_DIR=pathlib.Path(socket_parent) if socket_parent else R
-SOCKET_DIR.mkdir(parents=True,exist_ok=True)
+SOCKET_DIR=pathlib.Path(socket_parent) if socket_parent else pathlib.Path('/run')
+if socket_parent:
+    SOCKET_DIR.mkdir(parents=True,exist_ok=True)
+SOCKET_PREFIX='charon.antimage-'+str(os.getpid())
+def vici_socket_path(side):return SOCKET_DIR/(SOCKET_PREFIX+'.'+side+'.vici')
 S='amikes'+str(os.getpid()); C='amikec'+str(os.getpid()); C2=C+'b'
 processes=[]
 def run(args, ns=None, check=True):
@@ -25,15 +37,14 @@ def run(args, ns=None, check=True):
 def write(name,text):
     p=R/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text);return p
 def install_swanctl_wrapper():
-    wrapper=write('bin/swanctl', '#!/bin/sh\nexec /usr/sbin/swanctl "$@" --uri unix://'+str(SOCKET_DIR/'server.vici')+'\n')
+    wrapper=write('bin/swanctl', '#!/bin/sh\nexec /usr/sbin/swanctl "$@" --uri unix://'+str(vici_socket_path('server'))+'\n')
     wrapper.chmod(0o755)
     return wrapper.parent
 def start(args,ns,conf,log,config_path=None):
     f=open(R/log,'w');p=sp.Popen(['ip','netns','exec',ns]+list(map(str,args)),env={**os.environ,'PATH':str(R/'bin')+':'+os.environ['PATH'],'STRONGSWAN_CONF':config_path or str(R/conf)},stdout=f,stderr=sp.STDOUT,start_new_session=True);f.close();processes.append(p);return p
-def start_isolated(args,ns,conf,log,mount_run=False):
-    setup='mount -t tmpfs tmpfs /run && ' if mount_run else ''
+def start_isolated(args,ns,conf,log):
     wrapper=['unshare','--mount','--fork','--propagation','private','sh','-c',
-             'mount --bind "$1" /etc/strongswan.conf && '+setup+'shift && exec "$@"',
+             'mount --bind "$1" /etc/strongswan.conf && shift && exec "$@"',
              'antimage-ikev2',str(R/conf),*map(str,args)]
     return start(wrapper,ns,conf,log,config_path='/etc/strongswan.conf')
 def stop(p,timeout=15):
@@ -50,7 +61,7 @@ def wait(fn,desc):
         if fn():return
         time.sleep(.2)
     raise RuntimeError('Timeout: '+desc)
-def sw(*args):return run(['swanctl',*args,'--uri','unix://'+str(SOCKET_DIR/'server.vici')],S)
+def sw(*args):return run(['swanctl',*args,'--uri','unix://'+str(vici_socket_path('server'))],S)
 def sas():return sw('--list-sas')
 def accounting(action=''):
     install_swanctl_wrapper()
@@ -81,16 +92,15 @@ try:
     for side in ['server','client','client2']:
         write(side+'.conf',f'''charon {{
  load_modular = yes
- pid_file = {R}/{side}.pid
  plugins {{
   include /etc/strongswan.d/charon/*.conf
   vici {{
-   socket = unix://{SOCKET_DIR}/{side}.vici
+   socket = unix://{vici_socket_path(side)}
   }}
  }}
  filelog {{
   log {{
-   path = {R}/{side}.log
+   path = /run/{SOCKET_PREFIX}.{side}.log
    default = 1
    flush_line = yes
   }}
@@ -106,7 +116,7 @@ charon-cmd {{
  plugins {{
   include /etc/strongswan.d/charon/*.conf
   vici {{
-   socket = unix://{SOCKET_DIR}/{side}.vici
+   socket = unix://{vici_socket_path(side)}
   }}
  }}
 }}
@@ -154,7 +164,7 @@ pools {
 }
 '''.replace('CONN',CONN))
     def server():
-        vici_socket=SOCKET_DIR/'server.vici'
+        vici_socket=vici_socket_path('server')
         try:
             vici_socket.unlink()
         except FileNotFoundError:
@@ -165,9 +175,9 @@ pools {
             p=start(['unshare','--mount','--pid','--fork','--mount-proc','--kill-child','python3',pathlib.Path(__file__).with_name('ikev2-provision-worker.py'),R],S,'server.conf','server.stdout')
             wait(lambda:(R/'provision-ready').exists() or p.poll() is not None,'production applyIKEv2Runtimes')
         else:
-            p=start_isolated(['/usr/lib/ipsec/charon'],S,'server.conf','server.stdout',mount_run=True)
+            p=start_isolated(['/usr/lib/ipsec/charon'],S,'server.conf','server.stdout')
         try:
-            wait(lambda:(SOCKET_DIR/'server.vici').is_socket() or p.poll() is not None,'server VICI')
+            wait(lambda:vici_socket_path('server').is_socket() or p.poll() is not None,'server VICI')
         except RuntimeError:
             for diagnostic in [R/'server.stdout', R/'server.log']:
                 if diagnostic.exists():
@@ -175,7 +185,11 @@ pools {
             if (R/'server.conf').exists():
                 print(str(R/'server.conf')+'\n'+(R/'server.conf').read_text(),flush=True)
             raise
-        assert p.poll() is None,'responder exited'
+        if p.poll() is not None:
+            for diagnostic in [R/'server.stdout',pathlib.Path('/run')/(SOCKET_PREFIX+'.server.log')]:
+                if diagnostic.exists():
+                    print(str(diagnostic)+'\n'+diagnostic.read_text()[-12000:],flush=True)
+            raise RuntimeError('responder exited with code '+str(p.returncode))
         if not os.environ.get('ANTIMAGE_IKEV2_PROVISION'):
             print(sw('--load-all','--file',str(R/'swanctl.conf')),flush=True)
         else:
@@ -273,6 +287,10 @@ finally:
     for p in reversed(processes):
         stop(p,timeout=10)
     for n in [S,C,C2]:run(['ip','netns','del',n],check=False)
+    for side in ['server','client','client2']:
+        for path in [vici_socket_path(side),pathlib.Path('/run')/(SOCKET_PREFIX+'.'+side+'.pid'),pathlib.Path('/run')/(SOCKET_PREFIX+'.'+side+'.log')]:
+            try:path.unlink()
+            except FileNotFoundError:pass
     if socket_parent:
         try:SOCKET_DIR.rmdir()
         except OSError:pass
