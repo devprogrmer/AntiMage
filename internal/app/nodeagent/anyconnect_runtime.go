@@ -43,6 +43,7 @@ type anyConnectRuntimeFiles struct {
 	CACert           string
 	UserConfigDir    string
 	ControlSocket    string
+	WorkerSocket     string
 	PIDFile          string
 	ConnectScript    string
 	DisconnectScript string
@@ -83,9 +84,10 @@ func renderAnyConnectConfig(inbound anyConnectRuntimeInbound, files anyConnectRu
 		"server-cert = " + files.ServerCert,
 		"server-key = " + files.ServerKey,
 		"device = " + anyConnectDeviceName(inbound.Tag),
-		"socket-file = " + files.ControlSocket,
-		"pid-file = " + files.PIDFile,
+		"socket-file = " + files.WorkerSocket,
+		"occtl-socket-file = " + files.ControlSocket,
 		"use-occtl = true",
+		"pid-file = " + files.PIDFile,
 		"ipv4-network = " + pool.Addr().String(),
 		"ipv4-netmask = " + net.IP(mask).String(),
 		"predictable-ips = true",

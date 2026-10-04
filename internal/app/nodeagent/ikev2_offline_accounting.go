@@ -564,6 +564,7 @@ func (s *Server) quotaCheckIKEv2Offline(ctx context.Context) error {
 		}
 		byUser[user.UserID] = append(byUser[user.UserID], ikev2PolicySession{User: user, SA: sa})
 	}
+	speedBindings := []ikev2SpeedBinding{}
 	for _, sessions := range byUser {
 		sort.SliceStable(sessions, func(i, j int) bool { return ikev2PolicySAOrder(sessions[i]) < ikev2PolicySAOrder(sessions[j]) })
 		ips := map[string]bool{}
@@ -578,6 +579,9 @@ func (s *Server) quotaCheckIKEv2Offline(ctx context.Context) error {
 				continue
 			}
 			kept++
+			for _, ip := range ikev2PolicyIPv4s(session.SA.RemoteVIPs) {
+				speedBindings = append(speedBindings, ikev2SpeedBinding{UserID: session.User.UserID, IPv4: ip, UploadRate: session.User.UploadSpeedLimit, DownloadRate: session.User.DownloadSpeedLimit})
+			}
 		}
 	}
 	if len(denials) > 0 {
@@ -592,6 +596,15 @@ func (s *Server) quotaCheckIKEv2Offline(ctx context.Context) error {
 	}
 	// Keep volatile samples between durable checkpoints, including disappeared SAs.
 	s.ikev2UsageBaseline = next
+	// Reconcile only when policy/session bindings change: reinstalling an
+	// unchanged nft rule every tick refills its burst bucket and defeats limits.
+	rules := renderIKEv2SpeedRules(speedBindings)
+	if rules != s.ikev2SpeedRules {
+		if err := reconcileIKEv2SpeedLimits(speedBindings); err != nil {
+			return err
+		}
+		s.ikev2SpeedRules = rules
+	}
 	return nil
 }
 
@@ -671,7 +684,7 @@ func (s *Server) previewIKEv2OfflineLocked(runtimes map[string]ikev2RuntimeInbou
 				return nil, fmt.Errorf("IKEv2 native counter overflow")
 			}
 			observations = append(observations, offlineUsageObservation{
-				Generation: offlineGeneration(boot, inbound.Tag, sa.UniqueID, sa.InitiatorSPI, sa.ResponderSPI, child.UniqueID, child.SPIIn, child.SPIOut),
+				Generation: ikev2ChildGeneration(boot, inbound.Tag, sa, child),
 				Legacy:     ikev2UsageBaselineKey(inbound.Tag, sa, child), Owner: offlineUsageOwner{user.UserID, inbound.Tag}, Native: child.BytesIn + child.BytesOut,
 			})
 		}
@@ -684,6 +697,23 @@ func (s *Server) previewIKEv2OfflineLocked(runtimes map[string]ikev2RuntimeInbou
 	if err != nil {
 		return nil, err
 	}
+	// IKE rekey transfers live CHILD_SAs, without resetting their counters.
+	// Seed the child identity from pre-upgrade baselines before observing it.
+	for key, value := range compacted {
+		if !strings.HasPrefix(key, offlineNativePrefix) {
+			continue
+		}
+		var parts []string
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(key, offlineNativePrefix)), &parts); err != nil {
+			return nil, err
+		}
+		if len(parts) == 8 && parts[6] != "" && parts[7] != "" {
+			childKey := offlineGeneration(parts[0], parts[1], "child-v2", parts[5], parts[6], parts[7])
+			if compacted[childKey] < value {
+				compacted[childKey] = value
+			}
+		}
+	}
 	next, err := advanceOfflineUsage(compacted, legacy, observations)
 	if err != nil {
 		return nil, err
@@ -693,6 +723,15 @@ func (s *Server) previewIKEv2OfflineLocked(runtimes map[string]ikev2RuntimeInbou
 	}
 
 	return next, nil
+}
+
+func ikev2ChildGeneration(boot, tag string, sa ikev2RawSA, child ikev2RawChildSA) string {
+	if child.SPIIn != "" && child.SPIOut != "" {
+		return offlineGeneration(boot, tag, "child-v2", child.UniqueID, child.SPIIn, child.SPIOut)
+	}
+	// Older snapshots may omit ESP SPIs. Retain their existing fallback rather
+	// than conflating separate daemon incarnations with recycled unique IDs.
+	return offlineGeneration(boot, tag, sa.UniqueID, sa.InitiatorSPI, sa.ResponderSPI, child.UniqueID, child.SPIIn, child.SPIOut)
 }
 
 func (s *Server) collectIKEv2UserUsage(ctx context.Context, _ *nodev1.CollectUsageRequest) (*nodev1.UserUsageBatch, error) {

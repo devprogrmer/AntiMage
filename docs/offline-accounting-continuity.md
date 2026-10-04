@@ -123,9 +123,29 @@ interval, command latency and disconnect completion; it cannot guarantee zero.
 - The real pinned Xray VLESS test passes positive native stats, actual online IP,
   idle online state, removal limitation and final offline detection. The temporary
   binary was digest-verified before execution; installed services are unchanged.
-- No live Linux native/reboot or MySQL accounting runtime validation was performed
-  locally. Windows has no C compiler for Go race and no installed WSL distribution.
-  Linux CI results are separate evidence, not inferred local success.
+- Local WSL validation now exercises the real IKEv2 provisioning and strongSwan
+  runtime with native tunnel traffic, CHILD/IKE rekey, runtime restart, offline
+  quota enforcement, node-side durable accounting, SQLite panel staging, lost-ACK
+  retry, and nft upload/download shaping. The measured quota overshoot was 5,248
+  effective bytes at 52,434,048 bytes against a 52,428,800-byte threshold.
+- Local WSL native drivers now invoke the production nodeagent accounting and
+  quota paths against live WireGuard, OpenVPN, and AnyConnect daemons. WireGuard
+  checks real kernel counters, durable pending-batch replay across interface
+  restart, ACK, post-ACK traffic, and native peer removal at quota. OpenVPN
+  checks status-v3 counters, durable batch replay across nodeagent reload, native
+  management `client-kill`, and client reconnect. AnyConnect checks live `occtl`
+  counters, durable batch replay, quota disconnect, and reconnect through
+  ocserv. These improve native coverage but still do not prove the full panel DB
+  reflection and ACK sequence for all three.
+- The AnyConnect native run exposed and fixed a production config issue: ocserv's
+  worker IPC socket and its `occtl` management socket are separate. Runtime
+  config now sets `socket-file`, `occtl-socket-file`, and `use-occtl` explicitly.
+- That IKEv2 run did not start the full panel and node transport services, did not
+  cover MySQL/MariaDB, and does not establish the full acceptance sequence for all
+  eight protocols. AmneziaWG, L2TP, and PPTP have no local real-daemon data-path
+  run in this increment. Those remain unproven. Local
+  `go test -race -timeout 30m ./internal/... -count=1` passes; the API package
+  takes about 14 minutes under the race detector in WSL.
 - Dashboard source is unchanged in this increment; no fresh local dashboard run.
 
 Primary references: [StatsService schema](https://github.com/XTLS/Xray-core/blob/main/app/stats/command/command.proto),

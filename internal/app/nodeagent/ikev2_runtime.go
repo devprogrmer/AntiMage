@@ -324,7 +324,9 @@ func renderIKEv2IPSecConfig(
 	}
 
 	b.WriteString("    right=%any\n")
-	b.WriteString("    rightsendcert=never\n")
+	if authMode == "password" {
+		b.WriteString("    rightsendcert=never\n")
+	}
 	fmt.Fprintf(&b, "    rightsourceip=%s\n", prefix.String())
 	fmt.Fprintf(&b, "    rightdns=%s\n", strings.Join(dns, ","))
 

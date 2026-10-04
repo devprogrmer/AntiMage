@@ -85,6 +85,7 @@ type Server struct {
 	pptpUsageLoaded                  bool
 	pptpUsageLastAckedBatchID        string
 	ikev2UsageMu                     sync.Mutex
+	ikev2SpeedRules                  string // guarded by ikev2UsageMu
 	ikev2UsageBaseline               map[string]uint64
 	ikev2UsagePending                *ikev2UsagePendingBatch
 	ikev2UsageLoaded                 bool

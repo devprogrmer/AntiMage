@@ -54,9 +54,12 @@ var anyConnectOfflineQuery = func(ctx context.Context, cfg anyConnectUsageRuntim
 	}
 	queryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	raw, err := offlineCommandOutput(anyConnectUsageCommandContext(queryCtx, path, "-s", cfg.SocketPath, "--json", "show", "users"))
+	command := anyConnectUsageCommandContext(queryCtx, path, "-s", cfg.SocketPath, "--json", "show", "users")
+	stderr := &offlineAccountingOutput{}
+	command.Stderr = stderr
+	raw, err := offlineCommandOutput(command)
 	if err != nil {
-		return nil, fmt.Errorf("occtl accounting snapshot: %w", err)
+		return nil, fmt.Errorf("occtl accounting snapshot: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return parseAnyConnectUsersJSON(raw)
 }

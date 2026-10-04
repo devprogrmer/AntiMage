@@ -31,8 +31,8 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            iproute2 iptables ppp wireguard-tools openvpn strongswan xl2tpd ocserv openconnect openssl netcat-openbsd
-          for binary in ip wg openvpn ipsec xl2tpd ocserv ocpasswd openconnect openssl; do
+            iproute2 iptables nftables ppp wireguard-tools openvpn strongswan xl2tpd ocserv openconnect openssl netcat-openbsd
+          for binary in ip wg nft openvpn ipsec charon-cmd xl2tpd ocserv ocpasswd openconnect openssl; do
             command -v "$binary"
           done
 
@@ -54,11 +54,34 @@ jobs:
 
       - name: Run real WireGuard and OpenVPN drivers
         run: |
-          sudo bash scripts/ci/native-vpn-drivers.sh
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          sudo env ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
+            bash scripts/ci/native-vpn-drivers.sh
 
       - name: Run real AnyConnect and ocserv driver
         run: |
-          sudo bash scripts/ci/native-anyconnect-driver.sh
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          sudo env ANTIMAGE_ANYCONNECT_TEST_BINARY="$nodeagent_test" \
+            bash scripts/ci/native-anyconnect-driver.sh
+
+      - name: Run real strongSwan IKEv2 accounting and policy driver
+        run: |
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          sudo env \
+            ANTIMAGE_IKEV2_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_IKEV2_PANEL_BINARY="$nodecontroller_test" \
+            ANTIMAGE_IKEV2_TEMP_DIR="$RUNNER_TEMP" \
+            ANTIMAGE_IKEV2_PROVISION=1 \
+            python3 scripts/ci/native-ikev2-driver.py
 
       - name: Run protocol policy and durable-state integration suites
         run: |
