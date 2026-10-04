@@ -13,6 +13,10 @@ subprocess.run(['mount', '--make-rprivate', '/'], check=True)
 subprocess.run(['mount', '-t', 'tmpfs', 'tmpfs', '/run'], check=True)
 (root/'private-ipsec.d').mkdir(exist_ok=True)
 subprocess.run(['mount', '--bind', str(root/'private-ipsec.d'), '/etc/ipsec.d'], check=True)
+# The production `ipsec start` launcher reads strongswan.conf for VICI and
+# plugin configuration; STRONGSWAN_CONF in the parent is not a substitute for
+# installing that config at the daemon's standard path inside this namespace.
+subprocess.run(['mount', '--bind', str(root/'server.conf'), '/etc/strongswan.conf'], check=True)
 for name,initial in [('ipsec.conf','config setup\n    uniqueids=no\n'), ('ipsec.secrets','')]:
     source = root/('private-'+name)
     source.write_text(initial)

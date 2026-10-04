@@ -148,7 +148,13 @@ pools {
             wait(lambda:(R/'provision-ready').exists() or p.poll() is not None,'production applyIKEv2Runtimes')
         else:
             p=start(['/usr/lib/ipsec/charon'],S,'server.conf','server.stdout')
-        wait(lambda:(SOCKET_DIR/'server.vici').is_socket() or p.poll() is not None,'server VICI')
+        try:
+            wait(lambda:(SOCKET_DIR/'server.vici').is_socket() or p.poll() is not None,'server VICI')
+        except RuntimeError:
+            for diagnostic in [R/'server.stdout', R/'server.log']:
+                if diagnostic.exists():
+                    print(str(diagnostic)+'\n'+diagnostic.read_text()[-12000:],flush=True)
+            raise
         assert p.poll() is None,'responder exited'
         if not os.environ.get('ANTIMAGE_IKEV2_PROVISION'):
             print(sw('--load-all','--file',str(R/'swanctl.conf')),flush=True)
@@ -252,5 +258,7 @@ finally:
         except OSError:pass
     for f in R.glob('*.log'):
         print(str(f)+'\n'+f.read_text()[-2000:],flush=True)
+    if (R/'server.stdout').exists():
+        print(str(R/'server.stdout')+'\n'+(R/'server.stdout').read_text()[-12000:],flush=True)
     print((R/'client.stdout').read_text()[-16000:] if (R/'client.stdout').exists() else 'no client stdout',flush=True)
     print('Evidence retained at '+str(R),flush=True)
