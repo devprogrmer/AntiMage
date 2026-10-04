@@ -67,20 +67,24 @@ if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
     ANTIMAGE_ANYCONNECT_NATIVE_STATE="$ROOT/anyconnect-accounting" \
     ANTIMAGE_ANYCONNECT_NATIVE_PID="$ocserv_pid" \
     "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectNativeAccountingStage$' -test.v
-fi
-kill "${PIDS[1]}" 2>/dev/null || true
-sleep 1
-ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --servercert '$SERVERCERT' --no-dtls --script '$VPNSCRIPT' --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect-reconnect.log" 2>&1 &
-PIDS+=("$!")
-for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1 && break; sleep .25; done
-ip netns exec "$NS" ip link show vpn-native >/dev/null
-for _ in $(seq 1 80); do ip netns exec "$NS" ip -4 addr show dev vpn-native | grep -q '192.0.2.' && break; sleep .25; done
-ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
-if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   env ANTIMAGE_ANYCONNECT_ACTION=quota \
     ANTIMAGE_ANYCONNECT_NATIVE_ROOT="$ROOT" \
     ANTIMAGE_ANYCONNECT_NATIVE_STATE="$ROOT/anyconnect-accounting" \
     ANTIMAGE_ANYCONNECT_NATIVE_PID="$ocserv_pid" \
     "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectNativeAccountingStage$' -test.v
 fi
+client_pid="${PIDS[1]}"
+for _ in $(seq 1 80); do kill -0 "$client_pid" 2>/dev/null || break; sleep .25; done
+if kill -0 "$client_pid" 2>/dev/null; then
+  echo 'openconnect did not exit after the server disconnected the over-quota session' >&2
+  exit 1
+fi
+wait "$client_pid" 2>/dev/null || true
+unset 'PIDS[1]'
+ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --servercert '$SERVERCERT' --no-dtls --script '$VPNSCRIPT' --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect-reconnect.log" 2>&1 &
+PIDS+=("$!")
+for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1 && break; sleep .25; done
+ip netns exec "$NS" ip link show vpn-native >/dev/null
+for _ in $(seq 1 80); do ip netns exec "$NS" ip -4 addr show dev vpn-native | grep -q '192.0.2.' && break; sleep .25; done
+ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
 echo 'AnyConnect/ocserv: real authenticated session, tun creation, and reconnect passed'
