@@ -22,12 +22,21 @@ expected=0
 temp_parent=os.environ.get('ANTIMAGE_IKEV2_TEMP_DIR','/var/tmp')
 pathlib.Path(temp_parent).mkdir(parents=True,exist_ok=True)
 R=pathlib.Path(tempfile.mkdtemp(prefix='antimage-ikev2-', dir=temp_parent))
-socket_parent=os.environ.get('ANTIMAGE_IKEV2_SOCKET_DIR')
-SOCKET_DIR=pathlib.Path(socket_parent) if socket_parent else pathlib.Path('/run')
-if socket_parent:
-    SOCKET_DIR.mkdir(parents=True,exist_ok=True)
+SOCKET_DIR=pathlib.Path('/run')
 SOCKET_PREFIX='charon.antimage-'+str(os.getpid())
-def vici_socket_path(side):return SOCKET_DIR/(SOCKET_PREFIX+'.'+side+'.vici')
+def vici_socket_path(side):
+    return SOCKET_DIR/('charon.vici' if side=='server' else SOCKET_PREFIX+'.'+side+'.vici')
+def mount_type(mountinfo, mountpoint):
+    for line in pathlib.Path(mountinfo).read_text().splitlines():
+        fields=line.split()
+        if len(fields)>6 and fields[4]==mountpoint and '-' in fields:
+            return fields[fields.index('-')+1]
+    return None
+if mount_type('/proc/self/mountinfo','/run')!='tmpfs':
+    raise RuntimeError('IKEv2 driver /run is not an isolated tmpfs; refusing to use a host VICI socket')
+# swanctl's Ubuntu AppArmor profile only allows config reads via /etc/swanctl.
+# This bind exists only in the driver's private mount namespace.
+sp.run(['mount','--bind',str(R),'/etc/swanctl'],check=True)
 S='amikes'+str(os.getpid()); C='amikec'+str(os.getpid()); C2=C+'b'
 processes=[]
 def run(args, ns=None, check=True):
@@ -43,7 +52,7 @@ def install_swanctl_wrapper():
 def start(args,ns,conf,log,config_path=None):
     f=open(R/log,'w');p=sp.Popen(['ip','netns','exec',ns]+list(map(str,args)),env={**os.environ,'PATH':str(R/'bin')+':'+os.environ['PATH'],'STRONGSWAN_CONF':config_path or str(R/conf)},stdout=f,stderr=sp.STDOUT,start_new_session=True);f.close();processes.append(p);return p
 def start_isolated(args,ns,conf,log):
-    wrapper=['unshare','--mount','--fork','--propagation','private','sh','-c',
+    wrapper=['unshare','--mount','--propagation','private','sh','-c',
              'mount --bind "$1" /etc/strongswan.conf && shift && exec "$@"',
              'antimage-ikev2',str(R/conf),*map(str,args)]
     return start(wrapper,ns,conf,log,config_path='/etc/strongswan.conf')
@@ -163,6 +172,30 @@ pools {
  }
 }
 '''.replace('CONN',CONN))
+    def diagnose_server(p,reason):
+        print('IKEv2 responder diagnostics: '+reason,flush=True)
+        print('responder_pid='+str(p.pid)+' return_code='+str(p.poll()),flush=True)
+        def diagnostic(label,args):
+            try:
+                result=sp.run(args,text=True,stdout=sp.PIPE,stderr=sp.STDOUT,timeout=8,check=False)
+                print('--- '+label+' (exit '+str(result.returncode)+') ---\n'+result.stdout,flush=True)
+            except Exception as exc:
+                print('--- '+label+' unavailable: '+repr(exc)+' ---',flush=True)
+        diagnostic('process list',['ps','-eo','pid,ppid,stat,comm,args'])
+        diagnostic('socket/temp directory',['ls','-la',str(SOCKET_DIR),str(R)])
+        diagnostic('unix listening sockets',['ip','netns','exec',S,'ss','-xlpn'])
+        diagnostic('VICI socket files',['find',str(SOCKET_DIR),'-maxdepth','1','-type','s','-name','*.vici','-ls'])
+        diagnostic('VICI plugin files',['find','/usr/lib/ipsec/plugins','-maxdepth','1','-name','*vici*','-ls'])
+        diagnostic('strongSwan version/plugins',['/usr/lib/ipsec/charon','--version'])
+        diagnostic('loaded plugin list',['grep','loaded plugins',str(SOCKET_DIR/(SOCKET_PREFIX+'.server.log'))])
+        diagnostic('VICI socket client config',['cat','/etc/swanctl/swanctl.conf'])
+        diagnostic('server stdout',['cat',str(R/'server.stdout')])
+        diagnostic('server log',['cat',str(SOCKET_DIR/(SOCKET_PREFIX+'.server.log'))])
+        diagnostic('generated strongswan.conf',['cat',str(R/'server.conf')])
+        diagnostic('STRONGSWAN_CONF environment',['sh','-c',"tr '\\0' '\\n' < /proc/"+str(p.pid)+"/environ | grep '^STRONGSWAN_CONF=' || true"])
+        diagnostic('responder mountinfo',['cat','/proc/'+str(p.pid)+'/mountinfo'])
+        diagnostic('responder executable',['readlink','-f','/proc/'+str(p.pid)+'/exe'])
+
     def server():
         vici_socket=vici_socket_path('server')
         try:
@@ -179,19 +212,29 @@ pools {
         try:
             wait(lambda:vici_socket_path('server').is_socket() or p.poll() is not None,'server VICI')
         except RuntimeError:
-            for diagnostic in [R/'server.stdout', R/'server.log']:
-                if diagnostic.exists():
-                    print(str(diagnostic)+'\n'+diagnostic.read_text()[-12000:],flush=True)
-            if (R/'server.conf').exists():
-                print(str(R/'server.conf')+'\n'+(R/'server.conf').read_text(),flush=True)
+            diagnose_server(p,'server VICI socket did not become available')
             raise
         if p.poll() is not None:
-            for diagnostic in [R/'server.stdout',pathlib.Path('/run')/(SOCKET_PREFIX+'.server.log')]:
-                if diagnostic.exists():
-                    print(str(diagnostic)+'\n'+diagnostic.read_text()[-12000:],flush=True)
+            diagnose_server(p,'responder exited before control setup')
             raise RuntimeError('responder exited with code '+str(p.returncode))
+        if mount_type('/proc/'+str(p.pid)+'/mountinfo','/run')!='tmpfs':
+            diagnose_server(p,'responder does not share the isolated /run tmpfs')
+            raise RuntimeError('responder VICI socket is outside the isolated /run tmpfs')
+        responder_root_run=pathlib.Path('/proc')/str(p.pid)/'root/run'
+        if (os.stat(SOCKET_DIR).st_dev,os.stat(SOCKET_DIR).st_ino)!=(os.stat(responder_root_run).st_dev,os.stat(responder_root_run).st_ino):
+            diagnose_server(p,'responder and driver see different /run filesystems')
+            raise RuntimeError('responder VICI socket is not on the driver private /run filesystem')
         if not os.environ.get('ANTIMAGE_IKEV2_PROVISION'):
-            print(sw('--load-all','--file',str(R/'swanctl.conf')),flush=True)
+            responder_exe=os.readlink('/proc/'+str(p.pid)+'/exe')
+            if pathlib.Path(responder_exe).name!='charon':
+                diagnose_server(p,'unexpected process owns the isolated responder lifecycle')
+                raise RuntimeError('expected the isolated charon responder, got '+responder_exe)
+        if not os.environ.get('ANTIMAGE_IKEV2_PROVISION'):
+            try:
+                print(sw('--load-all'),flush=True)
+            except Exception:
+                diagnose_server(p,'swanctl failed to configure isolated responder')
+                raise
         else:
             print((R/'server.stdout').read_text(),flush=True)
         return p
@@ -291,9 +334,6 @@ finally:
         for path in [vici_socket_path(side),pathlib.Path('/run')/(SOCKET_PREFIX+'.'+side+'.pid'),pathlib.Path('/run')/(SOCKET_PREFIX+'.'+side+'.log')]:
             try:path.unlink()
             except FileNotFoundError:pass
-    if socket_parent:
-        try:SOCKET_DIR.rmdir()
-        except OSError:pass
     for f in R.glob('*.log'):
         print(str(f)+'\n'+f.read_text()[-2000:],flush=True)
     if (R/'server.stdout').exists():
