@@ -73,9 +73,9 @@ try:
     run(['ip','addr','add','10.81.0.1/32','dev','lo'],S)
     run(['ip','route','add','10.81.0.1/32','via','10.80.0.1'],C)
     for side in ['server','client','client2']:
-        write(side+'.conf',f'''charon {{
- load_modular = no
- load = random nonce aes sha1 sha2 md5 mgf1 hmac kdf gmp openssl pem pkcs1 pkcs8 pubkey x509 constraints revocation kernel-netlink socket-default vici stroke
+        write(side+'.conf',f'''include /etc/strongswan.d/*.conf
+charon {{
+ load_modular = yes
  pid_file = {R}/{side}.pid
  plugins {{
   vici {{
