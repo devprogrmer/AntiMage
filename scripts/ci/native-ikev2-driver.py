@@ -95,7 +95,14 @@ charon-systemd {{
   default = -1
  }}
 }}
-charon-cmd : charon {{
+charon-cmd {{
+ load_modular = yes
+ plugins {{
+  include /etc/strongswan.d/charon/*.conf
+  vici {{
+   socket = unix://{SOCKET_DIR}/{side}.vici
+  }}
+ }}
 }}
 ''')
     run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=local-test-ca','-keyout',R/'ca.key','-out',R/'ca.pem'])
