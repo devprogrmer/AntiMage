@@ -44,5 +44,8 @@ func TestIKEv2NativeProvision(t *testing.T) {
 		t.Fatal("runtime not installed")
 	}
 
+	for _, line := range s.snapshotLogs() {
+		t.Logf("nodeagent: %s", line)
+	}
 	t.Log("production prepare/preflight/applyIKEv2Runtimes completed")
 }
