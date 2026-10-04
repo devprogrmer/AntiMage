@@ -1,8 +1,9 @@
 # Offline Accounting and Local Quota Coverage
 
-PR #84 remains Draft. The implementation and regression fixtures below are real,
-but the complete native data-plane acceptance scenario has not passed for every
-protocol. Separate unit fixtures are not a full end-to-end guarantee.
+PR #84 is open and ready for review. The implementation and regression fixtures
+below are real, but the complete native data-plane acceptance scenario has not
+passed for every protocol. Separate unit fixtures are not a full end-to-end
+guarantee.
 
 ## Implemented Architecture
 
@@ -74,19 +75,27 @@ loss cannot be reconstructed from checkpoints.
 
 `Fully Implemented` requires native traffic with panel down, durable usage, local
 quota, runtime and node restart, further traffic, reconnect, DB commit, lost ACK,
-retry, exact totals and safe prune. No protocol has passed that whole native
-sequence here. Passing DB/identity/policy fixtures is recorded separately.
+retry, exact totals and safe prune. IKEv2 has passed that complete native
+sequence locally. Other protocols remain partial as a complete sequence until
+their native traffic and panel/database delivery are joined in the same run.
+Passing DB/identity/policy fixtures separately is not enough.
 
 | Protocol | Offline Accounting | Runtime Restart | Node Restart | Offline Quota | Lost ACK Retry | Reconnect Reconciliation | Coefficient Match |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Xray | Partial | Partial | Partial | Not Technically Reliable | Partial | Partial | Partial |
-| WireGuard | Partial | Partial | Partial | Partial | Partial | Partial | Partial |
-| AmneziaWG | Partial | Partial | Partial | Partial | Partial | Partial | Partial |
-| OpenVPN | Partial | Partial | Partial | Partial | Partial | Partial | Partial |
-| L2TP | Partial | Partial | Partial | Partial | Partial | Partial | Partial |
-| PPTP | Partial | Partial | Partial | Partial | Partial | Partial | Partial |
-| IKEv2 | Partial | Partial | Partial | Partial | Partial | Partial | Partial |
-| AnyConnect | Partial | Partial | Partial | Partial | Partial | Partial | Partial |
+| WireGuard | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Partial | Partial | Fully Implemented |
+| AmneziaWG | Partial | Partial | Partial | Partial | Partial | Partial | Fully Implemented |
+| OpenVPN | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Partial | Partial | Fully Implemented |
+| L2TP | Partial | Partial | Partial | Partial | Partial | Partial | Fully Implemented |
+| PPTP | Partial | Partial | Partial | Partial | Partial | Partial | Fully Implemented |
+| IKEv2 | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented |
+| AnyConnect | Fully Implemented | Partial | Fully Implemented | Fully Implemented | Partial | Partial | Fully Implemented |
+
+`Fully Implemented` in an individual column means that column's stated behavior
+has direct regression or native evidence. A protocol is complete only when its
+whole row is fully implemented and the complete native sequence passes. IKEv2
+meets that criterion; the other rows still have partial lifecycle or delivery
+stages.
 
 ## Identity and Quota Evidence
 

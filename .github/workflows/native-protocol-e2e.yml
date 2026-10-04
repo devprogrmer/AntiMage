@@ -31,7 +31,7 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            iproute2 iptables nftables ppp wireguard-tools openvpn strongswan xl2tpd ocserv openconnect openssl netcat-openbsd
+            iproute2 iptables nftables ppp wireguard-tools openvpn strongswan charon-cmd xl2tpd ocserv openconnect openssl netcat-openbsd
           for binary in ip wg nft openvpn ipsec charon-cmd xl2tpd ocserv ocpasswd openconnect openssl; do
             command -v "$binary"
           done
