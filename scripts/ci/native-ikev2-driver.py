@@ -73,11 +73,11 @@ try:
     run(['ip','addr','add','10.81.0.1/32','dev','lo'],S)
     run(['ip','route','add','10.81.0.1/32','via','10.80.0.1'],C)
     for side in ['server','client','client2']:
-        write(side+'.conf',f'''include /etc/strongswan.d/*.conf
-charon {{
+        write(side+'.conf',f'''charon {{
  load_modular = yes
  pid_file = {R}/{side}.pid
  plugins {{
+  include /etc/strongswan.d/charon/*.conf
   vici {{
    socket = unix://{SOCKET_DIR}/{side}.vici
   }}
@@ -111,8 +111,8 @@ charon-cmd : charon {{
     write('swanctl.conf','''connections {
  CONN {
   version = 2
-  local_addrs = 10.80.0.1
-  remote_addrs = 10.80.0.0/24
+  local_addrs = 0.0.0.0
+  remote_addrs = 10.80.0.0/16
   unique = never
   pools = clients
   proposals = aes256-sha256-modp2048
@@ -123,7 +123,7 @@ charon-cmd : charon {{
   }
   remote {
    auth = pubkey
-   id = client
+   id = %any
   }
   children {
    tunnel {
@@ -141,13 +141,18 @@ pools {
 }
 '''.replace('CONN',CONN))
     def server():
+        vici_socket=SOCKET_DIR/'server.vici'
+        try:
+            vici_socket.unlink()
+        except FileNotFoundError:
+            pass
         if os.environ.get('ANTIMAGE_IKEV2_PROVISION'):
             if (R/'provision-ready').exists():
                 (R/'provision-ready').rename(R/('provision-ready-'+str(time.time_ns())))
             p=start(['unshare','--mount','--pid','--fork','--mount-proc','--kill-child','python3',pathlib.Path(__file__).with_name('ikev2-provision-worker.py'),R],S,'server.conf','server.stdout')
             wait(lambda:(R/'provision-ready').exists() or p.poll() is not None,'production applyIKEv2Runtimes')
         else:
-            p=start(['/usr/lib/ipsec/charon','--debug-cfg','4'],S,'server.conf','server.stdout')
+            p=start(['unshare','--mount','--fork','--propagation','private','sh','-c','mount -t tmpfs tmpfs /run && exec /usr/lib/ipsec/charon'],S,'server.conf','server.stdout')
         try:
             wait(lambda:(SOCKET_DIR/'server.vici').is_socket() or p.poll() is not None,'server VICI')
         except RuntimeError:
