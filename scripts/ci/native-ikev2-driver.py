@@ -147,13 +147,15 @@ pools {
             p=start(['unshare','--mount','--pid','--fork','--mount-proc','--kill-child','python3',pathlib.Path(__file__).with_name('ikev2-provision-worker.py'),R],S,'server.conf','server.stdout')
             wait(lambda:(R/'provision-ready').exists() or p.poll() is not None,'production applyIKEv2Runtimes')
         else:
-            p=start(['/usr/lib/ipsec/charon'],S,'server.conf','server.stdout')
+            p=start(['/usr/lib/ipsec/charon','--debug-cfg','4'],S,'server.conf','server.stdout')
         try:
             wait(lambda:(SOCKET_DIR/'server.vici').is_socket() or p.poll() is not None,'server VICI')
         except RuntimeError:
             for diagnostic in [R/'server.stdout', R/'server.log']:
                 if diagnostic.exists():
                     print(str(diagnostic)+'\n'+diagnostic.read_text()[-12000:],flush=True)
+            if (R/'server.conf').exists():
+                print(str(R/'server.conf')+'\n'+(R/'server.conf').read_text(),flush=True)
             raise
         assert p.poll() is None,'responder exited'
         if not os.environ.get('ANTIMAGE_IKEV2_PROVISION'):
