@@ -53,8 +53,8 @@ def start(args,ns,conf,log,config_path=None):
     f=open(R/log,'w');p=sp.Popen(['ip','netns','exec',ns]+list(map(str,args)),env={**os.environ,'PATH':str(R/'bin')+':'+os.environ['PATH'],'STRONGSWAN_CONF':config_path or str(R/conf)},stdout=f,stderr=sp.STDOUT,start_new_session=True);f.close();processes.append(p);return p
 def start_isolated(args,ns,conf,log):
     wrapper=['unshare','--mount','--propagation','private','sh','-c',
-             'mount --bind "$1" /etc/strongswan.conf && shift && exec "$@"',
-             'antimage-ikev2',str(R/conf),*map(str,args)]
+             'mount --bind "$1" /etc/strongswan.conf && mount --bind "$2" /etc/ipsec.d && shift 2 && exec "$@"',
+             'antimage-ikev2',str(R/conf),str(R/'ipsec.d'),*map(str,args)]
     return start(wrapper,ns,conf,log,config_path='/etc/strongswan.conf')
 def stop(p,timeout=15):
     if p.poll() is not None:return
@@ -135,8 +135,10 @@ charon-cmd {{
         run(['openssl','req','-new','-newkey','rsa:2048','-nodes','-subj','/CN='+side,'-keyout',R/(side+'.key'),'-out',R/(side+'.csr')])
         ext=write(side+'.ext','basicConstraints=critical,CA:FALSE\nsubjectAltName=DNS:'+side+'\n')
         run(['openssl','x509','-req','-in',R/(side+'.csr'),'-CA',R/'ca.pem','-CAkey',R/'ca.key','-CAcreateserial','-days','1','-extfile',ext,'-out',R/(side+'.pem')])
+    ipsec_d=R/'ipsec.d'
+    for sub in ['cacerts','aacerts','ocspcerts','acerts','crls']:(ipsec_d/sub).mkdir(parents=True)
     for identity in ['client','client2']:
-        run(['openssl','pkcs12','-export','-in',R/(identity+'.pem'),'-inkey',R/(identity+'.key'),'-certfile',R/'ca.pem','-out',R/(identity+'.p12'),'-passout','pass:'])
+        run(['openssl','pkcs12','-export','-in',R/(identity+'.pem'),'-inkey',R/(identity+'.key'),'-certfile',R/'ca.pem','-out',ipsec_d/(identity+'.p12'),'-passout','pass:'])
     for sub in ['x509','x509ca','private','x509ocsp','x509aa','x509ac','x509crl','pubkey','rsa','ecdsa','pkcs8','pkcs12']:(R/sub).mkdir()
     import shutil
     shutil.copy(R/'server.pem',R/'x509/server.pem');shutil.copy(R/'ca.pem',R/'x509ca/ca.pem');shutil.copy(R/'server.key',R/'private/server.key')
@@ -239,7 +241,7 @@ pools {
             print((R/'server.stdout').read_text(),flush=True)
         return p
     def client(ns=C,side='client',host='10.80.0.1',identity='client'):
-        p=start_isolated(['charon-cmd','--host',host,'--identity',identity,'--remote-identity','server','--p12',R/(identity+'.p12'),'--profile','ikev2-pub','--remote-ts','10.81.0.1/32','--ike-proposal','aes256-sha256-modp2048','--esp-proposal','aes256-sha256'],ns,side+'.conf',side+'.stdout')
+        p=start_isolated(['charon-cmd','--host',host,'--identity',identity,'--remote-identity','server','--p12',pathlib.Path('/etc/ipsec.d')/(identity+'.p12'),'--profile','ikev2-pub','--remote-ts','10.81.0.1/32','--ike-proposal','aes256-sha256-modp2048','--esp-proposal','aes256-sha256'],ns,side+'.conf',side+'.stdout')
         wait(lambda:'INSTALLED' in sas(),'CHILD_SA');return p
     srv=server();cli=client();traffic('initial')
     before=sas();print(sw('--rekey','--child',CONN if os.environ.get('ANTIMAGE_IKEV2_PROVISION') else 'tunnel'),flush=True)
