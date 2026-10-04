@@ -80,7 +80,6 @@ jobs:
             ANTIMAGE_IKEV2_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_IKEV2_PANEL_BINARY="$nodecontroller_test" \
             ANTIMAGE_IKEV2_TEMP_DIR="$RUNNER_TEMP" \
-            ANTIMAGE_IKEV2_PROVISION=1 \
             python3 scripts/ci/native-ikev2-driver.py
 
       - name: Run protocol policy and durable-state integration suites

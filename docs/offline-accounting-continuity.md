@@ -146,6 +146,11 @@ interval, command latency and disconnect completion; it cannot guarantee zero.
   counters, durable batch replay, quota disconnect, and reconnect through
   ocserv. These improve native coverage but still do not prove the full panel DB
   reflection and ACK sequence for all three.
+- GitHub Actions runs the strongSwan native dataplane with `charon` directly
+  inside its private network namespace. The `ipsec start`/starter launcher did
+  not create a VICI daemon in that systemd-free PID namespace, so the native CI
+  job does not claim to verify that launcher. Production IKEv2 apply remains
+  covered by local WSL native provisioning and the Go lifecycle tests.
 - The AnyConnect native run exposed and fixed a production config issue: ocserv's
   worker IPC socket and its `occtl` management socket are separate. Runtime
   config now sets `socket-file`, `occtl-socket-file`, and `use-occtl` explicitly.
