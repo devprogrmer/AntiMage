@@ -194,6 +194,9 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 			t.Fatalf("native PPTP quota overshoot outside 2 MiB bound: raw=%d limit=%d batch=%s", total, limit, raw)
 		}
 		t.Logf("production PPTP quota worker disconnected session at raw=%d bytes, limit=%d, overshoot=%d", total, limit, total-limit)
+		for _, line := range s.snapshotLogs() {
+			t.Logf("node runtime: %s", line)
+		}
 	default:
 		t.Fatal(fmt.Sprintf("unknown native PPTP action %q", action))
 	}

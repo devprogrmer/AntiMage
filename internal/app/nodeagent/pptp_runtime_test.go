@@ -95,10 +95,18 @@ func TestPreparePPTPInboundRendersDaemonConfigs(t *testing.T) {
 		"require-mppe-128",
 		"ms-dns 1.1.1.1",
 		"ms-dns 8.8.8.8",
+		"ip-pre-up-script " + filepath.ToSlash(filepath.Join(root, "ip-pre-up.sh")),
 	} {
 		if !strings.Contains(string(rawPPP), expected) {
 			t.Fatalf("ppp options missing %q:\n%s", expected, rawPPP)
 		}
+	}
+	preUp, err := os.ReadFile(filepath.Join(root, "ip-pre-up.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(preUp), " session-event ") || !strings.HasSuffix(strings.TrimSpace(string(preUp)), " pre-up") {
+		t.Fatalf("PPTP pre-up hook does not run durable admission gate: %s", preUp)
 	}
 	if strings.Contains(string(rawPPP), "chap-secrets") {
 		t.Fatalf("ppp options must not render unsupported chap-secrets option:\n%s", rawPPP)

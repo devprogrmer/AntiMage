@@ -100,9 +100,12 @@ func (s *Server) quotaCheckPPPOffline(ctx context.Context) error {
 					if err != nil {
 						return err
 					}
-					allowed, _ := s.localQuotaAllowed(protocol, uid, cfg.InboundTag, policy, usage, time.Now().UTC())
+					allowed, reason := s.localQuotaAllowed(protocol, uid, cfg.InboundTag, policy, usage, time.Now().UTC())
 					if allowed && !deniedIPs[live.ID] {
 						continue
+					}
+					if deniedIPs[live.ID] {
+						reason = "IP limit reached"
 					}
 					marker := filepath.Join(root, "ppp-accounting", "deny-"+live.ID+".json")
 					if info, err := os.Stat(marker); err == nil && time.Since(info.ModTime()) < 30*time.Second {
@@ -114,9 +117,13 @@ func (s *Server) quotaCheckPPPOffline(ctx context.Context) error {
 						}
 						checkpointed = true
 					}
-					if err := pppOfflineSignalSession(live.Process); err != nil {
+					effective := nativeSessionEffectiveLiveUsage(policy, usage)
+					s.appendLog(fmt.Sprintf("local %s quota cutoff at=%s user_id=%d username=%q peer_ip=%s interface=%s pppd=%s raw_bytes=%d effective_bytes=%d data_limit=%d reason=%q action=SIGTERM", protocol, time.Now().UTC().Format(time.RFC3339Nano), live.UserID, username, live.PeerIP, live.Interface, live.Process, usage, effective, policy.DataLimit, reason))
+					if err := pppOfflineTerminateSession(ctx, live.Process); err != nil {
+						s.appendLog(fmt.Sprintf("local %s quota disconnect failed: user_id=%d interface=%s pppd=%s error=%v", protocol, live.UserID, live.Interface, live.Process, err))
 						return err
 					}
+					s.appendLog(fmt.Sprintf("local %s quota disconnect complete: user_id=%d interface=%s pppd=%s process_exit=confirmed", protocol, live.UserID, live.Interface, live.Process))
 					if err := offlineDurableJSON(marker, live.ID); err != nil {
 						return err
 					}

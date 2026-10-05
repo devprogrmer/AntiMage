@@ -56,6 +56,75 @@ func TestOpenVPNAdmissionRejectsDurableOfflineQuota(t *testing.T) {
 	}
 }
 
+func TestPPPPreUpAdmissionRejectsDurableOfflineQuota(t *testing.T) {
+	dir := t.TempDir()
+	runtimeRoot := filepath.Join(dir, "pptp", "native")
+	if err := os.MkdirAll(runtimeRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(runtimeRoot, "session-helper.json")
+	if err := offlineDurableJSON(configPath, nativeSessionHelperConfig{
+		Protocol: "pptp", InboundTag: "native", Users: map[string]int64{"alice": 42},
+		Policies: map[string]nativeSessionUserPolicy{"alice": {Status: "active", DataLimit: 100}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	usageStatePath := filepath.Join(dir, "pptp", "usage-state.json")
+	if err := offlineDurableJSON(usageStatePath, pptpUsageDiskState{
+		Baseline: map[string]uint64{offlineAccountingTotalKey(42, "native"): 99},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("common_name", "alice")
+	t.Setenv("PPPD_PID", "123")
+	previousProcess, previousSignal := pppOfflineReadProcess, nativePPPProcessSignal
+	pppOfflineReadProcess = func(pid string) (string, error) {
+		if pid != "123" {
+			t.Fatalf("unexpected pppd PID: %s", pid)
+		}
+		return "fixture-boot:123:456", nil
+	}
+	signaled := ""
+	nativePPPProcessSignal = func(identity string) error { signaled = identity; return nil }
+	t.Cleanup(func() { pppOfflineReadProcess, nativePPPProcessSignal = previousProcess, previousSignal })
+	if err := RunNativeSessionEventHelper([]string{configPath, "pre-up"}); err != nil {
+		t.Fatalf("below-quota PPP admission rejected: %v", err)
+	}
+	if signaled != "" {
+		t.Fatalf("below-quota PPP admission signaled pppd: %q", signaled)
+	}
+	if err := offlineDurableJSON(usageStatePath, pptpUsageDiskState{
+		Baseline: map[string]uint64{offlineAccountingTotalKey(42, "native"): 100},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := RunNativeSessionEventHelper([]string{configPath, "pre-up"})
+	if err == nil || !strings.Contains(err.Error(), "data limit reached") {
+		t.Fatalf("expected quota denial before PPP interface activation, got %v", err)
+	}
+	if signaled != "fixture-boot:123:456" {
+		t.Fatalf("quota denial did not terminate the exact PPPD identity: %q", signaled)
+	}
+	var denial struct {
+		Protocol string `json:"protocol"`
+		UserID   int64  `json:"user_id"`
+		PeerIP   string `json:"peer_ip"`
+		Reason   string `json:"reason"`
+		Process  string `json:"process"`
+	}
+	raw, err := os.ReadFile(filepath.Join(runtimeRoot, "ppp-accounting", "admission-denials", "42.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &denial); err != nil {
+		t.Fatal(err)
+	}
+	if denial.Protocol != "pptp" || denial.UserID != 42 || denial.PeerIP != "" || denial.Reason != "data limit reached" || denial.Process != signaled {
+		t.Fatalf("unexpected durable PPP admission denial: %+v", denial)
+	}
+}
+
 func TestRunNativeSessionEventHelperStartStop(t *testing.T) {
 	var events []nativeSessionEvent
 

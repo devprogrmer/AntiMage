@@ -93,6 +93,39 @@ wait_for_gone() {
   return 1
 }
 
+capture_ppp_state() {
+  local label="$1"
+  {
+    echo "=== $label $(date -u +%FT%TZ) ==="
+    echo '--- host processes ---'
+    ps -ef | grep -E '[p]ptpd|[p]ppd' || true
+    pgrep -a pptpd || true
+    pgrep -a pppd || true
+    echo '--- host addresses, links, and routes ---'
+    ip -details addr show || true
+    ip link show || true
+    ip route show table all || true
+    echo '--- client namespace addresses, links, and routes ---'
+    ip netns exec "$NS" ip -details addr show || true
+    ip netns exec "$NS" ip link show || true
+    ip netns exec "$NS" ip route show table all || true
+    echo '--- PPP pid files ---'
+    ls -la /run/ppp* /var/run/ppp* 2>/dev/null || true
+    cat /run/ppp*.pid /var/run/ppp*.pid 2>/dev/null || true
+    echo '--- PPP native interface counters ---'
+    for iface in /sys/class/net/ppp*; do
+      [ -d "$iface" ] || continue
+      echo "${iface##*/} rx=$(cat "$iface/statistics/rx_bytes" 2>/dev/null || echo unavailable) tx=$(cat "$iface/statistics/tx_bytes" 2>/dev/null || echo unavailable)"
+    done
+    echo '--- active session records ---'
+    find "$ROOT/pptp-state" -path '*/ppp-accounting/active/*.json' -type f -print -exec cat {} \; 2>/dev/null || true
+    echo '--- final session records ---'
+    find "$ROOT/pptp-state" -path '*/ppp-accounting/final/*.json' -type f -print -exec cat {} \; 2>/dev/null || true
+    echo '--- admission denial records ---'
+    find "$ROOT/pptp-state" -path '*/ppp-accounting/admission-denials/*.json' -type f -print -exec cat {} \; 2>/dev/null || true
+  } >>"$ROOT/quota-session-state.log" 2>&1
+}
+
 start_server() {
   pptpd -f -c "$server_config" >"$ROOT/pptpd.log" 2>&1 &
   SERVER_PID="$!"
@@ -150,20 +183,57 @@ stage quota-watch "$ROOT/pptp-state" "$quota_bytes" >"$ROOT/quota-watch.log" 2>&
 watch_pid="$!"
 PIDS+=("$watch_pid")
 sleep .2
+capture_ppp_state 'before quota cutoff'
 ip netns exec "$NS" sh -c 'dd if=/dev/zero bs=64K count=1024 2>/dev/null | nc -N -w 5 10.68.0.1 19091' >"$ROOT/quota-sender.log" 2>&1 &
 sender_pid="$!"
 PIDS+=("$sender_pid")
 wait "$watch_pid"
 forget_pid "$watch_pid"
-if ip netns exec "$NS" ip link show ppp0 >/dev/null 2>&1; then
-  echo 'PPTP quota-exhausted PPP session remained connected' >&2
+capture_ppp_state 'after server quota cutoff'
+wait_for_gone 'quota-exhausted client PPP interface' ip netns exec "$NS" ip link show ppp0 || {
+  capture_ppp_state 'client PPP interface failed to disappear'
+  echo 'PPTP quota-exhausted client PPP interface remained connected' >&2
   exit 1
-fi
+}
 wait "$sender_pid" || true
 forget_pid "$sender_pid"
 wait "$listener_pid" || true
 forget_pid "$listener_pid"
 cat "$ROOT/quota-watch.log"
+
+echo '=== PPTP same-credential reconnect must be denied before interface activation ==='
+find "$ROOT/pptp-state" -path '*/ppp-accounting/admission-denials/7.json' -delete
+timeout 20s ip netns exec "$NS" pppd nodetach maxfail 1 noauth name native-pptp password native-pptp-secret \
+  refuse-eap refuse-pap refuse-chap refuse-mschap \
+  require-mppe-128 noipdefault nodefaultroute mtu 1200 mru 1200 \
+  pty "$PPTP_CLIENT --nolaunchpppd 10.251.0.1 --loglevel 0" \
+  >"$ROOT/pptpd-reconnect.log" 2>&1 &
+reconnect_pid="$!"
+PIDS+=("$reconnect_pid")
+wait_for 'durable PPTP reconnect quota denial' sh -c 'find "$1" -path "*/ppp-accounting/admission-denials/7.json" -print -quit | grep -q .' _ "$ROOT/pptp-state"
+wait_for_gone 'reconnect PPP interface before usable traffic' ip netns exec "$NS" ip link show ppp0
+set +e
+wait "$reconnect_pid"
+reconnect_rc=$?
+set -e
+forget_pid "$reconnect_pid"
+if [ "$reconnect_rc" -eq 0 ] || [ "$reconnect_rc" -eq 124 ]; then
+  cat "$ROOT/pptpd-reconnect.log" >&2
+  echo "quota-exhausted PPTP reconnect exited unexpectedly with status $reconnect_rc" >&2
+  exit 1
+fi
+if ip netns exec "$NS" ip link show ppp0 >/dev/null 2>&1; then
+  cat "$ROOT/pptpd-reconnect.log" >&2
+  echo 'quota-exhausted PPTP reconnect exposed a usable PPP interface' >&2
+  exit 1
+fi
+if grep -Eqi 'local IP address|remote IP address' "$ROOT/pptpd-reconnect.log"; then
+  cat "$ROOT/pptpd-reconnect.log" >&2
+  echo 'quota-exhausted PPTP reconnect negotiated usable IP addresses' >&2
+  exit 1
+fi
+capture_ppp_state 'after rejected reconnect'
+cat "$ROOT/pptpd-reconnect.log"
 stage ack "$ROOT/pptp-state"
 received="$(wc -c <"$ROOT/quota-received")"
 if [ "$received" -ge "$((64 * 1024 * 1024))" ] || [ "$received" -lt "$((quota_bytes * 4 / 5))" ]; then
