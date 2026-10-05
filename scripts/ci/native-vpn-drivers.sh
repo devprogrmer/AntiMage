@@ -48,11 +48,14 @@ ip link add "$VETH_HOST" type veth peer name "$VETH_NS"
 ip link set "$VETH_NS" netns "$NS"
 ip addr add 10.250.0.1/24 dev "$VETH_HOST"
 ip link set "$VETH_HOST" up
-ip netns exec "$NS" ip addr add 10.250.0.2/24 dev "$VETH_NS"
-ip netns exec "$NS" ip link set lo up
-ip netns exec "$NS" ip link set "$VETH_NS" up
-ip netns exec "$NS" ip route add default via 10.250.0.1
-sysctl -q -w net.ipv4.ip_forward=1
+  ip netns exec "$NS" ip addr add 10.250.0.2/24 dev "$VETH_NS"
+  ip netns exec "$NS" ip link set lo up
+  ip netns exec "$NS" ip link set "$VETH_NS" up
+  ip netns exec "$NS" ip route add default via 10.250.0.1
+  # Keep tunnel destinations from falling through the underlay default route
+  # after OpenVPN removes its more-specific connected /32 on quota rejection.
+  ip netns exec "$NS" ip route add blackhole 10.210.0.0/24 metric 250
+  sysctl -q -w net.ipv4.ip_forward=1
 
 wait_for() {
   local name="$1"; shift
