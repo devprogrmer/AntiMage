@@ -11,6 +11,23 @@ cleanup() {
       echo "--- $log ---" >&2
       cat "$log" >&2 || true
     done
+    if [ -n "${RUNNER_TEMP:-}" ]; then
+      local evidence="$RUNNER_TEMP/antimage-anyconnect-failure"
+      mkdir -p "$evidence"
+      cp -a "$ROOT/." "$evidence/" || true
+      {
+        date -u
+        ip -details addr show || true
+        ip route show table all || true
+        ip netns list || true
+        ip netns exec "$NS" ip -details addr show || true
+        ip netns exec "$NS" ip route show table all || true
+        nft list ruleset || true
+        tc -s qdisc show || true
+        ps -ef || true
+      } >"$evidence/network-state.txt" 2>&1
+      echo "AnyConnect failure evidence retained at $evidence" >&2
+    fi
   fi
   set +e
   for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done

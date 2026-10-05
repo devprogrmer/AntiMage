@@ -15,9 +15,14 @@ permissions:
   contents: read
 
 jobs:
-  native-runtime-linux:
+  native-runtime:
+    name: native-${{ matrix.protocol }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        protocol: [xray, wireguard, openvpn, anyconnect, ikev2]
     env:
       CGO_ENABLED: '1'
     steps:
@@ -31,12 +36,12 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            iproute2 iptables nftables ppp wireguard-tools openvpn strongswan strongswan-swanctl charon-cmd xl2tpd ocserv openconnect openssl netcat-openbsd
-          for binary in ip wg nft openvpn ipsec charon-cmd swanctl xl2tpd ocserv ocpasswd openconnect openssl; do
-            command -v "$binary"
-          done
+            iproute2 iptables nftables ppp wireguard-tools openvpn strongswan \
+            strongswan-swanctl charon-cmd xl2tpd ocserv openconnect openssl \
+            netcat-openbsd
 
       - name: Run real Xray protocol E2E
+        if: ${{ matrix.protocol == 'xray' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -52,19 +57,31 @@ jobs:
           ANTIMAGE_XRAY_E2E_BINARY="$dir/xray" \
             go test ./internal/app/nodeagent -run '^TestRealXrayOnlineAndStatsE2E$' -count=1 -v
 
-      - name: Run real WireGuard and OpenVPN drivers
+      - name: Run native WireGuard lifecycle
+        if: ${{ matrix.protocol == 'wireguard' }}
+        shell: bash
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
-          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
-          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
-          sudo env ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
-            ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
-            ANTIMAGE_VPN_PANEL_TEST_BINARY="$nodecontroller_test" \
+          sudo env ANTIMAGE_NATIVE_RUN_OPENVPN=0 ANTIMAGE_NATIVE_RUN_PANEL=0 \
+            ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
             bash scripts/ci/native-vpn-drivers.sh
 
-      - name: Run real AnyConnect and ocserv driver
+      - name: Run native OpenVPN lifecycle
+        if: ${{ matrix.protocol == 'openvpn' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          sudo env ANTIMAGE_NATIVE_RUN_WIREGUARD=0 ANTIMAGE_NATIVE_RUN_PANEL=0 \
+            ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
+            bash scripts/ci/native-vpn-drivers.sh
+
+      - name: Run real AnyConnect and ocserv lifecycle
+        if: ${{ matrix.protocol == 'anyconnect' }}
+        shell: bash
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
@@ -72,7 +89,9 @@ jobs:
           sudo env ANTIMAGE_ANYCONNECT_TEST_BINARY="$nodeagent_test" \
             bash scripts/ci/native-anyconnect-driver.sh
 
-      - name: Run real strongSwan IKEv2 accounting and policy driver
+      - name: Run real strongSwan IKEv2 lifecycle
+        if: ${{ matrix.protocol == 'ikev2' }}
+        shell: bash
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
@@ -85,24 +104,93 @@ jobs:
             ANTIMAGE_IKEV2_TEMP_DIR="$RUNNER_TEMP" \
             python3 scripts/ci/native-ikev2-driver.py
 
+      - name: Capture runner networking state after failure
+        if: failure()
+        shell: bash
+        run: |
+          {
+            date -u
+            sudo ip -details addr show || true
+            sudo ip route show table all || true
+            sudo ip netns list || true
+            sudo nft list ruleset || true
+            sudo tc -s qdisc show || true
+            sudo wg show all dump || true
+            sudo occtl --socket-file="$RUNNER_TEMP/ocserv.sock" show users || true
+            ps -ef || true
+          } > "$RUNNER_TEMP/native-runner-state.txt" 2>&1
+
+      - name: Upload native runtime evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.protocol }}-evidence-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/antimage-native-*-failure/**
+            ${{ runner.temp }}/antimage-ikev2-*/**
+            ${{ runner.temp }}/native-runner-state.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  protocol-lifecycle-exact-once:
+    name: protocol-lifecycle-exact-once
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Install WireGuard and OpenVPN native dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            iproute2 iptables nftables ppp wireguard-tools openvpn openssl netcat-openbsd
+      - name: Run real combined native lifecycle and SQLite lost-ACK replay
+        run: |
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          sudo env \
+            ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_VPN_PANEL_TEST_BINARY="$nodecontroller_test" \
+            bash scripts/ci/native-vpn-drivers.sh
+      - name: Upload lifecycle evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: protocol-lifecycle-exact-once-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/antimage-native-vpn-failure/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  protocol-policy:
+    name: protocol-policy-and-durable-state
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
       - name: Run protocol policy and durable-state integration suites
         run: |
           go test ./internal/app/nodeagent -run 'Test(AmneziaWG|OpenVPN|L2TP|PPTP|IKEv2|AnyConnect|WireGuard|Xray)' -count=1 -v
 
+  native-race:
+    name: native-race
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
       - name: Run Linux race verification
-        run: |
-          go test -race -timeout 30m ./internal/... -count=1
-
-      - name: Collect native runtime evidence
-        if: always()
-        run: |
-          sudo ip netns exec antimage-vpn-client ip addr || true
-          sudo wg show || true
-          sudo ipsec statusall || true
-          sudo systemctl status openvpn --no-pager || true
-
-      - name: Remove isolated namespace
-        if: always()
-        run: |
-          sudo ip netns del antimage-vpn-client 2>/dev/null || true
-          sudo ip link del avpn-vh 2>/dev/null || true
+        run: go test -race -timeout 30m ./internal/... -count=1

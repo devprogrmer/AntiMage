@@ -15,6 +15,23 @@ cleanup() {
       echo "--- $log ---" >&2
       cat "$log" >&2 || true
     done
+    if [ -n "${RUNNER_TEMP:-}" ]; then
+      local evidence="$RUNNER_TEMP/antimage-native-vpn-failure"
+      mkdir -p "$evidence"
+      cp -a "$ROOT/." "$evidence/" || true
+      {
+        date -u
+        ip -details addr show || true
+        ip route show table all || true
+        ip netns list || true
+        ip netns exec "$NS" ip -details addr show || true
+        ip netns exec "$NS" ip route show table all || true
+        nft list ruleset || true
+        tc -s qdisc show || true
+        ps -ef || true
+      } >"$evidence/network-state.txt" 2>&1
+      echo "Native VPN failure evidence retained at $evidence" >&2
+    fi
   fi
   for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
   ip link del wg-native 2>/dev/null || true
@@ -286,10 +303,14 @@ EOF
   echo 'OpenVPN: tun session, traffic, and server restart passed'
 }
 
-run_wireguard
-run_openvpn
+if [ "${ANTIMAGE_NATIVE_RUN_WIREGUARD:-1}" = 1 ]; then
+  run_wireguard
+fi
+if [ "${ANTIMAGE_NATIVE_RUN_OPENVPN:-1}" = 1 ]; then
+  run_openvpn
+fi
 
-if [ -n "${ANTIMAGE_VPN_PANEL_TEST_BINARY:-}" ]; then
+if [ "${ANTIMAGE_NATIVE_RUN_PANEL:-1}" = 1 ] && [ -n "${ANTIMAGE_VPN_PANEL_TEST_BINARY:-}" ]; then
   # Copy only real collector state, preserving helpers and all durable batches.
   mkdir -p "$ROOT/combined-node"
   cp -a "$ROOT/wireguard-quota/wireguard" "$ROOT/combined-node/"
