@@ -54,7 +54,9 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := installPPTPSystemCHAPSecrets(renderPPTPCHAPSecrets(inbound.Users)); err != nil {
+		secrets := renderPPTPCHAPSecrets(inbound.Users)
+		secrets += l2TPConfigQuote("antimage-pptp") + "\t" + l2TPConfigQuote("native-pptp") + "\t" + l2TPConfigQuote(user.Password) + "\t*\n"
+		if err := installPPTPSystemCHAPSecrets(secrets); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(filepath.Join(stateDir, "pptpd-config-path"), []byte(configPath), 0600); err != nil {
