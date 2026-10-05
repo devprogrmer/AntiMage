@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        protocol: [xray, wireguard, openvpn, anyconnect, ikev2]
+        protocol: [xray, wireguard, openvpn, amneziawg, anyconnect, ikev2]
     env:
       CGO_ENABLED: '1'
     steps:
@@ -39,6 +39,18 @@ jobs:
             iproute2 iptables nftables ppp wireguard-tools openvpn strongswan \
             strongswan-swanctl charon-cmd xl2tpd ocserv openconnect openssl \
             netcat-openbsd
+
+      - name: Build pinned AmneziaWG userspace tool
+        if: ${{ matrix.protocol == 'amneziawg' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends build-essential
+          source_dir="$RUNNER_TEMP/amneziawg-tools"
+          git clone https://github.com/amnezia-vpn/amneziawg-tools.git "$source_dir"
+          git -C "$source_dir" checkout 4cdc357c68b39a0d1e19417b7f03d604c1e1b4cf
+          make -C "$source_dir/src"
+          install -m 0755 "$source_dir/src/wg" "$RUNNER_TEMP/awg"
 
       - name: Run real Xray protocol E2E
         if: ${{ matrix.protocol == 'xray' }}
@@ -80,6 +92,17 @@ jobs:
             RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
             bash scripts/ci/native-vpn-drivers.sh
+
+      - name: Run native AmneziaWG lifecycle
+        if: ${{ matrix.protocol == 'amneziawg' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" ANTIMAGE_AWG_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_AWG_TOOL="$RUNNER_TEMP/awg" \
+            bash scripts/ci/native-amneziawg-driver.sh
 
       - name: Run real AnyConnect and ocserv lifecycle
         if: ${{ matrix.protocol == 'anyconnect' }}
