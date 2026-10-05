@@ -6,6 +6,30 @@ NS="antimage-pptp-client"
 VETH_HOST="apptp-vh"
 VETH_NS="apptp-vn"
 PIDS=()
+forget_pid() {
+  local target="$1" pid
+  local -a remaining=()
+  for pid in "${PIDS[@]}"; do
+    [ "$pid" = "$target" ] || remaining+=("$pid")
+  done
+  PIDS=("${remaining[@]}")
+}
+stop_pid() {
+  local pid="$1" state
+  kill -TERM "$pid" 2>/dev/null || true
+  for _ in $(seq 1 100); do
+    state="$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ' || true)"
+    if [ -z "$state" ] || [[ "$state" == Z* ]]; then
+      wait "$pid" 2>/dev/null || true
+      forget_pid "$pid"
+      return 0
+    fi
+    sleep .1
+  done
+  kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  forget_pid "$pid"
+}
 cleanup() {
   local rc=$?
   set +e
@@ -23,7 +47,7 @@ cleanup() {
     } >"$RUNNER_TEMP/antimage-pptp-failure/network-state.txt" 2>&1
     echo "PPTP native evidence retained at $RUNNER_TEMP/antimage-pptp-failure" >&2
   fi
-  for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
+  for pid in "${PIDS[@]}"; do stop_pid "$pid"; done
   if [ -n "${ANTIMAGE_PPTP_TEST_BINARY:-}" ] && [ -d "$ROOT/pptp-state" ]; then
     env ANTIMAGE_PPTP_NATIVE_STATE="$ROOT/pptp-state" ANTIMAGE_PPTP_NATIVE_ACTION=cleanup \
       "$ANTIMAGE_PPTP_TEST_BINARY" -test.run='^TestPPTPNativeAccountingStage$' -test.v >/dev/null 2>&1 || true
@@ -54,6 +78,17 @@ wait_for() {
   local name="$1"; shift
   for _ in $(seq 1 200); do "$@" >/dev/null 2>&1 && return 0; sleep .1; done
   echo "timeout waiting for $name" >&2
+  for log in "$ROOT"/*.log; do [ -f "$log" ] && { echo "--- $log ---"; cat "$log"; }; done
+  return 1
+}
+
+wait_for_gone() {
+  local name="$1"; shift
+  for _ in $(seq 1 200); do
+    if ! "$@" >/dev/null 2>&1; then return 0; fi
+    sleep .1
+  done
+  echo "timeout waiting for $name to stop" >&2
   for log in "$ROOT"/*.log; do [ -f "$log" ] && { echo "--- $log ---"; cat "$log"; }; done
   return 1
 }
@@ -97,9 +132,10 @@ start_client
 wait_for 'first PPTP tunnel traffic' ip netns exec "$NS" ping -c 1 -W 1 10.68.0.1
 
 echo '=== PPTP daemon restart and durable accounting recovery ==='
-kill "$SERVER_PID"
-wait "$SERVER_PID" || true
-wait "$CLIENT_PID" || true
+stop_pid "$SERVER_PID"
+stop_pid "$CLIENT_PID"
+wait_for_gone 'client PPP interface shutdown' ip netns exec "$NS" ip link show ppp0
+wait_for_gone 'server PPP interface shutdown' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
 start_server
 start_client
 wait_for 'post-restart PPTP tunnel traffic' ip netns exec "$NS" ping -c 1 -W 1 10.68.0.1
@@ -118,12 +154,15 @@ ip netns exec "$NS" sh -c 'dd if=/dev/zero bs=64K count=1024 2>/dev/null | nc -N
 sender_pid="$!"
 PIDS+=("$sender_pid")
 wait "$watch_pid"
+forget_pid "$watch_pid"
 if ip netns exec "$NS" ip link show ppp0 >/dev/null 2>&1; then
   echo 'PPTP quota-exhausted PPP session remained connected' >&2
   exit 1
 fi
 wait "$sender_pid" || true
+forget_pid "$sender_pid"
 wait "$listener_pid" || true
+forget_pid "$listener_pid"
 cat "$ROOT/quota-watch.log"
 stage ack "$ROOT/pptp-state"
 received="$(wc -c <"$ROOT/quota-received")"
