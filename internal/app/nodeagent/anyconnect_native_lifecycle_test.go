@@ -3,11 +3,44 @@ package nodeagent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
+
+func anyConnectNativePID() (string, error) {
+	if pid := strings.TrimSpace(os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_PID")); pid != "" {
+		return pid, nil
+	}
+	path := strings.TrimSpace(os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_PID_FILE"))
+	if path == "" {
+		return "", fmt.Errorf("ocserv PID and PID file are missing")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read ocserv PID file: %w", err)
+	}
+	pid := strings.TrimSpace(string(raw))
+	if pid == "" {
+		return "", fmt.Errorf("ocserv PID file is empty")
+	}
+	return pid, nil
+}
+
+func TestAnyConnectNativePIDFromFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ocserv.pid")
+	if err := os.WriteFile(path, []byte("4321\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ANTIMAGE_ANYCONNECT_NATIVE_PID", "")
+	t.Setenv("ANTIMAGE_ANYCONNECT_NATIVE_PID_FILE", path)
+	if pid, err := anyConnectNativePID(); err != nil || pid != "4321" {
+		t.Fatalf("ocserv PID from file = %q, %v", pid, err)
+	}
+}
 
 // TestAnyConnectNativeAccountingStage reads live sessions from the actual
 // ocserv control socket and exercises the durable collector across reload.
@@ -16,7 +49,10 @@ func TestAnyConnectNativeAccountingStage(t *testing.T) {
 	if root == "" {
 		t.Skip("requires isolated native ocserv harness")
 	}
-	pid := os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_PID")
+	pid, err := anyConnectNativePID()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := strconv.Atoi(pid); err != nil {
 		t.Fatalf("invalid ocserv PID: %v", err)
 	}

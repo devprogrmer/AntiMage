@@ -53,7 +53,7 @@ EOF
 if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   cat >"$ROOT/quota-admission.sh" <<EOF
 #!/bin/sh
-exec env ANTIMAGE_ANYCONNECT_ACTION=admission ANTIMAGE_ANYCONNECT_NATIVE_ROOT="$ROOT" ANTIMAGE_ANYCONNECT_NATIVE_STATE="$ROOT/anyconnect-accounting" ANTIMAGE_ANYCONNECT_NATIVE_PID="$(cat '$ROOT/ocserv.pid')" "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectNativeAccountingStage$' -test.v
+exec env ANTIMAGE_ANYCONNECT_ACTION=admission ANTIMAGE_ANYCONNECT_NATIVE_ROOT="$ROOT" ANTIMAGE_ANYCONNECT_NATIVE_STATE="$ROOT/anyconnect-accounting" ANTIMAGE_ANYCONNECT_NATIVE_PID_FILE="$ROOT/ocserv.pid" "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectNativeAccountingStage$' -test.v
 EOF
   chmod 700 "$ROOT/quota-admission.sh"
   printf '\nconnect-script = %s\n' "$ROOT/quota-admission.sh" >>"$ROOT/ocserv.conf"
