@@ -129,7 +129,7 @@ jobs:
         with:
           name: native-${{ matrix.protocol }}-evidence-${{ github.run_id }}
           path: |
-            ${{ runner.temp }}/antimage-native-*-failure/**
+            ${{ runner.temp }}/antimage-*-failure/**
             ${{ runner.temp }}/antimage-ikev2-*/**
             ${{ runner.temp }}/native-runner-state.txt
           if-no-files-found: ignore
