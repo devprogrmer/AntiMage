@@ -110,9 +110,15 @@ unset 'PIDS[1]'
 ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --servercert '$SERVERCERT' --no-dtls --script '$VPNSCRIPT' --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect-reconnect.log" 2>&1 &
 PIDS+=("$!")
 if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
-  for _ in $(seq 1 80); do grep -q 'AUTH_FAILED' "$ROOT/openconnect-reconnect.log" && break; sleep .25; done
-  if ! grep -q 'AUTH_FAILED' "$ROOT/openconnect-reconnect.log"; then
-    echo 'AnyConnect client reconnected after the persisted offline quota was exhausted' >&2
+  wait_for 'AnyConnect local admission hook quota denial' grep -Fq \
+    'anyconnect admission denied: data limit reached' "$ROOT/ocserv.log"
+  for _ in $(seq 1 80); do grep -Fq 'HTTP/1.1 401 Cookie is not acceptable' "$ROOT/openconnect-reconnect.log" && break; sleep .25; done
+  if ! grep -Fq 'HTTP/1.1 401 Cookie is not acceptable' "$ROOT/openconnect-reconnect.log"; then
+    echo 'AnyConnect reconnect did not receive the ocserv quota admission rejection' >&2
+    exit 1
+  fi
+  if grep -Eq 'HTTP/1.1 200 CONNECTED|Configured as ' "$ROOT/openconnect-reconnect.log"; then
+    echo 'AnyConnect quota-denied reconnect was accepted and configured a tunnel' >&2
     exit 1
   fi
   if ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1; then
