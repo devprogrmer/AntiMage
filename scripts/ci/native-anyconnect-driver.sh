@@ -35,6 +35,15 @@ cleanup() {
   rm -rf "$ROOT"
 }
 trap cleanup EXIT
+wait_for() {
+  local name="$1"; shift
+  for _ in $(seq 1 100); do
+    "$@" >/dev/null 2>&1 && return 0
+    sleep .1
+  done
+  echo "timeout waiting for $name" >&2
+  return 1
+}
 mkdir -p "$ROOT"
 ip netns add "$NS"
 ip link add aoc-vh type veth peer name aoc-vn

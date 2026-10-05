@@ -111,6 +111,11 @@ jobs:
         if: failure()
         shell: bash
         run: |
+          for evidence in "$RUNNER_TEMP"/antimage-*-failure "$RUNNER_TEMP"/antimage-ikev2-*; do
+            [ -e "$evidence" ] || continue
+            sudo chown -R "$(id -u):$(id -g)" "$evidence"
+            sudo chmod -R u+rwX "$evidence"
+          done
           {
             date -u
             sudo ip -details addr show || true
