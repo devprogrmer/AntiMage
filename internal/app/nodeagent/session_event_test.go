@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -100,11 +102,15 @@ func TestDispatchNativeSessionEventsUsesIndependentTimeouts(t *testing.T) {
 
 	first := <-done
 	second := <-done
-	if first == nil {
-		t.Fatal("first event should time out")
+	if first != nil {
+		t.Fatalf("offline callback should be queued: %v", first)
 	}
 	if second != nil {
 		t.Fatalf("second event inherited the first timeout: %v", second)
+	}
+	queued, err := os.ReadDir(node.nativeSessionOutboxDir())
+	if err != nil || len(queued) != 0 {
+		t.Fatalf("recovered callback outbox not drained: %v %v", queued, err)
 	}
 }
 
@@ -156,5 +162,53 @@ func TestSendNativeSessionEventAllowsMissingCallback(t *testing.T) {
 
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestNativeSessionOutboxSurvivesPanelOutageAndReplaysInOrder(t *testing.T) {
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := probe.Addr().String()
+	if err := probe.Close(); err != nil {
+		t.Fatal(err)
+	}
+	node := New(Config{DataDir: t.TempDir()})
+	callback := nativeRuntimeSessionCallback{URL: "http://" + address, Token: "test-token", NodeID: 7}
+	start := nativeSessionEvent{UserID: 42, Protocol: "openvpn", InboundTag: "native", SessionID: "offline-session", Event: "start"}
+	if err := node.sendNativeSessionEventOfflineSafe(context.Background(), callback, start); err != nil {
+		t.Fatal(err)
+	}
+	queued, err := os.ReadDir(node.nativeSessionOutboxDir())
+	if err != nil || len(queued) != 1 {
+		t.Fatalf("offline start not durably queued: %v %v", queued, err)
+	}
+	dataDir := node.cfg.DataDir
+	var received []nativeSessionEvent
+	panel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var event nativeSessionEvent
+		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+			t.Error(err)
+			return
+		}
+		received = append(received, event)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer panel.Close()
+	callback.URL = panel.URL
+	stop := start
+	stop.Event, stop.SessionID = "stop", "offline-session"
+	// The node agent process can restart while the panel is still down.
+	node = New(Config{DataDir: dataDir})
+	if err := node.sendNativeSessionEventOfflineSafe(context.Background(), callback, stop); err != nil {
+		t.Fatal(err)
+	}
+	if len(received) != 2 || received[0].Event != "start" || received[1].Event != "stop" {
+		t.Fatalf("queued events replayed out of order: %#v", received)
+	}
+	queued, err = os.ReadDir(node.nativeSessionOutboxDir())
+	if err != nil || len(queued) != 0 {
+		t.Fatalf("delivered events were not pruned: %v %v", queued, err)
 	}
 }

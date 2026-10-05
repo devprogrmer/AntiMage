@@ -50,11 +50,12 @@ wait_for() {
 }
 
 wireguard_native_stage() {
-  local action="$1" state="$2"
+  local action="$1" state="$2" quota_bytes="${3:-1048576}"
   [ -n "${ANTIMAGE_WIREGUARD_TEST_BINARY:-}" ] || return 0
   env ANTIMAGE_WIREGUARD_NATIVE_STATE="$state" \
     ANTIMAGE_WIREGUARD_NATIVE_INTERFACE=wg-native \
     ANTIMAGE_WIREGUARD_NATIVE_PEER="$client_pub" \
+    ANTIMAGE_WIREGUARD_NATIVE_QUOTA_BYTES="$quota_bytes" \
     ANTIMAGE_WIREGUARD_ACTION="$action" \
     "$ANTIMAGE_WIREGUARD_TEST_BINARY" -test.run='^TestWireGuardNativeAccountingStage$' -test.v
 }
@@ -62,6 +63,7 @@ wireguard_native_stage() {
 run_wireguard() {
   echo '=== WireGuard native handshake/traffic/restart ==='
   local server_priv client_priv server_pub client_pub
+  local quota_bytes="${ANTIMAGE_WIREGUARD_QUOTA_BYTES:-$((50 * 1024 * 1024))}"
   server_priv="$(wg genkey)"; client_priv="$(wg genkey)"
   server_pub="$(printf '%s' "$server_priv" | wg pubkey)"
   client_pub="$(printf '%s' "$client_priv" | wg pubkey)"
@@ -95,24 +97,61 @@ run_wireguard() {
   wg set wg-native listen-port 51820 private-key <(printf '%s\n' "$server_priv") peer "$client_pub" allowed-ips 10.200.0.2/32
   ip link set wg-native up
   wait_for 'WireGuard post-restart handshake' ip netns exec "$NS" ping -c 1 -W 1 10.200.0.1
+  echo 'WireGuard server peers after interface restart:'
+  wg show wg-native peers
   wireguard_native_stage collect "$ROOT/wireguard-accounting"
+  echo 'WireGuard server peers after native collect:'
+  wg show wg-native peers
   wireguard_native_stage ack "$ROOT/wireguard-accounting"
 
-  timeout 15 nc -l -p 19091 >/dev/null 2>&1 &
+  echo 'WireGuard server peer state after ACK:'
+  wg show wg-native
+  echo 'WireGuard client peer state after ACK:'
+  ip netns exec "$NS" wg show wg-native
+  echo 'WireGuard client route after ACK:'
+  ip netns exec "$NS" ip route get 10.200.0.1
+  wait_for 'WireGuard post-ACK peer traffic' ip netns exec "$NS" ping -c 1 -W 1 10.200.0.1
+  echo 'WireGuard peer configuration immediately before quota:'
+  wg show wg-native peers
+
+  timeout 120 nc -l -p 19091 >"$ROOT/wireguard-quota-received" 2>&1 &
   local quota_listener_pid=$!
   PIDS+=("$quota_listener_pid")
   wait_for 'WireGuard quota receiver' sh -c 'ss -lnt "( sport = :19091 )" | grep -q 19091'
-  ip netns exec "$NS" sh -c 'dd if=/dev/zero bs=1M count=2 2>/dev/null | nc -N -w 5 10.200.0.1 19091' >"$ROOT/wireguard-quota-sender.log" 2>&1 &
+  # Shape the encrypted client transport so the real 50 MiB quota worker has
+  # repeated 100 ms enforcement opportunities instead of a single bulk sample.
+  ip netns exec "$NS" tc qdisc replace dev "$VETH_NS" root tbf rate 12mbit burst 32kb latency 400ms
+  wireguard_native_stage quota-watch "$ROOT/wireguard-quota" "$quota_bytes" >"$ROOT/wireguard-quota-watch.log" 2>&1 &
+  local quota_watch_pid=$!
+  PIDS+=("$quota_watch_pid")
+  sleep .2
+  ip netns exec "$NS" sh -c 'dd if=/dev/zero bs=64K count=1024 2>/dev/null | nc -N -w 5 10.200.0.1 19091' >"$ROOT/wireguard-quota-sender.log" 2>&1 &
   local quota_sender_pid=$!
   PIDS+=("$quota_sender_pid")
+  wait "$quota_watch_pid"
+  if ip netns exec "$NS" ping -c 1 -W 1 10.200.0.1 >/dev/null 2>&1; then
+    echo 'WireGuard exhausted peer reconnected after offline quota removal' >&2
+    exit 1
+  fi
+  if wg show wg-native peers | grep -Fq "$client_pub"; then
+    echo 'WireGuard quota peer unexpectedly returned after reconnect attempt' >&2
+    exit 1
+  fi
   wait "$quota_sender_pid" || true
   wait "$quota_listener_pid" || true
-  wireguard_native_stage quota "$ROOT/wireguard-quota"
-  echo 'WireGuard: handshake, traffic, and interface restart passed'
+  cat "$ROOT/wireguard-quota-watch.log"
+  local quota_received
+  quota_received="$(wc -c <"$ROOT/wireguard-quota-received")"
+  if [ "$quota_received" -ge "$((64 * 1024 * 1024))" ] || [ "$quota_received" -lt "$((quota_bytes * 4 / 5))" ]; then
+    echo "WireGuard quota traffic outside expected enforcement window: ${quota_received} bytes" >&2
+    exit 1
+  fi
+  echo "WireGuard: quota=${quota_bytes} bytes stopped the peer; delivered payload=${quota_received} bytes"
 }
 
 run_openvpn() {
   echo '=== OpenVPN native tun/traffic/restart ==='
+  local quota_bytes="${ANTIMAGE_OPENVPN_QUOTA_BYTES:-$((50 * 1024 * 1024))}"
   local ca_key="$ROOT/ca.key" ca_cert="$ROOT/ca.crt"
   local server_key="$ROOT/server.key" server_csr="$ROOT/server.csr" server_cert="$ROOT/server.crt"
   local client_key="$ROOT/client.key" client_csr="$ROOT/client.csr" client_cert="$ROOT/client.crt"
@@ -130,6 +169,11 @@ run_openvpn() {
   openssl x509 -req -days 1 -in "$client_csr" -CA "$ca_cert" -CAkey "$ca_key" \
     -CAcreateserial -extfile <(printf 'keyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=clientAuth\n') \
     -out "$client_cert" >/dev/null 2>&1
+  cat >"$ROOT/openvpn-connect.sh" <<EOF
+#!/bin/sh
+exec env ANTIMAGE_OPENVPN_ACTION=admission ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" ANTIMAGE_OPENVPN_NATIVE_PID="\${daemon_pid}" "${ANTIMAGE_OPENVPN_TEST_BINARY:-/bin/true}" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v
+EOF
+  chmod 700 "$ROOT/openvpn-connect.sh"
   cat >"$ROOT/server.conf" <<EOF
 tls-server
 ca $ca_cert
@@ -145,6 +189,8 @@ persist-tun
 status $ROOT/openvpn.status 1
 status-version 3
 management 127.0.0.1 11941
+script-security 2
+client-connect $ROOT/openvpn-connect.sh
 data-ciphers AES-256-GCM
 ping 1
 ping-restart 3
@@ -180,10 +226,6 @@ EOF
     env ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" \
       ANTIMAGE_OPENVPN_NATIVE_PID="$server_pid" \
       "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v
-    env ANTIMAGE_OPENVPN_ACTION=quota ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" \
-      ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" \
-      ANTIMAGE_OPENVPN_NATIVE_PID="$server_pid" \
-      "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v
   fi
   kill "$server_pid" 2>/dev/null || true
   wait "$server_pid" 2>/dev/null || true
@@ -198,9 +240,45 @@ EOF
     env ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" \
       ANTIMAGE_OPENVPN_NATIVE_PID="$server_pid" \
       "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v
+    timeout 120 nc -l -p 19092 >"$ROOT/openvpn-quota-received" 2>&1 &
+    local quota_listener_pid=$!
+    PIDS+=("$quota_listener_pid")
+    wait_for 'OpenVPN quota receiver' sh -c 'ss -lnt "( sport = :19092 )" | grep -q 19092'
+    ip netns exec "$NS" tc qdisc replace dev "$VETH_NS" root tbf rate 12mbit burst 32kb latency 400ms
+    env ANTIMAGE_OPENVPN_ACTION=quota-watch ANTIMAGE_OPENVPN_QUOTA_BYTES="$quota_bytes" \
+      ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" \
+      ANTIMAGE_OPENVPN_NATIVE_PID="$server_pid" \
+      "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v >"$ROOT/openvpn-quota-watch.log" 2>&1 &
+    local quota_watch_pid=$!
+    PIDS+=("$quota_watch_pid")
+    sleep .2
+    ip netns exec "$NS" sh -c 'dd if=/dev/zero bs=64K count=1024 2>/dev/null | nc -N -w 5 10.210.0.1 19092' >"$ROOT/openvpn-quota-sender.log" 2>&1 &
+    local quota_sender_pid=$!
+    PIDS+=("$quota_sender_pid")
+    wait "$quota_watch_pid"
+    grep -Fq 'OpenVPN admission denied: data limit reached' "$ROOT/openvpn-server-restart.log"
+    wait "$quota_sender_pid" || true
+    wait "$quota_listener_pid" || true
+    cat "$ROOT/openvpn-quota-watch.log"
+    local quota_received
+    quota_received="$(wc -c <"$ROOT/openvpn-quota-received")"
+    if [ "$quota_received" -ge "$((64 * 1024 * 1024))" ] || [ "$quota_received" -lt "$((quota_bytes * 4 / 5))" ]; then
+      echo "OpenVPN quota traffic outside expected enforcement window: ${quota_received} bytes" >&2
+      exit 1
+    fi
+    echo "OpenVPN: quota=${quota_bytes} bytes stopped the native/reconnected session; delivered payload=${quota_received} bytes"
   fi
   echo 'OpenVPN: tun session, traffic, and server restart passed'
 }
 
 run_wireguard
 run_openvpn
+
+if [ -n "${ANTIMAGE_VPN_PANEL_TEST_BINARY:-}" ]; then
+  # Copy only real collector state, preserving helpers and all durable batches.
+  mkdir -p "$ROOT/combined-node"
+  cp -a "$ROOT/wireguard-quota/wireguard" "$ROOT/combined-node/"
+  cp -a "$ROOT/openvpn-accounting/openvpn" "$ROOT/combined-node/"
+  env ANTIMAGE_VPN_NATIVE_STATE="$ROOT/combined-node" \
+    "$ANTIMAGE_VPN_PANEL_TEST_BINARY" -test.run='^TestNativeVPNCombinedPanelDBLostACK$' -test.v
+fi

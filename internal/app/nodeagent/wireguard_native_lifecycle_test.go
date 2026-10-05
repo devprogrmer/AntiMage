@@ -7,8 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	"google.golang.org/protobuf/proto"
@@ -26,6 +28,11 @@ func TestWireGuardNativeAccountingStage(t *testing.T) {
 	if !wireGuardInterfaceNamePattern.MatchString(iface) {
 		t.Fatalf("invalid native interface %q", iface)
 	}
+	action := strings.ToLower(strings.TrimSpace(os.Getenv("ANTIMAGE_WIREGUARD_ACTION")))
+	var quotaLimit int64
+	if action == "quota" || action == "quota-watch" {
+		quotaLimit = wireGuardNativeQuotaLimit(t)
+	}
 	root := filepath.Join(dir, "wireguard", "inbounds", "native")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		t.Fatal(err)
@@ -36,7 +43,7 @@ func TestWireGuardNativeAccountingStage(t *testing.T) {
 		Peers:             map[string]int64{pubkey: 7},
 		AccountingEnabled: &accounting,
 		Policies: map[string]nativeSessionUserPolicy{
-			pubkey: {Status: "active", DataLimit: 1 << 20},
+			pubkey: {Status: "active", DataLimit: quotaLimit},
 		},
 	}
 	raw, err := json.Marshal(cfg)
@@ -48,7 +55,6 @@ func TestWireGuardNativeAccountingStage(t *testing.T) {
 	}
 
 	s := New(Config{DataDir: dir})
-	action := strings.ToLower(strings.TrimSpace(os.Getenv("ANTIMAGE_WIREGUARD_ACTION")))
 	switch action {
 	case "quota":
 		if err := s.wireGuardOfflineTick(context.Background(), true, true); err != nil {
@@ -67,6 +73,58 @@ func TestWireGuardNativeAccountingStage(t *testing.T) {
 			t.Fatalf("offline quota did not remove native peer; counters=%s", counters)
 		}
 		t.Log("production WireGuard offline quota removed the over-limit native peer after checkpoint")
+	case "quota-watch":
+		// Exercise the same serial scheduler used by the node agent while the
+		// isolated kernel peer sends traffic. The test exits only after the
+		// production quota worker removes that peer.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		initial, err := exec.Command("wg", "show", iface, "peers").Output()
+		if err != nil || !strings.Contains(string(initial), pubkey) {
+			t.Fatalf("quota watch requires configured native peer: peers=%s err=%v", initial, err)
+		}
+		t.Logf("watching configured peer %s with limit=%d", pubkey, wireGuardNativeQuotaLimit(t))
+		workerDone := make(chan struct{})
+		go func() {
+			defer close(workerDone)
+			s.runLocalAccountingWorker(ctx, "wireguard", 100*time.Millisecond, time.Second,
+				func(ctx context.Context) error { return s.wireGuardOfflineTick(ctx, false, true) },
+				func(ctx context.Context) error { return s.wireGuardOfflineTick(ctx, true, false) })
+		}()
+		deadline := time.Now().Add(2 * time.Minute)
+		for time.Now().Before(deadline) {
+			peers, err := exec.Command("wg", "show", iface, "peers").Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(peers), pubkey) {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		peers, err := exec.Command("wg", "show", iface, "peers").Output()
+		if err != nil || strings.Contains(string(peers), pubkey) {
+			t.Fatalf("scheduler did not remove the peer at the quota boundary: peers=%s err=%v", peers, err)
+		}
+		cancel()
+		<-workerDone
+		batch, err := s.collectWireGuardUserUsage(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var total uint64
+		for _, sample := range batch.GetStats() {
+			if sample.GetUid() == "wireguard:7" {
+				total = sample.GetValue()
+			}
+		}
+		limit := uint64(wireGuardNativeQuotaLimit(t))
+		if total < limit || total-limit >= 1<<20 {
+			state, _ := os.ReadFile(s.wireGuardUsageStatePath())
+			counters, _ := wireGuardDumpInterface(context.Background(), iface)
+			t.Fatalf("native 50 MiB quota overshoot outside 1 MiB bound: total=%d limit=%d batch=%v peer_dump=%s state=%s", total, limit, batch, counters, state)
+		}
+		t.Logf("production quota scheduler removed real peer at raw=%d bytes, limit=%d, overshoot=%d bytes", total, limit, total-limit)
 	case "ack":
 		s.wireGuardUsageMu.Lock()
 		if err := s.ensureWireGuardUsageStateLoadedLocked(); err != nil {
@@ -119,6 +177,18 @@ func TestWireGuardNativeAccountingStage(t *testing.T) {
 	default:
 		t.Fatal(fmt.Sprintf("unknown native WireGuard action %q", action))
 	}
+}
+
+func wireGuardNativeQuotaLimit(t *testing.T) int64 {
+	t.Helper()
+	if raw := strings.TrimSpace(os.Getenv("ANTIMAGE_WIREGUARD_NATIVE_QUOTA_BYTES")); raw != "" {
+		limit, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || limit <= 0 {
+			t.Fatalf("invalid native WireGuard quota %q", raw)
+		}
+		return limit
+	}
+	return 1 << 20
 }
 
 func wireGuardNativeUsageValue(batch *nodev1.UserUsageBatch) uint64 {

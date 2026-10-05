@@ -141,7 +141,7 @@ func (s *Server) dispatchNativeSessionEvents(
 				timeout = 5 * time.Second
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			err := s.sendNativeSessionEvent(ctx, callback, event)
+			err := s.sendNativeSessionEventOfflineSafe(ctx, callback, event)
 			cancel()
 			if onResult != nil {
 				onResult(event, err)

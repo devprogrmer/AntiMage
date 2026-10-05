@@ -56,9 +56,12 @@ jobs:
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           sudo env ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_VPN_PANEL_TEST_BINARY="$nodecontroller_test" \
             bash scripts/ci/native-vpn-drivers.sh
 
       - name: Run real AnyConnect and ocserv driver

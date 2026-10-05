@@ -20,6 +20,16 @@ func TestAnyConnectNativeAccountingStage(t *testing.T) {
 	if _, err := strconv.Atoi(pid); err != nil {
 		t.Fatalf("invalid ocserv PID: %v", err)
 	}
+	if os.Getenv("ANTIMAGE_ANYCONNECT_ACTION") == "admission" {
+		configPath := filepath.Join(os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE"), "anyconnect", "native", "session-helper.json")
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			return
+		}
+		if err := RunNativeSessionEventHelper([]string{configPath, "start"}); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	dir := filepath.Join(os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE"), "anyconnect", "native")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)

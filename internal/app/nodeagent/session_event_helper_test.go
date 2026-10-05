@@ -6,8 +6,45 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestOpenVPNAdmissionRejectsDurableOfflineQuota(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "openvpn", "native")
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(root, "session-helper.json")
+	if err := offlineDurableJSON(configPath, nativeSessionHelperConfig{
+		Protocol: "openvpn", InboundTag: "native", Users: map[string]int64{"alice": 42},
+		Policies: map[string]nativeSessionUserPolicy{"alice": {Status: "active", DataLimit: 100, UsageCoefficient: 2}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("common_name", "alice")
+	for _, used := range []uint64{49, 50, 51} {
+		s := New(Config{DataDir: dir})
+		s.openVPNUsageBaseline = map[string]uint64{offlineAccountingTotalKey(42, "native"): used}
+		if err := s.persistOpenVPNUsageStateLocked(); err != nil {
+			t.Fatal(err)
+		}
+		err := RunNativeSessionEventHelper([]string{configPath, "start"})
+		if used < 50 && err != nil {
+			t.Fatalf("below quota: %v", err)
+		}
+		if used >= 50 && (err == nil || !strings.Contains(err.Error(), "data limit reached")) {
+			t.Fatalf("used=%d admission=%v", used, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "openvpn", "usage-state.json"), []byte("broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunNativeSessionEventHelper([]string{configPath, "start"}); err == nil {
+		t.Fatal("corrupt accounting admitted client")
+	}
+}
 
 func TestRunNativeSessionEventHelperStartStop(t *testing.T) {
 	var events []nativeSessionEvent
@@ -35,6 +72,7 @@ func TestRunNativeSessionEventHelperStartStop(t *testing.T) {
 			NodeID: 7,
 		},
 		InboundTag: "openvpn-main",
+		Policies:   map[string]nativeSessionUserPolicy{"alice": {Status: "active"}},
 		Users: map[string]int64{
 			"alice": 42,
 		},

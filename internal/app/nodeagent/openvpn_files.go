@@ -272,7 +272,7 @@ END {
 		_ = os.Remove(files.StatusFile)
 	}
 
-	if strings.TrimSpace(sessionCallback.URL) != "" {
+	if strings.TrimSpace(sessionCallback.URL) != "" || openVPNBoolSetting(inbound.Settings, "accounting_enabled", true) {
 		executable, err := os.Executable()
 		if err != nil {
 			return "", fmt.Errorf(

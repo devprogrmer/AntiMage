@@ -83,19 +83,24 @@ Passing DB/identity/policy fixtures separately is not enough.
 | Protocol | Offline Accounting | Runtime Restart | Node Restart | Offline Quota | Lost ACK Retry | Reconnect Reconciliation | Coefficient Match |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Xray | Partial | Partial | Partial | Not Technically Reliable | Partial | Partial | Partial |
-| WireGuard | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Partial | Partial | Fully Implemented |
+| WireGuard | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented |
 | AmneziaWG | Partial | Partial | Partial | Partial | Partial | Partial | Fully Implemented |
-| OpenVPN | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Partial | Partial | Fully Implemented |
+| OpenVPN | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented |
 | L2TP | Partial | Partial | Partial | Partial | Partial | Partial | Fully Implemented |
 | PPTP | Partial | Partial | Partial | Partial | Partial | Partial | Fully Implemented |
 | IKEv2 | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented |
 | AnyConnect | Fully Implemented | Partial | Fully Implemented | Fully Implemented | Partial | Partial | Fully Implemented |
 
-`Fully Implemented` in an individual column means that column's stated behavior
-has direct regression or native evidence. A protocol is complete only when its
-whole row is fully implemented and the complete native sequence passes. IKEv2
-meets that criterion; the other rows still have partial lifecycle or delivery
-stages.
+The native WireGuard/OpenVPN run now transfers real 50 MiB quota traffic,
+restarts each runtime, checkpoints and reloads durable state, rejects an
+exhausted OpenVPN reconnect, then passes the actual pending batches through the
+combined collector and SQLite panel repository. The panel intentionally applies
+the same batches twice to model a lost ACK and verifies exact-once user, service,
+and admin totals before ACK pruning. The observed combined native total was
+106,264,178 raw bytes and 318,792,534 billed bytes at coefficients 1.5 and 2.
+
+Other protocol rows remain `Partial` until the same native lifecycle and panel
+delivery sequence has direct evidence for those runtimes.
 
 ## Identity and Quota Evidence
 

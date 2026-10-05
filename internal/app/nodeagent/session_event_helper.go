@@ -153,6 +153,23 @@ func RunNativeSessionEventHelper(args []string) error {
 	trustedPort := firstNonEmptyEnv("trusted_port")
 
 	policy := cfg.Policies[commonName]
+	// A reconnect must consult the checkpoint retained before client-kill.
+	// Static credentials alone cannot represent traffic accrued offline.
+	if eventName == "start" && (protocol == "ov" || protocol == "openvpn" || protocol == "anyconnect") {
+		dataDir := filepath.Dir(filepath.Dir(filepath.Dir(configPath)))
+		node := New(Config{DataDir: dataDir})
+		accountingProtocol := "openvpn"
+		if protocol == "anyconnect" {
+			accountingProtocol = "anyconnect"
+		}
+		raw, err := node.durablePolicyRaw(accountingProtocol, userID, cfg.InboundTag, policy.ReflectedUsageBatchID)
+		if err != nil {
+			return fmt.Errorf("%s admission accounting: %w", accountingProtocol, err)
+		}
+		if allowed, reason := nativeSessionUserPolicyAllowedWithLiveUsage(policy, raw, time.Now()); !allowed {
+			return fmt.Errorf("%s admission denied: %s", accountingProtocol, reason)
+		}
+	}
 
 	stateDir := strings.TrimSpace(cfg.StateDir)
 	if stateDir == "" {
@@ -292,13 +309,13 @@ func RunNativeSessionEventHelper(args []string) error {
 		}
 	}
 
-	node := &Server{}
+	node := New(Config{DataDir: filepath.Dir(filepath.Dir(filepath.Dir(configPath)))})
 
 	if strings.TrimSpace(cfg.Callback.URL) == "" {
 		return nil
 	}
 
-	err = node.sendNativeSessionEvent(
+	err = node.sendNativeSessionEventOfflineSafe(
 		context.Background(),
 		cfg.Callback,
 		nativeSessionEvent{

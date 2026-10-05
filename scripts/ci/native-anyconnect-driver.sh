@@ -50,6 +50,14 @@ ipv4-netmask = 255.255.255.0
 dns = 1.1.1.1
 max-clients = 4
 EOF
+if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
+  cat >"$ROOT/quota-admission.sh" <<EOF
+#!/bin/sh
+exec env ANTIMAGE_ANYCONNECT_ACTION=admission ANTIMAGE_ANYCONNECT_NATIVE_ROOT="$ROOT" ANTIMAGE_ANYCONNECT_NATIVE_STATE="$ROOT/anyconnect-accounting" ANTIMAGE_ANYCONNECT_NATIVE_PID="\${ocserv_pid}" "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectNativeAccountingStage$' -test.v
+EOF
+  chmod 700 "$ROOT/quota-admission.sh"
+  printf '\nconnect-script = %s\n' "$ROOT/quota-admission.sh" >>"$ROOT/ocserv.conf"
+fi
 ocserv --foreground --config="$ROOT/ocserv.conf" >"$ROOT/ocserv.log" 2>&1 &
 ocserv_pid=$!
 PIDS+=("$ocserv_pid")
@@ -83,8 +91,20 @@ wait "$client_pid" 2>/dev/null || true
 unset 'PIDS[1]'
 ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --servercert '$SERVERCERT' --no-dtls --script '$VPNSCRIPT' --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect-reconnect.log" 2>&1 &
 PIDS+=("$!")
-for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1 && break; sleep .25; done
-ip netns exec "$NS" ip link show vpn-native >/dev/null
-for _ in $(seq 1 80); do ip netns exec "$NS" ip -4 addr show dev vpn-native | grep -q '192.0.2.' && break; sleep .25; done
-ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
-echo 'AnyConnect/ocserv: real authenticated session, tun creation, and reconnect passed'
+if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
+  for _ in $(seq 1 80); do grep -q 'AUTH_FAILED' "$ROOT/openconnect-reconnect.log" && break; sleep .25; done
+  if ! grep -q 'AUTH_FAILED' "$ROOT/openconnect-reconnect.log"; then
+    echo 'AnyConnect client reconnected after the persisted offline quota was exhausted' >&2
+    exit 1
+  fi
+  if ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1; then
+    echo 'AnyConnect quota-denied reconnect still created a tunnel interface' >&2
+    exit 1
+  fi
+else
+  for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1 && break; sleep .25; done
+  ip netns exec "$NS" ip link show vpn-native >/dev/null
+  for _ in $(seq 1 80); do ip netns exec "$NS" ip -4 addr show dev vpn-native | grep -q '192.0.2.' && break; sleep .25; done
+  ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
+fi
+echo 'AnyConnect/ocserv: real authenticated session, quota cutoff, and reconnect policy passed'

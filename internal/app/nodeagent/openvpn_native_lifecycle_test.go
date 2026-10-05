@@ -25,6 +25,17 @@ func TestOpenVPNNativeAccountingStage(t *testing.T) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
+	action := os.Getenv("ANTIMAGE_OPENVPN_ACTION")
+	if action == "admission" {
+		configPath := filepath.Join(dir, "session-helper.json")
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			return // The driver installs the quota policy after its initial traffic.
+		}
+		if err := RunNativeSessionEventHelper([]string{configPath, "start"}); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	cfg := openVPNUsageRuntimeConfig{
 		InboundTag: "native",
 		StatusFile: filepath.Join(root, "openvpn.status"),
@@ -37,18 +48,37 @@ func TestOpenVPNNativeAccountingStage(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "usage-helper.json"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if os.Getenv("ANTIMAGE_OPENVPN_ACTION") == "quota" {
-		statusBefore, err := os.ReadFile(cfg.StatusFile)
-		if err != nil {
-			t.Fatal(err)
+	if action == "quota" || action == "quota-watch" {
+		var clientsBefore []openVPNStatusClient
+		var statusErr error
+		deadline := time.Now().Add(20 * time.Second)
+		for time.Now().Before(deadline) {
+			statusBefore, err := os.ReadFile(cfg.StatusFile)
+			if err != nil {
+				statusErr = err
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+			clientsBefore, statusErr = parseOpenVPNStatusV3(string(statusBefore))
+			if statusErr == nil && len(clientsBefore) == 1 && clientsBefore[0].ClientID != "" {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
 		}
-		clientsBefore, err := parseOpenVPNStatusV3(string(statusBefore))
-		if err != nil || len(clientsBefore) != 1 || clientsBefore[0].ClientID == "" {
-			t.Fatalf("need one identified native client before quota: clients=%v err=%v", clientsBefore, err)
+		if statusErr != nil || len(clientsBefore) != 1 || clientsBefore[0].ClientID == "" {
+			t.Fatalf("need one identified native client before quota: clients=%v err=%v", clientsBefore, statusErr)
+		}
+		limit := int64(1)
+		if action == "quota-watch" {
+			var err error
+			limit, err = strconv.ParseInt(os.Getenv("ANTIMAGE_OPENVPN_QUOTA_BYTES"), 10, 64)
+			if err != nil || limit <= 0 {
+				t.Fatalf("invalid native OpenVPN quota: %d (%v)", limit, err)
+			}
 		}
 		helper, err := json.Marshal(nativeSessionHelperConfig{
 			InboundTag: "native", Protocol: "openvpn", Users: cfg.Users,
-			Policies:          map[string]nativeSessionUserPolicy{"antimage-native-client": {Status: "active", DataLimit: 1}},
+			Policies:          map[string]nativeSessionUserPolicy{"antimage-native-client": {Status: "active", DataLimit: limit}},
 			ManagementNetwork: "tcp", ManagementAddress: "127.0.0.1:11941",
 		})
 		if err != nil {
@@ -58,10 +88,72 @@ func TestOpenVPNNativeAccountingStage(t *testing.T) {
 			t.Fatal(err)
 		}
 		s := New(Config{DataDir: os.Getenv("ANTIMAGE_OPENVPN_NATIVE_STATE")})
+		if action == "quota-watch" {
+			identity, err := offlineProcessIdentity(pid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := offlineDurableJSON(filepath.Join(dir, "accounting-generation.json"), identity); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			workerDone := make(chan struct{})
+			go func() {
+				defer close(workerDone)
+				s.runLocalAccountingWorker(ctx, "openvpn", 100*time.Millisecond, time.Second,
+					s.checkpointOpenVPNOffline, s.quotaCheckOpenVPNOffline)
+			}()
+			deadline := time.Now().Add(3 * time.Minute)
+			disconnected := false
+			stableEmptySince := time.Time{}
+			for time.Now().Before(deadline) {
+				status, err := os.ReadFile(cfg.StatusFile)
+				if err != nil {
+					t.Fatal(err)
+				}
+				clients, err := parseOpenVPNStatusV3(string(status))
+				if err != nil {
+					t.Fatal(err)
+				}
+				present := false
+				for _, client := range clients {
+					if client.Username == "antimage-native-client" {
+						present = true
+					}
+				}
+				if !present {
+					disconnected = true
+					if stableEmptySince.IsZero() {
+						stableEmptySince = time.Now()
+					}
+					if time.Since(stableEmptySince) >= 5*time.Second {
+						break
+					}
+				} else {
+					stableEmptySince = time.Time{}
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+			if !disconnected || stableEmptySince.IsZero() || time.Since(stableEmptySince) < 5*time.Second {
+				t.Fatalf("native OpenVPN quota did not keep the client disconnected after reconnect attempts")
+			}
+			cancel()
+			<-workerDone
+			if _, err := s.collectOpenVPNUserUsage(context.Background(), nil); err != nil {
+				t.Fatal(err)
+			}
+			used := s.openVPNUsageBaseline[offlineAccountingTotalKey(7, "native")]
+			if used < uint64(limit) || used-uint64(limit) > 2<<20 {
+				t.Fatalf("native 50 MiB OpenVPN quota overshoot outside 2 MiB bound: used=%d limit=%d baseline=%#v", used, limit, s.openVPNUsageBaseline)
+			}
+			t.Logf("production OpenVPN quota worker stopped native/reconnected sessions at raw=%d bytes, limit=%d, overshoot=%d bytes", used, limit, used-uint64(limit))
+			return
+		}
 		if err := s.quotaCheckOpenVPNOffline(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		deadline := time.Now().Add(5 * time.Second)
+		deadline = time.Now().Add(5 * time.Second)
 		for time.Now().Before(deadline) {
 			status, err := os.ReadFile(cfg.StatusFile)
 			if err == nil {

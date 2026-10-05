@@ -268,7 +268,7 @@ func (s *Server) refreshOpenVPNSessions(
 			)
 			defer cancel()
 
-			err := s.sendNativeSessionEvent(
+			err := s.sendNativeSessionEventOfflineSafe(
 				ctx,
 				cfg.Callback,
 				nativeSessionEvent{
