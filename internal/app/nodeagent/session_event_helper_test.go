@@ -26,7 +26,17 @@ func TestOpenVPNAdmissionRejectsDurableOfflineQuota(t *testing.T) {
 	t.Setenv("common_name", "alice")
 	for _, used := range []uint64{49, 50, 51} {
 		s := New(Config{DataDir: dir})
-		s.openVPNUsageBaseline = map[string]uint64{offlineAccountingTotalKey(42, "native"): used}
+		key := offlineAccountingTotalKey(42, "native")
+		s.openVPNUsageBaseline = map[string]uint64{key: used}
+		// A lost panel ACK leaves the immutable batch pending while its raw
+		// snapshot is already retained in the durable baseline. Admission must
+		// count the raw bytes once: 49 is still below the 100 effective-byte
+		// quota at coefficient 2, while 50 and 51 must remain blocked.
+		s.openVPNUsagePending = &openVPNUsagePendingBatch{
+			BatchID:      "openvpn-native-pending",
+			Samples:      []openVPNUsageSample{{UserID: 42, InboundTag: "native", Value: used}},
+			NextBaseline: map[string]uint64{key: used},
+		}
 		if err := s.persistOpenVPNUsageStateLocked(); err != nil {
 			t.Fatal(err)
 		}

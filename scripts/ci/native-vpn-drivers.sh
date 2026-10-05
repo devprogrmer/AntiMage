@@ -256,7 +256,8 @@ EOF
     local quota_sender_pid=$!
     PIDS+=("$quota_sender_pid")
     wait "$quota_watch_pid"
-    grep -Fq 'OpenVPN admission denied: data limit reached' "$ROOT/openvpn-server-restart.log"
+    grep -Fq 'openvpn admission denied: data limit reached' "$ROOT/openvpn-server-restart.log"
+    grep -Fq 'AUTH: Received control message: AUTH_FAILED' "$ROOT/openvpn-client.log"
     wait "$quota_sender_pid" || true
     wait "$quota_listener_pid" || true
     cat "$ROOT/openvpn-quota-watch.log"
