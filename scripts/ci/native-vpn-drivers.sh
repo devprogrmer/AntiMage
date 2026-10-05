@@ -240,6 +240,8 @@ EOF
     env ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" \
       ANTIMAGE_OPENVPN_NATIVE_PID="$server_pid" \
       "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v
+    local successful_handshakes_before_quota
+    successful_handshakes_before_quota="$(grep -cF 'Initialization Sequence Completed' "$ROOT/openvpn-client.log" || true)"
     timeout 120 nc -l -p 19092 >"$ROOT/openvpn-quota-received" 2>&1 &
     local quota_listener_pid=$!
     PIDS+=("$quota_listener_pid")
@@ -256,8 +258,20 @@ EOF
     local quota_sender_pid=$!
     PIDS+=("$quota_sender_pid")
     wait "$quota_watch_pid"
-    grep -Fq 'openvpn admission denied: data limit reached' "$ROOT/openvpn-server-restart.log"
-    grep -Fq 'AUTH: Received control message: AUTH_FAILED' "$ROOT/openvpn-client.log"
+    wait_for 'OpenVPN quota reconnect denied by the local admission hook' grep -Fq \
+      'openvpn admission denied: data limit reached' "$ROOT/openvpn-server-restart.log"
+    wait_for 'OpenVPN native client-connect hook rejection' grep -Fq \
+      'WARNING: Failed running command (--client-connect)' "$ROOT/openvpn-server-restart.log"
+    local successful_handshakes
+    successful_handshakes="$(grep -cF 'Initialization Sequence Completed' "$ROOT/openvpn-client.log" || true)"
+    if [ "$successful_handshakes" -gt "$successful_handshakes_before_quota" ]; then
+      echo "OpenVPN established a new tunnel after quota rejection (before=${successful_handshakes_before_quota}, after=${successful_handshakes})" >&2
+      exit 1
+    fi
+    if ip netns exec "$NS" ping -c 1 -W 1 10.210.0.1 >/dev/null 2>&1; then
+      echo 'OpenVPN quota-denied reconnect still carried tunnel traffic' >&2
+      exit 1
+    fi
     wait "$quota_sender_pid" || true
     wait "$quota_listener_pid" || true
     cat "$ROOT/openvpn-quota-watch.log"
