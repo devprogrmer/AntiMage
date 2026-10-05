@@ -17,12 +17,12 @@ permissions:
 jobs:
   native-runtime:
     name: native-${{ matrix.protocol }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.protocol == 'pptp' && 'ubuntu-22.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        protocol: [xray, wireguard, openvpn, amneziawg, anyconnect, ikev2]
+        protocol: [xray, wireguard, amneziawg, openvpn, pptp, anyconnect, ikev2]
     env:
       CGO_ENABLED: '1'
     steps:
@@ -51,6 +51,10 @@ jobs:
           git -C "$source_dir" checkout 4cdc357c68b39a0d1e19417b7f03d604c1e1b4cf
           make -C "$source_dir/src"
           install -m 0755 "$source_dir/src/wg" "$RUNNER_TEMP/awg"
+
+      - name: Install native PPTP daemons
+        if: ${{ matrix.protocol == 'pptp' }}
+        run: sudo apt-get install -y --no-install-recommends pptpd pptp-linux
 
       - name: Run real Xray protocol E2E
         if: ${{ matrix.protocol == 'xray' }}
@@ -103,6 +107,20 @@ jobs:
           sudo env RUNNER_TEMP="$RUNNER_TEMP" ANTIMAGE_AWG_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_AWG_TOOL="$RUNNER_TEMP/awg" \
             bash scripts/ci/native-amneziawg-driver.sh
+
+      - name: Run native PPTP lifecycle
+        if: ${{ matrix.protocol == 'pptp' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          node_helper="$RUNNER_TEMP/antimage-node-helper"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go build -o "$node_helper" ./cmd/antimage_node
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_PPTP_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
+            bash scripts/ci/native-pptp-driver.sh
 
       - name: Run real AnyConnect and ocserv lifecycle
         if: ${{ matrix.protocol == 'anyconnect' }}

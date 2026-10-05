@@ -138,7 +138,7 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 	}
 
 	if needsSessionHelper {
-		executable, err := os.Executable()
+		executable, err := pppSessionHelperExecutable()
 		if err != nil {
 			return "", fmt.Errorf("pptp %q: resolve node executable: %w", tag, err)
 		}

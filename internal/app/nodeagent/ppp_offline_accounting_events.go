@@ -26,6 +26,7 @@ type pppOfflineSession struct {
 var pppOfflineReadIdentity = pppOfflineInterfaceIdentity
 var pppOfflineReadProcess = offlineProcessIdentity
 var pppOfflineReadCounter = readL2TPInterfaceCounter
+var pppSessionHelperExecutable = os.Executable
 
 func offlineDurableJSON(path string, value any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {

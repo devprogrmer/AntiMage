@@ -157,7 +157,7 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 	}
 
 	if needsSessionHelper {
-		executable, err := os.Executable()
+		executable, err := pppSessionHelperExecutable()
 		if err != nil {
 			return l2TPRuntimeFiles{}, fmt.Errorf("l2tp %q: resolve node executable: %w", tag, err)
 		}
