@@ -67,8 +67,8 @@ start_server() {
 
 start_client() {
   ip netns exec "$NS" pppd nodetach noauth name native-pptp password native-pptp-secret \
-    remotename antimage-pptp refuse-eap refuse-pap refuse-chap refuse-mschap \
-    require-mschap-v2 require-mppe-128 noipdefault nodefaultroute mtu 1200 mru 1200 \
+    refuse-eap refuse-pap refuse-chap refuse-mschap \
+    require-mppe-128 noipdefault nodefaultroute mtu 1200 mru 1200 \
     pty "$PPTP_CLIENT --nolaunchpppd 10.251.0.1 --loglevel 0" \
     >"$ROOT/pppd-client.log" 2>&1 &
   CLIENT_PID="$!"

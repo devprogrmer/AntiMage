@@ -55,7 +55,6 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 			t.Fatal(err)
 		}
 		secrets := renderPPTPCHAPSecrets(inbound.Users)
-		secrets += l2TPConfigQuote("antimage-pptp") + "\t" + l2TPConfigQuote("native-pptp") + "\t" + l2TPConfigQuote(user.Password) + "\t*\n"
 		if err := installPPTPSystemCHAPSecrets(secrets); err != nil {
 			t.Fatal(err)
 		}
