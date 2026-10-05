@@ -146,13 +146,8 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 			if err := json.Unmarshal(raw, &record); err != nil {
 				t.Fatal(err)
 			}
-			if record.UserID != user.UserID || record.PeerIP != user.IPv4Address {
+			if record.UserID != user.UserID || record.PeerIP != user.IPv4Address || record.InboundTag != inbound.Tag {
 				continue
-			}
-			if _, err := os.Stat(filepath.Join(root, "final", record.ID+".json")); err == nil {
-				continue
-			} else if !os.IsNotExist(err) {
-				t.Fatal(err)
 			}
 			activeInterface, activeRecord = record.Interface, record
 		}
@@ -162,12 +157,23 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 		finalized := false
 		finalDeadline := time.Now().Add(10 * time.Second)
 		for time.Now().Before(finalDeadline) {
-			_, statErr := os.Stat(filepath.Join(root, "final", activeRecord.ID+".json"))
-			if statErr == nil {
+			finalPath := filepath.Join(root, "final", activeRecord.ID+".json")
+			raw, readErr := os.ReadFile(finalPath)
+			if readErr == nil {
+				var finalRecord pppOfflineSession
+				if err := json.Unmarshal(raw, &finalRecord); err != nil {
+					t.Fatal(err)
+				}
+				if !finalRecord.Final || finalRecord.ID != activeRecord.ID || finalRecord.UserID != user.UserID || finalRecord.InboundTag != inbound.Tag || finalRecord.PeerIP != user.IPv4Address || finalRecord.Interface != activeRecord.Interface || finalRecord.Process != activeRecord.Process {
+					t.Fatalf("final PPTP session record does not match disconnected session: active=%+v final=%+v", activeRecord, finalRecord)
+				}
+				if finalRecord.Total < uint64(quotaLimit) || finalRecord.Total-uint64(quotaLimit) > 2<<20 {
+					t.Fatalf("final PPTP session counters outside quota bound: total=%d limit=%d", finalRecord.Total, quotaLimit)
+				}
 				finalized = true
 				break
-			} else if !os.IsNotExist(statErr) {
-				t.Fatal(statErr)
+			} else if !os.IsNotExist(readErr) {
+				t.Fatal(readErr)
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
