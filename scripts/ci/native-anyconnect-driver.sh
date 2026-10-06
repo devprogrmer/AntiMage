@@ -79,6 +79,45 @@ run_accounting() {
     ANTIMAGE_ANYCONNECT_NATIVE_PID="$ocserv_pid" \
     "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectNativeAccountingStage$' -test.v
 }
+transfer_tunnel_payload() {
+  local label="$1" server_pid received="$ROOT/$1.received"
+  python3 - "$received" <<'PY' &
+import socket, sys
+with socket.socket() as server:
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("0.0.0.0", 19090))
+    server.listen(1)
+    conn, _ = server.accept()
+    with conn, open(sys.argv[1], "wb") as output:
+        while True:
+            data = conn.recv(65536)
+            if not data:
+                break
+            output.write(data)
+PY
+  server_pid=$!
+  PIDS+=("$server_pid")
+  ip netns exec "$NS" python3 - <<'PY'
+import socket, time
+deadline = time.monotonic() + 8
+while True:
+    try:
+        conn = socket.create_connection(("192.0.2.1", 19090), timeout=1)
+        break
+    except OSError:
+        if time.monotonic() >= deadline:
+            raise
+        time.sleep(0.05)
+with conn:
+    payload = b"a" * 65536
+    for _ in range(16):
+        conn.sendall(payload)
+    conn.shutdown(socket.SHUT_WR)
+PY
+  wait "$server_pid"
+  test "$(wc -c <"$received")" -eq 1048576
+  echo "AnyConnect $label tunnel payload: $(wc -c <"$received") bytes received"
+}
 panel_replay() {
   env ANTIMAGE_ANYCONNECT_NATIVE_STATE="$ROOT/anyconnect-accounting" \
     ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL="${1:-0}" \
@@ -128,6 +167,7 @@ start_server
 start_client "$ROOT/openconnect.log"
 ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
 if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
+  transfer_tunnel_payload initial
   run_accounting collect-first
   panel_replay
   run_accounting ack
@@ -145,6 +185,7 @@ if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   start_server
   start_client "$ROOT/openconnect-restart.log"
   ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
+  transfer_tunnel_payload restarted
   run_accounting collect-next
   panel_replay
   run_accounting ack

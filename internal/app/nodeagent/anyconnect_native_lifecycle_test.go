@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	"google.golang.org/protobuf/proto"
@@ -109,6 +110,31 @@ func TestAnyConnectNativeAccountingStage(t *testing.T) {
 		return
 	}
 	s := New(Config{DataDir: os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE")})
+	if action == "collect-first" || action == "collect-next" {
+		// ocserv updates its per-session counters asynchronously. Wait for a
+		// real positive native counter after the driver has sent tunnel payload;
+		// do not turn a just-connected, zero-counter session into a false pass.
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			snapshots, snapshotErr := s.anyConnectOfflineSnapshots(context.Background())
+			if snapshotErr != nil {
+				t.Fatal(snapshotErr)
+			}
+			var nativeBytes uint64
+			for _, snapshot := range snapshots {
+				for _, session := range snapshot.Sessions {
+					nativeBytes = ikev2SafeAdd(nativeBytes, ikev2SafeAdd(session.Received, session.Sent))
+				}
+			}
+			if nativeBytes > 0 {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("ocserv reported no positive native traffic counters after tunnel payload: snapshots=%+v", snapshots)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
 	batch, err := s.collectAnyConnectUserUsage(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
