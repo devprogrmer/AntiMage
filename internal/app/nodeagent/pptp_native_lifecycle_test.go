@@ -188,6 +188,18 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 			if record.UserID != user.UserID || record.PeerIP != user.IPv4Address || record.InboundTag != inbound.Tag {
 				continue
 			}
+			finalPath := filepath.Join(root, "final", record.ID+".json")
+			if _, statErr := os.Stat(finalPath); statErr == nil {
+				// Active metadata is retained for retry-safe stop hooks. Ignore
+				// sessions that already have a durable final sample; quota-watch
+				// must validate the specific session it just disconnected.
+				continue
+			} else if !os.IsNotExist(statErr) {
+				t.Fatal(statErr)
+			}
+			if activeRecord.ID != "" {
+				t.Fatalf("multiple unfinished PPTP sessions after quota disconnect: %+v and %+v", activeRecord, record)
+			}
 			activeInterface, activeRecord = record.Interface, record
 		}
 		if activeInterface == "" || activeRecord.ID == "" {
