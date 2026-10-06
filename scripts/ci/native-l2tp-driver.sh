@@ -18,6 +18,7 @@ VETH_NS="altp-vn"
 CLIENT_CHARON="charon"
 CLIENT_IPSEC_RUNDIR=""
 CLIENT_PPP_RUNDIR="$ROOT/client-ppp-run"
+CLIENT_LAUNCH_PID=""
 CLIENT_STRONGSWAN_CONF=""
 SERVER_STRONGSWAN_CONF=""
 PIDS=()
@@ -307,7 +308,7 @@ client_ipsec_daemon() {
     --daemon "$CLIENT_CHARON" --conf "$ROOT/client-ipsec.conf" --nofork
 }
 start_client() {
-  rm -f "$ROOT/client.control"
+  rm -f "$ROOT/client.pid" "$ROOT/client.control"
   mkdir -p "$CLIENT_PPP_RUNDIR"
   ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
     mount --bind "$1" /run
@@ -315,7 +316,10 @@ start_client() {
     exec "$@"
   ' _ "$CLIENT_PPP_RUNDIR" xl2tpd -D -c "$ROOT/client.conf" \
     -p "$ROOT/client.pid" -C "$ROOT/client.control" >"$ROOT/xl2tpd-client.log" 2>&1 &
-  CLIENT_DAEMON_PID=$!; PIDS+=("$CLIENT_DAEMON_PID")
+  CLIENT_LAUNCH_PID=$!; PIDS+=("$CLIENT_LAUNCH_PID")
+  wait_for 'client xl2tpd PID file' test -s "$ROOT/client.pid"
+  CLIENT_DAEMON_PID="$(cat "$ROOT/client.pid")"
+  PIDS+=("$CLIENT_DAEMON_PID")
   wait_for 'client control pipe' test -p "$ROOT/client.control"
   printf 'c antimage\n' >"$ROOT/client.control"
   wait_for 'client PPP interface' ip netns exec "$NS" ip link show ppp0
@@ -381,6 +385,8 @@ fi
 echo '=== runtime restart, durable node-state reload, and reconnect ==='
 stop_pid "$SERVER_PID"
 stop_pid "$CLIENT_DAEMON_PID"
+wait "$CLIENT_LAUNCH_PID" 2>/dev/null || true
+forget_pid "$CLIENT_LAUNCH_PID"
 ip netns exec "$NS" pkill -TERM pppd 2>/dev/null || true
 pkill -TERM pppd 2>/dev/null || true
 wait_for_gone 'client PPP interface shutdown' ip netns exec "$NS" ip link show ppp0
