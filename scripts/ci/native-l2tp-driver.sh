@@ -137,6 +137,7 @@ password native-l2tp-secret
 refuse-eap
 refuse-pap
 refuse-mschap
+nomagic
 noipdefault
 nodefaultroute
 mtu 1200
