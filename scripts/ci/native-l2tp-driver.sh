@@ -15,6 +15,9 @@ ROOT="${ROOT% }"
 NS="antimage-l2tp-client"
 VETH_HOST="altp-vh"
 VETH_NS="altp-vn"
+CLIENT_CHARON="charon-antimage-l2tp-client"
+CLIENT_CHARON_BIN="/usr/lib/ipsec/$CLIENT_CHARON"
+CLIENT_CHARON_LINKED=0
 PIDS=()
 forget_pid() {
   local target="$1" pid
@@ -51,6 +54,11 @@ cleanup() {
     echo "L2TP native evidence retained at $RUNNER_TEMP/antimage-l2tp-failure" >&2
   fi
   for pid in "${PIDS[@]}"; do stop_pid "$pid"; done
+  if ip netns list | grep -q "^$NS[[:space:]]"; then
+    ip netns exec "$NS" env DAEMON_NAME="$CLIENT_CHARON" ipsec stop >/dev/null 2>&1 || true
+  fi
+  ipsec stop >/dev/null 2>&1 || true
+  if [ "$CLIENT_CHARON_LINKED" -eq 1 ]; then rm -f "$CLIENT_CHARON_BIN"; fi
   if [ -n "${ANTIMAGE_L2TP_TEST_BINARY:-}" ] && [ -d "$ROOT/l2tp-state" ]; then
     env ANTIMAGE_L2TP_NATIVE_STATE="$ROOT/l2tp-state" ANTIMAGE_L2TP_NATIVE_ACTION=cleanup \
       "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPNativeAccountingStage$' -test.v >/dev/null 2>&1 || true
@@ -63,6 +71,12 @@ trap cleanup EXIT
 
 mkdir -p "$ROOT" "$ROOT/etc/ppp/ip-pre-up.d" "$ROOT/etc/xl2tpd" "$ROOT/etc/run"
 mkdir -p "$ROOT/l2tp-state"
+# The package may auto-start a host strongSwan daemon before the test mount is
+# installed. Stop it so the production ipsec start command loads this test's
+# generated L2TP connection from the isolated /etc/ipsec.conf.
+systemctl stop strongswan-starter.service >/dev/null 2>&1 || true
+systemctl stop strongswan.service >/dev/null 2>&1 || true
+ipsec stop >/dev/null 2>&1 || true
 # Keep pppd's distro-provided dispatcher in the private /etc/ppp mount. The
 # production admission hook is installed into ip-pre-up.d; hiding this wrapper
 # would let pppd bring up PPP without invoking any pre-up hooks.
@@ -170,6 +184,45 @@ pppoptfile = $ROOT/client-options
 autodial = no
 redial = no
 EOF
+  cat >"$ROOT/client-ipsec.conf" <<EOF
+config setup
+    uniqueids=no
+conn l2tp-client
+    auto=add
+    keyexchange=ikev1
+    authby=secret
+    type=transport
+    left=%defaultroute
+    leftprotoport=17/%any
+    right=10.251.0.1
+    rightprotoport=17/1701
+    rekey=no
+    forceencaps=yes
+    fragmentation=yes
+EOF
+}
+start_client_ipsec() {
+  if [ -e "$CLIENT_CHARON_BIN" ]; then
+    echo "refusing to replace existing strongSwan daemon path $CLIENT_CHARON_BIN" >&2
+    return 1
+  fi
+  ln -s /usr/lib/ipsec/charon "$CLIENT_CHARON_BIN"
+  CLIENT_CHARON_LINKED=1
+  wait_for 'server strongSwan control socket' sh -c 'ipsec status >/dev/null 2>&1'
+  ip netns exec "$NS" /usr/lib/ipsec/starter --daemon "$CLIENT_CHARON" \
+    --conf "$ROOT/client-ipsec.conf" --nofork >"$ROOT/client-ipsec.log" 2>&1 &
+  CLIENT_IPSEC_PID=$!; PIDS+=("$CLIENT_IPSEC_PID")
+  wait_for 'client strongSwan control socket' sh -c 'ip netns exec "$1" env DAEMON_NAME="$2" ipsec status >/dev/null 2>&1' _ "$NS" "$CLIENT_CHARON"
+  ip netns exec "$NS" env DAEMON_NAME="$CLIENT_CHARON" ipsec up l2tp-client >"$ROOT/client-ipsec-up.log" 2>&1 || {
+    cat "$ROOT/client-ipsec.log" "$ROOT/client-ipsec-up.log" >&2
+    return 1
+  }
+  wait_for 'client IPsec transport policy' sh -c 'ip netns exec "$1" ip xfrm state | grep -q "proto esp"' _ "$NS"
+  wait_for 'server IPsec transport policy' sh -c 'ip xfrm state | grep -q "proto esp"'
+  tcpdump -U -n -i "$VETH_HOST" 'udp port 4500 or udp port 1701' \
+    -w "$ROOT/l2tp-ipsec.pcap" >"$ROOT/l2tp-ipsec-capture.log" 2>&1 &
+  IPSEC_CAPTURE_PID=$!; PIDS+=("$IPSEC_CAPTURE_PID")
+  wait_for 'L2TP IPsec packet capture' sh -c 'test -s "$1"' _ "$ROOT/l2tp-ipsec.pcap"
 }
 start_client() {
   rm -f "$ROOT/client.control"
@@ -206,6 +259,8 @@ ip link set "$VETH_HOST" up
 ip netns exec "$NS" ip addr add 10.251.0.2/24 dev "$VETH_NS"
 ip netns exec "$NS" ip link set lo up
 ip netns exec "$NS" ip link set "$VETH_NS" up
+stage ipsec-start
+start_client_ipsec
 start_server
 start_client
 wait_for 'assigned production VPN address' sh -c 'ip netns exec "$1" ip -o -4 addr show dev ppp0 | grep -q "10.67.0.2 peer 10.67.0.1"' _ "$NS"
@@ -215,6 +270,15 @@ DOWNLINK_PID=$!; PIDS+=("$DOWNLINK_PID")
 wait_for 'downlink receiver' sh -c 'ip netns exec "$1" ss -lnt "( sport = :19092 )" | grep -q 19092' _ "$NS"
 dd if=/dev/zero bs=64K count=16 status=none | nc -N -w 5 10.67.0.2 19092
 wait "$DOWNLINK_PID"; forget_pid "$DOWNLINK_PID"
+stop_pid "$IPSEC_CAPTURE_PID"
+esp_packets="$(tcpdump -nn -r "$ROOT/l2tp-ipsec.pcap" 'udp port 4500' 2>/dev/null | wc -l)"
+clear_l2tp_packets="$(tcpdump -nn -r "$ROOT/l2tp-ipsec.pcap" 'udp port 1701' 2>/dev/null | wc -l)"
+if [ "$esp_packets" -lt 4 ] || [ "$clear_l2tp_packets" -ne 0 ]; then
+  tcpdump -nn -r "$ROOT/l2tp-ipsec.pcap" >&2 || true
+  echo "L2TP traffic bypassed IPsec: ESP/UDP packets=${esp_packets}, clear UDP/1701 packets=${clear_l2tp_packets}" >&2
+  exit 1
+fi
+echo "L2TP IPsec transport verified on veth: UDP/4500 packets=${esp_packets}, clear UDP/1701 packets=${clear_l2tp_packets}"
 downlink_bytes="$(wc -c <"$ROOT/downlink-received")"
 if [ "$downlink_bytes" -ne "$((16 * 64 * 1024))" ]; then
   echo "L2TP server-to-client transfer mismatch: received=${downlink_bytes}" >&2

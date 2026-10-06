@@ -78,6 +78,11 @@ func TestL2TPNativeAccountingStage(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Logf("production L2TP configuration prepared: %s", files.XL2TPConfig)
+	case "ipsec-start":
+		if err := applyL2TPIPSec(s, inbound.Tag); err != nil {
+			t.Fatal(err)
+		}
+		t.Log("production strongSwan IPsec runtime started from generated L2TP configuration")
 	case "cleanup":
 		if err := clearL2TPSystemIPPreUpHook(); err != nil {
 			t.Fatal(err)

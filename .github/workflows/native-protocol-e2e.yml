@@ -38,7 +38,7 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            iproute2 iptables nftables iputils-ping ppp wireguard-tools openvpn strongswan \
+            iproute2 iptables nftables iputils-ping tcpdump ppp wireguard-tools openvpn strongswan \
             strongswan-swanctl charon-cmd xl2tpd ocserv openconnect openssl \
             netcat-openbsd
 
@@ -227,7 +227,7 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            iproute2 iptables nftables iputils-ping ppp xl2tpd strongswan pptp-linux wireguard-tools openvpn openssl netcat-openbsd
+            iproute2 iptables nftables iputils-ping tcpdump ppp xl2tpd strongswan pptp-linux wireguard-tools openvpn openssl netcat-openbsd
           sudo apt-get install -y --no-install-recommends pptpd
       - name: Run real combined native lifecycle and SQLite lost-ACK replay
         run: |
