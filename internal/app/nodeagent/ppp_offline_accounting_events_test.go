@@ -202,7 +202,7 @@ func TestPPPHelperKeepsSessionCallbackKeysSeparateAcrossReconnect(t *testing.T) 
 	}))
 	defer callback.Close()
 	configPath := filepath.Join(root, "session-helper.json")
-	cfg := nativeSessionHelperConfig{Protocol: "l2tp", InboundTag: "tag", Users: map[string]int64{"alice": 42}, StateDir: filepath.Join(root, "sessions"), Callback: nativeRuntimeSessionCallback{URL: callback.URL, Token: "token", NodeID: 7}}
+	cfg := nativeSessionHelperConfig{Protocol: "l2tp", InboundTag: "tag", Users: map[string]int64{"alice": 42}, Policies: map[string]nativeSessionUserPolicy{"alice": {Status: "active"}}, StateDir: filepath.Join(root, "sessions"), Callback: nativeRuntimeSessionCallback{URL: callback.URL, Token: "token", NodeID: 7}}
 	if err := offlineDurableJSON(configPath, cfg); err != nil {
 		t.Fatal(err)
 	}

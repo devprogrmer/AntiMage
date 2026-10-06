@@ -146,37 +146,15 @@ func RunNativeSessionEventHelper(args []string) error {
 		if protocol != "pptp" && protocol != "l2tp" {
 			return fmt.Errorf("pre-up admission is unsupported for %s", protocol)
 		}
-		dataDir := filepath.Dir(filepath.Dir(filepath.Dir(configPath)))
-		node := New(Config{DataDir: dataDir})
-		raw, err := node.durablePolicyRaw(protocol, userID, cfg.InboundTag, policy.ReflectedUsageBatchID)
-		if err != nil {
-			return fmt.Errorf("%s admission accounting: %w", protocol, err)
+		return rejectNativePPPAdmission(configPath, cfg, commonName, userID, "")
+	}
+	// pppd can invoke ip-up after a concurrent pre-up rejection has already
+	// signalled its process. Recheck durable policy at the session boundary so
+	// the rejected reconnect cannot leave a Panel session marked online.
+	if eventName == "start" && nativeSpeedIsPPPProtocol(protocol) {
+		if err := rejectNativePPPAdmission(configPath, cfg, commonName, userID, pppProcess); err != nil {
+			return err
 		}
-		if allowed, reason := nativeSessionUserPolicyAllowedWithLiveUsage(policy, raw, time.Now()); !allowed {
-			process, err := pppOfflineReadProcess(firstNonEmptyEnv("PPPD_PID"))
-			if err != nil {
-				return fmt.Errorf("%s admission denied (%s); resolve pppd identity: %w", protocol, reason, err)
-			}
-			denial := struct {
-				Protocol  string    `json:"protocol"`
-				Inbound   string    `json:"inbound_tag"`
-				UserID    int64     `json:"user_id"`
-				Username  string    `json:"username"`
-				PeerIP    string    `json:"peer_ip"`
-				Process   string    `json:"process"`
-				Reason    string    `json:"reason"`
-				Timestamp time.Time `json:"timestamp"`
-			}{protocol, cfg.InboundTag, userID, commonName, firstNonEmptyEnv("ifconfig_pool_remote_ip", "IPREMOTE", "PPP_REMOTE", "IP_REMOTE"), process, reason, time.Now().UTC()}
-			denialPath := filepath.Join(filepath.Dir(configPath), "ppp-accounting", "admission-denials", strconv.FormatInt(userID, 10)+".json")
-			if err := offlineDurableJSON(denialPath, denial); err != nil {
-				return fmt.Errorf("%s admission denied (%s); persist denial evidence: %w", protocol, reason, err)
-			}
-			if err := nativePPPProcessSignal(process); err != nil {
-				return fmt.Errorf("%s admission denied (%s); disconnect pppd: %w", protocol, reason, err)
-			}
-			return fmt.Errorf("%s admission denied: %s", protocol, reason)
-		}
-		return nil
 	}
 
 	assignedIP := firstNonEmptyEnv(
@@ -188,7 +166,7 @@ func RunNativeSessionEventHelper(args []string) error {
 
 	interfaceName := firstNonEmptyEnv("IFNAME", "DEVICE")
 
-	clientIP := firstNonEmptyIPEnv("trusted_ip", "trusted_ip6", "IP_REAL")
+	clientIP := firstNonEmptyIPEnv("trusted_ip", "trusted_ip6", "IPPARAM", "REMOTENUMBER", "IP_REAL")
 
 	trustedPort := firstNonEmptyEnv("trusted_port")
 
@@ -387,6 +365,51 @@ func RunNativeSessionEventHelper(args []string) error {
 	}
 
 	return nil
+}
+
+func rejectNativePPPAdmission(
+	configPath string,
+	cfg nativeSessionHelperConfig,
+	username string,
+	userID int64,
+	process string,
+) error {
+	protocol := strings.ToLower(strings.TrimSpace(cfg.Protocol))
+	dataDir := filepath.Dir(filepath.Dir(filepath.Dir(configPath)))
+	node := New(Config{DataDir: dataDir})
+	raw, err := node.durablePolicyRaw(protocol, userID, cfg.InboundTag, cfg.Policies[username].ReflectedUsageBatchID)
+	if err != nil {
+		return fmt.Errorf("%s admission accounting: %w", protocol, err)
+	}
+	policy := cfg.Policies[username]
+	allowed, reason := nativeSessionUserPolicyAllowedWithLiveUsage(policy, raw, time.Now())
+	if allowed {
+		return nil
+	}
+	if strings.TrimSpace(process) == "" {
+		process, err = pppOfflineReadProcess(firstNonEmptyEnv("PPPD_PID"))
+		if err != nil {
+			return fmt.Errorf("%s admission denied (%s); resolve pppd identity: %w", protocol, reason, err)
+		}
+	}
+	denial := struct {
+		Protocol  string    `json:"protocol"`
+		Inbound   string    `json:"inbound_tag"`
+		UserID    int64     `json:"user_id"`
+		Username  string    `json:"username"`
+		PeerIP    string    `json:"peer_ip"`
+		Process   string    `json:"process"`
+		Reason    string    `json:"reason"`
+		Timestamp time.Time `json:"timestamp"`
+	}{protocol, cfg.InboundTag, userID, username, firstNonEmptyEnv("ifconfig_pool_remote_ip", "IPREMOTE", "PPP_REMOTE", "IP_REMOTE"), process, reason, time.Now().UTC()}
+	denialPath := filepath.Join(filepath.Dir(configPath), "ppp-accounting", "admission-denials", strconv.FormatInt(userID, 10)+".json")
+	if err := offlineDurableJSON(denialPath, denial); err != nil {
+		return fmt.Errorf("%s admission denied (%s); persist denial evidence: %w", protocol, reason, err)
+	}
+	if err := nativePPPProcessSignal(process); err != nil {
+		return fmt.Errorf("%s admission denied (%s); disconnect pppd: %w", protocol, reason, err)
+	}
+	return fmt.Errorf("%s admission denied: %s", protocol, reason)
 }
 
 func nativeSessionDeviceID(protocol string, sessionID string) string {

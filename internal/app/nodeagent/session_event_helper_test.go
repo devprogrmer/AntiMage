@@ -123,6 +123,18 @@ func TestPPPPreUpAdmissionRejectsDurableOfflineQuota(t *testing.T) {
 	if denial.Protocol != "pptp" || denial.UserID != 42 || denial.PeerIP != "" || denial.Reason != "data limit reached" || denial.Process != signaled {
 		t.Fatalf("unexpected durable PPP admission denial: %+v", denial)
 	}
+
+	// Some pppd builds still launch ip-up while the pre-up denial is signalling
+	// the process. The session boundary must independently reject that start.
+	if err := RunNativeSessionEventHelper([]string{configPath, "start"}); err == nil || !strings.Contains(err.Error(), "data limit reached") {
+		t.Fatalf("quota-exhausted PPP start was not rejected: %v", err)
+	}
+	if signaled != "fixture-boot:123:456" {
+		t.Fatalf("quota-exhausted session start did not signal its PPPD identity: %q", signaled)
+	}
+	if _, err := os.Stat(filepath.Join(runtimeRoot, "sessions")); !os.IsNotExist(err) {
+		t.Fatalf("quota-exhausted PPP start left session state behind: stat err=%v", err)
+	}
 }
 
 func TestRunNativeSessionEventHelperStartStop(t *testing.T) {
@@ -259,6 +271,7 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 		},
 		InboundTag: inboundTag,
 		Protocol:   protocol,
+		Policies:   map[string]nativeSessionUserPolicy{"alice-vpn": {Status: "active"}},
 		Users: map[string]int64{
 			"alice-vpn": 42,
 		},
@@ -273,7 +286,11 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 
 	t.Setenv("PEERNAME", "alice-vpn")
 	t.Setenv("IPREMOTE", "10.67.0.10")
-	t.Setenv("trusted_ip", "203.0.113.10")
+	t.Setenv("trusted_ip", "")
+	t.Setenv("trusted_ip6", "")
+	t.Setenv("IPPARAM", "antimage-"+protocol)
+	t.Setenv("REMOTENUMBER", "203.0.113.10")
+	t.Setenv("IP_REAL", "")
 	t.Setenv("CALLING_NUMBER", "+1-202-555-0199")
 	t.Setenv("IFNAME", "ppp0")
 	t.Setenv("PPPD_PID", "123")
@@ -304,14 +321,20 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 func TestFirstNonEmptyIPEnvRejectsNonIPCallingNumber(t *testing.T) {
 	t.Setenv("trusted_ip", "not-an-ip")
 	t.Setenv("trusted_ip6", "")
+	t.Setenv("IPPARAM", "antimage-l2tp")
+	t.Setenv("REMOTENUMBER", "203.0.113.10")
 	t.Setenv("CALLING_NUMBER", "+1-202-555-0199")
 	t.Setenv("IP_REAL", "2001:db8::1")
 
-	if got := firstNonEmptyIPEnv("trusted_ip", "trusted_ip6", "IP_REAL"); got != "2001:db8::1" {
+	if got := firstNonEmptyIPEnv("trusted_ip", "trusted_ip6", "IPPARAM", "REMOTENUMBER", "IP_REAL"); got != "203.0.113.10" {
+		t.Fatalf("firstNonEmptyIPEnv() = %q, want valid REMOTENUMBER before IP_REAL", got)
+	}
+	t.Setenv("REMOTENUMBER", "")
+	if got := firstNonEmptyIPEnv("trusted_ip", "trusted_ip6", "IPPARAM", "REMOTENUMBER", "IP_REAL"); got != "2001:db8::1" {
 		t.Fatalf("firstNonEmptyIPEnv() = %q, want valid IP_REAL after invalid values", got)
 	}
 	t.Setenv("IP_REAL", "")
-	if got := firstNonEmptyIPEnv("trusted_ip", "trusted_ip6", "IP_REAL"); got != "" {
+	if got := firstNonEmptyIPEnv("trusted_ip", "trusted_ip6", "IPPARAM", "REMOTENUMBER", "IP_REAL"); got != "" {
 		t.Fatalf("firstNonEmptyIPEnv() = %q, want empty when no IP address is available", got)
 	}
 }

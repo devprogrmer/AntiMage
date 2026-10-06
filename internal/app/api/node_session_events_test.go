@@ -179,14 +179,15 @@ func TestL2TPNativePanelSessionServer(t *testing.T) {
 	if serveErr != nil && serveErr != http.ErrServerClosed {
 		t.Fatal(serveErr)
 	}
-	var total, active, wrongIP int
-	if err := db.QueryRow(`SELECT COUNT(*), SUM(CASE WHEN ended_at IS NULL THEN 1 ELSE 0 END), SUM(CASE WHEN COALESCE(assigned_ip, '') <> '10.67.0.2' THEN 1 ELSE 0 END) FROM vpn_user_sessions WHERE node_id = 7 AND user_id = 7 AND protocol = 'l2tp' AND inbound_tag = 'native-l2tp'`).Scan(&total, &active, &wrongIP); err != nil {
+	var total, active, wrongIP, withDeviceID int
+	var sourceIPs string
+	if err := db.QueryRow(`SELECT COUNT(*), SUM(CASE WHEN ended_at IS NULL THEN 1 ELSE 0 END), SUM(CASE WHEN COALESCE(assigned_ip, '') <> '10.67.0.2' THEN 1 ELSE 0 END), SUM(CASE WHEN COALESCE(device_id, '') <> '' THEN 1 ELSE 0 END), COALESCE(GROUP_CONCAT(DISTINCT NULLIF(client_ip, '')), '') FROM vpn_user_sessions WHERE node_id = 7 AND user_id = 7 AND protocol = 'l2tp' AND inbound_tag = 'native-l2tp'`).Scan(&total, &active, &wrongIP, &withDeviceID, &sourceIPs); err != nil {
 		t.Fatal(err)
 	}
 	if total < 2 || active != 0 || wrongIP != 0 {
 		t.Fatalf("production Panel session state mismatch: sessions=%d active=%d unexpected_assigned_ip=%d", total, active, wrongIP)
 	}
-	t.Logf("production Panel API persisted %d L2TP sessions; all stopped, assigned IP=10.67.0.2", total)
+	t.Logf("production Panel API persisted %d L2TP sessions; all stopped, assigned IP=10.67.0.2; native source IPs=%q, device identities=%d", total, sourceIPs, withDeviceID)
 }
 
 // TestPPTPNativePanelSessionServer runs the production session-event handler
