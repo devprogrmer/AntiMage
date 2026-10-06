@@ -258,9 +258,10 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 		if previousEffective >= limit {
 			t.Fatalf("PPTP batches before quota traffic already exhausted quota: previous=%d limit=%d", previousEffective, limit)
 		}
-		if effective < limit || effective-limit > 6<<20 {
+		remainingEffective := limit - previousEffective
+		if effective < remainingEffective || effective-remainingEffective > 6<<20 {
 			raw, _ := json.Marshal(batch)
-			t.Fatalf("native PPTP quota outside 6 MiB effective bound: raw=%d effective=%d previous=%d limit=%d batch=%s", total, effective, previousEffective, limit, raw)
+			t.Fatalf("native PPTP quota delta outside 6 MiB effective bound: raw=%d effective=%d previous=%d remaining=%d limit=%d batch=%s", total, effective, previousEffective, remainingEffective, limit, raw)
 		}
 		t.Logf("production PPTP quota worker disconnected session at raw=%d effective=%d bytes, limit=%d", total, effective, limit)
 		for _, line := range s.snapshotLogs() {
