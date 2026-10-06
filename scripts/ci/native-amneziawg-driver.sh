@@ -4,6 +4,7 @@ set -euo pipefail
 : "${ANTIMAGE_AWG_PANEL_TEST_BINARY:?missing compiled nodecontroller test binary}"
 
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-awg-XXXXXX")}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 NS="antimage-awg-client"
 VETH_HOST="aawg-vh"
 VETH_NS="aawg-vn"
@@ -85,6 +86,8 @@ wait_for() {
   return 1
 }
 
+source "$SCRIPT_DIR/native-speed-test.sh"
+
 wait_for 'AmneziaWG handshake' ip netns exec "$NS" ping -c 1 -W 1 10.74.0.1
 timeout 30 nc -l -p 19090 >"$ROOT/initial-received" 2>&1 &
 PIDS+=("$!")
@@ -100,6 +103,8 @@ wait_for 'post-restart AWG handshake' ip netns exec "$NS" ping -c 1 -W 1 10.74.0
 stage collect-next "$ROOT/awg-state"
 panel_replay
 stage ack "$ROOT/awg-state"
+native_speed_policy_stage "$ANTIMAGE_AWG_TEST_BINARY" "$IFACE" 10.74.0.2
+measure_native_tunnel_speed amneziawg 10.74.0.1 10.74.0.2
 previous_effective="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["effective_total"])' "$ROOT/awg-state/native-panel-receipt.json")"
 if [ "$previous_effective" -ge "$quota_bytes" ]; then
   echo "AWG pre-quota traffic already exhausted quota: effective=${previous_effective} quota=${quota_bytes}" >&2

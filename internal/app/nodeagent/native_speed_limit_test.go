@@ -2,9 +2,32 @@ package nodeagent
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 )
+
+// TestNativeSpeedLimitNativeStage installs the production tc policy on an
+// isolated live tunnel. The CI driver then measures packets in both directions.
+func TestNativeSpeedLimitNativeStage(t *testing.T) {
+	interfaceName := strings.TrimSpace(os.Getenv("ANTIMAGE_NATIVE_SPEED_INTERFACE"))
+	address := strings.TrimSpace(os.Getenv("ANTIMAGE_NATIVE_SPEED_ADDRESS"))
+	if interfaceName == "" || address == "" {
+		t.Skip("requires isolated native tunnel speed harness")
+	}
+	const userID int64 = 17
+	const uploadRate int64 = 4_000_000
+	const downloadRate int64 = 6_000_000
+	defer func() {
+		nativeSpeedClearInterface(interfaceName)
+		nativeSpeedDeleteAction(userID, nativeSpeedUpload)
+		nativeSpeedDeleteAction(userID, nativeSpeedDownload)
+	}()
+	if err := nativeSpeedAttachIPv4(interfaceName, address, userID, uploadRate, downloadRate); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("production tc policy applied to %s user=%d upload=4 Mbps download=6 Mbps", interfaceName, userID)
+}
 
 func TestNativeSpeedActionIndexSharedPerUser(t *testing.T) {
 	uploadA, err := nativeSpeedActionIndex(271, nativeSpeedUpload)

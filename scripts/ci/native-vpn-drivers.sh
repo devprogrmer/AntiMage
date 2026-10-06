@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="${ROOT:-$(mktemp -d)}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 NS="${NS:-antimage-vpn-client}"
 VETH_HOST="avpn-vh"
 VETH_NS="avpn-vn"
@@ -69,6 +70,8 @@ wait_for() {
   return 1
 }
 
+source "$SCRIPT_DIR/native-speed-test.sh"
+
 wireguard_native_stage() {
   local action="$1" state="$2" quota_bytes="${3:-1048576}"
   [ -n "${ANTIMAGE_WIREGUARD_TEST_BINARY:-}" ] || return 0
@@ -133,6 +136,9 @@ run_wireguard() {
   wait_for 'WireGuard post-ACK peer traffic' ip netns exec "$NS" ping -c 1 -W 1 10.200.0.1
   echo 'WireGuard peer configuration immediately before quota:'
   wg show wg-native peers
+
+  native_speed_policy_stage "$ANTIMAGE_WIREGUARD_TEST_BINARY" wg-native 10.200.0.2
+  measure_native_tunnel_speed wireguard 10.200.0.1 10.200.0.2
 
   timeout 120 nc -l -p 19091 >"$ROOT/wireguard-quota-received" 2>&1 &
   local quota_listener_pid=$!
@@ -257,6 +263,8 @@ EOF
   wait_for 'OpenVPN client reconnection' sh -c 'test "$(grep -cF "Initialization Sequence Completed" "$1")" -ge 2' sh "$ROOT/openvpn-client.log"
   wait_for 'OpenVPN post-restart traffic' ip netns exec "$NS" ping -c 1 -W 1 10.210.0.1
   if [ -n "${ANTIMAGE_OPENVPN_TEST_BINARY:-}" ]; then
+    native_speed_policy_stage "$ANTIMAGE_OPENVPN_TEST_BINARY" tun-native 10.210.0.2
+    measure_native_tunnel_speed openvpn 10.210.0.1 10.210.0.2
     env ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" \
       ANTIMAGE_OPENVPN_NATIVE_PID="$server_pid" \
       "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v
