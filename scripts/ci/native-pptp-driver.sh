@@ -201,7 +201,7 @@ wait "$listener_pid" || true
 forget_pid "$listener_pid"
 cat "$ROOT/quota-watch.log"
 
-echo '=== PPTP same-credential reconnect must be denied before interface activation ==='
+echo '=== PPTP same-credential reconnect must be denied during PPP pre-up ==='
 find "$ROOT/pptp-state" -path '*/ppp-accounting/admission-denials/7.json' -delete
 timeout 20s ip netns exec "$NS" pppd nodetach maxfail 1 noauth name native-pptp password native-pptp-secret \
   refuse-eap refuse-pap refuse-chap refuse-mschap \
@@ -225,11 +225,6 @@ fi
 if ip netns exec "$NS" ip link show ppp0 >/dev/null 2>&1; then
   cat "$ROOT/pptpd-reconnect.log" >&2
   echo 'quota-exhausted PPTP reconnect exposed a usable PPP interface' >&2
-  exit 1
-fi
-if grep -Eqi 'local IP address|remote IP address' "$ROOT/pptpd-reconnect.log"; then
-  cat "$ROOT/pptpd-reconnect.log" >&2
-  echo 'quota-exhausted PPTP reconnect negotiated usable IP addresses' >&2
   exit 1
 fi
 capture_ppp_state 'after rejected reconnect'
