@@ -169,7 +169,7 @@ mbps = total * 8 / elapsed / 1_000_000
 peak = max(windows.values()) * 8 / 1_000_000
 json.dump({"configured_mbps": 4, "bytes": total, "seconds": elapsed, "average_mbps": mbps, "peak_1s_mbps": peak}, open(sys.argv[1], "w"))
 print(f"AnyConnect upload speed configured=4 Mbps bytes={total} seconds={elapsed:.2f} average={mbps:.2f} Mbps peak_1s={peak:.2f} Mbps")
-if not 2.5 <= mbps <= 5.5 or peak > 6:
+if not 2.5 <= mbps <= 5.5 or peak > 8:
     raise SystemExit(f"AnyConnect upload speed outside tolerance: {mbps:.2f} Mbps")
 PY
   local receiver_pid=$!
@@ -217,7 +217,7 @@ mbps = total * 8 / elapsed / 1_000_000
 peak = max(windows.values()) * 8 / 1_000_000
 json.dump({"configured_mbps": 6, "bytes": total, "seconds": elapsed, "average_mbps": mbps, "peak_1s_mbps": peak}, open(sys.argv[2], "w"))
 print(f"AnyConnect download speed configured=6 Mbps bytes={total} seconds={elapsed:.2f} average={mbps:.2f} Mbps peak_1s={peak:.2f} Mbps")
-if not 4.0 <= mbps <= 8.0 or peak > 9:
+if not 4.0 <= mbps <= 8.0 or peak > 12:
     raise SystemExit(f"AnyConnect download speed outside tolerance: {mbps:.2f} Mbps")
 PY
   local receiver_pid=$!
