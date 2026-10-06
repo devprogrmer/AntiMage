@@ -211,7 +211,9 @@ jobs:
 
   protocol-lifecycle-exact-once:
     name: protocol-lifecycle-exact-once
-    runs-on: ubuntu-latest
+    # Ubuntu 24.04 no longer publishes pptpd; keep this combined legacy-PPP
+    # lifecycle on the same supported image used by the native PPTP job.
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
       CGO_ENABLED: '1'
@@ -225,7 +227,8 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            iproute2 iptables nftables iputils-ping ppp xl2tpd pptpd pptp-linux wireguard-tools openvpn openssl netcat-openbsd
+            iproute2 iptables nftables iputils-ping ppp xl2tpd pptp-linux wireguard-tools openvpn openssl netcat-openbsd
+          sudo apt-get install -y --no-install-recommends pptpd
       - name: Run real combined native lifecycle and SQLite lost-ACK replay
         run: |
           set -euo pipefail

@@ -114,7 +114,7 @@ listener_pid="$!"
 PIDS+=("$listener_pid")
 wait_for 'AWG quota receiver' sh -c 'ss -lnt "( sport = :19091 )" | grep -q 19091'
 ip netns exec "$NS" tc qdisc replace dev "$VETH_NS" root tbf rate 12mbit burst 32kb latency 400ms
-stage quota-watch "$ROOT/awg-state" "$quota_bytes" >"$ROOT/quota-watch.log" 2>&1 &
+stage quota-watch "$ROOT/awg-state" "$remaining_effective" >"$ROOT/quota-watch.log" 2>&1 &
 watch_pid="$!"
 PIDS+=("$watch_pid")
 sleep .2

@@ -115,7 +115,6 @@ write_client_files() {
 noauth
 name native-l2tp
 password native-l2tp-secret
-require-mschap-v2
 refuse-eap
 refuse-pap
 refuse-chap
@@ -124,6 +123,8 @@ noipdefault
 nodefaultroute
 mtu 1200
 mru 1200
+debug
+logfile $ROOT/client-pppd.log
 EOF
   cat >"$ROOT/client.conf" <<EOF
 [global]
@@ -160,6 +161,8 @@ wait_for_empty_session_outbox() {
 echo '=== production L2TP daemon configuration and real xl2tpd/PPP tunnel ==='
 stage prepare
 config_path="$(cat "$ROOT/l2tp-state/xl2tpd-config-path")"
+ppp_options_path="$(awk -F ' = ' '/^pppoptfile = / {print $2}' "$config_path")"
+printf '\ndebug\nlogfile %s\n' "$ROOT/server-pppd.log" >>"$ppp_options_path"
 cp "$config_path" /etc/xl2tpd/xl2tpd.conf
 write_client_files
 ip netns add "$NS"
@@ -225,7 +228,7 @@ timeout 180 nc -l -p 19091 >"$ROOT/quota-received" 2>&1 &
 LISTENER_PID=$!; PIDS+=("$LISTENER_PID")
 wait_for 'quota receiver' sh -c 'ss -lnt "( sport = :19091 )" | grep -q 19091'
 ip netns exec "$NS" tc qdisc replace dev "$VETH_NS" root tbf rate 12mbit burst 32kb latency 400ms
-stage quota-watch "$quota_bytes" >"$ROOT/quota-watch.log" 2>&1 &
+stage quota-watch "$remaining_effective" >"$ROOT/quota-watch.log" 2>&1 &
 WATCH_PID=$!; PIDS+=("$WATCH_PID")
 sleep .2
 ip netns exec "$NS" sh -c 'dd if=/dev/zero bs=1M count=50 status=none | nc -N -w 10 10.67.0.1 19091' >"$ROOT/quota-sender.log" 2>&1 &
