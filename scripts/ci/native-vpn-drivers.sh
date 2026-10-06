@@ -263,8 +263,15 @@ EOF
   wait_for 'OpenVPN client reconnection' sh -c 'test "$(grep -cF "Initialization Sequence Completed" "$1")" -ge 2' sh "$ROOT/openvpn-client.log"
   wait_for 'OpenVPN post-restart traffic' ip netns exec "$NS" ping -c 1 -W 1 10.210.0.1
   if [ -n "${ANTIMAGE_OPENVPN_TEST_BINARY:-}" ]; then
-    native_speed_policy_stage "$ANTIMAGE_OPENVPN_TEST_BINARY" tun-native 10.210.0.2
-    measure_native_tunnel_speed openvpn 10.210.0.1 10.210.0.2
+    local openvpn_client_ip
+    openvpn_client_ip="$(ip netns exec "$NS" ip -4 -o addr show dev tun-native | awk '{ split($4, address, "/"); print address[1]; exit }')"
+    if [ -z "$openvpn_client_ip" ]; then
+      echo 'OpenVPN client tunnel has no assigned IPv4 address' >&2
+      return 1
+    fi
+    echo "OpenVPN speed test assigned client IPv4: $openvpn_client_ip"
+    native_speed_policy_stage "$ANTIMAGE_OPENVPN_TEST_BINARY" tun-native "$openvpn_client_ip"
+    measure_native_tunnel_speed openvpn 10.210.0.1 "$openvpn_client_ip"
     env ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" \
       ANTIMAGE_OPENVPN_NATIVE_PID="$server_pid" \
       "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v
