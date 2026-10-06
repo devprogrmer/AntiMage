@@ -139,6 +139,69 @@ func TestL2TPSystemIPPreUpHookIsManagedAndFiltersOtherPPPLinks(t *testing.T) {
 	}
 }
 
+func TestStartAndStopL2TPInboundManageSystemPreUpHook(t *testing.T) {
+	root := t.TempDir()
+	paths := []*string{
+		&l2TPIPSecConfigPath, &l2TPIPSecSecretsPath,
+		&l2TPXL2TPConfigPath, &l2TPCHAPSecretsPath, &l2TPIPPreUpHookPath,
+	}
+	oldPaths := make([]string, len(paths))
+	for i, path := range paths {
+		oldPaths[i] = *path
+	}
+	t.Cleanup(func() {
+		for i, path := range paths {
+			*path = oldPaths[i]
+		}
+	})
+	l2TPIPSecConfigPath = filepath.Join(root, "etc", "ipsec.conf")
+	l2TPIPSecSecretsPath = filepath.Join(root, "etc", "ipsec.secrets")
+	l2TPXL2TPConfigPath = filepath.Join(root, "etc", "xl2tpd", "xl2tpd.conf")
+	l2TPCHAPSecretsPath = filepath.Join(root, "etc", "ppp", "chap-secrets")
+	l2TPIPPreUpHookPath = filepath.Join(root, "etc", "ppp", "ip-pre-up.d", "91-antimage-l2tp")
+
+	oldLookPath, oldCommand, oldExecutable := l2TPLookPath, l2TPCommandContext, pppSessionHelperExecutable
+	l2TPLookPath = func(name string) (string, error) { return "/bin/true", nil }
+	l2TPCommandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "/bin/true")
+	}
+	pppSessionHelperExecutable = func() (string, error) { return "/bin/true", nil }
+	t.Cleanup(func() {
+		l2TPLookPath, l2TPCommandContext, pppSessionHelperExecutable = oldLookPath, oldCommand, oldExecutable
+	})
+
+	config := []struct{ path, body string }{
+		{l2TPIPSecConfigPath, "config setup\n"},
+		{l2TPIPSecSecretsPath, ""},
+		{l2TPXL2TPConfigPath, "[global]\n"},
+		{l2TPCHAPSecretsPath, ""},
+	}
+	sources := make([]string, len(config))
+	for i, item := range config {
+		sources[i] = filepath.Join(root, "source", filepath.Base(item.path))
+		if err := os.MkdirAll(filepath.Dir(sources[i]), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(sources[i], []byte(item.body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(l2TPIPSecConfigPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{DataDir: filepath.Join(root, "state")})
+	if err := server.startL2TPInbound("test", sources[0], sources[1], sources[2], sources[3], filepath.Join(root, "session.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(l2TPIPPreUpHookPath); err != nil {
+		t.Fatalf("L2TP startup did not install system pre-up hook: %v", err)
+	}
+	server.stopAllL2TPRuntimes()
+	if _, err := os.Stat(l2TPIPPreUpHookPath); !os.IsNotExist(err) {
+		t.Fatalf("L2TP shutdown did not remove managed pre-up hook: %v", err)
+	}
+}
+
 func TestPrepareL2TPInboundPersistsAllSessionEnforcementFields(t *testing.T) {
 	server := New(Config{DataDir: t.TempDir()})
 	limit := int64(50 * 1024 * 1024)
