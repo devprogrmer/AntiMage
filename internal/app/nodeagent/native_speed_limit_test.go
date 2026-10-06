@@ -76,6 +76,15 @@ func TestNativeSpeedActionIndexSharedPerUser(t *testing.T) {
 	}
 }
 
+func TestNativeSpeedBurstAllowsAggregatedTunnelPackets(t *testing.T) {
+	if got := nativeSpeedBurstBytes(4_000_000); got < 256*1024 {
+		t.Fatalf("4 Mbps policer burst = %d bytes, want at least %d", got, 256*1024)
+	}
+	if got := nativeSpeedBurstBytes(1_000_000_000); got > 4*1024*1024 {
+		t.Fatalf("policer burst = %d bytes, exceeds the 4 MiB cap", got)
+	}
+}
+
 func TestNativeSpeedAttachIPv4ReusesSharedAction(t *testing.T) {
 	oldRun := nativeSpeedLimitRun
 	oldLookPath := nativeSpeedLimitLookPath
