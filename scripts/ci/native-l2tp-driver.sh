@@ -15,9 +15,7 @@ ROOT="${ROOT% }"
 NS="antimage-l2tp-client"
 VETH_HOST="altp-vh"
 VETH_NS="altp-vn"
-CLIENT_CHARON="charon-antimage-l2tp-client"
-CLIENT_CHARON_BIN="/usr/lib/ipsec/$CLIENT_CHARON"
-CLIENT_CHARON_LINKED=0
+CLIENT_CHARON="charon"
 CLIENT_IPSEC_RUNDIR=""
 CLIENT_STRONGSWAN_CONF=""
 PIDS=()
@@ -62,7 +60,6 @@ cleanup() {
     fi
   fi
   ipsec stop >/dev/null 2>&1 || true
-  if [ "$CLIENT_CHARON_LINKED" -eq 1 ]; then rm -f "$CLIENT_CHARON_BIN"; fi
   if [ -n "${ANTIMAGE_L2TP_TEST_BINARY:-}" ] && [ -d "$ROOT/l2tp-state" ]; then
     env ANTIMAGE_L2TP_NATIVE_STATE="$ROOT/l2tp-state" ANTIMAGE_L2TP_NATIVE_ACTION=cleanup \
       "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPNativeAccountingStage$' -test.v >/dev/null 2>&1 || true
@@ -206,12 +203,6 @@ conn l2tp-client
 EOF
 }
 start_client_ipsec() {
-  if [ -e "$CLIENT_CHARON_BIN" ]; then
-    echo "refusing to replace existing strongSwan daemon path $CLIENT_CHARON_BIN" >&2
-    return 1
-  fi
-  ln -s /usr/lib/ipsec/charon "$CLIENT_CHARON_BIN"
-  CLIENT_CHARON_LINKED=1
   CLIENT_IPSEC_RUNDIR="$ROOT/client-ipsec-run"
   CLIENT_STRONGSWAN_CONF="$ROOT/client-strongswan.conf"
   mkdir -p "$CLIENT_IPSEC_RUNDIR"
@@ -230,7 +221,6 @@ EOF
   wait_for 'server strongSwan control socket' sh -c 'ipsec status >/dev/null 2>&1'
   client_ipsec_daemon >"$ROOT/client-ipsec.log" 2>&1 &
   CLIENT_IPSEC_PID=$!; PIDS+=("$CLIENT_IPSEC_PID")
-  ln -sfn "starter.$CLIENT_CHARON.pid" "$CLIENT_IPSEC_RUNDIR/starter.charon.pid"
   if ! wait_for 'client strongSwan control socket' sh -c 'test -S "$1/charon.ctl" && test -s "$1/charon.pid"' _ "$CLIENT_IPSEC_RUNDIR"; then
     client_ipsec status >"$ROOT/client-ipsec-status.log" 2>&1 || true
     ls -la "$CLIENT_IPSEC_RUNDIR" >"$ROOT/client-ipsec-rundir.txt" 2>&1 || true
@@ -274,7 +264,7 @@ client_ipsec_daemon() {
     exec "$@"
   ' _ "$CLIENT_IPSEC_RUNDIR" "$CLIENT_STRONGSWAN_CONF" env \
     IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR" \
-    IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.$CLIENT_CHARON.pid" \
+    IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.charon.pid" \
     IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR/charon.pid" \
     DAEMON_NAME="$CLIENT_CHARON" /usr/lib/ipsec/starter \
     --daemon "$CLIENT_CHARON" --conf "$ROOT/client-ipsec.conf" --nofork
