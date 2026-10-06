@@ -57,10 +57,7 @@ cleanup() {
   for pid in "${PIDS[@]}"; do stop_pid "$pid"; done
   if ip netns list | grep -q "^$NS[[:space:]]"; then
     if [ -n "$CLIENT_IPSEC_RUNDIR" ]; then
-      ip netns exec "$NS" env IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR" \
-        IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.pid" \
-        IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR/charon.pid" \
-        DAEMON_NAME="$CLIENT_CHARON" ipsec stop >/dev/null 2>&1 || true
+      client_ipsec stop >/dev/null 2>&1 || true
     fi
   fi
   ipsec stop >/dev/null 2>&1 || true
@@ -217,17 +214,11 @@ start_client_ipsec() {
   CLIENT_IPSEC_RUNDIR="$ROOT/client-ipsec-run"
   mkdir -p "$CLIENT_IPSEC_RUNDIR"
   wait_for 'server strongSwan control socket' sh -c 'ipsec status >/dev/null 2>&1'
-  ip netns exec "$NS" env IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR" \
-    IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.pid" \
-    IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR/charon.pid" \
-    ipsec start --daemon "$CLIENT_CHARON" \
+  client_ipsec start --daemon "$CLIENT_CHARON" \
     --conf "$ROOT/client-ipsec.conf" --nofork >"$ROOT/client-ipsec.log" 2>&1 &
   CLIENT_IPSEC_PID=$!; PIDS+=("$CLIENT_IPSEC_PID")
-  wait_for 'client strongSwan control socket' sh -c 'ip netns exec "$1" env IPSEC_PIDDIR="$2" IPSEC_STARTER_PID="$2/starter.pid" IPSEC_CHARON_PID="$2/charon.pid" DAEMON_NAME="$3" ipsec status >/dev/null 2>&1' _ "$NS" "$CLIENT_IPSEC_RUNDIR" "$CLIENT_CHARON"
-  ip netns exec "$NS" env IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR" \
-    IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.pid" \
-    IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR/charon.pid" \
-    DAEMON_NAME="$CLIENT_CHARON" ipsec up l2tp-client >"$ROOT/client-ipsec-up.log" 2>&1 || {
+  wait_for 'client strongSwan control socket' client_ipsec status
+  client_ipsec up l2tp-client >"$ROOT/client-ipsec-up.log" 2>&1 || {
     cat "$ROOT/client-ipsec.log" "$ROOT/client-ipsec-up.log" >&2
     return 1
   }
@@ -237,6 +228,17 @@ start_client_ipsec() {
     -w "$ROOT/l2tp-ipsec.pcap" >"$ROOT/l2tp-ipsec-capture.log" 2>&1 &
   IPSEC_CAPTURE_PID=$!; PIDS+=("$IPSEC_CAPTURE_PID")
   wait_for 'L2TP IPsec packet capture' sh -c 'test -s "$1"' _ "$ROOT/l2tp-ipsec.pcap"
+}
+client_ipsec() {
+  unshare --mount --fork --propagation private bash -c '
+    mount --bind "$1" /run
+    shift
+    exec ip netns exec "$@"
+  ' _ "$CLIENT_IPSEC_RUNDIR" "$NS" env \
+    IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR" \
+    IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.pid" \
+    IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR/charon.pid" \
+    DAEMON_NAME="$CLIENT_CHARON" ipsec "$@"
 }
 start_client() {
   rm -f "$ROOT/client.control"
