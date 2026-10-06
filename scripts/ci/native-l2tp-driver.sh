@@ -231,7 +231,9 @@ start_client_ipsec() {
 }
 client_ipsec() {
   unshare --mount --fork --propagation private bash -c '
-    mount --bind "$1" /run
+    mkdir -p "$1/netns"
+    mount --bind /run/netns "$1/netns"
+    mount --rbind "$1" /run
     shift
     exec ip netns exec "$@"
   ' _ "$CLIENT_IPSEC_RUNDIR" "$NS" env \
