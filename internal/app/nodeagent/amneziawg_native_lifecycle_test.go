@@ -15,6 +15,7 @@ import (
 
 	"github.com/Jipok/wgctrl-go/wgtypes"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 // TestAmneziaWGNativeAccountingStage is driven by the privileged Linux CI
@@ -43,7 +44,8 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 		}
 	}
 	peer := amneziaWGRuntimePeer{UserID: 7, Username: "native-awg", DeviceIndex: 1,
-		PublicKey: clientPublic, Address: "10.74.0.2", Status: "active"}
+		PublicKey: clientPublic, Address: "10.74.0.2", Status: "active",
+		UsageCoefficient: 1.5, InboundCoefficient: 2}
 	if quotaLimit > 0 {
 		peer.DataLimit = &quotaLimit
 	}
@@ -77,7 +79,7 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 		s.stopAllAmneziaWGRuntimes()
 		iface := apply()
 		t.Logf("production AmneziaWG runtime restarted: interface=%s", iface)
-	case "collect":
+	case "collect", "collect-first", "collect-next", "collect-final":
 		batch, err := s.collectAmneziaWGUserUsage(context.Background(), nil)
 		if err != nil {
 			t.Fatal(err)
@@ -90,6 +92,21 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 		}
 		if total == 0 {
 			t.Fatalf("production collector found no native AWG traffic: %v", batch)
+		}
+		if action != "collect" {
+			name := "native-first-batch.pb"
+			if action == "collect-next" {
+				name = "native-next-batch.pb"
+			} else if action == "collect-final" {
+				name = "native-final-batch.pb"
+			}
+			raw, err := proto.Marshal(batch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(stateDir, name), raw, 0600); err != nil {
+				t.Fatal(err)
+			}
 		}
 		t.Logf("production collector persisted native AWG bytes=%d batch=%s", total, batch.GetBatchId())
 	case "ack":
@@ -106,6 +123,18 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 		ack, err := s.ackAmneziaWGUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: pending.BatchID})
 		if err != nil || !ack.GetAcknowledged() {
 			t.Fatalf("ACK: %v %v", ack, err)
+		}
+		restarted := New(Config{DataDir: stateDir})
+		restarted.amneziaWGUsageMu.Lock()
+		if err := restarted.ensureAmneziaWGUsageStateLoadedLocked(); err != nil {
+			restarted.amneziaWGUsageMu.Unlock()
+			t.Fatal(err)
+		}
+		stillPending := restarted.amneziaWGUsagePending != nil
+		lastAcked := restarted.amneziaWGUsageLastAckedBatchID
+		restarted.amneziaWGUsageMu.Unlock()
+		if stillPending || lastAcked != pending.BatchID {
+			t.Fatalf("AmneziaWG ACK was not durable after restart: pending=%v last_acked=%q want=%q", stillPending, lastAcked, pending.BatchID)
 		}
 		t.Logf("production ACK advanced durable AWG baseline for batch %s", pending.BatchID)
 	case "quota-watch":
@@ -158,11 +187,18 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 				total = sample.GetValue()
 			}
 		}
+		policy := nativeSessionUserPolicy{UsageCoefficient: peer.UsageCoefficient, InboundCoefficient: peer.InboundCoefficient}
+		effective := nativeSessionEffectiveLiveUsage(policy, total)
 		limit := uint64(quotaLimit)
-		if total < limit || total-limit > 2<<20 {
-			t.Fatalf("native AWG quota overshoot outside 2 MiB bound: raw=%d limit=%d batch=%v", total, limit, batch)
+		previousEffective := nativePanelEffectiveUsage(t, stateDir)
+		if previousEffective >= limit {
+			t.Fatalf("AmneziaWG batches before quota traffic already exhausted quota: previous=%d limit=%d", previousEffective, limit)
 		}
-		t.Logf("production AWG quota worker removed native peer at raw=%d bytes, limit=%d, overshoot=%d", total, limit, total-limit)
+		remainingEffective := limit - previousEffective
+		if effective < remainingEffective || effective-remainingEffective > 2<<20 {
+			t.Fatalf("native AWG quota overshoot outside 2 MiB effective bound: raw=%d effective=%d previous=%d remaining=%d limit=%d batch=%v", total, effective, previousEffective, remainingEffective, limit, batch)
+		}
+		t.Logf("production AWG quota worker removed native peer at raw=%d effective=%d bytes, limit=%d", total, effective, limit)
 	default:
 		t.Fatal(fmt.Sprintf("unknown native AmneziaWG action %q", action))
 	}

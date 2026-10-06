@@ -5,6 +5,8 @@ on:
     branches: ['**']
     paths:
       - 'internal/app/nodeagent/**'
+      - 'internal/app/nodecontroller/**'
+      - 'internal/app/api/**'
       - 'internal/proto/**'
       - 'go.mod'
       - 'go.sum'
@@ -22,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        protocol: [xray, wireguard, amneziawg, openvpn, pptp, anyconnect, ikev2]
+        protocol: [xray, wireguard, amneziawg, openvpn, l2tp, pptp, anyconnect, ikev2]
     env:
       CGO_ENABLED: '1'
     steps:
@@ -36,7 +38,7 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            iproute2 iptables nftables ppp wireguard-tools openvpn strongswan \
+            iproute2 iptables nftables iputils-ping ppp wireguard-tools openvpn strongswan \
             strongswan-swanctl charon-cmd xl2tpd ocserv openconnect openssl \
             netcat-openbsd
 
@@ -55,6 +57,26 @@ jobs:
       - name: Install native PPTP daemons
         if: ${{ matrix.protocol == 'pptp' }}
         run: sudo apt-get install -y --no-install-recommends pptpd pptp-linux
+
+      - name: Run native L2TP and PPP lifecycle
+        if: ${{ matrix.protocol == 'l2tp' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          api_test="$RUNNER_TEMP/antimage-api.test"
+          node_helper="$RUNNER_TEMP/antimage-node-helper"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          go test -c -o "$api_test" ./internal/app/api
+          go build -o "$node_helper" ./cmd/antimage_node
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
+            ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
+            bash scripts/ci/native-l2tp-driver.sh
 
       - name: Run real Xray protocol E2E
         if: ${{ matrix.protocol == 'xray' }}
@@ -103,8 +125,11 @@ jobs:
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           sudo env RUNNER_TEMP="$RUNNER_TEMP" ANTIMAGE_AWG_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_AWG_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_AWG_TOOL="$RUNNER_TEMP/awg" \
             bash scripts/ci/native-amneziawg-driver.sh
 
@@ -114,11 +139,14 @@ jobs:
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           node_helper="$RUNNER_TEMP/antimage-node-helper"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           go build -o "$node_helper" ./cmd/antimage_node
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_PPTP_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_PPTP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
             bash scripts/ci/native-pptp-driver.sh
 
@@ -192,31 +220,49 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - name: Install WireGuard and OpenVPN native dependencies
+      - name: Install combined native lifecycle dependencies
         run: |
           set -euxo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            iproute2 iptables nftables ppp wireguard-tools openvpn openssl netcat-openbsd
+            iproute2 iptables nftables iputils-ping ppp xl2tpd pptpd pptp-linux wireguard-tools openvpn openssl netcat-openbsd
       - name: Run real combined native lifecycle and SQLite lost-ACK replay
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          api_test="$RUNNER_TEMP/antimage-api.test"
+          node_helper="$RUNNER_TEMP/antimage-node-helper"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
           go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          go test -c -o "$api_test" ./internal/app/api
+          go build -o "$node_helper" ./cmd/antimage_node
           sudo env \
             RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_VPN_PANEL_TEST_BINARY="$nodecontroller_test" \
             bash scripts/ci/native-vpn-drivers.sh
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
+            ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
+            bash scripts/ci/native-l2tp-driver.sh
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_PPTP_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_PPTP_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
+            bash scripts/ci/native-pptp-driver.sh
       - name: Upload lifecycle evidence
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: protocol-lifecycle-exact-once-evidence-${{ github.run_id }}
-          path: ${{ runner.temp }}/antimage-native-vpn-failure/**
+          path: |
+            ${{ runner.temp }}/antimage-native-vpn-failure/**
+            ${{ runner.temp }}/antimage-l2tp-failure/**
+            ${{ runner.temp }}/antimage-pptp-failure/**
           if-no-files-found: ignore
           retention-days: 7
 

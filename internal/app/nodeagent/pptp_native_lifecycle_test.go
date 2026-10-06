@@ -14,6 +14,7 @@ import (
 	"time"
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 // TestPPTPNativeAccountingStage is driven by the privileged native protocol
@@ -33,7 +34,8 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 		}
 	}
 	user := pptpRuntimeUser{UserID: 7, Username: "native-pptp", VPNUsername: "native-pptp",
-		Password: "native-pptp-secret", IPv4Address: "10.68.0.2", Status: "active"}
+		Password: "native-pptp-secret", IPv4Address: "10.68.0.2", Status: "active",
+		UsageCoefficient: 1.5, InboundCoefficient: 2}
 	if quotaLimit > 0 {
 		user.DataLimit = &quotaLimit
 	}
@@ -76,13 +78,28 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 		if err := clearPPTPSystemIPPreUpHook(); err != nil {
 			t.Fatal(err)
 		}
-	case "collect":
+	case "collect", "collect-first", "collect-next", "collect-final":
 		batch, err := s.collectPPTPUserUsage(context.Background(), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if pptpNativeUsageValue(batch) == 0 {
 			t.Fatalf("production collector found no native PPP traffic: %v", batch)
+		}
+		if action != "collect" {
+			name := "native-first-batch.pb"
+			if action == "collect-next" {
+				name = "native-next-batch.pb"
+			} else if action == "collect-final" {
+				name = "native-final-batch.pb"
+			}
+			raw, err := proto.Marshal(batch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(stateDir, name), raw, 0600); err != nil {
+				t.Fatal(err)
+			}
 		}
 		t.Logf("production PPTP collector persisted bytes=%d batch=%s", pptpNativeUsageValue(batch), batch.GetBatchId())
 	case "ack":
@@ -99,6 +116,18 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 		ack, err := s.ackPPTPUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: pending.BatchID})
 		if err != nil || !ack.GetAcknowledged() {
 			t.Fatalf("ACK: %v %v", ack, err)
+		}
+		restarted := New(Config{DataDir: stateDir})
+		restarted.pptpUsageMu.Lock()
+		if err := restarted.ensurePPTPUsageStateLoadedLocked(); err != nil {
+			restarted.pptpUsageMu.Unlock()
+			t.Fatal(err)
+		}
+		stillPending := restarted.pptpUsagePending != nil
+		lastAcked := restarted.pptpUsageLastAckedBatchID
+		restarted.pptpUsageMu.Unlock()
+		if stillPending || lastAcked != pending.BatchID {
+			t.Fatalf("PPTP ACK was not durably applied after restart: pending=%v last_acked=%q want=%q", stillPending, lastAcked, pending.BatchID)
 		}
 		t.Logf("production ACK advanced durable PPP baseline for batch %s", pending.BatchID)
 	case "quota-watch":
@@ -177,8 +206,15 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 				if !finalRecord.Final || finalRecord.ID != activeRecord.ID || finalRecord.UserID != user.UserID || finalRecord.InboundTag != inbound.Tag || finalRecord.PeerIP != user.IPv4Address || finalRecord.Interface != activeRecord.Interface || finalRecord.Process != activeRecord.Process {
 					t.Fatalf("final PPTP session record does not match disconnected session: active=%+v final=%+v", activeRecord, finalRecord)
 				}
-				if finalRecord.Total < uint64(quotaLimit) || finalRecord.Total-uint64(quotaLimit) > 2<<20 {
-					t.Fatalf("final PPTP session counters outside quota bound: total=%d limit=%d", finalRecord.Total, quotaLimit)
+				policy := nativeSessionUserPolicy{UsageCoefficient: user.UsageCoefficient, InboundCoefficient: user.InboundCoefficient}
+				previousEffective := nativePanelEffectiveUsage(t, stateDir)
+				if previousEffective >= uint64(quotaLimit) {
+					t.Fatalf("PPTP batches before quota traffic already exhausted quota: previous=%d limit=%d", previousEffective, quotaLimit)
+				}
+				remainingEffective := uint64(quotaLimit) - previousEffective
+				effective := nativeSessionEffectiveLiveUsage(policy, finalRecord.Total)
+				if effective < remainingEffective || effective-remainingEffective > 6<<20 {
+					t.Fatalf("final PPTP session counters outside remaining effective quota bound: raw=%d effective=%d previous=%d remaining=%d limit=%d", finalRecord.Total, effective, previousEffective, remainingEffective, quotaLimit)
 				}
 				finalized = true
 				break
@@ -198,12 +234,19 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 			t.Fatal(err)
 		}
 		total := pptpNativeUsageValue(batch)
+		policy := nativeSessionUserPolicy{UsageCoefficient: user.UsageCoefficient, InboundCoefficient: user.InboundCoefficient}
+		effective := nativeSessionEffectiveLiveUsage(policy, total)
 		limit := uint64(quotaLimit)
-		if total < limit || total-limit > 2<<20 {
-			raw, _ := json.Marshal(batch)
-			t.Fatalf("native PPTP quota overshoot outside 2 MiB bound: raw=%d limit=%d batch=%s", total, limit, raw)
+		previousEffective := nativePanelEffectiveUsage(t, stateDir)
+		if previousEffective >= limit {
+			t.Fatalf("PPTP batches before quota traffic already exhausted quota: previous=%d limit=%d", previousEffective, limit)
 		}
-		t.Logf("production PPTP quota worker disconnected session at raw=%d bytes, limit=%d, overshoot=%d", total, limit, total-limit)
+		remainingEffective := limit - previousEffective
+		if effective < remainingEffective || effective-remainingEffective > 6<<20 {
+			raw, _ := json.Marshal(batch)
+			t.Fatalf("native PPTP quota overshoot outside 6 MiB effective bound: raw=%d effective=%d previous=%d remaining=%d limit=%d batch=%s", total, effective, previousEffective, remainingEffective, limit, raw)
+		}
+		t.Logf("production PPTP quota worker disconnected session at raw=%d effective=%d bytes, limit=%d", total, effective, limit)
 		for _, line := range s.snapshotLogs() {
 			t.Logf("node runtime: %s", line)
 		}

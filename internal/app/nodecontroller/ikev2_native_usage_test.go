@@ -18,13 +18,83 @@ func TestIKEv2NativePanelDB(t *testing.T) {
 	if dir == "" {
 		t.Skip("requires real native collector batches")
 	}
+	runNativePanelDBExactOnce(t, dir, false)
+}
+
+func TestL2TPNativePanelDB(t *testing.T) {
+	dir := os.Getenv("ANTIMAGE_L2TP_NATIVE_STATE")
+	if dir == "" {
+		t.Skip("requires real native L2TP collector batches")
+	}
+	runNativePanelDBExactOnce(t, dir, os.Getenv("ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL") == "1")
+}
+
+func TestPPTPNativePanelDB(t *testing.T) {
+	dir := os.Getenv("ANTIMAGE_PPTP_NATIVE_STATE")
+	if dir == "" {
+		t.Skip("requires real native PPTP collector batches")
+	}
+	runNativePanelDBExactOnce(t, dir, os.Getenv("ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL") == "1")
+}
+
+func TestAmneziaWGNativePanelDB(t *testing.T) {
+	dir := os.Getenv("ANTIMAGE_AWG_NATIVE_STATE")
+	if dir == "" {
+		t.Skip("requires real native AmneziaWG collector batches")
+	}
+	runNativePanelDBExactOnce(t, dir, os.Getenv("ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL") == "1")
+}
+
+func TestNativePanelDBExactOnceIncludesFinalBatch(t *testing.T) {
+	dir := t.TempDir()
+	for _, item := range []struct {
+		name, id string
+		value    uint64
+	}{
+		{name: "native-first-batch.pb", id: "first", value: 10},
+		{name: "native-next-batch.pb", id: "next", value: 20},
+		{name: "native-final-batch.pb", id: "final", value: 30},
+	} {
+		raw, err := proto.Marshal(&nodev1.UserUsageBatch{
+			BatchId: item.id,
+			Stats:   []*nodev1.UserUsageSample{{Uid: "l2tp:7", Value: item.value}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, item.name), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	runNativePanelDBExactOnce(t, dir, true)
+	var receipt struct {
+		BatchIDs       []string `json:"batch_ids"`
+		LatestBatchID  string   `json:"latest_batch_id"`
+		RawTotal       uint64   `json:"raw_total"`
+		EffectiveTotal uint64   `json:"effective_total"`
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "native-panel-receipt.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if len(receipt.BatchIDs) != 3 || receipt.BatchIDs[0] != "first" || receipt.BatchIDs[1] != "next" || receipt.BatchIDs[2] != "final" || receipt.LatestBatchID != "final" || receipt.RawTotal != 60 || receipt.EffectiveTotal != 180 {
+		t.Fatalf("final batch was not included exactly once: %+v", receipt)
+	}
+}
+
+func runNativePanelDBExactOnce(t *testing.T, dir string, requireFinalBatch bool) {
+	t.Helper()
 	ctx := context.Background()
 	batches := []*nodev1.UserUsageBatch{}
 	var rawTotal uint64
 	ids := []string{}
-	for i, name := range []string{"native-first-batch.pb", "native-next-batch.pb"} {
+	for i, name := range []string{"native-first-batch.pb", "native-next-batch.pb", "native-final-batch.pb"} {
 		raw, err := os.ReadFile(filepath.Join(dir, name))
-		if i == 1 && os.IsNotExist(err) {
+		if os.IsNotExist(err) && i > 0 && !(i == 2 && requireFinalBatch) {
 			continue
 		}
 		if err != nil {
@@ -109,7 +179,11 @@ INSERT INTO system (id) VALUES (1);`)
 		}
 		db = open() // Real connection restart; committed batches replay without ACK.
 	}
-	receipt, err := json.Marshal(map[string]any{"batch_ids": ids, "raw_total": rawTotal, "effective_total": rawTotal * 3})
+	latestBatchID := ""
+	if len(ids) > 0 {
+		latestBatchID = ids[len(ids)-1]
+	}
+	receipt, err := json.Marshal(map[string]any{"batch_ids": ids, "latest_batch_id": latestBatchID, "raw_total": rawTotal, "effective_total": rawTotal * 3})
 	if err != nil {
 		t.Fatal(err)
 	}

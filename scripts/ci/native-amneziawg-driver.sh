@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+: "${ANTIMAGE_AWG_TEST_BINARY:?missing compiled nodeagent test binary}"
+: "${ANTIMAGE_AWG_PANEL_TEST_BINARY:?missing compiled nodecontroller test binary}"
 
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-awg-XXXXXX")}"
 NS="antimage-awg-client"
@@ -49,6 +51,11 @@ stage() {
     ANTIMAGE_AWG_QUOTA_BYTES="$quota" \
     "$ANTIMAGE_AWG_TEST_BINARY" -test.run='^TestAmneziaWGNativeAccountingStage$' -test.v
 }
+panel_replay() {
+  env ANTIMAGE_AWG_NATIVE_STATE="$ROOT/awg-state" \
+    ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL="${1:-0}" \
+    "$ANTIMAGE_AWG_PANEL_TEST_BINARY" -test.run='^TestAmneziaWGNativePanelDB$' -test.v
+}
 AWG_TOOL="${ANTIMAGE_AWG_TOOL:-awg}"
 
 ip netns add "$NS"
@@ -83,13 +90,23 @@ timeout 30 nc -l -p 19090 >"$ROOT/initial-received" 2>&1 &
 PIDS+=("$!")
 wait_for 'initial AWG receiver' sh -c 'ss -lnt "( sport = :19090 )" | grep -q 19090'
 ip netns exec "$NS" sh -c 'dd if=/dev/zero bs=1M count=2 2>/dev/null | nc -N -w 3 10.74.0.1 19090'
-stage collect "$ROOT/awg-state"
+stage collect-first "$ROOT/awg-state"
+panel_replay
+stage ack "$ROOT/awg-state"
 
 echo '=== AmneziaWG production stop/apply restart and counter continuity ==='
 stage restart "$ROOT/awg-state"
 wait_for 'post-restart AWG handshake' ip netns exec "$NS" ping -c 1 -W 1 10.74.0.1
-stage collect "$ROOT/awg-state"
+stage collect-next "$ROOT/awg-state"
+panel_replay
 stage ack "$ROOT/awg-state"
+previous_effective="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["effective_total"])' "$ROOT/awg-state/native-panel-receipt.json")"
+if [ "$previous_effective" -ge "$quota_bytes" ]; then
+  echo "AWG pre-quota traffic already exhausted quota: effective=${previous_effective} quota=${quota_bytes}" >&2
+  exit 1
+fi
+remaining_effective="$((quota_bytes - previous_effective))"
+raw_quota_bytes="$((remaining_effective / 3))"
 
 echo '=== AmneziaWG production offline quota worker on real 50 MiB traffic ==='
 timeout 180 nc -l -p 19091 >"$ROOT/quota-received" 2>&1 &
@@ -112,9 +129,12 @@ fi
 wait "$sender_pid" || true
 wait "$listener_pid" || true
 cat "$ROOT/quota-watch.log"
+stage collect-final "$ROOT/awg-state"
+panel_replay 1
+stage ack "$ROOT/awg-state"
 received="$(wc -c <"$ROOT/quota-received")"
-if [ "$received" -ge "$((64 * 1024 * 1024))" ] || [ "$received" -lt "$((quota_bytes * 4 / 5))" ]; then
+if [ "$received" -ge "$((raw_quota_bytes + 2 * 1024 * 1024))" ] || [ "$received" -lt "$((raw_quota_bytes * 4 / 5))" ]; then
   echo "AWG quota traffic outside enforcement window: ${received} bytes" >&2
   exit 1
 fi
-echo "AmneziaWG: quota=${quota_bytes} bytes stopped native peer; delivered payload=${received} bytes"
+echo "AmneziaWG: effective quota=${quota_bytes} bytes, coefficients=1.5x2, delivered raw payload=${received} bytes"

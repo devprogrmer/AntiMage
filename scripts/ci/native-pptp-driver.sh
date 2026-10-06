@@ -74,6 +74,12 @@ stage() {
     "$ANTIMAGE_PPTP_TEST_BINARY" -test.run='^TestPPTPNativeAccountingStage$' -test.v
 }
 
+panel_replay() {
+  env ANTIMAGE_PPTP_NATIVE_STATE="$ROOT/pptp-state" \
+    ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL="${1:-0}" \
+    "$ANTIMAGE_PPTP_PANEL_TEST_BINARY" -test.run='^TestPPTPNativePanelDB$' -test.v
+}
+
 wait_for() {
   local name="$1"; shift
   for _ in $(seq 1 200); do "$@" >/dev/null 2>&1 && return 0; sleep .1; done
@@ -163,6 +169,9 @@ PPTP_CLIENT="$(command -v pptp)"
 start_server
 start_client
 wait_for 'first PPTP tunnel traffic' ip netns exec "$NS" ping -c 1 -W 1 10.68.0.1
+stage collect-first "$ROOT/pptp-state"
+panel_replay
+stage ack "$ROOT/pptp-state"
 
 echo '=== PPTP daemon restart and durable accounting recovery ==='
 stop_pid "$SERVER_PID"
@@ -172,6 +181,16 @@ wait_for_gone 'server PPP interface shutdown' sh -c 'ip -o link show | grep -q "
 start_server
 start_client
 wait_for 'post-restart PPTP tunnel traffic' ip netns exec "$NS" ping -c 1 -W 1 10.68.0.1
+stage collect-next "$ROOT/pptp-state"
+panel_replay
+stage ack "$ROOT/pptp-state"
+previous_effective="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["effective_total"])' "$ROOT/pptp-state/native-panel-receipt.json")"
+if [ "$previous_effective" -ge "$quota_bytes" ]; then
+  echo "PPTP pre-quota traffic already exhausted quota: effective=${previous_effective} quota=${quota_bytes}" >&2
+  exit 1
+fi
+remaining_effective="$((quota_bytes - previous_effective))"
+raw_quota_bytes="$((remaining_effective / 3))"
 
 echo '=== PPTP production offline quota enforcement on real 50 MiB transfer ==='
 timeout 180 nc -l -p 19091 >"$ROOT/quota-received" 2>&1 &
@@ -229,10 +248,12 @@ if ip netns exec "$NS" ip link show ppp0 >/dev/null 2>&1; then
 fi
 capture_ppp_state 'after rejected reconnect'
 cat "$ROOT/pptpd-reconnect.log"
+stage collect-final "$ROOT/pptp-state"
+panel_replay 1
 stage ack "$ROOT/pptp-state"
 received="$(wc -c <"$ROOT/quota-received")"
-if [ "$received" -ge "$((64 * 1024 * 1024))" ] || [ "$received" -lt "$((quota_bytes * 4 / 5))" ]; then
+if [ "$received" -ge "$((raw_quota_bytes + 2 * 1024 * 1024))" ] || [ "$received" -lt "$((raw_quota_bytes * 4 / 5))" ]; then
   echo "PPTP quota traffic outside enforcement window: ${received} bytes" >&2
   exit 1
 fi
-echo "PPTP: quota=${quota_bytes} bytes stopped native PPP session; delivered payload=${received} bytes"
+echo "PPTP: effective quota=${quota_bytes} bytes, coefficients=1.5x2, delivered raw payload=${received} bytes"
