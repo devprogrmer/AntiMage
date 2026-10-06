@@ -51,6 +51,17 @@ cleanup() {
     { date -u; ip -details addr show; ip route show table all; ip netns list; ip netns exec "$NS" ip -details addr show; ps -ef; } \
       >"$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>&1
     chmod a+r "$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>/dev/null || true
+    {
+      echo '=== host XFRM states (key-bearing lines omitted) ==='
+      ip -s xfrm state | sed -E '/^[[:space:]]+(auth|auth-trunc|enc|aead|comp) /d' || true
+      echo '=== host XFRM policies ==='
+      ip -s xfrm policy || true
+      echo '=== client XFRM states (key-bearing lines omitted) ==='
+      ip netns exec "$NS" ip -s xfrm state | sed -E '/^[[:space:]]+(auth|auth-trunc|enc|aead|comp) /d' || true
+      echo '=== client XFRM policies ==='
+      ip netns exec "$NS" ip -s xfrm policy || true
+    } >"$RUNNER_TEMP/antimage-l2tp-failure/xfrm-state.txt" 2>&1
+    chmod a+r "$RUNNER_TEMP/antimage-l2tp-failure/xfrm-state.txt" 2>/dev/null || true
     echo "L2TP native evidence retained at $RUNNER_TEMP/antimage-l2tp-failure" >&2
   fi
   for pid in "${PIDS[@]}"; do stop_pid "$pid"; done
