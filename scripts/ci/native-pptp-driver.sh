@@ -80,6 +80,25 @@ panel_replay() {
     "$ANTIMAGE_PPTP_PANEL_TEST_BINARY" -test.run='^TestPPTPNativePanelDB$' -test.v
 }
 
+set_session_panel_usage() {
+  python3 - "$1" "$2" <<'PY'
+import json, os, sys
+path, used = sys.argv[1], int(sys.argv[2])
+with open(path, encoding='utf-8') as f:
+    cfg = json.load(f)
+matches = [name for name, uid in cfg['users'].items() if int(uid) == 7]
+if len(matches) != 1 or matches[0] not in cfg.get('policies', {}):
+    raise SystemExit(f'expected one PPTP panel policy for user 7 in {path}')
+cfg['policies'][matches[0]]['used_traffic'] = used
+tmp = path + '.tmp'
+with open(tmp, 'w', encoding='utf-8') as f:
+    json.dump(cfg, f)
+    f.flush()
+    os.fsync(f.fileno())
+os.replace(tmp, path)
+PY
+}
+
 wait_for() {
   local name="$1"; shift
   for _ in $(seq 1 200); do "$@" >/dev/null 2>&1 && return 0; sleep .1; done
@@ -191,6 +210,8 @@ if [ "$previous_effective" -ge "$quota_bytes" ]; then
 fi
 remaining_effective="$((quota_bytes - previous_effective))"
 raw_quota_bytes="$((remaining_effective / 3))"
+session_config="$(find "$ROOT/pptp-state/pptp" -name session-helper.json -print -quit)"
+set_session_panel_usage "$session_config" "$previous_effective"
 
 echo '=== PPTP production offline quota enforcement on real 50 MiB transfer ==='
 timeout 180 nc -l -p 19091 >"$ROOT/quota-received" 2>&1 &
@@ -198,7 +219,7 @@ listener_pid="$!"
 PIDS+=("$listener_pid")
 wait_for 'PPTP quota receiver' sh -c 'ss -lnt "( sport = :19091 )" | grep -q 19091'
 ip netns exec "$NS" tc qdisc replace dev "$VETH_NS" root tbf rate 12mbit burst 32kb latency 400ms
-stage quota-watch "$ROOT/pptp-state" "$remaining_effective" >"$ROOT/quota-watch.log" 2>&1 &
+stage quota-watch "$ROOT/pptp-state" "$quota_bytes" >"$ROOT/quota-watch.log" 2>&1 &
 watch_pid="$!"
 PIDS+=("$watch_pid")
 sleep .2

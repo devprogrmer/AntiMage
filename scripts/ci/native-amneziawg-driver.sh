@@ -107,6 +107,25 @@ if [ "$previous_effective" -ge "$quota_bytes" ]; then
 fi
 remaining_effective="$((quota_bytes - previous_effective))"
 raw_quota_bytes="$((remaining_effective / 3))"
+python3 - "$ROOT/awg-state" "$client_pub" "$previous_effective" <<'PY'
+import glob, json, os, sys
+state, key, used = sys.argv[1], sys.argv[2], int(sys.argv[3])
+paths = glob.glob(os.path.join(state, 'amneziawg', 'runtime', '*', 'usage-helper.json'))
+if len(paths) != 1:
+    raise SystemExit(f'expected one AWG usage helper, found {len(paths)}')
+path = paths[0]
+with open(path, encoding='utf-8') as f:
+    cfg = json.load(f)
+if key not in cfg.get('policies', {}):
+    raise SystemExit(f'AWG policy missing peer {key}')
+cfg['policies'][key]['used_traffic'] = used
+tmp = path + '.tmp'
+with open(tmp, 'w', encoding='utf-8') as f:
+    json.dump(cfg, f)
+    f.flush()
+    os.fsync(f.fileno())
+os.replace(tmp, path)
+PY
 
 echo '=== AmneziaWG production offline quota worker on real 50 MiB traffic ==='
 timeout 180 nc -l -p 19091 >"$ROOT/quota-received" 2>&1 &
@@ -114,7 +133,7 @@ listener_pid="$!"
 PIDS+=("$listener_pid")
 wait_for 'AWG quota receiver' sh -c 'ss -lnt "( sport = :19091 )" | grep -q 19091'
 ip netns exec "$NS" tc qdisc replace dev "$VETH_NS" root tbf rate 12mbit burst 32kb latency 400ms
-stage quota-watch "$ROOT/awg-state" "$remaining_effective" >"$ROOT/quota-watch.log" 2>&1 &
+stage quota-watch "$ROOT/awg-state" "$quota_bytes" >"$ROOT/quota-watch.log" 2>&1 &
 watch_pid="$!"
 PIDS+=("$watch_pid")
 sleep .2

@@ -79,6 +79,25 @@ panel_replay() {
     ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL="${1:-0}" \
     "$ANTIMAGE_L2TP_PANEL_TEST_BINARY" -test.run='^TestL2TPNativePanelDB$' -test.v
 }
+set_session_panel_usage() {
+  python3 - "$1" "$2" <<'PY'
+import json, os, sys
+path, used = sys.argv[1], int(sys.argv[2])
+with open(path, encoding='utf-8') as f:
+    cfg = json.load(f)
+matches = [name for name, uid in cfg['users'].items() if int(uid) == 7]
+if len(matches) != 1 or matches[0] not in cfg.get('policies', {}):
+    raise SystemExit(f'expected one L2TP panel policy for user 7 in {path}')
+cfg['policies'][matches[0]]['used_traffic'] = used
+tmp = path + '.tmp'
+with open(tmp, 'w', encoding='utf-8') as f:
+    json.dump(cfg, f)
+    f.flush()
+    os.fsync(f.fileno())
+os.replace(tmp, path)
+PY
+}
+
 wait_for() {
   local name="$1"; shift
   for _ in $(seq 1 300); do "$@" >/dev/null 2>&1 && return 0; sleep .1; done
@@ -111,13 +130,12 @@ start_server() {
   wait_for 'server UDP 1701 listener' sh -c 'ss -lun "( sport = :1701 )" | grep -q 1701'
 }
 write_client_files() {
-  cat >"$ROOT/client-options" <<'EOF'
+  cat >"$ROOT/client-options" <<EOF
 noauth
 name native-l2tp
 password native-l2tp-secret
 refuse-eap
 refuse-pap
-refuse-chap
 refuse-mschap
 noipdefault
 nodefaultroute
@@ -222,13 +240,15 @@ if [ "$previous_effective" -ge "$quota_bytes" ]; then
 fi
 remaining_effective="$((quota_bytes - previous_effective))"
 raw_quota_bytes="$((remaining_effective / 3))"
+session_config="$(find "$ROOT/l2tp-state/l2tp" -name session-helper.json -print -quit)"
+set_session_panel_usage "$session_config" "$previous_effective"
 
 echo '=== native L2TP effective 50 MiB quota cutoff with coefficient accounting ==='
 timeout 180 nc -l -p 19091 >"$ROOT/quota-received" 2>&1 &
 LISTENER_PID=$!; PIDS+=("$LISTENER_PID")
 wait_for 'quota receiver' sh -c 'ss -lnt "( sport = :19091 )" | grep -q 19091'
 ip netns exec "$NS" tc qdisc replace dev "$VETH_NS" root tbf rate 12mbit burst 32kb latency 400ms
-stage quota-watch "$remaining_effective" >"$ROOT/quota-watch.log" 2>&1 &
+stage quota-watch "$quota_bytes" >"$ROOT/quota-watch.log" 2>&1 &
 WATCH_PID=$!; PIDS+=("$WATCH_PID")
 sleep .2
 ip netns exec "$NS" sh -c 'dd if=/dev/zero bs=1M count=50 status=none | nc -N -w 10 10.67.0.1 19091' >"$ROOT/quota-sender.log" 2>&1 &
