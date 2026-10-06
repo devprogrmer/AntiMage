@@ -1,9 +1,11 @@
 # Offline Accounting and Local Quota Coverage
 
-PR #84 is open and ready for review. The implementation and regression fixtures
-below are real, but the complete native data-plane acceptance scenario has not
-passed for every protocol. Separate unit fixtures are not a full end-to-end
-guarantee.
+PR #84 is open and unmerged. On HEAD `e328b0e9`, Native Protocol E2E run
+`37535911996` passed all eight native protocol jobs, combined SQLite
+lost-ACK/replay, durable-state checks, and the Linux race job. Binary Build and
+Database Migrations and PR Build also passed on that HEAD. Session/IP/device
+and Xray enforcement gaps remain listed separately below. PR #84's current
+checks are the authority for any documentation-only follow-up commit.
 
 ## Implemented Architecture
 
@@ -92,35 +94,46 @@ technically unreliable capability in this matrix.
 | IKEv2 | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented |
 | AnyConnect | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented |
 
-Native evidence is from workflow run `37505191153` at commit `ceff5c94`:
+Latest native evidence is from workflow run `37535911996` at commit `e328b0e9`:
 
-- `native-anyconnect` executed ocserv restart/reconnect, three production
-  collector batches, SQLite replay and ACK pruning. At the exact 50 MiB limit
-  (52,428,800 bytes), it observed 15,269,700 raw quota bytes, 52,452,708
-  billable bytes, 23,908 bytes overshoot, and 14,471,220 bytes delivered to
-  the tunneled receiver before disconnect; reconnect was denied.
-- `native-amneziawg`, `native-l2tp`, and `native-pptp` each exercised native
-  runtime restart, further traffic, local 50 MiB quota enforcement, exhausted
-  reconnect denial, final native batch, SQLite replay, exact totals, and durable
-  ACK pruning. Their final SQLite billable totals were 52,504,872,
-  52,593,612, and 52,486,842 bytes respectively, with the configured 1.5 × 2
-  coefficients.
-- `native-wireguard` and `native-openvpn` exercised real kernel/tun traffic,
-  runtime restart, quota and reconnect handling. The combined
-  `protocol-lifecycle-exact-once` job replayed their real pending batches into
-  SQLite and verified totals remain unchanged on retry before pruning.
-- `native-xray` exercised the production collector against real VLESS traffic,
-  restarted the Xray daemon, reloaded node accounting in separate processes,
-  reconnected VLESS, and replayed an unacknowledged batch through SQLite without
-  double counting before committing and ACKing a later batch. The native
-  collector batches totaled 753,692 raw bytes and 2,261,076 billable bytes at
-  coefficients 1.5 × 2. This runtime restart and reconnect extension passed the
-  pinned local native E2E and is being rerun by CI on the current PR head. The
-  existing-stream hard quota limitation remains `Not Technically Reliable`.
+- All eight native jobs and the combined
+  `protocol-lifecycle-exact-once` job passed on this HEAD. Real protocol batches
+  were replayed after node-state reload through SQLite; replay did not change the
+  total, ACKs survived reload, and acknowledged batches were pruned. Final logged
+  SQLite raw/effective totals included Xray 753,692 / 2,261,076 bytes, AmneziaWG
+  17,606,904 / 52,820,712, L2TP 17,499,520 / 52,498,560, PPTP 17,596,834 /
+  52,790,502, and IKEv2 17,478,016 / 52,434,048 bytes. The combined native
+  WireGuard/OpenVPN lost-ACK test committed 105,629,069 raw / 316,887,207
+  effective bytes across two batches; AnyConnect committed 17,487,360 /
+  52,462,080 bytes. Coefficients were 1.5 × 2 where configured.
+- The native 50 MiB threshold was 52,428,800 effective bytes. Cutoff totals in
+  the latest run were WireGuard 52,560,596 raw (131,796 over its raw threshold),
+  OpenVPN 53,331,003 raw (902,203 over), AmneziaWG 52,820,712 effective (391,912
+  over), L2TP 52,498,560 effective (69,760 over), PPTP 52,790,502 effective
+  (361,702 over), IKEv2 52,434,048 effective (5,248 over), and AnyConnect
+  52,462,080 effective (33,280 over). AnyConnect's last quota run used
+  15,268,904 raw quota bytes, delivered 14,468,380 tunneled bytes, and
+  disconnected in 19,952 ms. A second real AnyConnect outer IP was rejected;
+  the admitted client was 10.253.0.2 with assigned address 192.0.2.117.
+- Native transfers measured 4 Mbps upload and 6 Mbps download with the
+  configured production shapers. Average upload/download and one-second peak
+  upload/download (Mbps) were: WireGuard 4.12/5.93, 5.31/6.79; AmneziaWG
+  4.13/5.98, 5.37/6.82; OpenVPN 4.07/6.11, 5.28/7.32; L2TP 4.01/5.93,
+  5.17/6.57; PPTP 3.98/5.88, 5.32/6.85; IKEv2 4.34/7.04, 7.54/11.34;
+  AnyConnect 3.93/6.10, 6.36/10.78. The harness allows burst peaks up to
+  twice the configured rate and checks average throughput within its defined
+  tolerance. Xray per-user speed remains `Not Technically Reliable`.
+- `native-ikev2` verified two real outer IPs separately from assigned tunnel
+  addresses and passed the session/IP limit scenario. `native-l2tp` persisted
+  two real session records through the panel API and confirmed disconnects with
+  the assigned PPP address. Xray real VLESS traffic verified online/offline IP
+  reporting and the existing-stream limitation; SQLite totals were 753,692 raw /
+  2,261,076 effective bytes. User removal revoked future authentication but did
+  not stop the already-authenticated stream.
 
-`native-race`, `protocol-policy-and-durable-state`, Binary Build, PR Build, and
-Database Migrations are separate workflow gates; their results must be read from
-the same final commit before considering the PR fully verified.
+On tested code HEAD `e328b0e9`, `native-race`,
+`protocol-policy-and-durable-state`, Binary Build, Database Migrations, and PR
+Build all passed. The comprehensive checks on any later PR HEAD must also pass.
 
 ## Identity and Quota Evidence
 
@@ -148,10 +161,14 @@ interval, command latency and disconnect completion; it cannot guarantee zero.
 - Real Xray v26.7.11 VLESS testing proves HandlerService user removal succeeds
   while an already-authenticated stream continues transferring bytes. Hard quota
   requires core stream termination, not just authentication removal.
-- Reliable Xray per-user speed shaping remains unimplemented. Shared/multiplexed
-  transports have no stable per-user kernel flow identity. Whole-inbound shaping
-  would affect unrelated users; a core per-user limiter or isolated transport
-  architecture is required.
+- Xray's `HandlerService.RemoveUser` removes credentials but does not terminate
+  authenticated streams, confirmed by native VLESS traffic after removal.
+  `nftables`/`tc` can shape marked sockets, and Xray routing can select outbounds
+  by user, but reliably applying per-user marks requires rewriting or cloning
+  arbitrary user routing/outbound behavior. A cgroup mark would cover the shared
+  Xray process and affect unrelated accounts; whole-inbound shaping has the same
+  problem. No safe transparent per-user flow mapping is implemented, so hard
+  cutoff and per-user speed enforcement remain `Not Technically Reliable`.
 - Local `go test ./... -count=1` passes, including nodeagent, nodecontroller, API,
   migrations, SQLite lost-ACK/coefficient/combined recovery and device/IP tests.
 - The real pinned Xray VLESS test passes positive native stats, actual online IP,
@@ -179,12 +196,10 @@ interval, command latency and disconnect completion; it cannot guarantee zero.
 - The AnyConnect native run exposed and fixed a production config issue: ocserv's
   worker IPC socket and its `occtl` management socket are separate. Runtime
   config now sets `socket-file`, `occtl-socket-file`, and `use-occtl` explicitly.
-- That IKEv2 run did not start the full panel and node transport services, did not
-  cover MySQL/MariaDB, and does not establish the full acceptance sequence for all
-  eight protocols. AmneziaWG, L2TP, and PPTP have no local real-daemon data-path
-  run in this increment. Those remain unproven. Local
-  `go test -race -timeout 30m ./internal/... -count=1` passes; the API package
-  takes about 14 minutes under the race detector in WSL.
+- That local IKEv2 run did not start the full panel and node transport services
+  or cover MySQL/MariaDB. Privileged CI now exercises all eight native daemons
+  and SQLite replay in run `37535911996`; database matrices separately passed in
+  run `37535912170`.
 - Dashboard source is unchanged in this increment; no fresh local dashboard run.
 
 Primary references: [StatsService schema](https://github.com/XTLS/Xray-core/blob/main/app/stats/command/command.proto),
