@@ -150,6 +150,43 @@ func TestL2TPNativeAccountingStage(t *testing.T) {
 		if quotaLimit <= 0 {
 			t.Fatal("quota-watch requires a positive quota")
 		}
+		root := filepath.Join(stateDir, "l2tp", l2TPRuntimeDirName(inbound.Tag), "ppp-accounting")
+		pidBytes, err := os.ReadFile("/run/ppp0.pid")
+		if err != nil {
+			t.Fatalf("read native pppd PID before quota enforcement: %v", err)
+		}
+		pppdPID := strings.TrimSpace(string(pidBytes))
+		if pppdPID == "" {
+			t.Fatal("native pppd PID is empty before quota enforcement")
+		}
+		activeEntries, err := os.ReadDir(filepath.Join(root, "active"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var activeRecord pppOfflineSession
+		for _, entry := range activeEntries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+				continue
+			}
+			raw, readErr := os.ReadFile(filepath.Join(root, "active", entry.Name()))
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			var record pppOfflineSession
+			if err := json.Unmarshal(raw, &record); err != nil {
+				t.Fatal(err)
+			}
+			if record.UserID != user.UserID || record.PeerIP != user.IPv4Address || record.InboundTag != inbound.Tag || !strings.Contains(record.Process, ":"+pppdPID+":") {
+				continue
+			}
+			if activeRecord.ID != "" {
+				t.Fatalf("multiple active L2TP records match pppd PID %s: %+v and %+v", pppdPID, activeRecord, record)
+			}
+			activeRecord = record
+		}
+		if activeRecord.ID == "" {
+			t.Fatalf("no active L2TP record matches native pppd PID %s", pppdPID)
+		}
 		ctx, cancel := context.WithCancel(context.Background())
 		workerDone := make(chan struct{})
 		go func() {
@@ -182,32 +219,7 @@ func TestL2TPNativeAccountingStage(t *testing.T) {
 		if !removed {
 			t.Fatal("production PPP quota worker did not disconnect the native L2TP session")
 		}
-		root := filepath.Join(stateDir, "l2tp", l2TPRuntimeDirName(inbound.Tag), "ppp-accounting")
-		activeEntries, err := os.ReadDir(filepath.Join(root, "active"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		var active pppOfflineSession
-		for _, entry := range activeEntries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-				continue
-			}
-			raw, readErr := os.ReadFile(filepath.Join(root, "active", entry.Name()))
-			if readErr != nil {
-				t.Fatal(readErr)
-			}
-			var record pppOfflineSession
-			if err := json.Unmarshal(raw, &record); err != nil {
-				t.Fatal(err)
-			}
-			if record.UserID == user.UserID && record.PeerIP == user.IPv4Address && record.InboundTag == inbound.Tag {
-				active = record
-			}
-		}
-		if active.ID == "" {
-			t.Fatal("no durable active L2TP session record found after quota disconnect")
-		}
-		finalPath := filepath.Join(root, "final", active.ID+".json")
+		finalPath := filepath.Join(root, "final", activeRecord.ID+".json")
 		deadline = time.Now().Add(10 * time.Second)
 		var final pppOfflineSession
 		for time.Now().Before(deadline) {
@@ -230,8 +242,8 @@ func TestL2TPNativeAccountingStage(t *testing.T) {
 		}
 		remainingEffective := uint64(quotaLimit) - previousEffective
 		finalEffective := nativeSessionEffectiveLiveUsage(policy, final.Total)
-		if !final.Final || final.ID != active.ID || finalEffective < remainingEffective || finalEffective-remainingEffective > 2<<20 {
-			t.Fatalf("final L2TP session counters outside remaining effective quota: active=%+v final=%+v previous=%d remaining=%d limit=%d", active, final, previousEffective, remainingEffective, quotaLimit)
+		if !final.Final || final.ID != activeRecord.ID || finalEffective < remainingEffective || finalEffective-remainingEffective > 2<<20 {
+			t.Fatalf("final L2TP session counters outside remaining effective quota: active=%+v final=%+v previous=%d remaining=%d limit=%d", activeRecord, final, previousEffective, remainingEffective, quotaLimit)
 		}
 		if err := s.checkpointPPPOffline(context.Background()); err != nil {
 			t.Fatal(err)
