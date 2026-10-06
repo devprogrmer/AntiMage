@@ -73,6 +73,125 @@ func TestAnyConnectNativeSpeedConfigStage(t *testing.T) {
 	t.Logf("production AnyConnect config set upload=4 Mbps download=6 Mbps: %s", path)
 }
 
+// TestAnyConnectNativeIPLimitStage verifies that the production offline policy
+// distinguishes ocserv's real peer address from the assigned tunnel address.
+func TestAnyConnectNativeIPLimitStage(t *testing.T) {
+	root := strings.TrimSpace(os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_ROOT"))
+	stateDir := strings.TrimSpace(os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE"))
+	if root == "" || stateDir == "" {
+		t.Skip("requires isolated native ocserv harness")
+	}
+	pid, err := anyConnectNativePID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(stateDir, "anyconnect", "ip-limit")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := anyConnectUsageRuntimeConfig{InboundTag: "ip-limit", SocketPath: filepath.Join(root, "ocserv.sock"), Users: map[string]int64{"native-ip-limit": 8}}
+	usageHelper, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ocserv.pid"), []byte(pid), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "usage-helper.json"), usageHelper, 0600); err != nil {
+		t.Fatal(err)
+	}
+	policy := nativeSessionUserPolicy{Status: "active", IPLimit: 1}
+	helper, err := json.Marshal(nativeSessionHelperConfig{
+		InboundTag: "ip-limit", Protocol: "anyconnect", Users: cfg.Users,
+		Policies: map[string]nativeSessionUserPolicy{"native-ip-limit": policy},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "session-helper.json"), helper, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	s := New(Config{DataDir: stateDir})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	readSessions := func() ([]anyConnectLiveSession, error) {
+		snapshots, err := s.anyConnectOfflineSnapshots(ctx)
+		if err != nil {
+			return nil, err
+		}
+		var sessions []anyConnectLiveSession
+		for _, snapshot := range snapshots {
+			for _, session := range snapshot.Sessions {
+				if session.Username == "native-ip-limit" {
+					sessions = append(sessions, session)
+				}
+			}
+		}
+		return sessions, nil
+	}
+	var initial []anyConnectLiveSession
+	initialDeadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(initialDeadline) {
+		initial, err = readSessions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(initial) == 2 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if len(initial) != 2 {
+		t.Fatalf("need two simultaneous native AnyConnect sessions before applying IP limit: %+v", initial)
+	}
+	seenReal, seenAssigned := map[string]bool{}, map[string]bool{}
+	for _, session := range initial {
+		seenReal[session.ClientIP] = true
+		seenAssigned[session.AssignedIP] = true
+	}
+	if !seenReal["10.253.0.2"] || !seenReal["10.254.0.2"] || len(seenAssigned) != 2 || seenAssigned[""] {
+		t.Fatalf("native AnyConnect did not expose distinct real and assigned addresses: %+v", initial)
+	}
+
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		s.runLocalAccountingWorker(ctx, "anyconnect-ip-limit", 100*time.Millisecond, time.Second,
+			s.checkpointAnyConnectOffline, s.quotaCheckAnyConnectOffline)
+	}()
+
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		sessions, snapshotErr := readSessions()
+		if snapshotErr != nil {
+			cancel()
+			<-workerDone
+			t.Fatal(snapshotErr)
+		}
+		if len(sessions) == 1 {
+			if sessions[0].ClientIP != "10.253.0.2" || sessions[0].AssignedIP == "" {
+				cancel()
+				<-workerDone
+				t.Fatalf("IP limit retained the wrong native AnyConnect session: %+v", sessions[0])
+			}
+			cancel()
+			<-workerDone
+			t.Logf("native AnyConnect IP limit kept real peer %s with assigned tunnel IP %s; rejected the second real peer", sessions[0].ClientIP, sessions[0].AssignedIP)
+			return
+		}
+		if len(sessions) > 2 {
+			cancel()
+			<-workerDone
+			t.Fatalf("unexpected native AnyConnect IP-limit session count: %+v", sessions)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	cancel()
+	<-workerDone
+	t.Fatal("production AnyConnect offline worker did not enforce the distinct-real-IP limit")
+}
+
 // TestAnyConnectNativeAccountingStage reads live sessions from the actual
 // ocserv control socket and exercises the durable collector across reload.
 func TestAnyConnectNativeAccountingStage(t *testing.T) {

@@ -2,6 +2,7 @@
 set -euo pipefail
 ROOT="${ROOT:-$(mktemp -d)}"
 NS="${NS:-antimage-anyconnect-client}"
+NS2="${NS2:-antimage-anyconnect-client2}"
 PIDS=()
 cleanup() {
   local rc=$?
@@ -22,6 +23,8 @@ cleanup() {
         ip netns list || true
         ip netns exec "$NS" ip -details addr show || true
         ip netns exec "$NS" ip route show table all || true
+        ip netns exec "$NS2" ip -details addr show || true
+        ip netns exec "$NS2" ip route show table all || true
         nft list ruleset || true
         tc -s qdisc show || true
         ps -ef || true
@@ -32,6 +35,7 @@ cleanup() {
   set +e
   for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
   ip netns del "$NS" 2>/dev/null || true
+  ip netns del "$NS2" 2>/dev/null || true
   rm -rf "$ROOT"
 }
 trap cleanup EXIT
@@ -73,6 +77,18 @@ start_client() {
   ip netns exec "$NS" ip link show vpn-native >/dev/null
   for _ in $(seq 1 80); do ip netns exec "$NS" ip -4 addr show dev vpn-native | grep -q '192.0.2.' && break; sleep .25; done
   ip netns exec "$NS" ip addr show vpn-native
+}
+start_ip_limit_client() {
+  local ns="$1" endpoint="$2" output="$3"
+  ip netns exec "$ns" openconnect --protocol=anyconnect --user=native-ip-limit \
+    --passwd-on-stdin --servercert "$SERVERCERT" --no-dtls \
+    --script "$VPNSCRIPT" --interface=vpn-ip-limit \
+    "https://$endpoint:4433" >"$output" 2>&1 <<< 'native-ip-password' &
+  ip_limit_client_pid=$!
+  PIDS+=("$ip_limit_client_pid")
+  for _ in $(seq 1 120); do ip netns exec "$ns" ip link show vpn-ip-limit >/dev/null 2>&1 && break; sleep .25; done
+  ip netns exec "$ns" ip link show vpn-ip-limit >/dev/null
+  ip netns exec "$ns" ip -4 addr show dev vpn-ip-limit | grep -q '192.0.2.'
 }
 start_reconnect_attempt() {
   local output="$1"
@@ -322,6 +338,7 @@ panel_replay() {
 }
 mkdir -p "$ROOT"
 ip netns add "$NS"
+ip netns add "$NS2"
 ip link add aoc-vh type veth peer name aoc-vn
 ip link set aoc-vn netns "$NS"
 ip addr add 10.253.0.1/24 dev aoc-vh
@@ -329,6 +346,13 @@ ip link set aoc-vh up
 ip netns exec "$NS" ip addr add 10.253.0.2/24 dev aoc-vn
 ip netns exec "$NS" ip link set lo up
 ip netns exec "$NS" ip link set aoc-vn up
+ip link add aoc-vh2 type veth peer name aoc-vn2
+ip link set aoc-vn2 netns "$NS2"
+ip addr add 10.254.0.1/24 dev aoc-vh2
+ip link set aoc-vh2 up
+ip netns exec "$NS2" ip addr add 10.254.0.2/24 dev aoc-vn2
+ip netns exec "$NS2" ip link set lo up
+ip netns exec "$NS2" ip link set aoc-vn2 up
 test -c /dev/net/tun
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=antimage-ocserv' -keyout "$ROOT/key.pem" -out "$ROOT/cert.pem" >/dev/null 2>&1
 SERVERCERT="pin-sha256:$(openssl x509 -in "$ROOT/cert.pem" -pubkey -noout | openssl pkey -pubin -outform DER 2>/dev/null | openssl dgst -sha256 -binary | base64 -w0)"
@@ -336,6 +360,7 @@ VPNSCRIPT="${VPNSCRIPT:-/usr/share/vpnc-scripts/vpnc-script}"
 test -x "$VPNSCRIPT"
 printf 'native-password\nnative-password\n' | ocpasswd -c "$ROOT/ocpasswd" native-user >/dev/null
 printf 'native-password\nnative-password\n' | ocpasswd -c "$ROOT/ocpasswd" native-speed >/dev/null
+printf 'native-ip-password\nnative-ip-password\n' | ocpasswd -c "$ROOT/ocpasswd" native-ip-limit >/dev/null
 cat >"$ROOT/ocserv.conf" <<EOF
 auth = plain[passwd=$ROOT/ocpasswd]
 device = vpns
@@ -370,6 +395,21 @@ start_client "$ROOT/openconnect.log"
 ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
 if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   transfer_tunnel_payload initial
+  echo '=== AnyConnect real remote-IP reporting and native IP limit ==='
+  start_ip_limit_client "$NS" 10.253.0.1 "$ROOT/openconnect-ip-limit-client1.log"
+  ip_limit_client1_pid="$ip_limit_client_pid"
+  start_ip_limit_client "$NS2" 10.254.0.1 "$ROOT/openconnect-ip-limit-client2.log"
+  ip_limit_client2_pid="$ip_limit_client_pid"
+  ip netns exec "$NS2" ping -c 2 -W 2 192.0.2.1
+  ANTIMAGE_ANYCONNECT_NATIVE_ROOT="$ROOT" \
+    ANTIMAGE_ANYCONNECT_NATIVE_STATE="$ROOT/anyconnect-ip-limit-state" \
+    ANTIMAGE_ANYCONNECT_NATIVE_PID="$ocserv_pid" \
+    "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectNativeIPLimitStage$' -test.v
+  kill -TERM "$ip_limit_client2_pid" "$ip_limit_client1_pid" 2>/dev/null || true
+  wait "$ip_limit_client2_pid" 2>/dev/null || true
+  wait "$ip_limit_client1_pid" 2>/dev/null || true
+  wait_for_gone 'first AnyConnect IP-limit test tunnel' ip netns exec "$NS" ip link show vpn-ip-limit
+  wait_for_gone 'second AnyConnect IP-limit test tunnel' ip netns exec "$NS2" ip link show vpn-ip-limit
   echo '=== ocserv per-user upload/download shaping on native traffic ==='
   start_speed_client
   measure_speed_upload
