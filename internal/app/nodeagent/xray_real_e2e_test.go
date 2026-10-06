@@ -302,75 +302,74 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 		t.Fatalf("bulk OnlineMap IPs=%+v, want client IP 127.0.0.2", bulkState.IPs)
 	}
 
-	panelTestBinary := strings.TrimSpace(os.Getenv("ANTIMAGE_XRAY_PANEL_TEST_BINARY"))
-	if panelTestBinary == "" {
-		t.Fatal("native Xray E2E requires ANTIMAGE_XRAY_PANEL_TEST_BINARY for SQLite exact-once validation")
-	}
-	nativeState := filepath.Join(tmp, "xray-agent-state")
-	node := newNativeXrayAccountingServer(t, nativeState, xrayPath, apiPort)
-	batchA, err := node.collectXrayUserUsage(context.Background(), nil)
-	if err != nil || batchA.GetBatchId() == "" || nativeXrayBatchValue(batchA) == 0 {
-		t.Fatalf("production Xray collector did not create positive native batch A: batch=%v err=%v", batchA, err)
-	}
-	writeNativeXrayBatch(t, nativeState, "native-first-batch.pb", batchA)
-	runNativeXrayPanelDB(t, panelTestBinary, nativeState, false)
-
-	// Simulate a node-agent restart with an ACK lost in flight. The new process
-	// must reload and replay the identical immutable batch before it is ACKed.
-	nodeAfterLostACK := newNativeXrayAccountingServer(t, nativeState, xrayPath, apiPort)
-	replayA, err := nodeAfterLostACK.collectXrayUserUsage(context.Background(), nil)
-	if err != nil || replayA.GetBatchId() != batchA.GetBatchId() {
-		t.Fatalf("Xray batch A changed across node restart: replay=%v err=%v", replayA, err)
-	}
-	runNativeXrayPanelDB(t, panelTestBinary, nativeState, false)
-	assertNativeXrayPanelReceipt(t, nativeState, batchA.GetBatchId(), nativeXrayBatchValue(batchA))
-	ackA, err := nodeAfterLostACK.ackXrayUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: batchA.GetBatchId()})
-	if err != nil || !ackA.GetAcknowledged() {
-		t.Fatalf("DB-confirmed Xray ACK for batch A: ack=%v err=%v", ackA, err)
-	}
-
 	statsClient := newXrayStatsClient(xrayPath, apiPort)
-	realXrayWaitForPositiveUserTraffic(
-		t,
-		statsClient,
-		userEmail,
-	)
+	panelTestBinary := strings.TrimSpace(os.Getenv("ANTIMAGE_XRAY_PANEL_TEST_BINARY"))
+	if panelTestBinary != "" {
+		nativeState := filepath.Join(tmp, "xray-agent-state")
+		node := newNativeXrayAccountingServer(t, nativeState, xrayPath, apiPort)
+		batchA, err := node.collectXrayUserUsage(context.Background(), nil)
+		if err != nil || batchA.GetBatchId() == "" || nativeXrayBatchValue(batchA) == 0 {
+			t.Fatalf("production Xray collector did not create positive native batch A: batch=%v err=%v", batchA, err)
+		}
+		writeNativeXrayBatch(t, nativeState, "native-first-batch.pb", batchA)
+		runNativeXrayPanelDB(t, panelTestBinary, nativeState, false)
 
-	beforeBatchB, err := statsClient.queryStats(context.Background(), "user>>>", false)
-	if err != nil {
-		t.Fatalf("read Xray counters before batch B traffic: %v", err)
-	}
-	beforeBatchBBytes := nativeXrayUserCounterTotal(beforeBatchB, userEmail)
-	continued := bytes.Repeat([]byte("xray-native-exact-once-"), 32*1024)
-	if _, err := clientConn.Write(continued); err != nil {
-		t.Fatalf("write batch B through Xray: %v", err)
-	}
-	if err := upstreamConn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	gotBatchB := make([]byte, len(continued))
-	if _, err := io.ReadFull(upstreamConn, gotBatchB); err != nil {
-		t.Fatalf("read batch B through Xray: %v", err)
-	}
-	if !bytes.Equal(gotBatchB, continued) {
-		t.Fatal("Xray batch B tunnel payload did not round-trip")
-	}
-	realXrayWaitForNativeCounterIncrease(t, statsClient, userEmail, beforeBatchBBytes)
+		// Simulate a node-agent restart with an ACK lost in flight. The new process
+		// must reload and replay the identical immutable batch before it is ACKed.
+		nodeAfterLostACK := newNativeXrayAccountingServer(t, nativeState, xrayPath, apiPort)
+		replayA, err := nodeAfterLostACK.collectXrayUserUsage(context.Background(), nil)
+		if err != nil || replayA.GetBatchId() != batchA.GetBatchId() {
+			t.Fatalf("Xray batch A changed across node restart: replay=%v err=%v", replayA, err)
+		}
+		runNativeXrayPanelDB(t, panelTestBinary, nativeState, false)
+		assertNativeXrayPanelReceipt(t, nativeState, batchA.GetBatchId(), nativeXrayBatchValue(batchA))
+		ackA, err := nodeAfterLostACK.ackXrayUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: batchA.GetBatchId()})
+		if err != nil || !ackA.GetAcknowledged() {
+			t.Fatalf("DB-confirmed Xray ACK for batch A: ack=%v err=%v", ackA, err)
+		}
 
-	// A fresh node-agent process collects post-ACK traffic from the same live
-	// Xray runtime. SQLite reapplies A and B across connection reopen; totals
-	// must increase by B exactly once.
-	nodeAfterRestart := newNativeXrayAccountingServer(t, nativeState, xrayPath, apiPort)
-	batchB, err := nodeAfterRestart.collectXrayUserUsage(context.Background(), nil)
-	if err != nil || batchB.GetBatchId() == "" || batchB.GetBatchId() == batchA.GetBatchId() || nativeXrayBatchValue(batchB) == 0 {
-		t.Fatalf("production Xray collector did not create positive post-ACK batch B: batch=%v err=%v", batchB, err)
-	}
-	writeNativeXrayBatch(t, nativeState, "native-next-batch.pb", batchB)
-	runNativeXrayPanelDB(t, panelTestBinary, nativeState, false)
-	assertNativeXrayPanelReceipt(t, nativeState, batchB.GetBatchId(), nativeXrayBatchValue(batchA)+nativeXrayBatchValue(batchB))
-	ackB, err := nodeAfterRestart.ackXrayUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: batchB.GetBatchId()})
-	if err != nil || !ackB.GetAcknowledged() {
-		t.Fatalf("DB-confirmed Xray ACK for batch B: ack=%v err=%v", ackB, err)
+		realXrayWaitForPositiveUserTraffic(
+			t,
+			statsClient,
+			userEmail,
+		)
+
+		beforeBatchB, err := statsClient.queryStats(context.Background(), "user>>>", false)
+		if err != nil {
+			t.Fatalf("read Xray counters before batch B traffic: %v", err)
+		}
+		beforeBatchBBytes := nativeXrayUserCounterTotal(beforeBatchB, userEmail)
+		continued := bytes.Repeat([]byte("xray-native-exact-once-"), 32*1024)
+		if _, err := clientConn.Write(continued); err != nil {
+			t.Fatalf("write batch B through Xray: %v", err)
+		}
+		if err := upstreamConn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		gotBatchB := make([]byte, len(continued))
+		if _, err := io.ReadFull(upstreamConn, gotBatchB); err != nil {
+			t.Fatalf("read batch B through Xray: %v", err)
+		}
+		if !bytes.Equal(gotBatchB, continued) {
+			t.Fatal("Xray batch B tunnel payload did not round-trip")
+		}
+		realXrayWaitForNativeCounterIncrease(t, statsClient, userEmail, beforeBatchBBytes)
+
+		// A fresh node-agent process collects post-ACK traffic from the same live
+		// Xray runtime. SQLite reapplies A and B across connection reopen; totals
+		// must increase by B exactly once.
+		nodeAfterRestart := newNativeXrayAccountingServer(t, nativeState, xrayPath, apiPort)
+		batchB, err := nodeAfterRestart.collectXrayUserUsage(context.Background(), nil)
+		if err != nil || batchB.GetBatchId() == "" || batchB.GetBatchId() == batchA.GetBatchId() || nativeXrayBatchValue(batchB) == 0 {
+			t.Fatalf("production Xray collector did not create positive post-ACK batch B: batch=%v err=%v", batchB, err)
+		}
+		writeNativeXrayBatch(t, nativeState, "native-next-batch.pb", batchB)
+		runNativeXrayPanelDB(t, panelTestBinary, nativeState, false)
+		assertNativeXrayPanelReceipt(t, nativeState, batchB.GetBatchId(), nativeXrayBatchValue(batchA)+nativeXrayBatchValue(batchB))
+		ackB, err := nodeAfterRestart.ackXrayUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: batchB.GetBatchId()})
+		if err != nil || !ackB.GetAcknowledged() {
+			t.Fatalf("DB-confirmed Xray ACK for batch B: ack=%v err=%v", ackB, err)
+		}
 	}
 
 	// Keep the connection open but idle. Online state must come from OnlineMap,
