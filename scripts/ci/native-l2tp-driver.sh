@@ -19,6 +19,7 @@ CLIENT_CHARON="charon-antimage-l2tp-client"
 CLIENT_CHARON_BIN="/usr/lib/ipsec/$CLIENT_CHARON"
 CLIENT_CHARON_LINKED=0
 CLIENT_IPSEC_RUNDIR=""
+CLIENT_STRONGSWAN_CONF=""
 PIDS=()
 forget_pid() {
   local target="$1" pid
@@ -56,7 +57,7 @@ cleanup() {
   fi
   for pid in "${PIDS[@]}"; do stop_pid "$pid"; done
   if ip netns list | grep -q "^$NS[[:space:]]"; then
-    if [ -n "$CLIENT_IPSEC_RUNDIR" ]; then
+    if [ -n "$CLIENT_IPSEC_RUNDIR" ] && [ -s "$CLIENT_STRONGSWAN_CONF" ]; then
       client_ipsec stop >/dev/null 2>&1 || true
     fi
   fi
@@ -212,12 +213,29 @@ start_client_ipsec() {
   ln -s /usr/lib/ipsec/charon "$CLIENT_CHARON_BIN"
   CLIENT_CHARON_LINKED=1
   CLIENT_IPSEC_RUNDIR="$ROOT/client-ipsec-run"
+  CLIENT_STRONGSWAN_CONF="$ROOT/client-strongswan.conf"
   mkdir -p "$CLIENT_IPSEC_RUNDIR"
+  cat >"$CLIENT_STRONGSWAN_CONF" <<EOF
+charon {
+    filelog {
+        l2tp-client {
+            path = $ROOT/client-charon.log
+            default = 1
+            flush_line = yes
+        }
+    }
+}
+EOF
+  : >"$ROOT/client-charon.log"
   wait_for 'server strongSwan control socket' sh -c 'ipsec status >/dev/null 2>&1'
-  client_ipsec start --daemon "$CLIENT_CHARON" \
-    --conf "$ROOT/client-ipsec.conf" --nofork >"$ROOT/client-ipsec.log" 2>&1 &
+  client_ipsec_daemon >"$ROOT/client-ipsec.log" 2>&1 &
   CLIENT_IPSEC_PID=$!; PIDS+=("$CLIENT_IPSEC_PID")
-  wait_for 'client strongSwan control socket' client_ipsec status
+  if ! wait_for 'client strongSwan control socket' client_ipsec status; then
+    client_ipsec status >"$ROOT/client-ipsec-status.log" 2>&1 || true
+    ls -la "$CLIENT_IPSEC_RUNDIR" >"$ROOT/client-ipsec-rundir.txt" 2>&1 || true
+    cat "$ROOT/client-ipsec-status.log" "$ROOT/client-ipsec-rundir.txt" "$ROOT/client-charon.log" >&2
+    return 1
+  fi
   client_ipsec up l2tp-client >"$ROOT/client-ipsec-up.log" 2>&1 || {
     cat "$ROOT/client-ipsec.log" "$ROOT/client-ipsec-up.log" >&2
     return 1
@@ -232,13 +250,27 @@ start_client_ipsec() {
 client_ipsec() {
   ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
     mount --bind "$1" /run
-    shift
+    mount --bind "$2" /etc/strongswan.conf
+    shift 2
     exec "$@"
-  ' _ "$CLIENT_IPSEC_RUNDIR" env \
+  ' _ "$CLIENT_IPSEC_RUNDIR" "$CLIENT_STRONGSWAN_CONF" env \
     IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR" \
     IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.pid" \
     IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR/charon.pid" \
     DAEMON_NAME="$CLIENT_CHARON" ipsec "$@"
+}
+client_ipsec_daemon() {
+  ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
+    mount --bind "$1" /run
+    mount --bind "$2" /etc/strongswan.conf
+    shift 2
+    exec "$@"
+  ' _ "$CLIENT_IPSEC_RUNDIR" "$CLIENT_STRONGSWAN_CONF" env \
+    IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR" \
+    IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.$CLIENT_CHARON.pid" \
+    IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR/charon.pid" \
+    DAEMON_NAME="$CLIENT_CHARON" /usr/lib/ipsec/starter \
+    --daemon "$CLIENT_CHARON" --conf "$ROOT/client-ipsec.conf" --nofork
 }
 start_client() {
   rm -f "$ROOT/client.control"
