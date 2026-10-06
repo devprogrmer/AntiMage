@@ -230,14 +230,11 @@ start_client_ipsec() {
   wait_for 'L2TP IPsec packet capture' sh -c 'test -s "$1"' _ "$ROOT/l2tp-ipsec.pcap"
 }
 client_ipsec() {
-  unshare --mount --fork --propagation private bash -c '
-    run_dir="$1"
-    namespace="$2"
-    exec {netns_fd}<"/run/netns/$namespace"
-    mount --bind "$run_dir" /run
-    shift 2
-    exec nsenter --net="/proc/self/fd/$netns_fd" -- "$@"
-  ' _ "$CLIENT_IPSEC_RUNDIR" "$NS" env \
+  ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
+    mount --bind "$1" /run
+    shift
+    exec "$@"
+  ' _ "$CLIENT_IPSEC_RUNDIR" env \
     IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR" \
     IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.pid" \
     IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR/charon.pid" \
