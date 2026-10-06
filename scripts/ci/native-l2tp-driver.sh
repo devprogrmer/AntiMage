@@ -236,10 +236,16 @@ EOF
     cat "$ROOT/client-ipsec-status.log" "$ROOT/client-ipsec-rundir.txt" "$ROOT/client-charon.log" >&2
     return 1
   fi
-  client_ipsec up l2tp-client >"$ROOT/client-ipsec-up.log" 2>&1 || {
-    cat "$ROOT/client-ipsec.log" "$ROOT/client-ipsec-up.log" >&2
+  if ! client_ipsec up l2tp-client >"$ROOT/client-ipsec-up.log" 2>&1; then
+    client_ipsec statusall >"$ROOT/client-ipsec-statusall.log" 2>&1 || true
+    journalctl -b --no-pager | grep -E 'charon|strongSwan' | tail -n 200 >"$ROOT/client-charon-journal.log" || true
+    ip netns exec "$NS" ip xfrm state >"$ROOT/client-ipsec-xfrm-state.txt" 2>&1 || true
+    ls -la "$CLIENT_IPSEC_RUNDIR" >"$ROOT/client-ipsec-rundir.txt" 2>&1 || true
+    cat "$ROOT/client-ipsec.log" "$ROOT/client-ipsec-up.log" \
+      "$ROOT/client-ipsec-statusall.log" "$ROOT/client-charon-journal.log" \
+      "$ROOT/client-ipsec-xfrm-state.txt" >&2
     return 1
-  }
+  fi
   wait_for 'client IPsec transport policy' sh -c 'ip netns exec "$1" ip xfrm state | grep -q "proto esp"' _ "$NS"
   wait_for 'server IPsec transport policy' sh -c 'ip xfrm state | grep -q "proto esp"'
   tcpdump -U -n -i "$VETH_HOST" 'udp port 4500 or udp port 1701' \
