@@ -139,6 +139,14 @@ run_wireguard() {
 
   native_speed_policy_stage "$ANTIMAGE_WIREGUARD_TEST_BINARY" wg-native 10.200.0.2
   measure_native_tunnel_speed wireguard 10.200.0.1 10.200.0.2 "$ANTIMAGE_WIREGUARD_TEST_BINARY" wg-native
+  local prior_raw_quota_usage
+  prior_raw_quota_usage="$(wg show wg-native transfer | awk -v peer="$client_pub" '$1 == peer { print $2 + $3; found=1 } END { if (!found) print 0 }')"
+  local remaining_raw_quota="$((quota_bytes - prior_raw_quota_usage))"
+  if [ "$remaining_raw_quota" -le 0 ]; then
+    echo "WireGuard speed-test traffic exhausted quota before cutoff test: used=${prior_raw_quota_usage} quota=${quota_bytes}" >&2
+    return 1
+  fi
+  echo "WireGuard quota remaining after lifecycle and speed traffic: ${remaining_raw_quota} raw bytes (used=${prior_raw_quota_usage})"
 
   timeout 120 nc -l -p 19091 >"$ROOT/wireguard-quota-received" 2>&1 &
   local quota_listener_pid=$!
@@ -168,11 +176,11 @@ run_wireguard() {
   cat "$ROOT/wireguard-quota-watch.log"
   local quota_received
   quota_received="$(wc -c <"$ROOT/wireguard-quota-received")"
-  if [ "$quota_received" -ge "$((64 * 1024 * 1024))" ] || [ "$quota_received" -lt "$((quota_bytes * 4 / 5))" ]; then
-    echo "WireGuard quota traffic outside expected enforcement window: ${quota_received} bytes" >&2
+  if [ "$quota_received" -ge "$((remaining_raw_quota + 2 * 1024 * 1024))" ] || [ "$quota_received" -lt "$((remaining_raw_quota * 4 / 5))" ]; then
+    echo "WireGuard quota traffic outside expected remaining-quota window: received=${quota_received} remaining=${remaining_raw_quota}" >&2
     exit 1
   fi
-  echo "WireGuard: quota=${quota_bytes} bytes stopped the peer; delivered payload=${quota_received} bytes"
+  echo "WireGuard: quota=${quota_bytes} bytes stopped the peer; prior raw=${prior_raw_quota_usage}, remaining=${remaining_raw_quota}, delivered=${quota_received} bytes"
 }
 
 run_openvpn() {
@@ -275,6 +283,21 @@ EOF
     env ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" \
       ANTIMAGE_OPENVPN_NATIVE_PID="$server_pid" \
       "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v
+    local previous_raw_quota_usage
+    previous_raw_quota_usage="$(python3 - "$ROOT/openvpn-accounting/openvpn/usage-state.json" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding='utf-8') as source:
+    state = json.load(source)
+key = '\0offline-total\0' + '7' + '\0native'
+print(int(state.get('baseline', {}).get(key, 0)))
+PY
+)"
+    local remaining_raw_quota="$((quota_bytes - previous_raw_quota_usage))"
+    if [ "$remaining_raw_quota" -le 0 ]; then
+      echo "OpenVPN lifecycle and speed traffic exhausted quota before cutoff test: used=${previous_raw_quota_usage} quota=${quota_bytes}" >&2
+      return 1
+    fi
+    echo "OpenVPN quota remaining after lifecycle and speed traffic: ${remaining_raw_quota} raw bytes (used=${previous_raw_quota_usage})"
     local successful_handshakes_before_quota
     successful_handshakes_before_quota="$(grep -cF 'Initialization Sequence Completed' "$ROOT/openvpn-client.log" || true)"
     timeout 120 nc -l -p 19092 >"$ROOT/openvpn-quota-received" 2>&1 &
@@ -312,11 +335,11 @@ EOF
     cat "$ROOT/openvpn-quota-watch.log"
     local quota_received
     quota_received="$(wc -c <"$ROOT/openvpn-quota-received")"
-    if [ "$quota_received" -ge "$((64 * 1024 * 1024))" ] || [ "$quota_received" -lt "$((quota_bytes * 4 / 5))" ]; then
-      echo "OpenVPN quota traffic outside expected enforcement window: ${quota_received} bytes" >&2
+    if [ "$quota_received" -ge "$((remaining_raw_quota + 2 * 1024 * 1024))" ] || [ "$quota_received" -lt "$((remaining_raw_quota * 4 / 5))" ]; then
+      echo "OpenVPN quota traffic outside expected remaining-quota window: received=${quota_received} remaining=${remaining_raw_quota}" >&2
       exit 1
     fi
-    echo "OpenVPN: quota=${quota_bytes} bytes stopped the native/reconnected session; delivered payload=${quota_received} bytes"
+    echo "OpenVPN: quota=${quota_bytes} bytes stopped the native/reconnected session; prior raw=${previous_raw_quota_usage}, remaining=${remaining_raw_quota}, delivered=${quota_received} bytes"
   fi
   echo 'OpenVPN: tun session, traffic, and server restart passed'
 }

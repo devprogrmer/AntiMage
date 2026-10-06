@@ -105,6 +105,9 @@ panel_replay
 stage ack "$ROOT/awg-state"
 native_speed_policy_stage "$ANTIMAGE_AWG_TEST_BINARY" "$IFACE" 10.74.0.2
 measure_native_tunnel_speed amneziawg 10.74.0.1 10.74.0.2 "$ANTIMAGE_AWG_TEST_BINARY" "$IFACE"
+stage collect-next "$ROOT/awg-state"
+panel_replay
+stage ack "$ROOT/awg-state"
 previous_effective="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["effective_total"])' "$ROOT/awg-state/native-panel-receipt.json")"
 if [ "$previous_effective" -ge "$quota_bytes" ]; then
   echo "AWG pre-quota traffic already exhausted quota: effective=${previous_effective} quota=${quota_bytes}" >&2
