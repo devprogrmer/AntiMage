@@ -63,7 +63,10 @@ start_server() {
 }
 start_client() {
   local output="$1"
-  ip netns exec "$NS" sh -c "printf '%s\\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --servercert '$SERVERCERT' --no-dtls --script '$VPNSCRIPT' --interface=vpn-native https://10.253.0.1:4433" >"$output" 2>&1 &
+  ip netns exec "$NS" openconnect --protocol=anyconnect --user=native-user \
+    --passwd-on-stdin --reconnect-timeout=1 --servercert "$SERVERCERT" \
+    --no-dtls --script "$VPNSCRIPT" --interface=vpn-native \
+    https://10.253.0.1:4433 >"$output" 2>&1 <<< 'native-password' &
   client_pid=$!
   PIDS+=("$client_pid")
   for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1 && break; sleep .25; done
@@ -198,9 +201,7 @@ if kill -0 "$client_pid" 2>/dev/null; then
   exit 1
 fi
 wait "$client_pid" 2>/dev/null || true
-ip netns exec "$NS" sh -c "printf '%s\\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --servercert '$SERVERCERT' --no-dtls --script '$VPNSCRIPT' --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect-reconnect.log" 2>&1 &
-client_pid=$!
-PIDS+=("$client_pid")
+start_client "$ROOT/openconnect-reconnect.log"
 if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   wait_for 'AnyConnect local admission hook quota denial' grep -Fq \
     'anyconnect admission denied: data limit reached' "$ROOT/ocserv.log"
