@@ -63,6 +63,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           api_test="$RUNNER_TEMP/antimage-api.test"
