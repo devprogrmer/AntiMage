@@ -18,6 +18,7 @@ VETH_NS="altp-vn"
 CLIENT_CHARON="charon"
 CLIENT_IPSEC_RUNDIR=""
 CLIENT_STRONGSWAN_CONF=""
+SERVER_STRONGSWAN_CONF=""
 PIDS=()
 forget_pid() {
   local target="$1" pid
@@ -89,6 +90,20 @@ mkdir -p "$ROOT/l2tp-state"
 systemctl stop strongswan-starter.service >/dev/null 2>&1 || true
 systemctl stop strongswan.service >/dev/null 2>&1 || true
 ipsec stop >/dev/null 2>&1 || true
+# strongSwan's bypass-lan plugin otherwise installs higher-priority cleartext
+# policies for the directly connected test subnet, shadowing UDP/1701 ESP.
+SERVER_STRONGSWAN_CONF="$ROOT/server-strongswan.conf"
+cat >"$SERVER_STRONGSWAN_CONF" <<'EOF'
+include /etc/strongswan.d/*.conf
+charon {
+    plugins {
+        bypass-lan {
+            interfaces_ignore = altp-vh
+        }
+    }
+}
+EOF
+mount --bind "$SERVER_STRONGSWAN_CONF" /etc/strongswan.conf
 # Current kernels expose the PPP-over-L2TP driver as l2tp_ppp. Try the legacy
 # pppol2tp module name too, but do not fail when that alias is not shipped.
 modprobe l2tp_ppp
@@ -222,7 +237,13 @@ start_client_ipsec() {
   CLIENT_STRONGSWAN_CONF="$ROOT/client-strongswan.conf"
   mkdir -p "$CLIENT_IPSEC_RUNDIR"
   cat >"$CLIENT_STRONGSWAN_CONF" <<EOF
+include /etc/strongswan.d/*.conf
 charon {
+    plugins {
+        bypass-lan {
+            interfaces_ignore = altp-vn
+        }
+    }
     filelog {
         l2tp-client {
             path = $ROOT/client-charon.log
