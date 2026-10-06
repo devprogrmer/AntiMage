@@ -18,6 +18,7 @@ VETH_NS="altp-vn"
 CLIENT_CHARON="charon-antimage-l2tp-client"
 CLIENT_CHARON_BIN="/usr/lib/ipsec/$CLIENT_CHARON"
 CLIENT_CHARON_LINKED=0
+CLIENT_IPSEC_RUNDIR=""
 PIDS=()
 forget_pid() {
   local target="$1" pid
@@ -55,7 +56,12 @@ cleanup() {
   fi
   for pid in "${PIDS[@]}"; do stop_pid "$pid"; done
   if ip netns list | grep -q "^$NS[[:space:]]"; then
-    ip netns exec "$NS" env DAEMON_NAME="$CLIENT_CHARON" ipsec stop >/dev/null 2>&1 || true
+    if [ -n "$CLIENT_IPSEC_RUNDIR" ]; then
+      ip netns exec "$NS" env IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR" \
+        IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.pid" \
+        IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR/charon.pid" \
+        DAEMON_NAME="$CLIENT_CHARON" ipsec stop >/dev/null 2>&1 || true
+    fi
   fi
   ipsec stop >/dev/null 2>&1 || true
   if [ "$CLIENT_CHARON_LINKED" -eq 1 ]; then rm -f "$CLIENT_CHARON_BIN"; fi
@@ -208,12 +214,20 @@ start_client_ipsec() {
   fi
   ln -s /usr/lib/ipsec/charon "$CLIENT_CHARON_BIN"
   CLIENT_CHARON_LINKED=1
+  CLIENT_IPSEC_RUNDIR="$ROOT/client-ipsec-run"
+  mkdir -p "$CLIENT_IPSEC_RUNDIR"
   wait_for 'server strongSwan control socket' sh -c 'ipsec status >/dev/null 2>&1'
-  ip netns exec "$NS" /usr/lib/ipsec/starter --daemon "$CLIENT_CHARON" \
+  ip netns exec "$NS" env IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR" \
+    IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.pid" \
+    IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR/charon.pid" \
+    ipsec start --daemon "$CLIENT_CHARON" \
     --conf "$ROOT/client-ipsec.conf" --nofork >"$ROOT/client-ipsec.log" 2>&1 &
   CLIENT_IPSEC_PID=$!; PIDS+=("$CLIENT_IPSEC_PID")
-  wait_for 'client strongSwan control socket' sh -c 'ip netns exec "$1" env DAEMON_NAME="$2" ipsec status >/dev/null 2>&1' _ "$NS" "$CLIENT_CHARON"
-  ip netns exec "$NS" env DAEMON_NAME="$CLIENT_CHARON" ipsec up l2tp-client >"$ROOT/client-ipsec-up.log" 2>&1 || {
+  wait_for 'client strongSwan control socket' sh -c 'ip netns exec "$1" env IPSEC_PIDDIR="$2" IPSEC_STARTER_PID="$2/starter.pid" IPSEC_CHARON_PID="$2/charon.pid" DAEMON_NAME="$3" ipsec status >/dev/null 2>&1' _ "$NS" "$CLIENT_IPSEC_RUNDIR" "$CLIENT_CHARON"
+  ip netns exec "$NS" env IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR" \
+    IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.pid" \
+    IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR/charon.pid" \
+    DAEMON_NAME="$CLIENT_CHARON" ipsec up l2tp-client >"$ROOT/client-ipsec-up.log" 2>&1 || {
     cat "$ROOT/client-ipsec.log" "$ROOT/client-ipsec-up.log" >&2
     return 1
   }
