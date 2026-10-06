@@ -232,10 +232,9 @@ stop_pid "$CLIENT_DAEMON_PID"
 ip netns exec "$NS" pkill -TERM pppd 2>/dev/null || true
 pkill -TERM pppd 2>/dev/null || true
 wait_for_gone 'client PPP interface shutdown' ip netns exec "$NS" ip link show ppp0
-if [ "$(find "$ROOT/l2tp-state/native-session-outbox" -type f -name '*.json' | wc -l)" -lt 2 ]; then
-  echo 'L2TP disconnect event was not durably queued while Panel was offline' >&2
-  exit 1
-fi
+wait_for_gone 'server PPP interface shutdown' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
+wait_for 'durable L2TP disconnect event while Panel is offline' \
+  sh -c 'test "$(find "$1/native-session-outbox" -type f -name "*.json" | wc -l)" -ge 2' _ "$ROOT/l2tp-state"
 start_server
 rm -f "$ROOT/l2tp-state/panel-down"
 start_client
