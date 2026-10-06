@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+: "${ANTIMAGE_PPTP_API_TEST_BINARY:?missing compiled API test binary}"
+
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-pptp-XXXXXX") }"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 NS="antimage-pptp-client"
@@ -71,6 +73,8 @@ stage() {
   env ANTIMAGE_PPTP_NATIVE_STATE="$state" \
     ANTIMAGE_PPTP_NATIVE_ACTION="$action" \
     ANTIMAGE_PPTP_QUOTA_BYTES="$quota" \
+    ANTIMAGE_PPTP_SESSION_CALLBACK_URL="${PPTP_SESSION_CALLBACK_URL:-}" \
+    ANTIMAGE_PPTP_SESSION_CALLBACK_TOKEN="${PPTP_SESSION_CALLBACK_TOKEN:-}" \
     ANTIMAGE_NODE_HELPER_BINARY="$ANTIMAGE_NODE_HELPER_BINARY" \
     "$ANTIMAGE_PPTP_TEST_BINARY" -test.run='^TestPPTPNativeAccountingStage$' -test.v
 }
@@ -107,6 +111,31 @@ wait_for() {
   for log in "$ROOT"/*.log; do [ -f "$log" ] && { echo "--- $log ---"; cat "$log"; }; done
   return 1
 }
+
+wait_for_empty_session_outbox() {
+  for _ in $(seq 1 300); do
+    if ! find "$ROOT/pptp-state/native-session-outbox" -type f -name '*.json' -print -quit 2>/dev/null | grep -q .; then return 0; fi
+    sleep .1
+  done
+  echo 'durable PPTP Panel session events were not delivered' >&2
+  cat "$ROOT/panel-api.log" >&2
+  return 1
+}
+
+mkdir -p "$ROOT/pptp-state/api-session"
+env ANTIMAGE_PPTP_API_STATE="$ROOT/pptp-state/api-session" \
+  "$ANTIMAGE_PPTP_API_TEST_BINARY" -test.run='^TestPPTPNativePanelSessionServer$' -test.v >"$ROOT/panel-api.log" 2>&1 &
+API_PID="$!"
+PIDS+=("$API_PID")
+wait_for 'production PPTP Panel session-event endpoint' test -s "$ROOT/pptp-state/api-session/api-callback.txt"
+mapfile -t callback_lines <"$ROOT/pptp-state/api-session/api-callback.txt"
+PPTP_SESSION_CALLBACK_URL="${callback_lines[0]:-}"
+PPTP_SESSION_CALLBACK_TOKEN="${callback_lines[1]:-}"
+if [ -z "$PPTP_SESSION_CALLBACK_URL" ] || [ -z "$PPTP_SESSION_CALLBACK_TOKEN" ]; then
+  cat "$ROOT/panel-api.log" >&2
+  echo 'PPTP Panel session-event endpoint did not publish a callback URL and token' >&2
+  exit 1
+fi
 source "$SCRIPT_DIR/native-speed-test.sh"
 
 wait_for_gone() {
@@ -286,6 +315,11 @@ cat "$ROOT/pptpd-reconnect.log"
 stage collect-final "$ROOT/pptp-state"
 panel_replay 1
 stage ack "$ROOT/pptp-state"
+wait_for_empty_session_outbox
+touch "$ROOT/pptp-state/api-session/api-stop"
+wait "$API_PID"
+forget_pid "$API_PID"
+cat "$ROOT/panel-api.log"
 received="$(wc -c <"$ROOT/quota-received")"
 if [ "$received" -ge "$((raw_quota_bytes + 2 * 1024 * 1024))" ] || [ "$received" -lt "$((raw_quota_bytes * 4 / 5))" ]; then
   echo "PPTP quota traffic outside enforcement window: ${received} bytes" >&2

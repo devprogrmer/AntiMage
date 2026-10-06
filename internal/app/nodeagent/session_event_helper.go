@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -187,7 +188,7 @@ func RunNativeSessionEventHelper(args []string) error {
 
 	interfaceName := firstNonEmptyEnv("IFNAME", "DEVICE")
 
-	clientIP := firstNonEmptyEnv("trusted_ip", "trusted_ip6", "CALLING_NUMBER", "IP_REAL")
+	clientIP := firstNonEmptyIPEnv("trusted_ip", "trusted_ip6", "IP_REAL")
 
 	trustedPort := firstNonEmptyEnv("trusted_port")
 
@@ -424,6 +425,20 @@ func firstNonEmptyEnv(keys ...string) string {
 	for _, key := range keys {
 		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 			return value
+		}
+	}
+	return ""
+}
+
+func firstNonEmptyIPEnv(keys ...string) string {
+	for _, key := range keys {
+		value := strings.TrimSpace(os.Getenv(key))
+		if value == "" {
+			continue
+		}
+		address, err := netip.ParseAddr(value)
+		if err == nil {
+			return address.Unmap().String()
 		}
 	}
 	return ""

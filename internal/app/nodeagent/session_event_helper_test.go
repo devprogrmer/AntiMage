@@ -273,7 +273,8 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 
 	t.Setenv("PEERNAME", "alice-vpn")
 	t.Setenv("IPREMOTE", "10.67.0.10")
-	t.Setenv("CALLING_NUMBER", "203.0.113.10")
+	t.Setenv("trusted_ip", "203.0.113.10")
+	t.Setenv("CALLING_NUMBER", "+1-202-555-0199")
 	t.Setenv("IFNAME", "ppp0")
 	t.Setenv("PPPD_PID", "123")
 	previousIdentity, previousProcess := pppOfflineReadIdentity, pppOfflineReadProcess
@@ -299,6 +300,22 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 		t.Fatalf("unexpected event addresses: %#v", event)
 	}
 }
+
+func TestFirstNonEmptyIPEnvRejectsNonIPCallingNumber(t *testing.T) {
+	t.Setenv("trusted_ip", "not-an-ip")
+	t.Setenv("trusted_ip6", "")
+	t.Setenv("CALLING_NUMBER", "+1-202-555-0199")
+	t.Setenv("IP_REAL", "2001:db8::1")
+
+	if got := firstNonEmptyIPEnv("trusted_ip", "trusted_ip6", "IP_REAL"); got != "2001:db8::1" {
+		t.Fatalf("firstNonEmptyIPEnv() = %q, want valid IP_REAL after invalid values", got)
+	}
+	t.Setenv("IP_REAL", "")
+	if got := firstNonEmptyIPEnv("trusted_ip", "trusted_ip6", "IP_REAL"); got != "" {
+		t.Fatalf("firstNonEmptyIPEnv() = %q, want empty when no IP address is available", got)
+	}
+}
+
 func TestNativeSessionDeviceIDOpenVPN(t *testing.T) {
 	first := nativeSessionDeviceID("ov", "ov-session-a")
 	same := nativeSessionDeviceID("openvpn", "ov-session-a")

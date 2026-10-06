@@ -189,6 +189,129 @@ func TestL2TPNativePanelSessionServer(t *testing.T) {
 	t.Logf("production Panel API persisted %d L2TP sessions; all stopped, assigned IP=10.67.0.2", total)
 }
 
+// TestPPTPNativePanelSessionServer runs the production session-event handler
+// beside the privileged PPTP harness and checks the persisted native PPP
+// start/stop events and assigned address.
+func TestPPTPNativePanelSessionServer(t *testing.T) {
+	stateDir := strings.TrimSpace(os.Getenv("ANTIMAGE_PPTP_API_STATE"))
+	if stateDir == "" {
+		t.Skip("requires native PPTP session event driver")
+	}
+	server, db := testAdminServer(t)
+	if _, err := db.Exec(`CREATE TABLE vpn_user_sessions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		node_id INTEGER NOT NULL,
+		user_id INTEGER NOT NULL,
+		protocol TEXT NOT NULL,
+		inbound_tag TEXT NULL,
+		session_id TEXT NOT NULL,
+		assigned_ip TEXT NULL,
+		client_ip TEXT NULL,
+		device_id TEXT NULL,
+		device_type TEXT NOT NULL DEFAULT 'Unknown',
+		client_name TEXT NOT NULL DEFAULT 'Unknown',
+		platform TEXT NOT NULL DEFAULT 'Unknown',
+		started_at DATETIME NOT NULL,
+		last_seen_at DATETIME NOT NULL,
+		ended_at DATETIME NULL,
+		UNIQUE(node_id, session_id)
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO nodes (id, name, status, certificate) VALUES (7, 'pptp-native-node', 'connected', 'pptp-native-cert')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO users (id, username, status, service_id, ip_limit, device_limit) VALUES (7, 'native-pptp', 'active', 1, 0, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(stateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	token := nodecontroller.NodeSessionEventToken("admin-secret", 7, "pptp-native-cert")
+	ready := fmt.Sprintf("http://%s/internal/node/session-event\n%s\n", listener.Addr().String(), token)
+	if err := os.WriteFile(filepath.Join(stateDir, "api-callback.txt"), []byte(ready), 0600); err != nil {
+		t.Fatal(err)
+	}
+	httpServer := &http.Server{Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second}
+	serveDone := make(chan error, 1)
+	serveDoneRead := false
+	go func() { serveDone <- httpServer.Serve(listener) }()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = httpServer.Shutdown(ctx)
+		if !serveDoneRead {
+			<-serveDone
+		}
+	}()
+	stopPath := filepath.Join(stateDir, "api-stop")
+	deadline := time.Now().Add(5 * time.Minute)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(stopPath); err == nil {
+			break
+		} else if !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if _, err := os.Stat(stopPath); err != nil {
+		t.Fatalf("native driver did not finish PPTP session lifecycle: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := httpServer.Shutdown(ctx); err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	cancel()
+	if err := <-serveDone; err != nil && err != http.ErrServerClosed {
+		t.Fatal(err)
+	}
+	serveDoneRead = true
+	rows, err := db.Query(`SELECT assigned_ip, COALESCE(client_ip, ''), COALESCE(device_id, ''), ended_at IS NULL FROM vpn_user_sessions WHERE node_id = 7 AND user_id = 7 AND protocol = 'pptp' AND inbound_tag = 'native-pptp' ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var total, active, wrongIP, withClientIP, withDeviceID int
+	clientIPs := []string{}
+	for rows.Next() {
+		var assignedIP, clientIP, deviceID string
+		var stillActive bool
+		if err := rows.Scan(&assignedIP, &clientIP, &deviceID, &stillActive); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		total++
+		if stillActive {
+			active++
+		}
+		if assignedIP != "10.68.0.2" {
+			wrongIP++
+		}
+		if clientIP != "" {
+			withClientIP++
+			clientIPs = append(clientIPs, clientIP)
+		}
+		if deviceID != "" {
+			withDeviceID++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		t.Fatal(err)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if total < 1 || active != 0 || wrongIP != 0 {
+		t.Fatalf("production Panel PPTP session state mismatch: sessions=%d active=%d unexpected_assigned_ip=%d", total, active, wrongIP)
+	}
+	t.Logf("production Panel API persisted %d native PPTP sessions, all stopped with assigned IP=10.68.0.2; source-IP values=%v (sessions=%d) and device identities=%d", total, clientIPs, withClientIP, withDeviceID)
+}
+
 func TestNodeReadyQueuesFullSync(t *testing.T) {
 	server, db := testAdminServer(t)
 	if _, err := db.Exec(`INSERT INTO nodes (id, name, status, certificate) VALUES (7, 'node-7', 'connected', 'node-cert')`); err != nil {

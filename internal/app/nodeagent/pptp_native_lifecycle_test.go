@@ -52,7 +52,15 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 		oldExecutable := pppSessionHelperExecutable
 		pppSessionHelperExecutable = func() (string, error) { return helperBinary, nil }
 		defer func() { pppSessionHelperExecutable = oldExecutable }()
-		configPath, err := s.preparePPTPInbound(inbound, nativeRuntimeSessionCallback{})
+		callback := nativeRuntimeSessionCallback{
+			URL:    strings.TrimSpace(os.Getenv("ANTIMAGE_PPTP_SESSION_CALLBACK_URL")),
+			Token:  strings.TrimSpace(os.Getenv("ANTIMAGE_PPTP_SESSION_CALLBACK_TOKEN")),
+			NodeID: 7,
+		}
+		if callback.URL != "" && callback.Token == "" {
+			t.Fatal("PPTP Panel session callback token is required with callback URL")
+		}
+		configPath, err := s.preparePPTPInbound(inbound, callback)
 		if err != nil {
 			t.Fatal(err)
 		}

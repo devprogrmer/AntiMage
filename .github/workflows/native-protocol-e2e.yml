@@ -144,13 +144,16 @@ jobs:
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          api_test="$RUNNER_TEMP/antimage-api.test"
           node_helper="$RUNNER_TEMP/antimage-node-helper"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
           go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          go test -c -o "$api_test" ./internal/app/api
           go build -o "$node_helper" ./cmd/antimage_node
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_PPTP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_PPTP_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_PPTP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
             bash scripts/ci/native-pptp-driver.sh
 
@@ -265,6 +268,7 @@ jobs:
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_PPTP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_PPTP_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_PPTP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
             bash scripts/ci/native-pptp-driver.sh
       - name: Upload lifecycle evidence
