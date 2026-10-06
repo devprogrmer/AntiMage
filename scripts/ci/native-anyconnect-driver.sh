@@ -179,6 +179,11 @@ PY
   received_bytes="$(wc -c <"$received")"
   elapsed_ms="$(((end_ns - start_ns) / 1000000))"
   test "$received_bytes" -gt 0
+  printf '%s %s\n' "$received_bytes" "$elapsed_ms" >"$ROOT/quota-payload-result.txt"
+}
+report_quota_result() {
+  local received_bytes elapsed_ms
+  read -r received_bytes elapsed_ms <"$ROOT/quota-payload-result.txt"
   python3 - "$ROOT/native-quota-result.json" "$received_bytes" "$elapsed_ms" <<'PY'
 import json, sys
 result = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -269,6 +274,7 @@ if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   run_quota_payload
   wait "$quota_watch_pid"
   cat "$ROOT/quota-watch.log"
+  report_quota_result
   wait_for 'OpenConnect receives the native quota disconnect' grep -Fq \
     'Received server disconnect' "$ROOT/openconnect-restart.log"
   kill -TERM "$client_pid" 2>/dev/null || true

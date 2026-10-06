@@ -93,7 +93,10 @@ jobs:
           mkdir -p "$dir"
           python3 -m zipfile -e "$archive" "$dir"
           chmod +x "$dir/xray"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           ANTIMAGE_XRAY_E2E_BINARY="$dir/xray" \
+            ANTIMAGE_XRAY_PANEL_TEST_BINARY="$nodecontroller_test" \
             go test ./internal/app/nodeagent -run '^TestRealXrayOnlineAndStatsE2E$' -count=1 -v
 
       - name: Run native WireGuard lifecycle

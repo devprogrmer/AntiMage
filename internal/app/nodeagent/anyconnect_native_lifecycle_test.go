@@ -103,7 +103,7 @@ func TestAnyConnectNativeAccountingStage(t *testing.T) {
 		if err := json.Unmarshal(receiptRaw, &receipt); err != nil || receipt.EffectiveTotal > math.MaxInt64 {
 			t.Fatalf("invalid prior Panel effective usage receipt: %v", err)
 		}
-		policy := nativeSessionUserPolicy{Status: "active", DataLimit: limit, UsedTraffic: int64(receipt.EffectiveTotal)}
+		policy := nativeSessionUserPolicy{Status: "active", DataLimit: limit, UsedTraffic: int64(receipt.EffectiveTotal), UsageCoefficient: 1.5, InboundCoefficient: 2}
 		helper, err := json.Marshal(nativeSessionHelperConfig{
 			InboundTag: "native", Protocol: "anyconnect", Users: cfg.Users,
 			Policies: map[string]nativeSessionUserPolicy{"native-user": policy},

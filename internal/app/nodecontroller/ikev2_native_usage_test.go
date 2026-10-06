@@ -53,6 +53,14 @@ func TestAnyConnectNativePanelDB(t *testing.T) {
 	runNativePanelDBExactOnce(t, dir, os.Getenv("ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL") == "1")
 }
 
+func TestXrayNativePanelDB(t *testing.T) {
+	dir := os.Getenv("ANTIMAGE_XRAY_NATIVE_STATE")
+	if dir == "" {
+		t.Skip("requires real native Xray collector batches")
+	}
+	runNativePanelDBExactOnce(t, dir, os.Getenv("ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL") == "1")
+}
+
 func TestNativePanelDBExactOnceIncludesFinalBatch(t *testing.T) {
 	dir := t.TempDir()
 	for _, item := range []struct {
