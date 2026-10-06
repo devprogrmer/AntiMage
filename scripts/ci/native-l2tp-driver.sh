@@ -17,6 +17,7 @@ VETH_HOST="altp-vh"
 VETH_NS="altp-vn"
 CLIENT_CHARON="charon"
 CLIENT_IPSEC_RUNDIR=""
+CLIENT_PPP_RUNDIR="$ROOT/client-ppp-run"
 CLIENT_STRONGSWAN_CONF=""
 SERVER_STRONGSWAN_CONF=""
 PIDS=()
@@ -307,7 +308,13 @@ client_ipsec_daemon() {
 }
 start_client() {
   rm -f "$ROOT/client.control"
-  ip netns exec "$NS" xl2tpd -D -c "$ROOT/client.conf" -p "$ROOT/client.pid" -C "$ROOT/client.control" >"$ROOT/xl2tpd-client.log" 2>&1 &
+  mkdir -p "$CLIENT_PPP_RUNDIR"
+  ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
+    mount --bind "$1" /run
+    shift
+    exec "$@"
+  ' _ "$CLIENT_PPP_RUNDIR" xl2tpd -D -c "$ROOT/client.conf" \
+    -p "$ROOT/client.pid" -C "$ROOT/client.control" >"$ROOT/xl2tpd-client.log" 2>&1 &
   CLIENT_DAEMON_PID=$!; PIDS+=("$CLIENT_DAEMON_PID")
   wait_for 'client control pipe' test -p "$ROOT/client.control"
   printf 'c antimage\n' >"$ROOT/client.control"
