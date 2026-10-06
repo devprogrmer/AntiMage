@@ -100,6 +100,14 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(stateDir, name), raw, 0600); err != nil {
 				t.Fatal(err)
 			}
+			batchFiles, err := filepath.Glob(filepath.Join(stateDir, "native-batch-*.pb"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			batchName := filepath.Join(stateDir, fmt.Sprintf("native-batch-%06d.pb", len(batchFiles)+1))
+			if err := os.WriteFile(batchName, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
 		}
 		t.Logf("production PPTP collector persisted bytes=%d batch=%s", pptpNativeUsageValue(batch), batch.GetBatchId())
 	case "ack":

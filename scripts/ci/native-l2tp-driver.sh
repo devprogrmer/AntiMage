@@ -12,6 +12,7 @@ fi
 
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-l2tp-XXXXXX") }"
 ROOT="${ROOT% }"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 NS="antimage-l2tp-client"
 VETH_HOST="altp-vh"
 VETH_NS="altp-vn"
@@ -166,6 +167,7 @@ wait_for() {
   for log in "$ROOT"/*.log; do [ -f "$log" ] && { echo "--- $log ---"; cat "$log"; }; done
   return 1
 }
+source "$SCRIPT_DIR/native-speed-test.sh"
 wait_for_gone() {
   local name="$1"; shift
   for _ in $(seq 1 200); do if ! "$@" >/dev/null 2>&1; then return 0; fi; sleep .1; done
@@ -402,6 +404,18 @@ panel_replay
 stage ack
 # A fresh collector process reloads the acknowledged production state and
 # emits a new immutable delta batch; SQLite then retries X and Y across reopen.
+stage collect-next
+panel_replay
+stage ack
+ppp_interface="$(ip -o -4 addr show | awk '$2 ~ /^ppp[0-9]+$/ && $4 ~ /^10\.67\.0\.1\// { print $2; exit }')"
+ppp_server_ip="$(ip -o -4 addr show dev "$ppp_interface" 2>/dev/null | awk 'NR == 1 { split($4, address, "/"); print address[1] }')"
+ppp_client_ip="$(ip netns exec "$NS" ip -o -4 addr show dev ppp0 | awk 'NR == 1 { split($4, address, "/"); print address[1] }')"
+if [ -z "$ppp_interface" ] || [ -z "$ppp_server_ip" ] || [ -z "$ppp_client_ip" ]; then
+  echo "L2TP live speed test could not resolve PPP endpoints: interface=${ppp_interface} server=${ppp_server_ip} client=${ppp_client_ip}" >&2
+  exit 1
+fi
+native_speed_policy_stage "$ANTIMAGE_L2TP_TEST_BINARY" "$ppp_interface" "$ppp_client_ip"
+measure_native_tunnel_speed l2tp "$ppp_server_ip" "$ppp_client_ip" "$ANTIMAGE_L2TP_TEST_BINARY" "$ppp_interface"
 stage collect-next
 panel_replay
 stage ack

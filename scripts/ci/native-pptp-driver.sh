@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-pptp-XXXXXX") }"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 NS="antimage-pptp-client"
 VETH_HOST="apptp-vh"
 VETH_NS="apptp-vn"
@@ -106,6 +107,7 @@ wait_for() {
   for log in "$ROOT"/*.log; do [ -f "$log" ] && { echo "--- $log ---"; cat "$log"; }; done
   return 1
 }
+source "$SCRIPT_DIR/native-speed-test.sh"
 
 wait_for_gone() {
   local name="$1"; shift
@@ -200,6 +202,18 @@ wait_for_gone 'server PPP interface shutdown' sh -c 'ip -o link show | grep -q "
 start_server
 start_client
 wait_for 'post-restart PPTP tunnel traffic' ip netns exec "$NS" ping -c 1 -W 1 10.68.0.1
+stage collect-next "$ROOT/pptp-state"
+panel_replay
+stage ack "$ROOT/pptp-state"
+ppp_interface="$(ip -o -4 addr show | awk '$2 ~ /^ppp[0-9]+$/ && $4 ~ /^10\.68\.0\.1\// { print $2; exit }')"
+ppp_server_ip="$(ip -o -4 addr show dev "$ppp_interface" 2>/dev/null | awk 'NR == 1 { split($4, address, "/"); print address[1] }')"
+ppp_client_ip="$(ip netns exec "$NS" ip -o -4 addr show dev ppp0 | awk 'NR == 1 { split($4, address, "/"); print address[1] }')"
+if [ -z "$ppp_interface" ] || [ -z "$ppp_server_ip" ] || [ -z "$ppp_client_ip" ]; then
+  echo "PPTP live speed test could not resolve PPP endpoints: interface=${ppp_interface} server=${ppp_server_ip} client=${ppp_client_ip}" >&2
+  exit 1
+fi
+native_speed_policy_stage "$ANTIMAGE_PPTP_TEST_BINARY" "$ppp_interface" "$ppp_client_ip"
+measure_native_tunnel_speed pptp "$ppp_server_ip" "$ppp_client_ip" "$ANTIMAGE_PPTP_TEST_BINARY" "$ppp_interface"
 stage collect-next "$ROOT/pptp-state"
 panel_replay
 stage ack "$ROOT/pptp-state"
