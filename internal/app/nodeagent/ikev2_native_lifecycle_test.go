@@ -22,9 +22,9 @@ func TestIKEv2NativeSpeedStage(t *testing.T) {
 	secondIdentity.Username = "client2"
 	switch os.Getenv("ANTIMAGE_IKEV2_ACTION") {
 	case "upload":
-		user.UploadSpeedLimit = 8000
+		user.UploadSpeedLimit = 4_000_000
 	case "download":
-		user.DownloadSpeedLimit = 8000
+		user.DownloadSpeedLimit = 6_000_000
 	default:
 		t.Fatal("missing upload/download direction")
 	}

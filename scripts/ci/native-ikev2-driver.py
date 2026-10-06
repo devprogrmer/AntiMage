@@ -281,8 +281,8 @@ pools {
             assert receipt['raw_total']==17478016,receipt
             assert receipt['effective_total']==52434048,receipt
             print('PASS native collector -> SQLite exact-once -> lost ACK replay -> durable ACK/prune',flush=True)
-        # Test each speed direction independently on a fresh connection. This
-        # deliberately tests shaping separately from the exhausted quota user.
+        # Measure actual TCP throughput through each direction on a fresh
+        # connection. Keep the shaping test separate from the exhausted user.
         stop(cli)
         cli=client()
         for direction in ['upload','download']:
@@ -290,16 +290,30 @@ pools {
             p=sp.run(['ip','netns','exec',S,os.environ['ANTIMAGE_IKEV2_TEST_BINARY'],'-test.run=^TestIKEv2NativeSpeedStage$','-test.v'],env=env,text=True,stdout=sp.PIPE,stderr=sp.STDOUT,timeout=60)
             print(p.stdout,flush=True)
             assert p.returncode==0,'production speed rule installation failed'
-            ping=run(['ping','-q','-I','10.82.0.1','-c','200','-i','.005','-s','1000','-W','1','10.81.0.1'],C,check=False)
-            print(ping,flush=True)
-            rules=run(['nft','list','table','inet','antimage_ikev2_speed'],S)
-            print(rules,flush=True)
-            dropped=sum(int(n) for n in re.findall(r'counter packets (\d+)',rules))
-            assert dropped>0,direction+' did not drop over-limit native packets'
-            loss=re.search(r'([\d.]+)% packet loss',ping)
-            assert loss and 0<float(loss.group(1))<100,direction+' must pass some traffic while policing excess'
-            run(['nft','delete','table','inet','antimage_ikev2_speed'],S)
-        print('PASS independent production upload/download nft policing on native traffic',flush=True)
+            transfer=pathlib.Path(__file__).with_name('native-speed-transfer.py')
+            result=R/('ikev2-speed-'+direction+'.json')
+            port=19094 if direction=='upload' else 19095
+            receiver_ns=S if direction=='upload' else C
+            receiver=sp.Popen(['ip','netns','exec',receiver_ns,'python3',str(transfer),'receive','0.0.0.0',str(port),str(result),direction],text=True,stdout=sp.PIPE,stderr=sp.STDOUT)
+            try:
+                wait(lambda:str(port) in run(['ss','-lnt'],receiver_ns),'IKEv2 '+direction+' speed receiver')
+                sender_ns=C if direction=='upload' else S
+                target='10.81.0.1' if direction=='upload' else '10.82.0.1'
+                print(run(['python3',str(transfer),'send',target,str(port)],sender_ns),flush=True)
+                receiver_output,_=receiver.communicate(timeout=30)
+                print(receiver_output,flush=True)
+                assert receiver.returncode==0,'IKEv2 '+direction+' native transfer failed'
+                rules=run(['nft','list','table','inet','antimage_ikev2_speed'],S)
+                print(rules,flush=True)
+                dropped=sum(int(n) for n in re.findall(r'counter packets (\d+)',rules))
+                assert dropped>0,direction+' did not drop over-limit native packets'
+            finally:
+                if receiver.poll() is None:
+                    receiver.terminate()
+                    try: receiver.wait(timeout=3)
+                    except sp.TimeoutExpired: receiver.kill(); receiver.wait(timeout=3)
+                run(['nft','delete','table','inet','antimage_ikev2_speed'],S,check=False)
+        print('PASS measured production IKEv2 upload/download limits on native TCP traffic',flush=True)
         run(['ip','netns','add',C2]);run(['ip','link','set','lo','up'],C2)
         run(['ip','link','add','ike-s2','type','veth','peer','name','ike-c2'])
         run(['ip','link','set','ike-s2','netns',S]);run(['ip','link','set','ike-c2','netns',C2])
