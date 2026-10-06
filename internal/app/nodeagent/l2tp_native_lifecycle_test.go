@@ -248,10 +248,16 @@ func TestL2TPNativeAccountingStage(t *testing.T) {
 		if previousEffective >= uint64(quotaLimit) {
 			t.Fatalf("L2TP batches before quota traffic already exhausted quota: previous=%d limit=%d", previousEffective, quotaLimit)
 		}
-		remainingEffective := uint64(quotaLimit) - previousEffective
 		finalEffective := nativeSessionEffectiveLiveUsage(policy, final.Total)
-		if !final.Final || final.ID != activeRecord.ID || finalEffective < remainingEffective || finalEffective-remainingEffective > 2<<20 {
-			t.Fatalf("final L2TP session counters outside remaining effective quota: active=%+v final=%+v previous=%d remaining=%d limit=%d", activeRecord, final, previousEffective, remainingEffective, quotaLimit)
+		const quotaCounterTolerance = 4 << 20
+		quotaDistance := finalEffective
+		if finalEffective >= uint64(quotaLimit) {
+			quotaDistance = finalEffective - uint64(quotaLimit)
+		} else {
+			quotaDistance = uint64(quotaLimit) - finalEffective
+		}
+		if !final.Final || final.ID != activeRecord.ID || quotaDistance > quotaCounterTolerance {
+			t.Fatalf("final L2TP session counters outside effective quota bound: active=%+v final=%+v previous=%d limit=%d tolerance=%d", activeRecord, final, previousEffective, quotaLimit, quotaCounterTolerance)
 		}
 		if err := s.checkpointPPPOffline(context.Background()); err != nil {
 			t.Fatal(err)

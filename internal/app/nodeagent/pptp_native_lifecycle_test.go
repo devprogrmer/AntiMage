@@ -229,10 +229,9 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 				if previousEffective >= uint64(quotaLimit) {
 					t.Fatalf("PPTP batches before quota traffic already exhausted quota: previous=%d limit=%d", previousEffective, quotaLimit)
 				}
-				remainingEffective := uint64(quotaLimit) - previousEffective
 				effective := nativeSessionEffectiveLiveUsage(policy, finalRecord.Total)
-				if effective < remainingEffective || effective-remainingEffective > 6<<20 {
-					t.Fatalf("final PPTP session counters outside remaining effective quota bound: raw=%d effective=%d previous=%d remaining=%d limit=%d", finalRecord.Total, effective, previousEffective, remainingEffective, quotaLimit)
+				if effective < uint64(quotaLimit) || effective-uint64(quotaLimit) > 6<<20 {
+					t.Fatalf("final PPTP session counters outside effective quota bound: raw=%d effective=%d previous=%d limit=%d", finalRecord.Total, effective, previousEffective, quotaLimit)
 				}
 				finalized = true
 				break
@@ -259,10 +258,9 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 		if previousEffective >= limit {
 			t.Fatalf("PPTP batches before quota traffic already exhausted quota: previous=%d limit=%d", previousEffective, limit)
 		}
-		remainingEffective := limit - previousEffective
-		if effective < remainingEffective || effective-remainingEffective > 6<<20 {
+		if effective < limit || effective-limit > 6<<20 {
 			raw, _ := json.Marshal(batch)
-			t.Fatalf("native PPTP quota overshoot outside 6 MiB effective bound: raw=%d effective=%d previous=%d remaining=%d limit=%d batch=%s", total, effective, previousEffective, remainingEffective, limit, raw)
+			t.Fatalf("native PPTP quota outside 6 MiB effective bound: raw=%d effective=%d previous=%d limit=%d batch=%s", total, effective, previousEffective, limit, raw)
 		}
 		t.Logf("production PPTP quota worker disconnected session at raw=%d effective=%d bytes, limit=%d", total, effective, limit)
 		for _, line := range s.snapshotLogs() {
