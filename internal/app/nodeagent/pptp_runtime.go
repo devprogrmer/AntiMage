@@ -48,7 +48,6 @@ type pptpRuntimeUser struct {
 type pptpRuntimeFiles struct {
 	Config        string
 	PPPOptions    string
-	IPPreUpScript string
 	IPUpScript    string
 	IPDownScript  string
 	SessionConfig string
@@ -80,7 +79,6 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 	files := pptpRuntimeFiles{
 		Config:        filepath.Join(root, "pptpd.conf"),
 		PPPOptions:    filepath.Join(root, "ppp-options"),
-		IPPreUpScript: filepath.Join(root, "ip-pre-up.sh"),
 		IPUpScript:    filepath.Join(root, "ip-up.sh"),
 		IPDownScript:  filepath.Join(root, "ip-down.sh"),
 		SessionConfig: filepath.Join(root, "session-helper.json"),
@@ -177,10 +175,6 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 		if err := os.WriteFile(files.SessionConfig, rawConfig, 0600); err != nil {
 			return "", fmt.Errorf("pptp %q: write session helper config: %w", tag, err)
 		}
-		admission := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " pre-up\n"
-		if err := os.WriteFile(files.IPPreUpScript, []byte(admission), 0700); err != nil {
-			return "", err
-		}
 		connect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " start\n"
 		disconnect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " stop\n"
 		if err := os.WriteFile(files.IPUpScript, []byte(connect), 0700); err != nil {
@@ -264,9 +258,11 @@ func renderPPTPPPPOptions(inbound pptpRuntimeInbound, files pptpRuntimeFiles, lo
 	line("lock")
 	line("hide-password")
 	line(localIP + ":")
-	if files.IPPreUpScript != "" {
-		line("ip-pre-up-script " + filepath.ToSlash(files.IPPreUpScript))
-	}
+	// ip-pre-up-script is unavailable in the pppd 2.4.9 package shipped by
+	// Ubuntu 22.04. The system /etc/ppp/ip-pre-up.d dispatcher is compatible
+	// with both 2.4.9 and newer pppd releases; the Antimage hook filters on
+	// this ipparam before applying the durable admission gate.
+	line("ipparam antimage-pptp")
 	if files.IPUpScript != "" {
 		line("ip-up-script " + filepath.ToSlash(files.IPUpScript))
 	}

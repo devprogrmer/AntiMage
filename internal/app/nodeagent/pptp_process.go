@@ -23,6 +23,7 @@ var (
 	pptpShutdownGrace   = 3 * time.Second
 	pptpKillGrace       = 2 * time.Second
 	pptpCHAPSecretsPath = "/etc/ppp/chap-secrets"
+	pptpIPPreUpHookPath = "/etc/ppp/ip-pre-up.d/90-antimage-pptp"
 )
 
 type pptpProcess struct {
@@ -158,6 +159,68 @@ func clearPPTPSystemCHAPSecrets() error {
 	return updatePPTPManagedBlock(pptpCHAPSecretsPath, "")
 }
 
+const pptpIPPreUpHookMarker = "# ANTIMAGE MANAGED PPTP IP PRE-UP HOOK"
+
+func renderPPTPSystemIPPreUpHook(executable, sessionConfig string) string {
+	return "#!/bin/sh\n" + pptpIPPreUpHookMarker + "\n" +
+		"set -eu\n" +
+		"[ \"${6:-}\" = antimage-pptp ] || exit 0\n" +
+		"exec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(sessionConfig) + " pre-up\n"
+}
+
+func installPPTPSystemIPPreUpHook(executable, sessionConfig string) error {
+	if strings.TrimSpace(executable) == "" || strings.TrimSpace(sessionConfig) == "" {
+		return fmt.Errorf("PPTP pre-up hook executable and session config are required")
+	}
+	if err := os.MkdirAll(filepath.Dir(pptpIPPreUpHookPath), 0755); err != nil {
+		return err
+	}
+	if existing, err := os.ReadFile(pptpIPPreUpHookPath); err == nil && !strings.Contains(string(existing), pptpIPPreUpHookMarker) {
+		return fmt.Errorf("refusing to replace unmanaged PPP hook %q", pptpIPPreUpHookPath)
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(pptpIPPreUpHookPath), ".antimage-pptp-hook-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+	if err := tmp.Chmod(0755); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.WriteString(renderPPTPSystemIPPreUpHook(executable, sessionConfig)); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, pptpIPPreUpHookPath); err != nil {
+		return err
+	}
+	return os.Chmod(pptpIPPreUpHookPath, 0755)
+}
+
+func clearPPTPSystemIPPreUpHook() error {
+	raw, err := os.ReadFile(pptpIPPreUpHookPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(string(raw), pptpIPPreUpHookMarker) {
+		return fmt.Errorf("refusing to remove unmanaged PPP hook %q", pptpIPPreUpHookPath)
+	}
+	return os.Remove(pptpIPPreUpHookPath)
+}
+
 func (s *Server) startPPTPInbound(tag, configPath, chapSecrets string) error {
 	tag = strings.TrimSpace(tag)
 	if tag == "" {
@@ -169,6 +232,17 @@ func (s *Server) startPPTPInbound(tag, configPath, chapSecrets string) error {
 	pptpdPath, err := pptpLookPath("pptpd")
 	if err != nil {
 		return fmt.Errorf("pptp %q: executable %q not installed", tag, "pptpd")
+	}
+	helper, err := pppSessionHelperExecutable()
+	if err != nil {
+		return fmt.Errorf("pptp %q: resolve node executable: %w", tag, err)
+	}
+	helper, err = filepath.Abs(helper)
+	if err != nil {
+		return fmt.Errorf("pptp %q: resolve absolute node executable: %w", tag, err)
+	}
+	if err := installPPTPSystemIPPreUpHook(helper, filepath.Join(filepath.Dir(configPath), "session-helper.json")); err != nil {
+		return fmt.Errorf("pptp %q: install system ip-pre-up hook: %w", tag, err)
 	}
 
 	s.mu.Lock()
@@ -187,6 +261,7 @@ func (s *Server) startPPTPInbound(tag, configPath, chapSecrets string) error {
 		cmd.Env = os.Environ()
 	}
 	if err := cmd.Start(); err != nil {
+		_ = clearPPTPSystemIPPreUpHook()
 		return fmt.Errorf("pptp %q: start: %w", tag, err)
 	}
 	runtime := &pptpProcess{cmd: cmd, done: make(chan struct{})}
@@ -217,8 +292,10 @@ func (s *Server) startPPTPInbound(tag, configPath, chapSecrets string) error {
 		}
 		waitErr := runtime.waitError()
 		if waitErr != nil {
+			_ = clearPPTPSystemIPPreUpHook()
 			return fmt.Errorf("pptp %q: exited during startup: %w", tag, waitErr)
 		}
+		_ = clearPPTPSystemIPPreUpHook()
 		return fmt.Errorf("pptp %q: exited during startup", tag)
 	case <-timer.C:
 	}
@@ -278,6 +355,11 @@ func (s *Server) stopAllPPTPRuntimes() {
 		s.appendLog("stopping pptp runtime: " + tag)
 		if err := stopPPTPProcess(runtime); err != nil {
 			s.appendLog("stop pptp runtime failed: " + tag + ": " + err.Error())
+		}
+	}
+	if len(runtimes) > 0 {
+		if err := clearPPTPSystemIPPreUpHook(); err != nil {
+			s.appendLog("clear PPTP system ip-pre-up hook failed: " + err.Error())
 		}
 	}
 }

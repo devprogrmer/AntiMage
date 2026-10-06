@@ -508,6 +508,9 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		if err := clearPPTPSystemCHAPSecrets(); err != nil {
 			s.appendLog("clear PPTP chap secrets failed: " + err.Error())
 		}
+		if err := clearPPTPSystemIPPreUpHook(); err != nil {
+			s.appendLog("clear PPTP system ip-pre-up hook failed: " + err.Error())
+		}
 	}
 
 	for _, runtime := range wgPrepared {

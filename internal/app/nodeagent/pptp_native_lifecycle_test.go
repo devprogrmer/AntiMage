@@ -58,12 +58,22 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 		if err := installPPTPSystemCHAPSecrets(secrets); err != nil {
 			t.Fatal(err)
 		}
+		helper, err := filepath.Abs(helperBinary)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := installPPTPSystemIPPreUpHook(helper, filepath.Join(filepath.Dir(configPath), "session-helper.json")); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(stateDir, "pptpd-config-path"), []byte(configPath), 0600); err != nil {
 			t.Fatal(err)
 		}
 		t.Logf("production PPTP configuration prepared: %s", configPath)
 	case "cleanup":
 		if err := clearPPTPSystemCHAPSecrets(); err != nil {
+			t.Fatal(err)
+		}
+		if err := clearPPTPSystemIPPreUpHook(); err != nil {
 			t.Fatal(err)
 		}
 	case "collect":
