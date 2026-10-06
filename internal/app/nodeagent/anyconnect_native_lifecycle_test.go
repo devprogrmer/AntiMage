@@ -9,6 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 func anyConnectNativePID() (string, error) {
@@ -81,7 +84,8 @@ func TestAnyConnectNativeAccountingStage(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "usage-helper.json"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if os.Getenv("ANTIMAGE_ANYCONNECT_ACTION") == "quota" {
+	action := os.Getenv("ANTIMAGE_ANYCONNECT_ACTION")
+	if action == "quota" {
 		policy := nativeSessionUserPolicy{Status: "active", DataLimit: 1}
 		helper, err := json.Marshal(nativeSessionHelperConfig{
 			InboundTag: "native", Protocol: "anyconnect", Users: cfg.Users,
@@ -117,6 +121,62 @@ func TestAnyConnectNativeAccountingStage(t *testing.T) {
 	replay, err := s.collectAnyConnectUserUsage(context.Background(), nil)
 	if err != nil || replay.GetBatchId() != first {
 		t.Fatalf("pending batch changed across reload: batch=%v err=%v", replay, err)
+	}
+	if action == "ack" {
+		var receipt struct {
+			BatchIDs []string `json:"batch_ids"`
+		}
+		raw, err := os.ReadFile(filepath.Join(os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE"), "native-panel-receipt.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(raw, &receipt); err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, id := range receipt.BatchIDs {
+			if id == first {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("refusing ACK without verified Panel DB receipt")
+		}
+		ack, err := s.ackAnyConnectUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: first})
+		if err != nil || !ack.GetAcknowledged() {
+			t.Fatalf("DB-confirmed AnyConnect ACK: %v %v", ack, err)
+		}
+		restarted := New(Config{DataDir: os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE")})
+		next, err := restarted.collectAnyConnectUserUsage(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(next.GetStats()) > 0 && next.GetStats()[0].GetValue() > 0 {
+			raw, err := proto.Marshal(next)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE"), "native-next-batch.pb"), raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Logf("DB-confirmed ACK pruned AnyConnect batch %s; next=%v", first, next)
+		return
+	}
+	if action == "collect-first" || action == "collect-next" || action == "collect-final" {
+		name := "native-first-batch.pb"
+		if action == "collect-next" {
+			name = "native-next-batch.pb"
+		} else if action == "collect-final" {
+			name = "native-final-batch.pb"
+		}
+		raw, err := proto.Marshal(batch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE"), name), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Logf("production ocserv collector durably persisted batch %s with %d bytes", first, s.anyConnectUsagePending.Samples[0].Value)
 }

@@ -45,6 +45,14 @@ func TestAmneziaWGNativePanelDB(t *testing.T) {
 	runNativePanelDBExactOnce(t, dir, os.Getenv("ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL") == "1")
 }
 
+func TestAnyConnectNativePanelDB(t *testing.T) {
+	dir := os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE")
+	if dir == "" {
+		t.Skip("requires real native AnyConnect collector batches")
+	}
+	runNativePanelDBExactOnce(t, dir, os.Getenv("ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL") == "1")
+}
+
 func TestNativePanelDBExactOnceIncludesFinalBatch(t *testing.T) {
 	dir := t.TempDir()
 	for _, item := range []struct {

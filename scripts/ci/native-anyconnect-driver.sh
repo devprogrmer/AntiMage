@@ -44,6 +44,46 @@ wait_for() {
   echo "timeout waiting for $name" >&2
   return 1
 }
+wait_for_gone() {
+  local name="$1"; shift
+  for _ in $(seq 1 80); do
+    if ! "$@" >/dev/null 2>&1; then return 0; fi
+    sleep .1
+  done
+  echo "timeout waiting for $name to stop" >&2
+  return 1
+}
+start_server() {
+  ocserv --foreground --config="$ROOT/ocserv.conf" >"$ROOT/ocserv.log" 2>&1 &
+  ocserv_pid=$!
+  printf '%s\n' "$ocserv_pid" >"$ROOT/ocserv.pid"
+  PIDS+=("$ocserv_pid")
+  for _ in $(seq 1 80); do ss -lnt '( sport = :4433 )' | grep -q 4433 && break; sleep .25; done
+  ss -lnt '( sport = :4433 )' | grep -q 4433
+}
+start_client() {
+  local output="$1"
+  ip netns exec "$NS" sh -c "printf '%s\\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --servercert '$SERVERCERT' --no-dtls --script '$VPNSCRIPT' --interface=vpn-native https://10.253.0.1:4433" >"$output" 2>&1 &
+  client_pid=$!
+  PIDS+=("$client_pid")
+  for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1 && break; sleep .25; done
+  ip netns exec "$NS" ip link show vpn-native >/dev/null
+  for _ in $(seq 1 80); do ip netns exec "$NS" ip -4 addr show dev vpn-native | grep -q '192.0.2.' && break; sleep .25; done
+  ip netns exec "$NS" ip addr show vpn-native
+}
+run_accounting() {
+  local action="$1"
+  env ANTIMAGE_ANYCONNECT_ACTION="$action" \
+    ANTIMAGE_ANYCONNECT_NATIVE_ROOT="$ROOT" \
+    ANTIMAGE_ANYCONNECT_NATIVE_STATE="$ROOT/anyconnect-accounting" \
+    ANTIMAGE_ANYCONNECT_NATIVE_PID="$ocserv_pid" \
+    "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectNativeAccountingStage$' -test.v
+}
+panel_replay() {
+  env ANTIMAGE_ANYCONNECT_NATIVE_STATE="$ROOT/anyconnect-accounting" \
+    ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL="${1:-0}" \
+    "$ANTIMAGE_ANYCONNECT_PANEL_TEST_BINARY" -test.run='^TestAnyConnectNativePanelDB$' -test.v
+}
 mkdir -p "$ROOT"
 ip netns add "$NS"
 ip link add aoc-vh type veth peer name aoc-vn
@@ -84,40 +124,42 @@ EOF
   chmod 700 "$ROOT/quota-admission.sh"
   printf '\nconnect-script = %s\n' "$ROOT/quota-admission.sh" >>"$ROOT/ocserv.conf"
 fi
-ocserv --foreground --config="$ROOT/ocserv.conf" >"$ROOT/ocserv.log" 2>&1 &
-ocserv_pid=$!
-printf '%s\n' "$ocserv_pid" >"$ROOT/ocserv.pid"
-PIDS+=("$ocserv_pid")
-for _ in $(seq 1 80); do ss -lnt '( sport = :4433 )' | grep -q 4433 && break; sleep .25; done
-ss -lnt '( sport = :4433 )' | grep -q 4433
-ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --servercert '$SERVERCERT' --no-dtls --script '$VPNSCRIPT' --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect.log" 2>&1 &
-PIDS+=("$!")
-for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1 && break; sleep .25; done
-ip netns exec "$NS" ip link show vpn-native >/dev/null
-for _ in $(seq 1 80); do ip netns exec "$NS" ip -4 addr show dev vpn-native | grep -q '192.0.2.' && break; sleep .25; done
-ip netns exec "$NS" ip addr show vpn-native
+start_server
+start_client "$ROOT/openconnect.log"
 ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
 if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
-  env ANTIMAGE_ANYCONNECT_NATIVE_ROOT="$ROOT" \
-    ANTIMAGE_ANYCONNECT_NATIVE_STATE="$ROOT/anyconnect-accounting" \
-    ANTIMAGE_ANYCONNECT_NATIVE_PID="$ocserv_pid" \
-    "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectNativeAccountingStage$' -test.v
-  env ANTIMAGE_ANYCONNECT_ACTION=quota \
-    ANTIMAGE_ANYCONNECT_NATIVE_ROOT="$ROOT" \
-    ANTIMAGE_ANYCONNECT_NATIVE_STATE="$ROOT/anyconnect-accounting" \
-    ANTIMAGE_ANYCONNECT_NATIVE_PID="$ocserv_pid" \
-    "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectNativeAccountingStage$' -test.v
+  run_accounting collect-first
+  panel_replay
+  run_accounting ack
+
+  echo '=== ocserv runtime restart, durable node-state reload, and reconnect ==='
+  kill -TERM "$ocserv_pid"
+  wait "$ocserv_pid" || true
+  wait_for_gone 'first AnyConnect tunnel interface' ip netns exec "$NS" ip link show vpn-native
+  for _ in $(seq 1 80); do kill -0 "$client_pid" 2>/dev/null || break; sleep .1; done
+  if kill -0 "$client_pid" 2>/dev/null; then
+    echo 'openconnect did not exit after ocserv runtime restart' >&2
+    exit 1
+  fi
+  wait "$client_pid" 2>/dev/null || true
+  start_server
+  start_client "$ROOT/openconnect-restart.log"
+  ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
+  run_accounting collect-next
+  panel_replay
+  run_accounting ack
+
+  run_accounting quota
 fi
-client_pid="${PIDS[1]}"
 for _ in $(seq 1 80); do kill -0 "$client_pid" 2>/dev/null || break; sleep .25; done
 if kill -0 "$client_pid" 2>/dev/null; then
   echo 'openconnect did not exit after the server disconnected the over-quota session' >&2
   exit 1
 fi
 wait "$client_pid" 2>/dev/null || true
-unset 'PIDS[1]'
-ip netns exec "$NS" sh -c "printf '%s\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --servercert '$SERVERCERT' --no-dtls --script '$VPNSCRIPT' --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect-reconnect.log" 2>&1 &
-PIDS+=("$!")
+ip netns exec "$NS" sh -c "printf '%s\\n' native-password | openconnect --protocol=anyconnect --user=native-user --passwd-on-stdin --servercert '$SERVERCERT' --no-dtls --script '$VPNSCRIPT' --interface=vpn-native https://10.253.0.1:4433" >"$ROOT/openconnect-reconnect.log" 2>&1 &
+client_pid=$!
+PIDS+=("$client_pid")
 if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   wait_for 'AnyConnect local admission hook quota denial' grep -Fq \
     'anyconnect admission denied: data limit reached' "$ROOT/ocserv.log"
@@ -134,6 +176,9 @@ if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
     echo 'AnyConnect quota-denied reconnect still created a tunnel interface' >&2
     exit 1
   fi
+  run_accounting collect-final
+  panel_replay 1
+  run_accounting ack
 else
   for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-native >/dev/null 2>&1 && break; sleep .25; done
   ip netns exec "$NS" ip link show vpn-native >/dev/null

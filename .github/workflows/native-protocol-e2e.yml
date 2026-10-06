@@ -157,8 +157,12 @@ jobs:
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
-          sudo env RUNNER_TEMP="$RUNNER_TEMP" ANTIMAGE_ANYCONNECT_TEST_BINARY="$nodeagent_test" \
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_ANYCONNECT_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_ANYCONNECT_PANEL_TEST_BINARY="$nodecontroller_test" \
             bash scripts/ci/native-anyconnect-driver.sh
 
       - name: Run real strongSwan IKEv2 lifecycle
@@ -206,6 +210,7 @@ jobs:
           path: |
             ${{ runner.temp }}/antimage-*-failure/**
             ${{ runner.temp }}/antimage-ikev2-*/**
+            ${{ runner.temp }}/antimage-anyconnect-failure/**
             ${{ runner.temp }}/native-runner-state.txt
           if-no-files-found: ignore
           retention-days: 7
