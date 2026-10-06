@@ -47,6 +47,32 @@ func TestAnyConnectNativePIDFromFile(t *testing.T) {
 	}
 }
 
+// TestAnyConnectNativeSpeedConfigStage publishes per-user settings using the
+// same renderer used by the production runtime, for the isolated ocserv driver.
+func TestAnyConnectNativeSpeedConfigStage(t *testing.T) {
+	root := strings.TrimSpace(os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_ROOT"))
+	if root == "" {
+		t.Skip("requires isolated native ocserv harness")
+	}
+	user := anyConnectRuntimeUser{
+		UserID: 8, Username: "native-speed", IPv4Address: "192.0.2.3",
+		UploadSpeedLimit: 4_000_000, DownloadSpeedLimit: 6_000_000,
+	}
+	config := renderAnyConnectUserConfig(user, nil)
+	if !strings.Contains(config, "rx-data-per-sec = 500000") ||
+		!strings.Contains(config, "tx-data-per-sec = 750000") {
+		t.Fatalf("production AnyConnect speed config lost byte rates: %q", config)
+	}
+	path := filepath.Join(root, "users", user.Username)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(config), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("production AnyConnect config set upload=4 Mbps download=6 Mbps: %s", path)
+}
+
 // TestAnyConnectNativeAccountingStage reads live sessions from the actual
 // ocserv control socket and exercises the durable collector across reload.
 func TestAnyConnectNativeAccountingStage(t *testing.T) {

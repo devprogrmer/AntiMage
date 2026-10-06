@@ -131,6 +131,116 @@ PY
   test "$(wc -c <"$received")" -eq 1048576
   echo "AnyConnect $label tunnel payload: $(wc -c <"$received") bytes received"
 }
+start_speed_client() {
+  ip netns exec "$NS" openconnect --protocol=anyconnect --user=native-speed \
+    --passwd-on-stdin --reconnect-timeout=1 --servercert "$SERVERCERT" \
+    --no-dtls --script "$VPNSCRIPT" --interface=vpn-speed \
+    https://10.253.0.1:4433 >"$ROOT/openconnect-speed.log" 2>&1 <<< 'native-password' &
+  speed_client_pid=$!
+  PIDS+=("$speed_client_pid")
+  for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-speed >/dev/null 2>&1 && break; sleep .25; done
+  ip netns exec "$NS" ip -4 addr show dev vpn-speed | grep -q '192.0.2.3/'
+}
+measure_speed_upload() {
+  local result="$ROOT/anyconnect-speed-upload.json"
+  python3 - "$result" <<'PY' &
+import json, socket, sys, time
+expected = 16 * 1024 * 1024
+with socket.socket() as server:
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("0.0.0.0", 19092))
+    server.listen(1)
+    conn, _ = server.accept()
+    started = time.monotonic()
+    total = 0
+    windows = {}
+    with conn:
+        while total < expected:
+            block = conn.recv(65536)
+            if not block:
+                break
+            total += len(block)
+            second = int(time.monotonic() - started)
+            windows[second] = windows.get(second, 0) + len(block)
+    elapsed = time.monotonic() - started
+if total != expected:
+    raise SystemExit(f"upload receiver got {total} bytes, want {expected}")
+mbps = total * 8 / elapsed / 1_000_000
+peak = max(windows.values()) * 8 / 1_000_000
+json.dump({"configured_mbps": 4, "bytes": total, "seconds": elapsed, "average_mbps": mbps, "peak_1s_mbps": peak}, open(sys.argv[1], "w"))
+print(f"AnyConnect upload speed configured=4 Mbps bytes={total} seconds={elapsed:.2f} average={mbps:.2f} Mbps peak_1s={peak:.2f} Mbps")
+if not 2.5 <= mbps <= 5.5 or peak > 6:
+    raise SystemExit(f"AnyConnect upload speed outside tolerance: {mbps:.2f} Mbps")
+PY
+  local receiver_pid=$!
+  PIDS+=("$receiver_pid")
+  wait_for 'AnyConnect speed upload receiver' sh -c 'ss -lnt "( sport = :19092 )" | grep -q 19092'
+  ip netns exec "$NS" python3 - <<'PY'
+import socket, time
+expected = 16 * 1024 * 1024
+with socket.create_connection(("192.0.2.1", 19092), timeout=10) as conn:
+    block = b"u" * 65536
+    sent = 0
+    while sent < expected:
+        part = block[:min(len(block), expected - sent)]
+        conn.sendall(part)
+        sent += len(part)
+    conn.shutdown(socket.SHUT_WR)
+PY
+  wait "$receiver_pid"
+}
+measure_speed_download() {
+  local client_ip=192.0.2.3 result="$ROOT/anyconnect-speed-download.json"
+  ip netns exec "$NS" python3 - "$client_ip" "$result" <<'PY' &
+import json, socket, sys, time
+expected = 16 * 1024 * 1024
+with socket.socket() as server:
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind((sys.argv[1], 19093))
+    server.listen(1)
+    conn, _ = server.accept()
+    started = time.monotonic()
+    total = 0
+    windows = {}
+    with conn:
+        while total < expected:
+            block = conn.recv(65536)
+            if not block:
+                break
+            total += len(block)
+            second = int(time.monotonic() - started)
+            windows[second] = windows.get(second, 0) + len(block)
+    elapsed = time.monotonic() - started
+if total != expected:
+    raise SystemExit(f"download receiver got {total} bytes, want {expected}")
+mbps = total * 8 / elapsed / 1_000_000
+peak = max(windows.values()) * 8 / 1_000_000
+json.dump({"configured_mbps": 6, "bytes": total, "seconds": elapsed, "average_mbps": mbps, "peak_1s_mbps": peak}, open(sys.argv[2], "w"))
+print(f"AnyConnect download speed configured=6 Mbps bytes={total} seconds={elapsed:.2f} average={mbps:.2f} Mbps peak_1s={peak:.2f} Mbps")
+if not 4.0 <= mbps <= 8.0 or peak > 9:
+    raise SystemExit(f"AnyConnect download speed outside tolerance: {mbps:.2f} Mbps")
+PY
+  local receiver_pid=$!
+  PIDS+=("$receiver_pid")
+  wait_for 'AnyConnect speed download receiver' ip netns exec "$NS" sh -c 'ss -lnt "( sport = :19093 )" | grep -q 19093'
+  python3 - "$client_ip" <<'PY'
+import socket, sys
+expected = 16 * 1024 * 1024
+with socket.create_connection((sys.argv[1], 19093), timeout=10) as conn:
+    block = b"d" * 65536
+    sent = 0
+    while sent < expected:
+        part = block[:min(len(block), expected - sent)]
+        conn.sendall(part)
+        sent += len(part)
+    conn.shutdown(socket.SHUT_WR)
+PY
+  wait "$receiver_pid"
+}
+run_native_speed_stage() {
+  ANTIMAGE_ANYCONNECT_NATIVE_ROOT="$ROOT" \
+    "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectNativeSpeedConfigStage$' -test.v
+}
 run_quota_payload() {
   local received="$ROOT/quota-received"
   python3 - "$received" <<'PY' &
@@ -225,6 +335,7 @@ SERVERCERT="pin-sha256:$(openssl x509 -in "$ROOT/cert.pem" -pubkey -noout | open
 VPNSCRIPT="${VPNSCRIPT:-/usr/share/vpnc-scripts/vpnc-script}"
 test -x "$VPNSCRIPT"
 printf 'native-password\nnative-password\n' | ocpasswd -c "$ROOT/ocpasswd" native-user >/dev/null
+printf 'native-password\nnative-password\n' | ocpasswd -c "$ROOT/ocpasswd" native-speed >/dev/null
 cat >"$ROOT/ocserv.conf" <<EOF
 auth = plain[passwd=$ROOT/ocpasswd]
 device = vpns
@@ -241,6 +352,7 @@ ipv4-network = 192.0.2.0
 ipv4-netmask = 255.255.255.0
 dns = 1.1.1.1
 max-clients = 4
+config-per-user = $ROOT/users
 EOF
 if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   cat >"$ROOT/quota-admission.sh" <<EOF
@@ -251,10 +363,20 @@ EOF
   printf '\nconnect-script = %s\n' "$ROOT/quota-admission.sh" >>"$ROOT/ocserv.conf"
 fi
 start_server
+if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
+  run_native_speed_stage
+fi
 start_client "$ROOT/openconnect.log"
 ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
 if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   transfer_tunnel_payload initial
+  echo '=== ocserv per-user upload/download shaping on native traffic ==='
+  start_speed_client
+  measure_speed_upload
+  measure_speed_download
+  kill -TERM "$speed_client_pid" 2>/dev/null || true
+  wait "$speed_client_pid" 2>/dev/null || true
+  wait_for_gone 'AnyConnect speed test tunnel interface' ip netns exec "$NS" ip link show vpn-speed
   run_accounting collect-first
   panel_replay
   run_accounting ack
