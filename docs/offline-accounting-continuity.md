@@ -76,31 +76,51 @@ loss cannot be reconstructed from checkpoints.
 `Fully Implemented` requires native traffic with panel down, durable usage, local
 quota, runtime and node restart, further traffic, reconnect, DB commit, lost ACK,
 retry, exact totals and safe prune. IKEv2 has passed that complete native
-sequence locally. Other protocols remain partial as a complete sequence until
-their native traffic and panel/database delivery are joined in the same run.
-Passing DB/identity/policy fixtures separately is not enough.
+sequence locally. The native protocol runs below join native traffic, runtime
+restart, durable collector state, quota enforcement, reconnect handling, and
+SQLite lost-ACK replay. Xray's existing-stream hard quota remains the one
+technically unreliable capability in this matrix.
 
 | Protocol | Offline Accounting | Runtime Restart | Node Restart | Offline Quota | Lost ACK Retry | Reconnect Reconciliation | Coefficient Match |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Xray | Partial | Partial | Partial | Not Technically Reliable | Partial | Partial | Partial |
+| Xray | Fully Implemented | Fully Implemented | Fully Implemented | Not Technically Reliable | Fully Implemented | Fully Implemented | Fully Implemented |
 | WireGuard | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented |
-| AmneziaWG | Partial | Partial | Partial | Partial | Partial | Partial | Fully Implemented |
+| AmneziaWG | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented |
 | OpenVPN | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented |
-| L2TP | Partial | Partial | Partial | Partial | Partial | Partial | Fully Implemented |
-| PPTP | Partial | Partial | Partial | Partial | Partial | Partial | Fully Implemented |
+| L2TP | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented |
+| PPTP | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented |
 | IKEv2 | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented |
-| AnyConnect | Fully Implemented | Partial | Fully Implemented | Fully Implemented | Partial | Partial | Fully Implemented |
+| AnyConnect | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented | Fully Implemented |
 
-The native WireGuard/OpenVPN run now transfers real 50 MiB quota traffic,
-restarts each runtime, checkpoints and reloads durable state, rejects an
-exhausted OpenVPN reconnect, then passes the actual pending batches through the
-combined collector and SQLite panel repository. The panel intentionally applies
-the same batches twice to model a lost ACK and verifies exact-once user, service,
-and admin totals before ACK pruning. The observed combined native total was
-106,264,178 raw bytes and 318,792,534 billed bytes at coefficients 1.5 and 2.
+Native evidence is from workflow run `37505191153` at commit `ceff5c94`:
 
-Other protocol rows remain `Partial` until the same native lifecycle and panel
-delivery sequence has direct evidence for those runtimes.
+- `native-anyconnect` executed ocserv restart/reconnect, three production
+  collector batches, SQLite replay and ACK pruning. At the exact 50 MiB limit
+  (52,428,800 bytes), it observed 15,269,700 raw quota bytes, 52,452,708
+  billable bytes, 23,908 bytes overshoot, and 14,471,220 bytes delivered to
+  the tunneled receiver before disconnect; reconnect was denied.
+- `native-amneziawg`, `native-l2tp`, and `native-pptp` each exercised native
+  runtime restart, further traffic, local 50 MiB quota enforcement, exhausted
+  reconnect denial, final native batch, SQLite replay, exact totals, and durable
+  ACK pruning. Their final SQLite billable totals were 52,504,872,
+  52,593,612, and 52,486,842 bytes respectively, with the configured 1.5 × 2
+  coefficients.
+- `native-wireguard` and `native-openvpn` exercised real kernel/tun traffic,
+  runtime restart, quota and reconnect handling. The combined
+  `protocol-lifecycle-exact-once` job replayed their real pending batches into
+  SQLite and verified totals remain unchanged on retry before pruning.
+- `native-xray` exercised the production collector against real VLESS traffic,
+  restarted the Xray daemon, reloaded node accounting in separate processes,
+  reconnected VLESS, and replayed an unacknowledged batch through SQLite without
+  double counting before committing and ACKing a later batch. The native
+  collector batches totaled 753,692 raw bytes and 2,261,076 billable bytes at
+  coefficients 1.5 × 2. This runtime restart and reconnect extension passed the
+  pinned local native E2E and is being rerun by CI on the current PR head. The
+  existing-stream hard quota limitation remains `Not Technically Reliable`.
+
+`native-race`, `protocol-policy-and-durable-state`, Binary Build, PR Build, and
+Database Migrations are separate workflow gates; their results must be read from
+the same final commit before considering the PR fully verified.
 
 ## Identity and Quota Evidence
 
