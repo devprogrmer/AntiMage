@@ -38,10 +38,20 @@ func TestWireGuardNativeAccountingStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	accounting := true
+	callback := nativeRuntimeSessionCallback{
+		URL:    strings.TrimSpace(os.Getenv("ANTIMAGE_WIREGUARD_SESSION_CALLBACK_URL")),
+		Token:  strings.TrimSpace(os.Getenv("ANTIMAGE_WIREGUARD_SESSION_CALLBACK_TOKEN")),
+		NodeID: 7,
+	}
+	if callback.URL != "" && callback.Token == "" {
+		t.Fatal("WireGuard Panel session callback token is required with callback URL")
+	}
 	cfg := wireGuardUsageRuntimeConfig{
 		InboundTag: "native", InterfaceName: iface,
 		Peers:             map[string]int64{pubkey: 7},
+		PeerAddresses:     map[string]string{pubkey: "10.200.0.2"},
 		AccountingEnabled: &accounting,
+		Callback:          callback,
 		Policies: map[string]nativeSessionUserPolicy{
 			pubkey: {Status: "active", DataLimit: quotaLimit},
 		},
@@ -174,6 +184,12 @@ func TestWireGuardNativeAccountingStage(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Logf("real kernel accounting bytes=%d; durable pending batch=%s", wireGuardNativeUsageValue(batch), batch.GetBatchId())
+	case "session":
+		batch, err := s.collectWireGuardUserUsage(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("production WireGuard session reconciliation observed native online IPs=%v", batch.GetOnlineIps())
 	default:
 		t.Fatal(fmt.Sprintf("unknown native WireGuard action %q", action))
 	}

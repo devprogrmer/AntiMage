@@ -37,6 +37,14 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 	}
 	quotaLimit := int64(0)
 	var err error
+	callback := nativeRuntimeSessionCallback{
+		URL:    strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_SESSION_CALLBACK_URL")),
+		Token:  strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_SESSION_CALLBACK_TOKEN")),
+		NodeID: 7,
+	}
+	if callback.URL != "" && callback.Token == "" {
+		t.Fatal("AmneziaWG Panel session callback token is required with callback URL")
+	}
 	if raw := strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_QUOTA_BYTES")); raw != "" {
 		quotaLimit, err = strconv.ParseInt(raw, 10, 64)
 		if err != nil || quotaLimit < 0 {
@@ -56,7 +64,7 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 			"h1": "12345", "h2": "23456", "h3": "34567", "h4": "45678"}}
 	s := New(Config{DataDir: stateDir})
 	apply := func() string {
-		prepared, err := s.prepareAmneziaWGInbound(inbound)
+		prepared, err := s.prepareAmneziaWGInbound(inbound, callback)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -117,6 +125,12 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 			}
 		}
 		t.Logf("production collector persisted native AWG bytes=%d batch=%s", total, batch.GetBatchId())
+	case "session":
+		batch, err := s.collectAmneziaWGUserUsage(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("production AmneziaWG session reconciliation observed native online IPs=%v", batch.GetOnlineIps())
 	case "ack":
 		s.amneziaWGUsageMu.Lock()
 		if err := s.ensureAmneziaWGUsageStateLoadedLocked(); err != nil {

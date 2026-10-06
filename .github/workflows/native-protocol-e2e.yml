@@ -105,10 +105,13 @@ jobs:
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          api_test="$RUNNER_TEMP/antimage-api.test"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$api_test" ./internal/app/api
           sudo env ANTIMAGE_NATIVE_RUN_OPENVPN=0 ANTIMAGE_NATIVE_RUN_PANEL=0 \
             RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_VPN_API_TEST_BINARY="$api_test" \
             bash scripts/ci/native-vpn-drivers.sh
 
       - name: Run native OpenVPN lifecycle
@@ -130,10 +133,13 @@ jobs:
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          api_test="$RUNNER_TEMP/antimage-api.test"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
           go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          go test -c -o "$api_test" ./internal/app/api
           sudo env RUNNER_TEMP="$RUNNER_TEMP" ANTIMAGE_AWG_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_AWG_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_AWG_API_TEST_BINARY="$api_test" \
             ANTIMAGE_AWG_TOOL="$RUNNER_TEMP/awg" \
             bash scripts/ci/native-amneziawg-driver.sh
 
@@ -258,6 +264,7 @@ jobs:
             ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_VPN_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_VPN_API_TEST_BINARY="$api_test" \
             bash scripts/ci/native-vpn-drivers.sh
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
