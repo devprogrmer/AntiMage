@@ -231,11 +231,12 @@ start_client_ipsec() {
 }
 client_ipsec() {
   unshare --mount --fork --propagation private bash -c '
-    mkdir -p "$1/netns"
-    mount --bind /run/netns "$1/netns"
-    mount --rbind "$1" /run
-    shift
-    exec ip netns exec "$@"
+    run_dir="$1"
+    namespace="$2"
+    exec {netns_fd}<"/run/netns/$namespace"
+    mount --bind "$run_dir" /run
+    shift 2
+    exec nsenter --net="/proc/self/fd/$netns_fd" -- "$@"
   ' _ "$CLIENT_IPSEC_RUNDIR" "$NS" env \
     IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR" \
     IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.pid" \
