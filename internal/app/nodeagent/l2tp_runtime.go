@@ -243,6 +243,7 @@ require authentication = yes
 name = antimage-l2tp
 ppp debug = no
 pppoptfile = %s
+pass peer = no
 length bit = yes
 `, remoteRange, localIP, filepath.ToSlash(files.PPPOptions))
 }
@@ -271,6 +272,7 @@ func renderL2TPPPPOptions(inbound l2TPRuntimeInbound, files l2TPRuntimeFiles, lo
 	line("connect-delay 5000")
 	line("ipcp-accept-local")
 	line("ipcp-accept-remote")
+	line("ipparam antimage-l2tp")
 	line(localIP + ":")
 	if files.IPUpScript != "" {
 		line("ip-up-script " + filepath.ToSlash(files.IPUpScript))

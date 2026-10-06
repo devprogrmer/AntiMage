@@ -87,6 +87,7 @@ func TestPrepareL2TPInboundRendersDaemonConfigs(t *testing.T) {
 		"ip range = 10.67.0.2-10.67.255.254",
 		"local ip = 10.67.0.1",
 		"pppoptfile = " + filepath.ToSlash(files.PPPOptions),
+		"pass peer = no",
 	} {
 		if !strings.Contains(string(rawXL2TP), expected) {
 			t.Fatalf("xl2tp config missing %q:\n%s", expected, rawXL2TP)
@@ -98,6 +99,7 @@ func TestPrepareL2TPInboundRendersDaemonConfigs(t *testing.T) {
 		"refuse-mschap",
 		"refuse-chap",
 		"refuse-pap",
+		"ipparam antimage-l2tp",
 		"ms-dns 1.1.1.1",
 		"ms-dns 8.8.8.8",
 		"mtu 1410",
@@ -109,6 +111,31 @@ func TestPrepareL2TPInboundRendersDaemonConfigs(t *testing.T) {
 	if !strings.Contains(string(rawSecrets), `"alice-vpn"`) ||
 		!strings.Contains(string(rawSecrets), "10.67.0.42") {
 		t.Fatalf("chap secrets missing user binding:\n%s", rawSecrets)
+	}
+}
+
+func TestL2TPSystemIPPreUpHookIsManagedAndFiltersOtherPPPLinks(t *testing.T) {
+	oldPath := l2TPIPPreUpHookPath
+	l2TPIPPreUpHookPath = filepath.Join(t.TempDir(), "ip-pre-up.d", "91-antimage-l2tp")
+	t.Cleanup(func() { l2TPIPPreUpHookPath = oldPath })
+
+	if err := installL2TPSystemIPPreUpHook("/usr/bin/antimage-node", "/var/lib/antimage/l2tp/session-helper.json"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(l2TPIPPreUpHookPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{l2TPIPPreUpHookMarker, "${6:-}", "antimage-l2tp", "session-event", "pre-up"} {
+		if !strings.Contains(string(raw), expected) {
+			t.Fatalf("system PPP pre-up hook missing %q:\n%s", expected, raw)
+		}
+	}
+	if err := clearL2TPSystemIPPreUpHook(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(l2TPIPPreUpHookPath); !os.IsNotExist(err) {
+		t.Fatalf("managed L2TP hook remains after cleanup: %v", err)
 	}
 }
 
