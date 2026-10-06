@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -86,8 +87,23 @@ func TestAnyConnectNativeAccountingStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	action := os.Getenv("ANTIMAGE_ANYCONNECT_ACTION")
-	if action == "quota" {
-		policy := nativeSessionUserPolicy{Status: "active", DataLimit: 1}
+	s := New(Config{DataDir: os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE")})
+	if action == "quota-watch" {
+		limit, err := strconv.ParseInt(strings.TrimSpace(os.Getenv("ANTIMAGE_ANYCONNECT_QUOTA_BYTES")), 10, 64)
+		if err != nil || limit != 52_428_800 {
+			t.Fatalf("AnyConnect native quota must be exactly 50 MiB (52428800 bytes), got %q", os.Getenv("ANTIMAGE_ANYCONNECT_QUOTA_BYTES"))
+		}
+		var receipt struct {
+			EffectiveTotal uint64 `json:"effective_total"`
+		}
+		receiptRaw, err := os.ReadFile(filepath.Join(os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE"), "native-panel-receipt.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(receiptRaw, &receipt); err != nil || receipt.EffectiveTotal > math.MaxInt64 {
+			t.Fatalf("invalid prior Panel effective usage receipt: %v", err)
+		}
+		policy := nativeSessionUserPolicy{Status: "active", DataLimit: limit, UsedTraffic: int64(receipt.EffectiveTotal)}
 		helper, err := json.Marshal(nativeSessionHelperConfig{
 			InboundTag: "native", Protocol: "anyconnect", Users: cfg.Users,
 			Policies: map[string]nativeSessionUserPolicy{"native-user": policy},
@@ -98,18 +114,66 @@ func TestAnyConnectNativeAccountingStage(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "session-helper.json"), helper, 0600); err != nil {
 			t.Fatal(err)
 		}
-		s := New(Config{DataDir: os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE")})
-		if err := s.quotaCheckAnyConnectOffline(context.Background()); err != nil {
+		ready := filepath.Join(root, "native-quota-ready")
+		if err := os.WriteFile(ready, []byte("ready\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		snapshots, err := s.anyConnectOfflineSnapshots(context.Background())
-		if err != nil || len(snapshots) != 1 || len(snapshots[0].Sessions) != 0 {
-			t.Fatalf("production offline quota did not disconnect over-limit native session: snapshots=%v err=%v", snapshots, err)
+		ctx, cancel := context.WithCancel(context.Background())
+		workerDone := make(chan struct{})
+		go func() {
+			defer close(workerDone)
+			s.runLocalAccountingWorker(ctx, "anyconnect", 100*time.Millisecond, time.Second,
+				s.checkpointAnyConnectOffline, s.quotaCheckAnyConnectOffline)
+		}()
+		seen, disconnected := false, false
+		deadline := time.Now().Add(3 * time.Minute)
+		for time.Now().Before(deadline) {
+			snapshots, snapshotErr := s.anyConnectOfflineSnapshots(ctx)
+			if snapshotErr != nil {
+				cancel()
+				<-workerDone
+				t.Fatal(snapshotErr)
+			}
+			active := false
+			for _, snapshot := range snapshots {
+				for _, session := range snapshot.Sessions {
+					if session.Username == "native-user" {
+						seen, active = true, true
+					}
+				}
+			}
+			if seen && !active {
+				disconnected = true
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
 		}
-		t.Log("production AnyConnect offline quota checkpointed and disconnected the over-limit native session")
+		cancel()
+		<-workerDone
+		if !seen || !disconnected {
+			t.Fatalf("production 50 MiB AnyConnect quota worker did not disconnect the real session: seen=%t disconnected=%t", seen, disconnected)
+		}
+		s.anyConnectUsageMu.Lock()
+		rawDelta := s.anyConnectUsageBaseline[offlineOwnerKey(offlineUsageOwner{7, "native"})]
+		s.anyConnectUsageMu.Unlock()
+		effectiveDelta := nativeSessionEffectiveLiveUsage(policy, rawDelta)
+		effectiveTotal := receipt.EffectiveTotal + uint64(effectiveDelta)
+		overshoot := uint64(0)
+		if effectiveTotal > uint64(limit) {
+			overshoot = effectiveTotal - uint64(limit)
+		}
+		result := map[string]uint64{"limit_bytes": uint64(limit), "effective_before": receipt.EffectiveTotal,
+			"raw_delta": rawDelta, "effective_after": effectiveTotal, "overshoot_bytes": overshoot}
+		resultRaw, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "native-quota-result.json"), resultRaw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("production AnyConnect 50 MiB offline quota disconnected: raw_delta=%d effective_before=%d effective_after=%d limit=%d overshoot=%d", rawDelta, receipt.EffectiveTotal, effectiveTotal, limit, overshoot)
 		return
 	}
-	s := New(Config{DataDir: os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE")})
 	if action == "collect-first" || action == "collect-next" {
 		// ocserv updates its per-session counters asynchronously. Wait for a
 		// real positive native counter after the driver has sent tunnel payload;

@@ -75,11 +75,12 @@ start_client() {
   ip netns exec "$NS" ip addr show vpn-native
 }
 run_accounting() {
-  local action="$1"
+  local action="$1" quota_bytes="${2:-52428800}"
   env ANTIMAGE_ANYCONNECT_ACTION="$action" \
     ANTIMAGE_ANYCONNECT_NATIVE_ROOT="$ROOT" \
     ANTIMAGE_ANYCONNECT_NATIVE_STATE="$ROOT/anyconnect-accounting" \
     ANTIMAGE_ANYCONNECT_NATIVE_PID="$ocserv_pid" \
+    ANTIMAGE_ANYCONNECT_QUOTA_BYTES="$quota_bytes" \
     "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectNativeAccountingStage$' -test.v
 }
 transfer_tunnel_payload() {
@@ -120,6 +121,65 @@ PY
   wait "$server_pid"
   test "$(wc -c <"$received")" -eq 1048576
   echo "AnyConnect $label tunnel payload: $(wc -c <"$received") bytes received"
+}
+run_quota_payload() {
+  local received="$ROOT/quota-received"
+  python3 - "$received" <<'PY' &
+import socket, sys
+with socket.socket() as server:
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("0.0.0.0", 19091))
+    server.listen(1)
+    conn, _ = server.accept()
+    with conn, open(sys.argv[1], "wb") as output:
+        while True:
+            try:
+                data = conn.recv(65536)
+            except ConnectionResetError:
+                break
+            if not data:
+                break
+            output.write(data)
+PY
+  local receiver_pid=$!
+  PIDS+=("$receiver_pid")
+  wait_for 'AnyConnect native quota receiver' sh -c 'ss -lnt "( sport = :19091 )" | grep -q 19091'
+  ip netns exec "$NS" tc qdisc replace dev vpn-native root tbf rate 8mbit burst 32kb latency 400ms
+  local start_ns end_ns sender_pid
+  start_ns="$(date +%s%N)"
+  ip netns exec "$NS" python3 - <<'PY' >"$ROOT/quota-sender.log" 2>&1 &
+import socket
+sent = 0
+try:
+    with socket.create_connection(("192.0.2.1", 19091), timeout=10) as client:
+        payload = b"q" * 65536
+        while sent < 30 * 1024 * 1024:
+            client.sendall(payload)
+            sent += len(payload)
+        client.shutdown(socket.SHUT_WR)
+except OSError as exc:
+    print(f"sender stopped at {sent} bytes after tunnel cutoff: {exc}")
+print(f"client payload submitted={sent} bytes")
+PY
+  sender_pid=$!
+  PIDS+=("$sender_pid")
+  wait "$sender_pid" || true
+  end_ns="$(date +%s%N)"
+  wait "$receiver_pid"
+  local received_bytes elapsed_ms
+  received_bytes="$(wc -c <"$received")"
+  elapsed_ms="$(((end_ns - start_ns) / 1000000))"
+  test "$received_bytes" -gt 0
+  python3 - "$ROOT/native-quota-result.json" "$received_bytes" "$elapsed_ms" <<'PY'
+import json, sys
+result = json.load(open(sys.argv[1], encoding="utf-8"))
+result["tunnel_payload_bytes"] = int(sys.argv[2])
+result["disconnect_elapsed_ms"] = int(sys.argv[3])
+if result["limit_bytes"] != 52_428_800 or result["effective_after"] < result["limit_bytes"]:
+    raise SystemExit(f"native AnyConnect quota did not reach its exact 50 MiB threshold: {result}")
+print("AnyConnect native quota: " + json.dumps(result, sort_keys=True))
+PY
+  echo "AnyConnect quota receiver got ${received_bytes} tunnel bytes; disconnect elapsed=${elapsed_ms} ms"
 }
 panel_replay() {
   env ANTIMAGE_ANYCONNECT_NATIVE_STATE="$ROOT/anyconnect-accounting" \
@@ -193,7 +253,12 @@ if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   panel_replay
   run_accounting ack
 
-  run_accounting quota
+  run_accounting quota-watch 52428800 >"$ROOT/quota-watch.log" 2>&1 &
+  quota_watch_pid=$!; PIDS+=("$quota_watch_pid")
+  wait_for 'production AnyConnect offline quota worker readiness' test -s "$ROOT/native-quota-ready"
+  run_quota_payload
+  wait "$quota_watch_pid"
+  cat "$ROOT/quota-watch.log"
 fi
 for _ in $(seq 1 80); do kill -0 "$client_pid" 2>/dev/null || break; sleep .25; done
 if kill -0 "$client_pid" 2>/dev/null; then
