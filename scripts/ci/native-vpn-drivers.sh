@@ -138,7 +138,7 @@ run_wireguard() {
   wg show wg-native peers
 
   native_speed_policy_stage "$ANTIMAGE_WIREGUARD_TEST_BINARY" wg-native 10.200.0.2
-  measure_native_tunnel_speed wireguard 10.200.0.1 10.200.0.2
+  measure_native_tunnel_speed wireguard 10.200.0.1 10.200.0.2 "$ANTIMAGE_WIREGUARD_TEST_BINARY" wg-native
 
   timeout 120 nc -l -p 19091 >"$ROOT/wireguard-quota-received" 2>&1 &
   local quota_listener_pid=$!
@@ -271,7 +271,7 @@ EOF
     fi
     echo "OpenVPN speed test assigned client IPv4: $openvpn_client_ip"
     native_speed_policy_stage "$ANTIMAGE_OPENVPN_TEST_BINARY" tun-native "$openvpn_client_ip"
-    measure_native_tunnel_speed openvpn 10.210.0.1 "$openvpn_client_ip"
+    measure_native_tunnel_speed openvpn 10.210.0.1 "$openvpn_client_ip" "$ANTIMAGE_OPENVPN_TEST_BINARY" tun-native
     env ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" \
       ANTIMAGE_OPENVPN_NATIVE_PID="$server_pid" \
       "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v

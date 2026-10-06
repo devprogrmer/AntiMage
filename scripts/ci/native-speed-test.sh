@@ -6,8 +6,16 @@ native_speed_policy_stage() {
     "$test_binary" -test.run='^TestNativeSpeedLimitNativeStage$' -test.v
 }
 
+native_speed_policy_cleanup_stage() {
+  local test_binary="$1" interface_name="$2"
+  [ -n "$test_binary" ] || return 0
+  env ANTIMAGE_NATIVE_SPEED_INTERFACE="$interface_name" \
+    "$test_binary" -test.run='^TestNativeSpeedLimitNativeCleanupStage$' -test.v
+}
+
 measure_native_tunnel_speed() {
-  local label="$1" server_ip="$2" client_ip="$3" port_up=19093 port_down=19094
+  local label="$1" server_ip="$2" client_ip="$3" test_binary="$4" interface_name="$5"
+  local port_up=19093 port_down=19094
   python3 "$SCRIPT_DIR/native-speed-transfer.py" receive "$server_ip" "$port_up" \
     "$ROOT/${label}-speed-upload.json" upload >"$ROOT/${label}-speed-upload.log" 2>&1 &
   local upload_receiver=$!
@@ -25,4 +33,5 @@ measure_native_tunnel_speed() {
   python3 "$SCRIPT_DIR/native-speed-transfer.py" send "$client_ip" "$port_down"
   wait "$download_receiver"
   cat "$ROOT/${label}-speed-download.log"
+  native_speed_policy_cleanup_stage "$test_binary" "$interface_name"
 }

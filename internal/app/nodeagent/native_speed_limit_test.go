@@ -18,15 +18,24 @@ func TestNativeSpeedLimitNativeStage(t *testing.T) {
 	const userID int64 = 17
 	const uploadRate int64 = 4_000_000
 	const downloadRate int64 = 6_000_000
-	defer func() {
-		nativeSpeedClearInterface(interfaceName)
-		nativeSpeedDeleteAction(userID, nativeSpeedUpload)
-		nativeSpeedDeleteAction(userID, nativeSpeedDownload)
-	}()
 	if err := nativeSpeedAttachIPv4(interfaceName, address, userID, uploadRate, downloadRate); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("production tc policy applied to %s user=%d upload=4 Mbps download=6 Mbps", interfaceName, userID)
+}
+
+// TestNativeSpeedLimitNativeCleanupStage removes the policy after the native
+// driver has measured both directions. Keeping cleanup separate ensures the
+// tc policy remains active after the installer test process exits.
+func TestNativeSpeedLimitNativeCleanupStage(t *testing.T) {
+	interfaceName := strings.TrimSpace(os.Getenv("ANTIMAGE_NATIVE_SPEED_INTERFACE"))
+	if interfaceName == "" {
+		t.Skip("requires isolated native tunnel speed harness")
+	}
+	const userID int64 = 17
+	nativeSpeedClearInterface(interfaceName)
+	nativeSpeedDeleteAction(userID, nativeSpeedUpload)
+	nativeSpeedDeleteAction(userID, nativeSpeedDownload)
 }
 
 func TestNativeSpeedActionIndexSharedPerUser(t *testing.T) {
