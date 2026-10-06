@@ -134,6 +134,44 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 		if quotaLimit <= 0 {
 			t.Fatal("quota-watch requires a positive quota")
 		}
+		root := filepath.Join(stateDir, "pptp", pptpRuntimeDirName(inbound.Tag), "ppp-accounting")
+		pidBytes, err := os.ReadFile("/run/ppp0.pid")
+		if err != nil {
+			t.Fatalf("read native pppd PID before quota enforcement: %v", err)
+		}
+		pppdPID := strings.TrimSpace(string(pidBytes))
+		if pppdPID == "" {
+			t.Fatal("native pppd PID is empty before quota enforcement")
+		}
+		activeDir := filepath.Join(root, "active")
+		activeEntries, err := os.ReadDir(activeDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var activeRecord pppOfflineSession
+		for _, entry := range activeEntries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+				continue
+			}
+			raw, readErr := os.ReadFile(filepath.Join(activeDir, entry.Name()))
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			var record pppOfflineSession
+			if err := json.Unmarshal(raw, &record); err != nil {
+				t.Fatal(err)
+			}
+			if record.UserID != user.UserID || record.PeerIP != user.IPv4Address || record.InboundTag != inbound.Tag || !strings.Contains(record.Process, ":"+pppdPID+":") {
+				continue
+			}
+			if activeRecord.ID != "" {
+				t.Fatalf("multiple active PPTP records match pppd PID %s: %+v and %+v", pppdPID, activeRecord, record)
+			}
+			activeRecord = record
+		}
+		if activeRecord.ID == "" {
+			t.Fatalf("no active PPTP record matches native pppd PID %s", pppdPID)
+		}
 		ctx, cancel := context.WithCancel(context.Background())
 		workerDone := make(chan struct{})
 		go func() {
@@ -164,46 +202,6 @@ func TestPPTPNativeAccountingStage(t *testing.T) {
 		<-workerDone
 		if !removed {
 			t.Fatal("production PPP quota worker did not disconnect the native PPTP session")
-		}
-		root := filepath.Join(stateDir, "pptp", pptpRuntimeDirName(inbound.Tag), "ppp-accounting")
-		activeDir := filepath.Join(root, "active")
-		activeEntries, err := os.ReadDir(activeDir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		activeInterface := ""
-		var activeRecord pppOfflineSession
-		for _, entry := range activeEntries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-				continue
-			}
-			raw, readErr := os.ReadFile(filepath.Join(activeDir, entry.Name()))
-			if readErr != nil {
-				t.Fatal(readErr)
-			}
-			var record pppOfflineSession
-			if err := json.Unmarshal(raw, &record); err != nil {
-				t.Fatal(err)
-			}
-			if record.UserID != user.UserID || record.PeerIP != user.IPv4Address || record.InboundTag != inbound.Tag {
-				continue
-			}
-			finalPath := filepath.Join(root, "final", record.ID+".json")
-			if _, statErr := os.Stat(finalPath); statErr == nil {
-				// Active metadata is retained for retry-safe stop hooks. Ignore
-				// sessions that already have a durable final sample; quota-watch
-				// must validate the specific session it just disconnected.
-				continue
-			} else if !os.IsNotExist(statErr) {
-				t.Fatal(statErr)
-			}
-			if activeRecord.ID != "" {
-				t.Fatalf("multiple unfinished PPTP sessions after quota disconnect: %+v and %+v", activeRecord, record)
-			}
-			activeInterface, activeRecord = record.Interface, record
-		}
-		if activeInterface == "" || activeRecord.ID == "" {
-			t.Fatal("no durable active PPTP session record found after quota disconnect")
 		}
 		finalized := false
 		finalDeadline := time.Now().Add(10 * time.Second)
