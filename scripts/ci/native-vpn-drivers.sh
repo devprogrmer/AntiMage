@@ -7,6 +7,14 @@ NS="${NS:-antimage-vpn-client}"
 VETH_HOST="avpn-vh"
 VETH_NS="avpn-vn"
 PIDS=()
+forget_pid() {
+  local target="$1"
+  local -a remaining=()
+  for pid in "${PIDS[@]}"; do
+    [ "$pid" = "$target" ] || remaining+=("$pid")
+  done
+  PIDS=("${remaining[@]}")
+}
 cleanup() {
   local rc=$?
   set +e
@@ -80,16 +88,50 @@ wireguard_native_stage() {
     ANTIMAGE_WIREGUARD_NATIVE_PEER="$client_pub" \
     ANTIMAGE_WIREGUARD_NATIVE_QUOTA_BYTES="$quota_bytes" \
     ANTIMAGE_WIREGUARD_ACTION="$action" \
+    ANTIMAGE_WIREGUARD_SESSION_CALLBACK_URL="${WIREGUARD_SESSION_CALLBACK_URL:-}" \
+    ANTIMAGE_WIREGUARD_SESSION_CALLBACK_TOKEN="${WIREGUARD_SESSION_CALLBACK_TOKEN:-}" \
+    ANTIMAGE_NATIVE_SESSION_EXPECT_MARKER="${NATIVE_SESSION_EXPECT_MARKER:-}" \
     "$ANTIMAGE_WIREGUARD_TEST_BINARY" -test.run='^TestWireGuardNativeAccountingStage$' -test.v
+}
+
+wait_for_empty_wireguard_session_outbox() {
+  for _ in $(seq 1 300); do
+    if ! find "$ROOT/wireguard-accounting/native-session-outbox" -type f -name '*.json' -print -quit 2>/dev/null | grep -q .; then return 0; fi
+    sleep .1
+  done
+  echo 'durable WireGuard Panel session events were not delivered' >&2
+  cat "$ROOT/wireguard-session-api.log" >&2
+  return 1
 }
 
 run_wireguard() {
   echo '=== WireGuard native handshake/traffic/restart ==='
+  : "${ANTIMAGE_VPN_API_TEST_BINARY:?missing compiled API test binary}"
   local server_priv client_priv server_pub client_pub
   local quota_bytes="${ANTIMAGE_WIREGUARD_QUOTA_BYTES:-$((50 * 1024 * 1024))}"
   server_priv="$(wg genkey)"; client_priv="$(wg genkey)"
   server_pub="$(printf '%s' "$server_priv" | wg pubkey)"
   client_pub="$(printf '%s' "$client_priv" | wg pubkey)"
+
+  mkdir -p "$ROOT/wireguard-accounting/native-session-api"
+  env ANTIMAGE_NATIVE_WG_SESSION_API_STATE="$ROOT/wireguard-accounting/native-session-api" \
+    ANTIMAGE_NATIVE_WG_SESSION_PROTOCOL=wg \
+    ANTIMAGE_NATIVE_WG_SESSION_ASSIGNED_IP=10.200.0.2 \
+    ANTIMAGE_NATIVE_WG_SESSION_CLIENT_IP=10.250.0.2 \
+    "$ANTIMAGE_VPN_API_TEST_BINARY" -test.run='^TestNativeKernelVPNPanelSessionServer$' -test.v >"$ROOT/wireguard-session-api.log" 2>&1 &
+  local api_pid="$!"
+  PIDS+=("$api_pid")
+  wait_for 'production WireGuard Panel session-event endpoint' test -s "$ROOT/wireguard-accounting/native-session-api/api-callback.txt"
+  local -a session_callback
+  mapfile -t session_callback <"$ROOT/wireguard-accounting/native-session-api/api-callback.txt"
+  WIREGUARD_SESSION_CALLBACK_URL="${session_callback[0]:-}"
+  WIREGUARD_SESSION_CALLBACK_TOKEN="${session_callback[1]:-}"
+  if [ -z "$WIREGUARD_SESSION_CALLBACK_URL" ] || [ -z "$WIREGUARD_SESSION_CALLBACK_TOKEN" ]; then
+    cat "$ROOT/wireguard-session-api.log" >&2
+    echo 'WireGuard Panel session-event endpoint did not publish a callback URL and token' >&2
+    return 1
+  fi
+
   ip link add wg-native type wireguard
   ip addr add 10.200.0.1/24 dev wg-native
   wg set wg-native listen-port 51820 private-key <(printf '%s\n' "$server_priv") \
@@ -111,7 +153,10 @@ run_wireguard() {
   (nc -l -p 19090 >/dev/null 2>&1 || nc -l 19090 >/dev/null 2>&1) &
   PIDS+=("$nc_pid" "$!")
   wait "$nc_pid" || true
+  NATIVE_SESSION_EXPECT_MARKER="$ROOT/wireguard-accounting/native-session-api/api-active"
   wireguard_native_stage collect "$ROOT/wireguard-accounting"
+  NATIVE_SESSION_EXPECT_MARKER=""
+  wait_for 'native WireGuard Panel session seen event' test -s "$ROOT/wireguard-accounting/native-session-api/api-active"
 
   ip link del wg-native
   ip link add wg-native type wireguard
@@ -125,6 +170,28 @@ run_wireguard() {
   echo 'WireGuard server peers after native collect:'
   wg show wg-native peers
   wireguard_native_stage ack "$ROOT/wireguard-accounting"
+
+  echo '=== WireGuard native offline session reconciliation ==='
+  ip netns exec "$NS" ip link del wg-native
+  sleep 80
+  NATIVE_SESSION_EXPECT_MARKER="$ROOT/wireguard-accounting/native-session-api/api-closed"
+  wireguard_native_stage session "$ROOT/wireguard-accounting"
+  NATIVE_SESSION_EXPECT_MARKER=""
+  wait_for 'native WireGuard Panel session stop event' test -s "$ROOT/wireguard-accounting/native-session-api/api-closed"
+  wait_for_empty_wireguard_session_outbox
+  touch "$ROOT/wireguard-accounting/native-session-api/api-stop"
+  wait "$api_pid"
+  forget_pid "$api_pid"
+  cat "$ROOT/wireguard-session-api.log"
+  WIREGUARD_SESSION_CALLBACK_URL=""
+  WIREGUARD_SESSION_CALLBACK_TOKEN=""
+  ip netns exec "$NS" ip link add wg-native type wireguard
+  ip netns exec "$NS" ip addr add 10.200.0.2/24 dev wg-native
+  ip netns exec "$NS" wg set wg-native listen-port 51820 private-key <(printf '%s\n' "$client_priv") \
+    peer "$server_pub" endpoint 10.250.0.1:51820 allowed-ips 10.200.0.1/32 persistent-keepalive 1
+  ip netns exec "$NS" ip link set wg-native up
+  wait_for 'WireGuard session-test reconnect' ip netns exec "$NS" ping -c 1 -W 1 10.200.0.1
+
   echo 'WireGuard server peer state after ACK:'
   wg show wg-native
   echo 'WireGuard client peer state after ACK:'

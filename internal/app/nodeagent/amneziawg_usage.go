@@ -157,7 +157,7 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 			if userID <= 0 {
 				continue
 			}
-			if peer.LatestHandshake > 0 && now.Sub(time.Unix(peer.LatestHandshake, 0)) <= 3*time.Minute {
+			if wireGuardHandshakeActive(peer.LatestHandshake, now) {
 				address := cfg.PeerAddresses[publicKey]
 				if host, _, splitErr := net.SplitHostPort(peer.Endpoint); splitErr == nil && host != "" {
 					address = host
