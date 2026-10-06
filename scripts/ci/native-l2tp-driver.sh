@@ -407,7 +407,7 @@ stage ack
 stage collect-next
 panel_replay
 stage ack
-ppp_interface="$(ip -o -4 addr show | awk '$2 ~ /^ppp[0-9]+$/ && $4 ~ /^10\.67\.0\.1\// { print $2; exit }')"
+ppp_interface="$(ip -o -4 addr show | awk '$2 ~ /^ppp[0-9]+$/ && $4 ~ /^10\.67\.0\.1(\/.*)?$/ { print $2; exit }')"
 ppp_server_ip="$(ip -o -4 addr show dev "$ppp_interface" 2>/dev/null | awk 'NR == 1 { split($4, address, "/"); print address[1] }')"
 ppp_client_ip="$(ip netns exec "$NS" ip -o -4 addr show dev ppp0 | awk 'NR == 1 { split($4, address, "/"); print address[1] }')"
 if [ -z "$ppp_interface" ] || [ -z "$ppp_server_ip" ] || [ -z "$ppp_client_ip" ]; then
