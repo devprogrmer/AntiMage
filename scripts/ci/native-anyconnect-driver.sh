@@ -141,10 +141,16 @@ with socket.socket() as server:
     server.listen(1)
     conn, _ = server.accept()
     with conn, open(sys.argv[1], "wb") as output:
+        # A VPN quota disconnect can drop the route without delivering FIN to
+        # the tunneled TCP peer. Stop the receiver after an idle interval so
+        # the driver can finish collecting the native cutoff result.
+        conn.settimeout(10)
         while True:
             try:
                 data = conn.recv(65536)
             except ConnectionResetError:
+                break
+            except socket.timeout:
                 break
             if not data:
                 break
