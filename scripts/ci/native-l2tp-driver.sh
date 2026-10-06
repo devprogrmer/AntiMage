@@ -40,8 +40,14 @@ cleanup() {
   if [ "$rc" -ne 0 ]; then
     mkdir -p "$RUNNER_TEMP/antimage-l2tp-failure"
     cp -a "$ROOT/." "$RUNNER_TEMP/antimage-l2tp-failure/" 2>/dev/null || true
+    chmod -R a+rX "$RUNNER_TEMP/antimage-l2tp-failure" 2>/dev/null || true
+    if [ -s "$ROOT/quota-watch.log" ]; then
+      echo '=== captured L2TP quota worker output ===' >&2
+      cat "$ROOT/quota-watch.log" >&2
+    fi
     { date -u; ip -details addr show; ip route show table all; ip netns list; ip netns exec "$NS" ip -details addr show; ps -ef; } \
       >"$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>&1
+    chmod a+r "$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>/dev/null || true
     echo "L2TP native evidence retained at $RUNNER_TEMP/antimage-l2tp-failure" >&2
   fi
   for pid in "${PIDS[@]}"; do stop_pid "$pid"; done
