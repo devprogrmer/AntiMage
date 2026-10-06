@@ -230,7 +230,8 @@ EOF
   wait_for 'server strongSwan control socket' sh -c 'ipsec status >/dev/null 2>&1'
   client_ipsec_daemon >"$ROOT/client-ipsec.log" 2>&1 &
   CLIENT_IPSEC_PID=$!; PIDS+=("$CLIENT_IPSEC_PID")
-  if ! wait_for 'client strongSwan control socket' client_ipsec status; then
+  ln -sfn "starter.$CLIENT_CHARON.pid" "$CLIENT_IPSEC_RUNDIR/starter.charon.pid"
+  if ! wait_for 'client strongSwan control socket' sh -c 'test -S "$1/charon.ctl" && test -s "$1/charon.pid"' _ "$CLIENT_IPSEC_RUNDIR"; then
     client_ipsec status >"$ROOT/client-ipsec-status.log" 2>&1 || true
     ls -la "$CLIENT_IPSEC_RUNDIR" >"$ROOT/client-ipsec-rundir.txt" 2>&1 || true
     cat "$ROOT/client-ipsec-status.log" "$ROOT/client-ipsec-rundir.txt" "$ROOT/client-charon.log" >&2
@@ -263,7 +264,7 @@ client_ipsec() {
     IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR" \
     IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR/starter.pid" \
     IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR/charon.pid" \
-    DAEMON_NAME="$CLIENT_CHARON" ipsec "$@"
+    DAEMON_NAME=charon ipsec "$@"
 }
 client_ipsec_daemon() {
   ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
