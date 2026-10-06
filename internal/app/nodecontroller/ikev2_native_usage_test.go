@@ -107,10 +107,20 @@ func runNativePanelDBExactOnce(t *testing.T, dir string, requireFinalBatch bool)
 	ctx := context.Background()
 	batches := []*nodev1.UserUsageBatch{}
 	var rawTotal uint64
-	ids := []string{}
-	for i, name := range []string{"native-first-batch.pb", "native-next-batch.pb", "native-final-batch.pb"} {
-		raw, err := os.ReadFile(filepath.Join(dir, name))
-		if os.IsNotExist(err) && i > 0 && !(i == 2 && requireFinalBatch) {
+	extraBatchPaths, err := filepath.Glob(filepath.Join(dir, "native-batch-*.pb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	batchPaths := append([]string{}, extraBatchPaths...)
+	batchPaths = append(batchPaths,
+		filepath.Join(dir, "native-first-batch.pb"),
+		filepath.Join(dir, "native-next-batch.pb"),
+		filepath.Join(dir, "native-final-batch.pb"),
+	)
+	seenBatchIDs := map[string]struct{}{}
+	for i, name := range batchPaths {
+		raw, err := os.ReadFile(name)
+		if os.IsNotExist(err) && i > 0 && !(name == filepath.Join(dir, "native-final-batch.pb") && requireFinalBatch) {
 			continue
 		}
 		if err != nil {
@@ -123,8 +133,11 @@ func runNativePanelDBExactOnce(t *testing.T, dir string, requireFinalBatch bool)
 		if batch.BatchId == "" {
 			t.Fatal("empty native batch")
 		}
+		if _, seen := seenBatchIDs[batch.BatchId]; seen {
+			continue
+		}
+		seenBatchIDs[batch.BatchId] = struct{}{}
 		batches = append(batches, batch)
-		ids = append(ids, batch.BatchId)
 		for _, sample := range batch.Stats {
 			uid, online, ok := parseUserUsageSampleUID(sample.Uid)
 			if !ok || uid != 7 {
@@ -134,6 +147,10 @@ func runNativePanelDBExactOnce(t *testing.T, dir string, requireFinalBatch bool)
 				rawTotal += sample.Value
 			}
 		}
+	}
+	ids := make([]string, len(batches))
+	for i, batch := range batches {
+		ids[i] = batch.GetBatchId()
 	}
 	path := filepath.Join(dir, "native-panel.db")
 	_, statErr := os.Stat(path)
