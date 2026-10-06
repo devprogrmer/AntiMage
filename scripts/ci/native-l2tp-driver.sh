@@ -198,7 +198,7 @@ conn l2tp-client
     authby=secret
     type=transport
     left=%defaultroute
-    leftprotoport=17/%any
+    leftprotoport=17/1701
     right=10.251.0.1
     rightprotoport=17/1701
     rekey=no
