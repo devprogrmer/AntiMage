@@ -192,6 +192,7 @@ func renderPPTPDConfig(files pptpRuntimeFiles, localIP, remoteRange string) stri
 	return fmt.Sprintf(`option %s
 localip %s
 remoteip %s
+noipparam
 `, filepath.ToSlash(files.PPPOptions), localIP, remoteRange)
 }
 

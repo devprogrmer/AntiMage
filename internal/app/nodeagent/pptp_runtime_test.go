@@ -85,6 +85,7 @@ func TestPreparePPTPInboundRendersDaemonConfigs(t *testing.T) {
 		"option " + filepath.ToSlash(filepath.Join(root, "ppp-options")),
 		"localip 10.68.0.1",
 		"remoteip 10.68.0.2-254",
+		"noipparam",
 	} {
 		if !strings.Contains(string(rawPPTPD), expected) {
 			t.Fatalf("pptpd config missing %q:\n%s", expected, rawPPTPD)
