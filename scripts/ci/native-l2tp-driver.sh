@@ -78,6 +78,9 @@ mkdir -p "$ROOT/l2tp-state"
 systemctl stop strongswan-starter.service >/dev/null 2>&1 || true
 systemctl stop strongswan.service >/dev/null 2>&1 || true
 ipsec stop >/dev/null 2>&1 || true
+# xl2tpd needs the kernel PPP-over-L2TP data path on both ends of the tunnel.
+modprobe l2tp_ppp
+modprobe pppol2tp
 # Keep pppd's distro-provided dispatcher in the private /etc/ppp mount. The
 # production admission hook is installed into ip-pre-up.d; hiding this wrapper
 # would let pppd bring up PPP without invoking any pre-up hooks.
