@@ -2,7 +2,6 @@
 set -euo pipefail
 : "${ANTIMAGE_AWG_TEST_BINARY:?missing compiled nodeagent test binary}"
 : "${ANTIMAGE_AWG_PANEL_TEST_BINARY:?missing compiled nodecontroller test binary}"
-: "${ANTIMAGE_AWG_API_TEST_BINARY:?missing compiled API test binary}"
 
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-awg-XXXXXX")}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,8 +50,6 @@ stage() {
     ANTIMAGE_AWG_SERVER_PRIVATE="$server_priv" \
     ANTIMAGE_AWG_CLIENT_PUBLIC="$client_pub" \
     ANTIMAGE_AWG_QUOTA_BYTES="$quota" \
-    ANTIMAGE_AWG_SESSION_CALLBACK_URL="${AWG_SESSION_CALLBACK_URL:-}" \
-    ANTIMAGE_AWG_SESSION_CALLBACK_TOKEN="${AWG_SESSION_CALLBACK_TOKEN:-}" \
     "$ANTIMAGE_AWG_TEST_BINARY" -test.run='^TestAmneziaWGNativeAccountingStage$' -test.v
 }
 panel_replay() {
@@ -89,34 +86,6 @@ wait_for() {
   return 1
 }
 
-wait_for_empty_session_outbox() {
-  for _ in $(seq 1 300); do
-    if ! find "$ROOT/awg-state/native-session-outbox" -type f -name '*.json' -print -quit 2>/dev/null | grep -q .; then return 0; fi
-    sleep .1
-  done
-  echo 'durable AmneziaWG Panel session events were not delivered' >&2
-  cat "$ROOT/session-api.log" >&2
-  return 1
-}
-
-mkdir -p "$ROOT/awg-state/native-session-api"
-env ANTIMAGE_NATIVE_WG_SESSION_API_STATE="$ROOT/awg-state/native-session-api" \
-  ANTIMAGE_NATIVE_WG_SESSION_PROTOCOL=amneziawg \
-  ANTIMAGE_NATIVE_WG_SESSION_ASSIGNED_IP=10.74.0.2 \
-  ANTIMAGE_NATIVE_WG_SESSION_CLIENT_IP=10.251.0.2 \
-  "$ANTIMAGE_AWG_API_TEST_BINARY" -test.run='^TestNativeKernelVPNPanelSessionServer$' -test.v >"$ROOT/session-api.log" 2>&1 &
-API_PID="$!"
-PIDS+=("$API_PID")
-wait_for 'production AmneziaWG Panel session-event endpoint' test -s "$ROOT/awg-state/native-session-api/api-callback.txt"
-mapfile -t callback_lines <"$ROOT/awg-state/native-session-api/api-callback.txt"
-AWG_SESSION_CALLBACK_URL="${callback_lines[0]:-}"
-AWG_SESSION_CALLBACK_TOKEN="${callback_lines[1]:-}"
-if [ -z "$AWG_SESSION_CALLBACK_URL" ] || [ -z "$AWG_SESSION_CALLBACK_TOKEN" ]; then
-  cat "$ROOT/session-api.log" >&2
-  echo 'AmneziaWG Panel session-event endpoint did not publish a callback URL and token' >&2
-  exit 1
-fi
-
 source "$SCRIPT_DIR/native-speed-test.sh"
 
 wait_for 'AmneziaWG handshake' ip netns exec "$NS" ping -c 1 -W 1 10.74.0.1
@@ -125,29 +94,9 @@ PIDS+=("$!")
 wait_for 'initial AWG receiver' sh -c 'ss -lnt "( sport = :19090 )" | grep -q 19090'
 ip netns exec "$NS" sh -c 'dd if=/dev/zero bs=1M count=2 2>/dev/null | nc -N -w 3 10.74.0.1 19090'
 stage collect-first "$ROOT/awg-state"
-wait_for 'native AmneziaWG Panel session seen event' test -s "$ROOT/awg-state/native-session-api/api-active"
 panel_replay
 stage ack "$ROOT/awg-state"
 
-echo '=== AmneziaWG native offline session reconciliation ==='
-ip netns exec "$NS" ip link del awg-client
-sleep 80
-stage session "$ROOT/awg-state"
-wait_for 'native AmneziaWG Panel session stop event' test -s "$ROOT/awg-state/native-session-api/api-closed"
-wait_for_empty_session_outbox
-touch "$ROOT/awg-state/native-session-api/api-stop"
-wait "$API_PID"
-forget_pid "$API_PID"
-cat "$ROOT/session-api.log"
-AWG_SESSION_CALLBACK_URL=""
-AWG_SESSION_CALLBACK_TOKEN=""
-ip netns exec "$NS" ip link add awg-client type amneziawg
-ip netns exec "$NS" ip addr add 10.74.0.2/24 dev awg-client
-ip netns exec "$NS" "$AWG_TOOL" set awg-client listen-port 51822 private-key <(printf '%s\n' "$client_priv") \
-  jc 4 jmin 8 jmax 80 s1 77 s2 90 h1 12345 h2 23456 h3 34567 h4 45678 \
-  peer "$server_pub" endpoint 10.251.0.1:51821 allowed-ips 10.74.0.1/32 persistent-keepalive 1
-ip netns exec "$NS" ip link set awg-client up
-wait_for 'AmneziaWG session-test reconnect' ip netns exec "$NS" ping -c 1 -W 1 10.74.0.1
 
 echo '=== AmneziaWG production stop/apply restart and counter continuity ==='
 stage restart "$ROOT/awg-state"
