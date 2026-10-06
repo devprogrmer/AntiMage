@@ -74,6 +74,15 @@ start_client() {
   for _ in $(seq 1 80); do ip netns exec "$NS" ip -4 addr show dev vpn-native | grep -q '192.0.2.' && break; sleep .25; done
   ip netns exec "$NS" ip addr show vpn-native
 }
+start_reconnect_attempt() {
+  local output="$1"
+  ip netns exec "$NS" openconnect --protocol=anyconnect --user=native-user \
+    --passwd-on-stdin --reconnect-timeout=1 --servercert "$SERVERCERT" \
+    --no-dtls --script "$VPNSCRIPT" --interface=vpn-native \
+    https://10.253.0.1:4433 >"$output" 2>&1 <<< 'native-password' &
+  client_pid=$!
+  PIDS+=("$client_pid")
+}
 run_accounting() {
   local action="$1" quota_bytes="${2:-52428800}"
   env ANTIMAGE_ANYCONNECT_ACTION="$action" \
@@ -238,13 +247,14 @@ if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   echo '=== ocserv runtime restart, durable node-state reload, and reconnect ==='
   kill -TERM "$ocserv_pid"
   wait "$ocserv_pid" || true
-  wait_for_gone 'first AnyConnect tunnel interface' ip netns exec "$NS" ip link show vpn-native
-  for _ in $(seq 1 80); do kill -0 "$client_pid" 2>/dev/null || break; sleep .1; done
-  if kill -0 "$client_pid" 2>/dev/null; then
-    echo 'openconnect did not exit after ocserv runtime restart' >&2
-    exit 1
-  fi
+  wait_for 'OpenConnect detects the ocserv runtime restart' grep -Eq \
+    'Received server disconnect|Read error|Failed to reconnect' "$ROOT/openconnect.log"
+  # The client retries by default and can retain its TUN during backoff. Stop
+  # that old client after observing the server loss; the reconnect below is a
+  # fresh authenticated process against the restarted daemon.
+  kill -TERM "$client_pid" 2>/dev/null || true
   wait "$client_pid" 2>/dev/null || true
+  wait_for_gone 'first AnyConnect tunnel interface' ip netns exec "$NS" ip link show vpn-native
   start_server
   start_client "$ROOT/openconnect-restart.log"
   ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
@@ -259,14 +269,14 @@ if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   run_quota_payload
   wait "$quota_watch_pid"
   cat "$ROOT/quota-watch.log"
-fi
-for _ in $(seq 1 80); do kill -0 "$client_pid" 2>/dev/null || break; sleep .25; done
-if kill -0 "$client_pid" 2>/dev/null; then
-  echo 'openconnect did not exit after the server disconnected the over-quota session' >&2
-  exit 1
+  wait_for 'OpenConnect receives the native quota disconnect' grep -Fq \
+    'Received server disconnect' "$ROOT/openconnect-restart.log"
+  kill -TERM "$client_pid" 2>/dev/null || true
+  wait "$client_pid" 2>/dev/null || true
+  wait_for_gone 'quota disconnected AnyConnect tunnel interface' ip netns exec "$NS" ip link show vpn-native
 fi
 wait "$client_pid" 2>/dev/null || true
-start_client "$ROOT/openconnect-reconnect.log"
+start_reconnect_attempt "$ROOT/openconnect-reconnect.log"
 if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   wait_for 'AnyConnect local admission hook quota denial' grep -Fq \
     'anyconnect admission denied: data limit reached' "$ROOT/ocserv.log"
