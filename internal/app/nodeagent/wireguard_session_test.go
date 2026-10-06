@@ -371,6 +371,14 @@ func TestWireGuardSessionDeviceLimitSnapshotFailureBlocksRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	waitForWireGuardSessionTest(t, func() bool {
+		for _, line := range server.snapshotLogs() {
+			if strings.Contains(line, "wireguard peer disconnect blocked for wg-main user 42") {
+				return true
+			}
+		}
+		return false
+	})
 
 	if len(calls) != 0 {
 		t.Fatalf(
