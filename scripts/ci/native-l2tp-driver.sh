@@ -57,6 +57,14 @@ trap cleanup EXIT
 
 mkdir -p "$ROOT" "$ROOT/etc/ppp/ip-pre-up.d" "$ROOT/etc/xl2tpd" "$ROOT/etc/run"
 mkdir -p "$ROOT/l2tp-state"
+# Keep pppd's distro-provided dispatcher in the private /etc/ppp mount. The
+# production admission hook is installed into ip-pre-up.d; hiding this wrapper
+# would let pppd bring up PPP without invoking any pre-up hooks.
+if [ ! -x /etc/ppp/ip-pre-up ]; then
+  echo "ppp package did not provide executable /etc/ppp/ip-pre-up dispatcher" >&2
+  exit 1
+fi
+cp -a /etc/ppp/ip-pre-up "$ROOT/etc/ppp/ip-pre-up"
 for file in "$ROOT/etc/ipsec.conf" "$ROOT/etc/ipsec.secrets" "$ROOT/etc/ppp/options"; do : >"$file"; done
 mount --bind "$ROOT/etc/ppp" /etc/ppp
 mount --bind "$ROOT/etc/xl2tpd" /etc/xl2tpd
