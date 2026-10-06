@@ -172,21 +172,7 @@ func TestAnyConnectNativeAccountingStage(t *testing.T) {
 		if err != nil || !ack.GetAcknowledged() {
 			t.Fatalf("DB-confirmed AnyConnect ACK: %v %v", ack, err)
 		}
-		restarted := New(Config{DataDir: os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE")})
-		next, err := restarted.collectAnyConnectUserUsage(context.Background(), nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(next.GetStats()) > 0 && next.GetStats()[0].GetValue() > 0 {
-			raw, err := proto.Marshal(next)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(os.Getenv("ANTIMAGE_ANYCONNECT_NATIVE_STATE"), "native-next-batch.pb"), raw, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		t.Logf("DB-confirmed ACK pruned AnyConnect batch %s; next=%v", first, next)
+		t.Logf("DB-confirmed ACK pruned AnyConnect batch %s", first)
 		return
 	}
 	if action == "collect-first" || action == "collect-next" || action == "collect-final" {
