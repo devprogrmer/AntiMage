@@ -161,6 +161,10 @@ import socket
 sent = 0
 try:
     with socket.create_connection(("192.0.2.1", 19091), timeout=10) as client:
+        # A quota cutoff can blackhole the VPN route while sendall() is blocked
+        # by TCP retransmits. Bound the write so the harness can collect the
+        # server-side cutoff counters and finish its quota assertions.
+        client.settimeout(5)
         payload = b"q" * 65536
         while sent < 30 * 1024 * 1024:
             client.sendall(payload)
