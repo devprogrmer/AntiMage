@@ -115,18 +115,18 @@ func RunNativeSessionEventHelper(args []string) error {
 	}
 
 	userID := cfg.Users[commonName]
+	pppProcess := ""
+	if nativeSpeedIsPPPProtocol(protocol) && (eventName == "start" || eventName == "stop") {
+		pppProcess, err = pppOfflineReadProcess(firstNonEmptyEnv("PPPD_PID"))
+		if err != nil {
+			return fmt.Errorf("PPP process identity: %w", err)
+		}
+	}
 	if eventName == "stop" && nativeSpeedIsPPPProtocol(protocol) {
 		iface := firstNonEmptyEnv("IFNAME", "DEVICE")
-		if !l2TPPPPInterfacePattern.MatchString(iface) {
-			return fmt.Errorf("invalid PPP stop interface")
-		}
-		raw, readErr := os.ReadFile(filepath.Join(filepath.Dir(configPath), "ppp-accounting", "active", iface+".json"))
+		record, readErr := pppOfflineFindActiveSession(filepath.Dir(configPath), iface, pppProcess)
 		if readErr != nil {
 			return readErr
-		}
-		var record pppOfflineSession
-		if err := json.Unmarshal(raw, &record); err != nil {
-			return err
 		}
 		if record.InboundTag != cfg.InboundTag {
 			return fmt.Errorf("PPP stop inbound mismatch")
@@ -228,6 +228,10 @@ func RunNativeSessionEventHelper(args []string) error {
 		clientIP,
 		trustedPort,
 	)
+	if pppProcess != "" {
+		sum := sha256.Sum256([]byte(stateKey + "\x00" + pppProcess))
+		stateKey = hex.EncodeToString(sum[:16])
+	}
 
 	statePath := filepath.Join(
 		stateDir,
@@ -250,11 +254,7 @@ func RunNativeSessionEventHelper(args []string) error {
 	}
 
 	if protocol == "l2tp" || protocol == "pptp" {
-		process, identityErr := pppOfflineReadProcess(firstNonEmptyEnv("PPPD_PID"))
-		if identityErr != nil {
-			return fmt.Errorf("PPP process identity: %w", identityErr)
-		}
-		record := pppOfflineSession{UserID: userID, InboundTag: cfg.InboundTag, Interface: interfaceName, PeerIP: assignedIP, Process: process, ClientIP: clientIP}
+		record := pppOfflineSession{UserID: userID, InboundTag: cfg.InboundTag, Interface: interfaceName, PeerIP: assignedIP, Process: pppProcess, ClientIP: clientIP}
 		if eventName == "start" {
 			record.ID, err = newNativeSessionID()
 			if err != nil {

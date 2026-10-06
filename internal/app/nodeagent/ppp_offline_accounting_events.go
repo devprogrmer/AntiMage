@@ -1,6 +1,8 @@
 package nodeagent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -74,14 +76,23 @@ func offlineProcessIdentity(pid string) (string, error) {
 }
 
 func pppOfflineSessionEvent(root, event string, record pppOfflineSession) error {
-	path := filepath.Join(root, "ppp-accounting", "active", record.Interface+".json")
 	if !l2TPPPPInterfacePattern.MatchString(record.Interface) {
 		return fmt.Errorf("invalid PPP interface")
 	}
+	if strings.TrimSpace(record.Process) == "" {
+		return fmt.Errorf("missing PPP process identity")
+	}
+	path := pppOfflineSessionActivePath(root, record.Interface, record.Process)
 	if event == "start" {
 		return offlineDurableJSON(path, record)
 	}
 	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		// Read pre-upgrade records so a runtime restart can still finish a
+		// session that was active before per-process PPP state was introduced.
+		legacyPath := filepath.Join(root, "ppp-accounting", "active", record.Interface+".json")
+		raw, err = os.ReadFile(legacyPath)
+	}
 	if err != nil {
 		return fmt.Errorf("missing trusted PPP start metadata: %w", err)
 	}
@@ -98,23 +109,71 @@ func pppOfflineSessionEvent(root, event string, record pppOfflineSession) error 
 	return offlineDurableJSON(filepath.Join(root, "ppp-accounting", "final", start.ID+".json"), start)
 }
 
-func pppOfflineActiveSession(root, iface, peer string, uid int64) (pppOfflineSession, error) {
-	raw, err := os.ReadFile(filepath.Join(root, "ppp-accounting", "active", iface+".json"))
-	if err != nil {
-		return pppOfflineSession{}, err
+func pppOfflineSessionActivePath(root, iface, process string) string {
+	sum := sha256.Sum256([]byte(process))
+	return filepath.Join(root, "ppp-accounting", "active", iface+"-"+hex.EncodeToString(sum[:12])+".json")
+}
+
+func pppOfflineFindActiveSession(root, iface, process string) (pppOfflineSession, error) {
+	if !l2TPPPPInterfacePattern.MatchString(iface) || strings.TrimSpace(process) == "" {
+		return pppOfflineSession{}, fmt.Errorf("invalid PPP session identity")
 	}
-	var record pppOfflineSession
-	if err := json.Unmarshal(raw, &record); err != nil {
-		return record, err
+	paths := []string{pppOfflineSessionActivePath(root, iface, process)}
+	paths = append(paths, filepath.Join(root, "ppp-accounting", "active", iface+".json"))
+	for _, path := range paths {
+		raw, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return pppOfflineSession{}, err
+		}
+		var record pppOfflineSession
+		if err := json.Unmarshal(raw, &record); err != nil {
+			return pppOfflineSession{}, err
+		}
+		if record.Interface == iface && record.Process == process {
+			return record, nil
+		}
+	}
+	return pppOfflineSession{}, os.ErrNotExist
+}
+
+func pppOfflineActiveSession(root, iface, peer string, uid int64) (pppOfflineSession, error) {
+	if !l2TPPPPInterfacePattern.MatchString(iface) {
+		return pppOfflineSession{}, fmt.Errorf("invalid PPP interface")
 	}
 	identity, err := pppOfflineReadIdentity(iface)
 	if err != nil {
-		return record, err
+		return pppOfflineSession{}, err
 	}
-	if record.ID == "" || record.UserID != uid || record.PeerIP != peer || record.Identity != identity {
-		return record, fmt.Errorf("PPP session identity mismatch")
+	paths, err := filepath.Glob(filepath.Join(root, "ppp-accounting", "active", iface+"-*.json"))
+	if err != nil {
+		return pppOfflineSession{}, err
 	}
-	return record, nil
+	paths = append(paths, filepath.Join(root, "ppp-accounting", "active", iface+".json"))
+	var mismatch bool
+	for _, path := range paths {
+		raw, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return pppOfflineSession{}, err
+		}
+		var record pppOfflineSession
+		if err := json.Unmarshal(raw, &record); err != nil {
+			return record, err
+		}
+		if record.ID != "" && record.UserID == uid && record.PeerIP == peer && record.Interface == iface && record.Identity == identity {
+			return record, nil
+		}
+		mismatch = true
+	}
+	if mismatch {
+		return pppOfflineSession{}, fmt.Errorf("PPP session identity mismatch")
+	}
+	return pppOfflineSession{}, os.ErrNotExist
 }
 
 func pppOfflineFinalRecords(root string) ([]pppOfflineSession, error) {

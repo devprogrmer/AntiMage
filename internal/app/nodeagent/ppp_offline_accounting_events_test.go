@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -136,6 +138,127 @@ func TestPPPFinalRejectsMismatchedStopMetadata(t *testing.T) {
 	files, _ := filepath.Glob(filepath.Join(root, "ppp-accounting", "final", "*.json"))
 	if len(files) != 0 {
 		t.Fatal("persisted untrusted final")
+	}
+}
+
+func TestPPPReconnectOnReusedInterfaceKeepsSessionStateSeparate(t *testing.T) {
+	root := t.TempDir()
+	identity := "boot-a"
+	previousIdentity := pppOfflineReadIdentity
+	pppOfflineReadIdentity = func(string) (string, error) { return identity, nil }
+	t.Cleanup(func() { pppOfflineReadIdentity = previousIdentity })
+
+	first := pppOfflineSession{ID: "session-a", UserID: 42, InboundTag: "tag", Interface: "ppp0", PeerIP: "10.0.0.2", Identity: "boot-a", Process: "boot:123:456"}
+	second := pppOfflineSession{ID: "session-b", UserID: 42, InboundTag: "tag", Interface: "ppp0", PeerIP: "10.0.0.2", Identity: "boot-b", Process: "boot:124:789"}
+	if err := pppOfflineSessionEvent(root, "start", first); err != nil {
+		t.Fatal(err)
+	}
+	if err := pppOfflineSessionEvent(root, "start", second); err != nil {
+		t.Fatal(err)
+	}
+
+	first.Total = 100
+	if err := pppOfflineSessionEvent(root, "stop", first); err != nil {
+		t.Fatalf("old stop after reconnect: %v", err)
+	}
+	finalPath := filepath.Join(root, "ppp-accounting", "final", first.ID+".json")
+	raw, err := os.ReadFile(finalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var final pppOfflineSession
+	if err := json.Unmarshal(raw, &final); err != nil {
+		t.Fatal(err)
+	}
+	if !final.Final || final.Process != first.Process || final.Total != 100 {
+		t.Fatalf("old session final record was overwritten: %+v", final)
+	}
+
+	identity = "boot-b"
+	live, err := pppOfflineActiveSession(root, "ppp0", second.PeerIP, second.UserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if live.ID != second.ID || live.Process != second.Process {
+		t.Fatalf("reconnected active session was overwritten by old stop: %+v", live)
+	}
+	second.Total = 200
+	if err := pppOfflineSessionEvent(root, "stop", second); err != nil {
+		t.Fatal(err)
+	}
+	finals, err := pppOfflineFinalRecords(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(finals) != 2 {
+		t.Fatalf("expected separate final records for both sessions, got %+v", finals)
+	}
+}
+
+func TestPPPHelperKeepsSessionCallbackKeysSeparateAcrossReconnect(t *testing.T) {
+	root := t.TempDir()
+	callback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer callback.Close()
+	configPath := filepath.Join(root, "session-helper.json")
+	cfg := nativeSessionHelperConfig{Protocol: "l2tp", InboundTag: "tag", Users: map[string]int64{"alice": 42}, StateDir: filepath.Join(root, "sessions"), Callback: nativeRuntimeSessionCallback{URL: callback.URL, Token: "token", NodeID: 7}}
+	if err := offlineDurableJSON(configPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	pid := "123"
+	processes := map[string]string{"123": "boot:123:456", "124": "boot:124:789"}
+	identity := "boot-a"
+	previousProcess, previousIdentity := pppOfflineReadProcess, pppOfflineReadIdentity
+	pppOfflineReadProcess = func(value string) (string, error) {
+		if got := processes[value]; got != "" {
+			return got, nil
+		}
+		return "", fmt.Errorf("unexpected PPP PID %q", value)
+	}
+	pppOfflineReadIdentity = func(string) (string, error) { return identity, nil }
+	t.Cleanup(func() {
+		pppOfflineReadProcess = previousProcess
+		pppOfflineReadIdentity = previousIdentity
+	})
+	for key, value := range map[string]string{"PEERNAME": "alice", "IFNAME": "ppp0", "IPREMOTE": "10.0.0.2", "PPPD_PID": pid} {
+		t.Setenv(key, value)
+	}
+	if err := RunNativeSessionEventHelper([]string{configPath, "start"}); err != nil {
+		t.Fatal(err)
+	}
+
+	pid = "124"
+	identity = "boot-b"
+	t.Setenv("PPPD_PID", pid)
+	if err := RunNativeSessionEventHelper([]string{configPath, "start"}); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := filepath.Glob(filepath.Join(cfg.StateDir, "*.session"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 2 {
+		t.Fatalf("reconnect overwrote per-process callback state: %v", paths)
+	}
+
+	pid = "123"
+	t.Setenv("PPPD_PID", pid)
+	t.Setenv("BYTES_SENT", "10")
+	t.Setenv("BYTES_RCVD", "20")
+	if err := RunNativeSessionEventHelper([]string{configPath, "stop"}); err != nil {
+		t.Fatal(err)
+	}
+	paths, err = filepath.Glob(filepath.Join(cfg.StateDir, "*.session"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("old stop removed new callback state: %v", paths)
+	}
+	active, err := pppOfflineFindActiveSession(root, "ppp0", processes["124"])
+	if err != nil || active.Process != processes["124"] {
+		t.Fatalf("reconnected active state was lost: %+v err=%v", active, err)
 	}
 }
 
