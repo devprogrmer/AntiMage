@@ -230,6 +230,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             iproute2 iptables nftables iputils-ping tcpdump ppp xl2tpd strongswan pptp-linux wireguard-tools openvpn openssl netcat-openbsd
           sudo apt-get install -y --no-install-recommends pptpd
+          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
       - name: Run real combined native lifecycle and SQLite lost-ACK replay
         run: |
           set -euo pipefail
