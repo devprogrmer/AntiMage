@@ -366,7 +366,14 @@ func (s *Server) applyAmneziaWGRuntime(prepared preparedAmneziaWGRuntime) error 
 		return err
 	}
 	helperPath := filepath.Join(filepath.Dir(prepared.ConfigPath), "usage-helper.json")
+	// Keep the transition snapshot independent from the prepared config. JSON
+	// unmarshalling into a shallow copy would reuse these maps and let the old
+	// helper overwrite the newly prepared peer policies before the final write.
 	transition := prepared.UsageConfig
+	transition.PeerGenerations = cloneAmneziaWGMap(prepared.UsageConfig.PeerGenerations)
+	transition.Peers = cloneAmneziaWGMap(prepared.UsageConfig.Peers)
+	transition.PeerAddresses = cloneAmneziaWGMap(prepared.UsageConfig.PeerAddresses)
+	transition.Policies = cloneAmneziaWGMap(prepared.UsageConfig.Policies)
 	if raw, err := os.ReadFile(helperPath); err == nil {
 		if err := json.Unmarshal(raw, &transition); err != nil {
 			return err
@@ -405,6 +412,17 @@ func (s *Server) applyAmneziaWGRuntime(prepared preparedAmneziaWGRuntime) error 
 	}
 	s.appendLog(fmt.Sprintf("amneziawg runtime applied: tag=%s interface=%s listen=%d peers=%d", prepared.Tag, prepared.InterfaceName, prepared.Inbound.ListenPort, len(prepared.Inbound.Peers)))
 	return nil
+}
+
+func cloneAmneziaWGMap[K comparable, V any](source map[K]V) map[K]V {
+	if source == nil {
+		return nil
+	}
+	cloned := make(map[K]V, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func (s *Server) stopRemovedAmneziaWGRuntimes(desired map[string]preparedAmneziaWGRuntime) {
