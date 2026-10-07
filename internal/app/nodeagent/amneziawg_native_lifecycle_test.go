@@ -29,6 +29,7 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 	}
 	serverPrivate := strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_SERVER_PRIVATE"))
 	clientPublic := strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_CLIENT_PUBLIC"))
+	extraClientPublic := strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_EXTRA_CLIENT_PUBLIC"))
 	if _, err := wgtypes.ParseKey(serverPrivate); err != nil {
 		t.Fatalf("server private key: %v", err)
 	}
@@ -54,10 +55,34 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 	peer := amneziaWGRuntimePeer{UserID: 7, Username: "native-awg", DeviceIndex: 1,
 		PublicKey: clientPublic, Address: "10.74.0.2", Status: "active",
 		UsageCoefficient: 1.5, InboundCoefficient: 2}
+	peers := []amneziaWGRuntimePeer{peer}
+	if extraClientPublic != "" {
+		if _, err := wgtypes.ParseKey(extraClientPublic); err != nil {
+			t.Fatalf("extra client public key: %v", err)
+		}
+		extra := peer
+		extra.DeviceIndex = 2
+		extra.PublicKey = extraClientPublic
+		extra.Address = "10.74.0.3"
+		peers = append(peers, extra)
+	}
+	switch action {
+	case "native-policy-device-limit":
+		for i := range peers {
+			peers[i].DeviceLimit = 1
+		}
+	case "native-policy-ip-limit":
+		for i := range peers {
+			peers[i].IPLimit = 1
+		}
+	}
 	if quotaLimit > 0 {
 		peer.DataLimit = &quotaLimit
+		for i := range peers {
+			peers[i].DataLimit = &quotaLimit
+		}
 	}
-	inbound := amneziaWGRuntimeInbound{Tag: "native-awg", ListenPort: 51821, Peers: []amneziaWGRuntimePeer{peer},
+	inbound := amneziaWGRuntimeInbound{Tag: "native-awg", ListenPort: 51821, Peers: peers,
 		Settings: map[string]any{"private_key": serverPrivate, "address_pool": "10.74.0.0/24",
 			"server_address": "10.74.0.1/24", "mtu": 1420,
 			"jc": 4, "jmin": 8, "jmax": 80, "s1": 77, "s2": 90,
@@ -133,6 +158,59 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 		}
 		waitForNativeLifecycleMarker(t)
 		t.Logf("production AmneziaWG session reconciliation observed native online IPs=%v", batch.GetOnlineIps())
+	case "native-policy-device-limit", "native-policy-ip-limit":
+		iface := apply()
+		awgTool := strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_TOOL"))
+		if awgTool == "" {
+			awgTool = "awg"
+		}
+		deadline := time.Now().Add(20 * time.Second)
+		for time.Now().Before(deadline) {
+			snapshot, err := amneziaWGSnapshot(iface)
+			if err != nil {
+				t.Fatal(err)
+			}
+			active := 0
+			for _, item := range snapshot {
+				if (item.PublicKey == clientPublic || item.PublicKey == extraClientPublic) && wireGuardHandshakeActive(item.LatestHandshake, time.Now().UTC()) {
+					active++
+				}
+			}
+			if active == 2 {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		snapshot, err := amneziaWGSnapshot(iface)
+		if err != nil {
+			t.Fatal(err)
+		}
+		active := 0
+		for _, item := range snapshot {
+			if (item.PublicKey == clientPublic || item.PublicKey == extraClientPublic) && wireGuardHandshakeActive(item.LatestHandshake, time.Now().UTC()) {
+				active++
+			}
+		}
+		if active != 2 {
+			t.Fatalf("native AWG %s test requires two real active peers; got %d", action, active)
+		}
+		if _, err := s.collectAmneziaWGUserUsage(context.Background(), nil); err != nil {
+			t.Fatal(err)
+		}
+		configured, err := exec.Command(awgTool, "show", iface, "peers").Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		remaining := 0
+		for _, publicKey := range strings.Fields(string(configured)) {
+			if publicKey == clientPublic || publicKey == extraClientPublic {
+				remaining++
+			}
+		}
+		if remaining != 1 {
+			t.Fatalf("native AWG %s did not enforce one-of-two peer policy: remaining=%d peers=%s", action, remaining, configured)
+		}
+		t.Logf("production AmneziaWG %s retained exactly one of two active native peer credentials", action)
 	case "ack":
 		s.amneziaWGUsageMu.Lock()
 		if err := s.ensureAmneziaWGUsageStateLoadedLocked(); err != nil {

@@ -7,8 +7,11 @@ set -euo pipefail
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-awg-XXXXXX")}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 NS="antimage-awg-client"
+NS2="antimage-awg-client2"
 VETH_HOST="aawg-vh"
 VETH_NS="aawg-vn"
+VETH_HOST2="aawg-vh2"
+VETH_NS2="aawg-vn2"
 IFACE=""
 PIDS=()
 forget_pid() {
@@ -40,7 +43,9 @@ cleanup() {
   for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
   [ -z "$IFACE" ] || ip link del "$IFACE" 2>/dev/null || true
   ip link del "$VETH_HOST" 2>/dev/null || true
+  ip link del "$VETH_HOST2" 2>/dev/null || true
   ip netns del "$NS" 2>/dev/null || true
+  ip netns del "$NS2" 2>/dev/null || true
   [ "$rc" -ne 0 ] || rm -rf "$ROOT"
 }
 trap cleanup EXIT
@@ -48,8 +53,10 @@ trap cleanup EXIT
 mkdir -p "$ROOT"
 server_priv="$(wg genkey)"
 client_priv="$(wg genkey)"
+client2_priv="$(wg genkey)"
 server_pub="$(printf '%s' "$server_priv" | wg pubkey)"
 client_pub="$(printf '%s' "$client_priv" | wg pubkey)"
+client2_pub="$(printf '%s' "$client2_priv" | wg pubkey)"
 quota_bytes="${ANTIMAGE_AWG_QUOTA_BYTES:-$((50 * 1024 * 1024))}"
 
 stage() {
@@ -58,6 +65,7 @@ stage() {
     ANTIMAGE_AWG_NATIVE_ACTION="$action" \
     ANTIMAGE_AWG_SERVER_PRIVATE="$server_priv" \
     ANTIMAGE_AWG_CLIENT_PUBLIC="$client_pub" \
+    ANTIMAGE_AWG_EXTRA_CLIENT_PUBLIC="$client2_pub" \
     ANTIMAGE_AWG_QUOTA_BYTES="$quota" \
     ANTIMAGE_AWG_SESSION_CALLBACK_URL="${AWG_SESSION_CALLBACK_URL:-}" \
     ANTIMAGE_AWG_SESSION_CALLBACK_TOKEN="${AWG_SESSION_CALLBACK_TOKEN:-}" \
@@ -161,6 +169,25 @@ ip netns exec "$NS" "$AWG_TOOL" set awg-client listen-port 51822 private-key <(p
   peer "$server_pub" endpoint 10.251.0.1:51821 allowed-ips 10.74.0.1/32 persistent-keepalive 1
 ip netns exec "$NS" ip link set awg-client up
 wait_for 'AmneziaWG session-test reconnect' ip netns exec "$NS" ping -c 1 -W 1 10.74.0.1
+
+echo '=== AmneziaWG native device credential and real-IP limits ==='
+ip netns add "$NS2"
+ip link add "$VETH_HOST2" type veth peer name "$VETH_NS2"
+ip link set "$VETH_NS2" netns "$NS2"
+ip addr add 10.252.0.1/24 dev "$VETH_HOST2"
+ip link set "$VETH_HOST2" up
+ip netns exec "$NS2" ip addr add 10.252.0.2/24 dev "$VETH_NS2"
+ip netns exec "$NS2" ip link set lo up
+ip netns exec "$NS2" ip link set "$VETH_NS2" up
+ip netns exec "$NS2" ip link add awg-client2 type amneziawg
+ip netns exec "$NS2" ip addr add 10.74.0.3/24 dev awg-client2
+ip netns exec "$NS2" "$AWG_TOOL" set awg-client2 listen-port 51823 private-key <(printf '%s\n' "$client2_priv") \
+  jc 4 jmin 8 jmax 80 s1 77 s2 90 h1 12345 h2 23456 h3 34567 h4 45678 \
+  peer "$server_pub" endpoint 10.252.0.1:51821 allowed-ips 10.74.0.1/32 persistent-keepalive 1
+ip netns exec "$NS2" ip link set awg-client2 up
+wait_for 'second native AWG peer handshake' ip netns exec "$NS2" ping -c 1 -W 1 10.74.0.1
+stage native-policy-device-limit "$ROOT/awg-state"
+stage native-policy-ip-limit "$ROOT/awg-state"
 
 echo '=== AmneziaWG production stop/apply restart and counter continuity ==='
 stage restart "$ROOT/awg-state"
