@@ -11,6 +11,28 @@ type nativeOfflineIPObservation struct {
 	RealIP    string
 }
 
+// nativeOfflineDeviceLimitDenied enforces the configured concurrent-session
+// cap using durable PPP session IDs. PPP exposes a session identity, not a
+// hardware identity, so this limits authenticated sessions rather than
+// claiming to identify a physical device.
+func nativeOfflineDeviceLimitDenied(observations []nativeOfflineIPObservation, limits map[int64]int64) map[string]bool {
+	byUser := map[int64][]nativeOfflineIPObservation{}
+	for _, observation := range observations {
+		if limits[observation.UserID] > 0 && observation.SessionID != "" {
+			byUser[observation.UserID] = append(byUser[observation.UserID], observation)
+		}
+	}
+	denied := map[string]bool{}
+	for uid, sessions := range byUser {
+		sort.Slice(sessions, func(i, j int) bool { return sessions[i].SessionID < sessions[j].SessionID })
+		limit := limits[uid]
+		for i := limit; i < int64(len(sessions)); i++ {
+			denied[sessions[i].SessionID] = true
+		}
+	}
+	return denied
+}
+
 // Session authentication and source IP are observable; physical device identity
 // is not. Missing/malformed real addresses disable IP enforcement for that user.
 func nativeOfflineIPLimitDenied(observations []nativeOfflineIPObservation, limits map[int64]int64) map[string]bool {

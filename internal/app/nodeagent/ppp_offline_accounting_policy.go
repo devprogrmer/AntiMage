@@ -73,15 +73,18 @@ func (s *Server) quotaCheckPPPOffline(ctx context.Context) error {
 				}
 				liveSessions = append(liveSessions, live)
 			}
-			limits := map[int64]int64{}
+			ipLimits := map[int64]int64{}
+			deviceLimits := map[int64]int64{}
 			for username, uid := range cfg.Users {
-				limits[uid] = cfg.Policies[username].IPLimit
+				ipLimits[uid] = cfg.Policies[username].IPLimit
+				deviceLimits[uid] = cfg.Policies[username].DeviceLimit
 			}
 			observations := make([]nativeOfflineIPObservation, 0, len(liveSessions))
 			for _, live := range liveSessions {
 				observations = append(observations, nativeOfflineIPObservation{live.ID, live.UserID, live.ClientIP})
 			}
-			deniedIPs := nativeOfflineIPLimitDenied(observations, limits)
+			deniedIPs := nativeOfflineIPLimitDenied(observations, ipLimits)
+			deniedDevices := nativeOfflineDeviceLimitDenied(observations, deviceLimits)
 			for _, live := range liveSessions {
 				for username, uid := range cfg.Users {
 					if uid != live.UserID {
@@ -101,11 +104,13 @@ func (s *Server) quotaCheckPPPOffline(ctx context.Context) error {
 						return err
 					}
 					allowed, reason := s.localQuotaAllowed(protocol, uid, cfg.InboundTag, policy, usage, time.Now().UTC())
-					if allowed && !deniedIPs[live.ID] {
+					if allowed && !deniedIPs[live.ID] && !deniedDevices[live.ID] {
 						continue
 					}
 					if deniedIPs[live.ID] {
 						reason = "IP limit reached"
+					} else if deniedDevices[live.ID] {
+						reason = "device limit reached"
 					}
 					marker := filepath.Join(root, "ppp-accounting", "deny-"+live.ID+".json")
 					if info, err := os.Stat(marker); err == nil && time.Since(info.ModTime()) < 30*time.Second {

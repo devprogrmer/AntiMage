@@ -14,6 +14,21 @@ func TestNativeOfflineIPLimitDistinctRealAddresses(t *testing.T) {
 	}
 }
 
+func TestNativeOfflineDeviceLimitKeepsStablePPPIdentity(t *testing.T) {
+	observations := []nativeOfflineIPObservation{
+		{SessionID: "session-b", UserID: 42, RealIP: "198.51.100.2"},
+		{SessionID: "session-a", UserID: 42, RealIP: "198.51.100.1"},
+		{SessionID: "other-user", UserID: 99, RealIP: "198.51.100.3"},
+	}
+	denied := nativeOfflineDeviceLimitDenied(observations, map[int64]int64{42: 1, 99: 1})
+	if len(denied) != 1 || !denied["session-b"] {
+		t.Fatalf("denied sessions = %v, want only session-b", denied)
+	}
+	if denied := nativeOfflineDeviceLimitDenied(observations, map[int64]int64{42: 2}); len(denied) != 0 {
+		t.Fatalf("denied sessions below limit = %v", denied)
+	}
+}
+
 func TestOpenVPNOfflineIPLimitDoesNotUseAssignedIPOrDeviceLimit(t *testing.T) {
 	cfg := nativeSessionHelperConfig{Users: map[string]int64{"alice": 42}, Policies: map[string]nativeSessionUserPolicy{"alice": {IPLimit: 1, DeviceLimit: 99}}}
 	clients := []openVPNStatusClient{
