@@ -77,7 +77,9 @@ func TestPPPPreUpAdmissionRejectsDurableOfflineQuota(t *testing.T) {
 	}
 	t.Setenv("common_name", "alice")
 	t.Setenv("PPPD_PID", "123")
-	previousProcess, previousSignal := pppOfflineReadProcess, nativePPPProcessSignal
+	t.Setenv("IPPARAM", "198.51.100.10")
+	previousProcess, previousSignal, previousProtocol := pppOfflineReadProcess, nativePPPProcessSignal, pppOfflineDetectProtocol
+	pppOfflineDetectProtocol = func(string) (string, error) { return "pptp", nil }
 	pppOfflineReadProcess = func(pid string) (string, error) {
 		if pid != "123" {
 			t.Fatalf("unexpected pppd PID: %s", pid)
@@ -86,7 +88,10 @@ func TestPPPPreUpAdmissionRejectsDurableOfflineQuota(t *testing.T) {
 	}
 	signaled := ""
 	nativePPPProcessSignal = func(identity string) error { signaled = identity; return nil }
-	t.Cleanup(func() { pppOfflineReadProcess, nativePPPProcessSignal = previousProcess, previousSignal })
+	t.Cleanup(func() {
+		pppOfflineReadProcess, nativePPPProcessSignal = previousProcess, previousSignal
+		pppOfflineDetectProtocol = previousProtocol
+	})
 	if err := RunNativeSessionEventHelper([]string{configPath, "pre-up"}); err != nil {
 		t.Fatalf("below-quota PPP admission rejected: %v", err)
 	}
@@ -299,7 +304,7 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 	pppOfflineReadProcess = func(string) (string, error) { return "fixture-boot:123:456", nil }
 	t.Cleanup(func() { pppOfflineReadIdentity = previousIdentity; pppOfflineReadProcess = previousProcess })
 
-	if err := RunNativeSessionEventHelper([]string{configPath, "start"}); err != nil {
+	if err := RunNativeSessionEventHelper([]string{configPath, "start", "203.0.113.11"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -313,7 +318,7 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 	if event.InboundTag != inboundTag || event.UserID != 42 {
 		t.Fatalf("unexpected event identity: %#v", event)
 	}
-	if event.AssignedIP != "10.67.0.10" || event.ClientIP != "203.0.113.10" {
+	if event.AssignedIP != "10.67.0.10" || event.ClientIP != "203.0.113.11" {
 		t.Fatalf("unexpected event addresses: %#v", event)
 	}
 }

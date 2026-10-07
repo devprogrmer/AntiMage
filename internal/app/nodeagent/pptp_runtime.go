@@ -175,8 +175,8 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 		if err := os.WriteFile(files.SessionConfig, rawConfig, 0600); err != nil {
 			return "", fmt.Errorf("pptp %q: write session helper config: %w", tag, err)
 		}
-		connect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " start\n"
-		disconnect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " stop\n"
+		connect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " start \"${6:-}\"\n"
+		disconnect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " stop \"${6:-}\"\n"
 		if err := os.WriteFile(files.IPUpScript, []byte(connect), 0700); err != nil {
 			return "", err
 		}
@@ -192,7 +192,6 @@ func renderPPTPDConfig(files pptpRuntimeFiles, localIP, remoteRange string) stri
 	return fmt.Sprintf(`option %s
 localip %s
 remoteip %s
-noipparam
 `, filepath.ToSlash(files.PPPOptions), localIP, remoteRange)
 }
 
@@ -259,11 +258,8 @@ func renderPPTPPPPOptions(inbound pptpRuntimeInbound, files pptpRuntimeFiles, lo
 	line("lock")
 	line("hide-password")
 	line(localIP + ":")
-	// ip-pre-up-script is unavailable in the pppd 2.4.9 package shipped by
-	// Ubuntu 22.04. The system /etc/ppp/ip-pre-up.d dispatcher is compatible
-	// with both 2.4.9 and newer pppd releases; the Antimage hook filters on
-	// this ipparam before applying the durable admission gate.
-	line("ipparam antimage-pptp")
+	// pptpd supplies the live transport peer address through ipparam. The
+	// shared PPP hooks identify the protocol from pppd's daemon ancestry.
 	if files.IPUpScript != "" {
 		line("ip-up-script " + filepath.ToSlash(files.IPUpScript))
 	}

@@ -164,8 +164,7 @@ const pptpIPPreUpHookMarker = "# ANTIMAGE MANAGED PPTP IP PRE-UP HOOK"
 func renderPPTPSystemIPPreUpHook(executable, sessionConfig string) string {
 	return "#!/bin/sh\n" + pptpIPPreUpHookMarker + "\n" +
 		"set -eu\n" +
-		"[ \"${6:-}\" = antimage-pptp ] || exit 0\n" +
-		"exec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(sessionConfig) + " pre-up\n"
+		"exec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(sessionConfig) + " pre-up \"${6:-}\"\n"
 }
 
 func installPPTPSystemIPPreUpHook(executable, sessionConfig string) error {

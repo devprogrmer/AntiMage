@@ -323,8 +323,7 @@ func startL2TPSystemService(s *Server) error {
 func renderL2TPSystemIPPreUpHook(executable, sessionConfig string) string {
 	return "#!/bin/sh\n" + l2TPIPPreUpHookMarker + "\n" +
 		"set -eu\n" +
-		"[ \"${6:-}\" = antimage-l2tp ] || exit 0\n" +
-		"exec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(sessionConfig) + " pre-up\n"
+		"exec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(sessionConfig) + " pre-up \"${6:-}\"\n"
 }
 
 func installL2TPSystemIPPreUpHook(executable, sessionConfig string) error {

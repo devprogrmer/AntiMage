@@ -6,8 +6,11 @@ set -euo pipefail
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-pptp-XXXXXX") }"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 NS="antimage-pptp-client"
+NS_B="antimage-pptp-client-b"
 VETH_HOST="apptp-vh"
 VETH_NS="apptp-vn"
+VETH_HOST_B="apptp-vh2"
+VETH_NS_B="apptp-vn2"
 PIDS=()
 forget_pid() {
   local target="$1" pid
@@ -46,8 +49,21 @@ cleanup() {
       ip netns list || true
       ip netns exec "$NS" ip -details addr show || true
       ip netns exec "$NS" ip route show table all || true
+      ip netns exec "$NS_B" ip -details addr show || true
+      ip netns exec "$NS_B" ip route show table all || true
       ps -ef || true
     } >"$RUNNER_TEMP/antimage-pptp-failure/network-state.txt" 2>&1
+    {
+      echo '=== listening and established sockets ==='; ss -ntup; ss -nup;
+      echo '=== pppd socket descriptors and socket tables ==='
+      for pid in $(pgrep -x pppd || true); do
+        echo "--- pppd pid=$pid ---"; ps -o pid,ppid,args -p "$pid";
+        for fd in /proc/"$pid"/fd/*; do printf '%s ' "$fd"; readlink "$fd" || true; done
+        cat /proc/"$pid"/net/tcp /proc/"$pid"/net/udp 2>/dev/null || true
+      done
+      echo '=== PPTP policy, active sessions, pending admissions, and event queue ==='
+      find "$ROOT/pptp-state" \( -name session-helper.json -o -path '*/ppp-accounting/active/*.json' -o -path '*/ppp-accounting/admission-denials/*.json' -o -path '*/native-session-outbox/*.json' -o -path '*/ppp-admission/pending/*.json' \) -type f -print -exec cat {} \;
+    } >"$RUNNER_TEMP/antimage-pptp-failure/ppp-socket-session-state.txt" 2>&1
     echo "PPTP native evidence retained at $RUNNER_TEMP/antimage-pptp-failure" >&2
   fi
   for pid in "${PIDS[@]}"; do stop_pid "$pid"; done
@@ -56,7 +72,9 @@ cleanup() {
       "$ANTIMAGE_PPTP_TEST_BINARY" -test.run='^TestPPTPNativeAccountingStage$' -test.v >/dev/null 2>&1 || true
   fi
   ip link del "$VETH_HOST" 2>/dev/null || true
+  ip link del "$VETH_HOST_B" 2>/dev/null || true
   ip netns del "$NS" 2>/dev/null || true
+  ip netns del "$NS_B" 2>/dev/null || true
   if [ "$rc" -eq 0 ]; then
     rm -rf "$ROOT"
   fi
@@ -102,6 +120,57 @@ with open(tmp, 'w', encoding='utf-8') as f:
     os.fsync(f.fileno())
 os.replace(tmp, path)
 PY
+}
+
+set_session_limits() {
+  python3 - "$1" "$2" "$3" <<'PY'
+import json, os, sys
+path, device, ip_limit = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+with open(path, encoding='utf-8') as f: cfg = json.load(f)
+matches = [name for name, uid in cfg['users'].items() if int(uid) == 7]
+if len(matches) != 1 or matches[0] not in cfg.get('policies', {}):
+    raise SystemExit(f'expected one PPTP policy for user 7 in {path}')
+cfg['policies'][matches[0]]['device_limit'] = device
+cfg['policies'][matches[0]]['ip_limit'] = ip_limit
+tmp = path + '.tmp'
+with open(tmp, 'w', encoding='utf-8') as f:
+    json.dump(cfg, f); f.flush(); os.fsync(f.fileno())
+os.replace(tmp, path)
+PY
+}
+
+assert_ppp_real_ip() {
+  python3 - "$1" "$2" <<'PY'
+import glob, json, sys
+root, expected = sys.argv[1:]
+records = []
+for path in glob.glob(root + '/pptp/*/ppp-accounting/active/*.json'):
+    with open(path, encoding='utf-8') as f: record = json.load(f)
+    if int(record.get('UserID', 0)) == 7: records.append(record)
+if not any(record.get('ClientIP') == expected for record in records):
+    raise SystemExit(f'no live PPTP session recorded outer IP {expected}: {records}')
+print(f'PPTP live outer IP verified from PPP session state: {expected}')
+PY
+}
+
+wait_for_denial_reason() {
+  local expected="$1"
+  for _ in $(seq 1 200); do
+    if python3 - "$ROOT/pptp-state" "$expected" <<'PY' >/dev/null 2>&1
+import glob, json, sys
+for path in glob.glob(sys.argv[1] + '/pptp/*/ppp-accounting/admission-denials/*.json'):
+    try:
+        with open(path, encoding='utf-8') as f: record = json.load(f)
+    except (OSError, ValueError): continue
+    if record.get('reason') == sys.argv[2]: raise SystemExit(0)
+raise SystemExit(1)
+PY
+    then return 0; fi
+    sleep .1
+  done
+  find "$ROOT/pptp-state" -path '*/admission-denials/*.json' -type f -print -exec cat {} \; >&2
+  echo "timeout waiting for PPTP admission denial: $expected" >&2
+  return 1
 }
 
 wait_for() {
@@ -190,16 +259,19 @@ start_server() {
 }
 
 start_client() {
-  ip netns exec "$NS" pppd nodetach noauth name native-pptp password native-pptp-secret \
+  local client_ns="${1:-$NS}" server_ip="${2:-10.251.0.1}" output="${3:-$ROOT/pppd-client.log}" wait_active="${4:-1}"
+  ip netns exec "$client_ns" pppd nodetach noauth name native-pptp password native-pptp-secret \
     refuse-eap refuse-pap refuse-chap refuse-mschap \
     require-mppe-128 noipdefault nodefaultroute mtu 1200 mru 1200 \
-    pty "$PPTP_CLIENT --nolaunchpppd 10.251.0.1 --loglevel 0" \
-    >"$ROOT/pppd-client.log" 2>&1 &
+    pty "$PPTP_CLIENT --nolaunchpppd $server_ip --loglevel 0" \
+    >"$output" 2>&1 &
   CLIENT_PID="$!"
   PIDS+=("$CLIENT_PID")
-  wait_for 'client PPP interface' ip netns exec "$NS" ip link show ppp0
-  wait_for 'server PPP interface' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
-  wait_for 'durable server session-start hook' sh -c 'find "$1" -path "*/ppp-accounting/active/ppp*.json" -print -quit | grep -q .' _ "$ROOT/pptp-state"
+  if [ "$wait_active" = 1 ]; then
+    wait_for "client PPP interface in $client_ns" ip netns exec "$client_ns" ip link show ppp0
+    wait_for 'server PPP interface' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
+    wait_for 'durable server session-start hook' sh -c 'find "$1" -path "*/ppp-accounting/active/ppp*.json" -print -quit | grep -q .' _ "$ROOT/pptp-state"
+  fi
 }
 
 ip netns add "$NS"
@@ -210,6 +282,14 @@ ip link set "$VETH_HOST" up
 ip netns exec "$NS" ip addr add 10.251.0.2/24 dev "$VETH_NS"
 ip netns exec "$NS" ip link set lo up
 ip netns exec "$NS" ip link set "$VETH_NS" up
+ip netns add "$NS_B"
+ip link add "$VETH_HOST_B" type veth peer name "$VETH_NS_B"
+ip link set "$VETH_NS_B" netns "$NS_B"
+ip addr add 10.252.0.1/24 dev "$VETH_HOST_B"
+ip link set "$VETH_HOST_B" up
+ip netns exec "$NS_B" ip addr add 10.252.0.2/24 dev "$VETH_NS_B"
+ip netns exec "$NS_B" ip link set lo up
+ip netns exec "$NS_B" ip link set "$VETH_NS_B" up
 
 echo '=== PPTP production configuration and real PPP tunnel ==='
 stage prepare "$ROOT/pptp-state"
@@ -218,15 +298,71 @@ cp "$config_path" "$server_config"
 PPTP_CLIENT="$(command -v pptp)"
 start_server
 start_client
+client_a_pid="$CLIENT_PID"
 wait_for 'first PPTP tunnel traffic' ip netns exec "$NS" ping -c 1 -W 1 10.68.0.1
+session_config="$(find "$ROOT/pptp-state/pptp" -name session-helper.json -print -quit)"
+assert_ppp_real_ip "$ROOT/pptp-state" 10.251.0.2
+
+echo '=== native concurrent PPTP DeviceLimit=1; reserve first authenticated session ==='
+set_session_limits "$session_config" 1 0
+stage collect-first "$ROOT/pptp-state" >/dev/null
+find "$ROOT/pptp-state" -path '*/admission-denials/*.json' -delete
+start_client "$NS_B" 10.252.0.1 "$ROOT/pppd-device-limit.log" 0
+wait_for_denial_reason 'device limit reached'
+wait_for_gone 'second DeviceLimit-denied PPTP client interface' ip netns exec "$NS_B" ip link show ppp0
+ip netns exec "$NS" ping -c 2 -W 1 10.68.0.1
+stop_pid "$client_a_pid"
+wait_for_gone 'first PPTP interface before releasing DeviceLimit' ip netns exec "$NS" ip link show ppp0
+find "$ROOT/pptp-state" -path '*/admission-denials/*.json' -delete
+start_client "$NS_B" 10.252.0.1 "$ROOT/pppd-device-retry.log"
+client_b_pid="$CLIENT_PID"
+wait_for 'second PPTP source admitted after first disconnect' ip netns exec "$NS_B" ping -c 2 -W 1 10.68.0.1
+assert_ppp_real_ip "$ROOT/pptp-state" 10.252.0.2
+
+stop_pid "$client_b_pid"
+wait_for_gone 'PPTP B interface before preparing source A IPLimit case' ip netns exec "$NS_B" ip link show ppp0
+set_session_limits "$session_config" 0 0
+start_client "$NS" 10.251.0.1 "$ROOT/pppd-ip-limit-first.log"
+client_a_pid="$CLIENT_PID"
+wait_for 'PPTP source A live before IPLimit attempt' ip netns exec "$NS" ping -c 2 -W 1 10.68.0.1
+assert_ppp_real_ip "$ROOT/pptp-state" 10.251.0.2
+
+echo '=== native concurrent PPTP IPLimit=1; keep source B while source A is denied ==='
+set_session_limits "$session_config" 0 1
+stage collect-next "$ROOT/pptp-state" >/dev/null
+find "$ROOT/pptp-state" -path '*/admission-denials/*.json' -delete
+start_client "$NS_B" 10.252.0.1 "$ROOT/pppd-ip-limit.log" 0
+wait_for_denial_reason 'IP limit reached'
+wait_for_gone 'second IPLimit-denied PPTP client interface' ip netns exec "$NS_B" ip link show ppp0
+ip netns exec "$NS" ping -c 2 -W 1 10.68.0.1
+stop_pid "$client_a_pid"
+wait_for_gone 'admitted PPTP A interface before releasing IPLimit' ip netns exec "$NS" ip link show ppp0
+find "$ROOT/pptp-state" -path '*/admission-denials/*.json' -delete
+start_client "$NS_B" 10.252.0.1 "$ROOT/pppd-ip-retry.log"
+client_b_pid="$CLIENT_PID"
+wait_for 'PPTP source B admitted after source A disconnect' ip netns exec "$NS_B" ping -c 2 -W 1 10.68.0.1
+assert_ppp_real_ip "$ROOT/pptp-state" 10.252.0.2
+
+echo '=== fresh helper reload enforces persisted PPP admission policy ==='
+stage prepare "$ROOT/pptp-state" >/dev/null
+session_config="$(find "$ROOT/pptp-state/pptp" -name session-helper.json -print -quit)"
+set_session_limits "$session_config" 1 0
+stage collect-next "$ROOT/pptp-state" >/dev/null
+find "$ROOT/pptp-state" -path '*/admission-denials/*.json' -delete
+start_client "$NS" 10.251.0.1 "$ROOT/pppd-reload-denial.log" 0
+wait_for_denial_reason 'device limit reached'
+wait_for_gone 'post-reload DeviceLimit-denied PPTP client interface' ip netns exec "$NS" ip link show ppp0
+ip netns exec "$NS_B" ping -c 2 -W 1 10.68.0.1
+set_session_limits "$session_config" 0 0
+
 stage collect-first "$ROOT/pptp-state"
 panel_replay
 stage ack "$ROOT/pptp-state"
 
 echo '=== PPTP daemon restart and durable accounting recovery ==='
 stop_pid "$SERVER_PID"
-stop_pid "$CLIENT_PID"
-wait_for_gone 'client PPP interface shutdown' ip netns exec "$NS" ip link show ppp0
+stop_pid "$client_b_pid"
+wait_for_gone 'client PPP interface shutdown' ip netns exec "$NS_B" ip link show ppp0
 wait_for_gone 'server PPP interface shutdown' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
 start_server
 start_client

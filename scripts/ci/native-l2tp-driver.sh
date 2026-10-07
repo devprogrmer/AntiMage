@@ -14,11 +14,16 @@ ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-l2tp-XXXXXX") }"
 ROOT="${ROOT% }"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 NS="antimage-l2tp-client"
+NS_B="antimage-l2tp-client-b"
 VETH_HOST="altp-vh"
 VETH_NS="altp-vn"
+VETH_HOST_B="altp-vh2"
+VETH_NS_B="altp-vn2"
 CLIENT_CHARON="charon"
 CLIENT_IPSEC_RUNDIR=""
 CLIENT_PPP_RUNDIR="$ROOT/client-ppp-run"
+CLIENT_IPSEC_RUNDIR_B=""
+CLIENT_PPP_RUNDIR_B="$ROOT/client-b-ppp-run"
 CLIENT_LAUNCH_PID=""
 CLIENT_STRONGSWAN_CONF=""
 SERVER_STRONGSWAN_CONF=""
@@ -54,6 +59,17 @@ cleanup() {
     fi
     { date -u; ip -details addr show; ip route show table all; ip netns list; ip netns exec "$NS" ip -details addr show; ps -ef; } \
       >"$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>&1
+    {
+      echo '=== listening and established sockets ==='; ss -ntup; ss -nup;
+      echo '=== PPP daemon socket descriptors and socket tables ==='
+      for pid in $(pgrep -x pppd || true); do
+        echo "--- pppd pid=$pid ---"; ps -o pid,ppid,args -p "$pid";
+        for fd in /proc/"$pid"/fd/*; do printf '%s ' "$fd"; readlink "$fd" || true; done
+        cat /proc/"$pid"/net/tcp /proc/"$pid"/net/udp 2>/dev/null || true
+      done
+      echo '=== L2TP policy, active sessions, and event queue ==='
+      find "$ROOT/l2tp-state" \( -name session-helper.json -o -path '*/ppp-accounting/active/*.json' -o -path '*/ppp-accounting/admission-denials/*.json' -o -path '*/native-session-outbox/*.json' -o -path '*/ppp-admission/pending/*.json' \) -type f -print -exec cat {} \;
+    } >"$RUNNER_TEMP/antimage-l2tp-failure/ppp-socket-session-state.txt" 2>&1
     chmod a+r "$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>/dev/null || true
     {
       echo '=== host XFRM states (key-bearing lines omitted) ==='
@@ -74,13 +90,20 @@ cleanup() {
       client_ipsec stop >/dev/null 2>&1 || true
     fi
   fi
+  if ip netns list | grep -q "^$NS_B[[:space:]]"; then
+    if [ -n "${CLIENT_IPSEC_RUNDIR_B:-}" ] && [ -s "${CLIENT_STRONGSWAN_CONF_B:-}" ]; then
+      client_ipsec_b stop >/dev/null 2>&1 || true
+    fi
+  fi
   ipsec stop >/dev/null 2>&1 || true
   if [ -n "${ANTIMAGE_L2TP_TEST_BINARY:-}" ] && [ -d "$ROOT/l2tp-state" ]; then
     env ANTIMAGE_L2TP_NATIVE_STATE="$ROOT/l2tp-state" ANTIMAGE_L2TP_NATIVE_ACTION=cleanup \
       "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPNativeAccountingStage$' -test.v >/dev/null 2>&1 || true
   fi
   ip link del "$VETH_HOST" 2>/dev/null || true
+  ip link del "$VETH_HOST_B" 2>/dev/null || true
   ip netns del "$NS" 2>/dev/null || true
+  ip netns del "$NS_B" 2>/dev/null || true
   if [ "$rc" -eq 0 ]; then rm -rf "$ROOT"; fi
 }
 trap cleanup EXIT
@@ -101,7 +124,7 @@ include /etc/strongswan.d/*.conf
 charon {
     plugins {
         bypass-lan {
-            interfaces_ignore = altp-vh
+        interfaces_ignore = altp-vh,altp-vh2
         }
     }
 }
@@ -158,6 +181,57 @@ with open(tmp, 'w', encoding='utf-8') as f:
     os.fsync(f.fileno())
 os.replace(tmp, path)
 PY
+}
+
+set_session_limits() {
+  python3 - "$1" "$2" "$3" <<'PY'
+import json, os, sys
+path, device, ip_limit = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+with open(path, encoding='utf-8') as f: cfg = json.load(f)
+matches = [name for name, uid in cfg['users'].items() if int(uid) == 7]
+if len(matches) != 1 or matches[0] not in cfg.get('policies', {}):
+    raise SystemExit(f'expected one L2TP policy for user 7 in {path}')
+cfg['policies'][matches[0]]['device_limit'] = device
+cfg['policies'][matches[0]]['ip_limit'] = ip_limit
+tmp = path + '.tmp'
+with open(tmp, 'w', encoding='utf-8') as f:
+    json.dump(cfg, f); f.flush(); os.fsync(f.fileno())
+os.replace(tmp, path)
+PY
+}
+
+assert_l2tp_real_ip() {
+  python3 - "$1" "$2" <<'PY'
+import glob, json, sys
+root, expected = sys.argv[1:]
+records = []
+for path in glob.glob(root + '/l2tp/*/ppp-accounting/active/*.json'):
+    with open(path, encoding='utf-8') as f: record = json.load(f)
+    if int(record.get('UserID', 0)) == 7: records.append(record)
+if not any(record.get('ClientIP') == expected for record in records):
+    raise SystemExit(f'no live L2TP session recorded outer IP {expected}: {records}')
+print(f'L2TP live outer IP verified from PPP session state: {expected}')
+PY
+}
+
+wait_for_denial_reason() {
+  local expected="$1"
+  for _ in $(seq 1 300); do
+    if python3 - "$ROOT/l2tp-state" "$expected" <<'PY' >/dev/null 2>&1
+import glob, json, sys
+for path in glob.glob(sys.argv[1] + '/l2tp/*/ppp-accounting/admission-denials/*.json'):
+    try:
+        with open(path, encoding='utf-8') as f: record = json.load(f)
+    except (OSError, ValueError): continue
+    if record.get('reason') == sys.argv[2]: raise SystemExit(0)
+raise SystemExit(1)
+PY
+    then return 0; fi
+    sleep .1
+  done
+  find "$ROOT/l2tp-state" -path '*/admission-denials/*.json' -type f -print -exec cat {} \; >&2
+  echo "timeout waiting for L2TP admission denial: $expected" >&2
+  return 1
 }
 
 wait_for() {
@@ -310,6 +384,7 @@ client_ipsec_daemon() {
     --daemon "$CLIENT_CHARON" --conf "$ROOT/client-ipsec.conf" --nofork
 }
 start_client() {
+  local wait_active="${1:-1}"
   rm -f "$ROOT/client.pid" "$ROOT/client.control"
   mkdir -p "$CLIENT_PPP_RUNDIR"
   ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
@@ -324,9 +399,138 @@ start_client() {
   PIDS+=("$CLIENT_DAEMON_PID")
   wait_for 'client control pipe' test -p "$ROOT/client.control"
   printf 'c antimage\n' >"$ROOT/client.control"
-  wait_for 'client PPP interface' ip netns exec "$NS" ip link show ppp0
-  wait_for 'server PPP interface' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
-  wait_for 'durable production session-start hook' sh -c 'find "$1" -path "*/ppp-accounting/active/ppp*.json" -print -quit | grep -q .' _ "$ROOT/l2tp-state"
+  if [ "$wait_active" = 1 ]; then
+    wait_for 'client PPP interface' ip netns exec "$NS" ip link show ppp0
+    wait_for 'server PPP interface' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
+    wait_for 'durable production session-start hook' sh -c 'find "$1" -path "*/ppp-accounting/active/ppp*.json" -print -quit | grep -q .' _ "$ROOT/l2tp-state"
+  fi
+}
+write_client_b_files() {
+  cat >"$ROOT/client-b-options" <<EOF
+noauth
+name native-l2tp
+password native-l2tp-secret
+refuse-eap
+refuse-pap
+refuse-mschap
+nomagic
+noipdefault
+nodefaultroute
+mtu 1200
+mru 1200
+debug
+logfile $ROOT/client-b-pppd.log
+EOF
+  cat >"$ROOT/client-b.conf" <<EOF
+[global]
+port = 1701
+access control = no
+
+[lac antimage]
+lns = 10.252.0.1
+pppoptfile = $ROOT/client-b-options
+autodial = no
+redial = no
+EOF
+  cat >"$ROOT/client-b-ipsec.conf" <<EOF
+config setup
+    uniqueids=no
+conn l2tp-client-b
+    auto=add
+    keyexchange=ikev1
+    authby=secret
+    type=transport
+    left=%defaultroute
+    leftprotoport=17/1701
+    right=10.252.0.1
+    rightprotoport=17/1701
+    rekey=no
+    forceencaps=yes
+    fragmentation=yes
+EOF
+}
+client_ipsec_b() {
+  ip netns exec "$NS_B" unshare --mount --fork --propagation private bash -c '
+    mount --bind "$1" /run
+    mount --bind "$2" /etc/strongswan.conf
+    shift 2
+    exec "$@"
+  ' _ "$CLIENT_IPSEC_RUNDIR_B" "$CLIENT_STRONGSWAN_CONF_B" env \
+    IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR_B" \
+    IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR_B/starter.pid" \
+    IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR_B/charon.pid" \
+    DAEMON_NAME=charon ipsec "$@"
+}
+client_ipsec_daemon_b() {
+  ip netns exec "$NS_B" unshare --mount --fork --propagation private bash -c '
+    mount --bind "$1" /run
+    mount --bind "$2" /etc/strongswan.conf
+    shift 2
+    exec "$@"
+  ' _ "$CLIENT_IPSEC_RUNDIR_B" "$CLIENT_STRONGSWAN_CONF_B" env \
+    IPSEC_PIDDIR="$CLIENT_IPSEC_RUNDIR_B" \
+    IPSEC_STARTER_PID="$CLIENT_IPSEC_RUNDIR_B/starter.charon.pid" \
+    IPSEC_CHARON_PID="$CLIENT_IPSEC_RUNDIR_B/charon.pid" \
+    DAEMON_NAME="$CLIENT_CHARON" /usr/lib/ipsec/starter \
+    --daemon "$CLIENT_CHARON" --conf "$ROOT/client-b-ipsec.conf" --nofork
+}
+start_client_ipsec_b() {
+  CLIENT_IPSEC_RUNDIR_B="$ROOT/client-b-ipsec-run"
+  CLIENT_STRONGSWAN_CONF_B="$ROOT/client-b-strongswan.conf"
+  mkdir -p "$CLIENT_IPSEC_RUNDIR_B"
+  cat >"$CLIENT_STRONGSWAN_CONF_B" <<EOF
+include /etc/strongswan.d/*.conf
+charon {
+    plugins {
+        bypass-lan {
+            interfaces_ignore = altp-vn2
+        }
+    }
+    filelog {
+        l2tp-client-b {
+            path = $ROOT/client-b-charon.log
+            default = 1
+            flush_line = yes
+        }
+    }
+}
+EOF
+  : >"$ROOT/client-b-charon.log"
+  client_ipsec_daemon_b >"$ROOT/client-b-ipsec.log" 2>&1 &
+  CLIENT_IPSEC_PID_B=$!; PIDS+=("$CLIENT_IPSEC_PID_B")
+  wait_for 'second client strongSwan control socket' sh -c 'test -S "$1/charon.ctl" && test -s "$1/charon.pid"' _ "$CLIENT_IPSEC_RUNDIR_B"
+  if ! client_ipsec_b up l2tp-client-b >"$ROOT/client-b-ipsec-up.log" 2>&1; then
+    client_ipsec_b statusall >"$ROOT/client-b-ipsec-statusall.log" 2>&1 || true
+    ip netns exec "$NS_B" ip xfrm state >"$ROOT/client-b-xfrm-state.txt" 2>&1 || true
+    cat "$ROOT/client-b-ipsec.log" "$ROOT/client-b-ipsec-up.log" "$ROOT/client-b-ipsec-statusall.log" "$ROOT/client-b-xfrm-state.txt" >&2
+    return 1
+  fi
+  wait_for 'second client IPsec transport policy' sh -c 'ip netns exec "$1" ip xfrm state | grep -q "proto esp"' _ "$NS_B"
+}
+start_client_b() {
+  local wait_active="${1:-1}"
+  rm -f "$ROOT/client-b.pid" "$ROOT/client-b.control"
+  mkdir -p "$CLIENT_PPP_RUNDIR_B"
+  ip netns exec "$NS_B" unshare --mount --fork --propagation private bash -c '
+    mount --bind "$1" /run
+    shift
+    exec "$@"
+  ' _ "$CLIENT_PPP_RUNDIR_B" xl2tpd -D -c "$ROOT/client-b.conf" \
+    -p "$ROOT/client-b.pid" -C "$ROOT/client-b.control" >"$ROOT/xl2tpd-client-b.log" 2>&1 &
+  CLIENT_LAUNCH_PID_B=$!; PIDS+=("$CLIENT_LAUNCH_PID_B")
+  wait_for 'second client xl2tpd PID file' test -s "$ROOT/client-b.pid"
+  CLIENT_DAEMON_PID_B="$(cat "$ROOT/client-b.pid")"; PIDS+=("$CLIENT_DAEMON_PID_B")
+  wait_for 'second client control pipe' test -p "$ROOT/client-b.control"
+  printf 'c antimage\n' >"$ROOT/client-b.control"
+  if [ "$wait_active" = 1 ]; then
+    wait_for 'second client PPP interface' ip netns exec "$NS_B" ip link show ppp0
+    wait_for 'second durable L2TP session start record' sh -c 'find "$1" -path "*/ppp-accounting/active/ppp*.json" -print -quit | grep -q .' _ "$ROOT/l2tp-state"
+  fi
+}
+stop_client_b() {
+  if [ -n "${CLIENT_DAEMON_PID_B:-}" ]; then stop_pid "$CLIENT_DAEMON_PID_B"; fi
+  if [ -n "${CLIENT_LAUNCH_PID_B:-}" ]; then stop_pid "$CLIENT_LAUNCH_PID_B"; fi
+  wait_for_gone 'second client PPP interface shutdown' ip netns exec "$NS_B" ip link show ppp0
 }
 wait_for_empty_session_outbox() {
   for _ in $(seq 1 300); do
@@ -345,6 +549,7 @@ ppp_options_path="$(awk -F ' = ' '/^pppoptfile = / {print $2}' "$config_path")"
 printf '\ndebug\nlogfile %s\n' "$ROOT/server-pppd.log" >>"$ppp_options_path"
 cp "$config_path" /etc/xl2tpd/xl2tpd.conf
 write_client_files
+write_client_b_files
 ip netns add "$NS"
 ip link add "$VETH_HOST" type veth peer name "$VETH_NS"
 ip link set "$VETH_NS" netns "$NS"
@@ -353,11 +558,72 @@ ip link set "$VETH_HOST" up
 ip netns exec "$NS" ip addr add 10.251.0.2/24 dev "$VETH_NS"
 ip netns exec "$NS" ip link set lo up
 ip netns exec "$NS" ip link set "$VETH_NS" up
+ip netns add "$NS_B"
+ip link add "$VETH_HOST_B" type veth peer name "$VETH_NS_B"
+ip link set "$VETH_NS_B" netns "$NS_B"
+ip addr add 10.252.0.1/24 dev "$VETH_HOST_B"
+ip link set "$VETH_HOST_B" up
+ip netns exec "$NS_B" ip addr add 10.252.0.2/24 dev "$VETH_NS_B"
+ip netns exec "$NS_B" ip link set lo up
+ip netns exec "$NS_B" ip link set "$VETH_NS_B" up
 stage ipsec-start
 start_client_ipsec
 start_server
 start_client
+start_client_ipsec_b
 wait_for 'assigned production VPN address' sh -c 'ip netns exec "$1" ip -o -4 addr show dev ppp0 | grep -q "10.67.0.2 peer 10.67.0.1"' _ "$NS"
+session_config="$(find "$ROOT/l2tp-state/l2tp" -name session-helper.json -print -quit)"
+assert_l2tp_real_ip "$ROOT/l2tp-state" 10.251.0.2
+
+echo '=== native concurrent L2TP DeviceLimit=1; source B denied with source A live ==='
+set_session_limits "$session_config" 1 0
+find "$ROOT/l2tp-state" -path '*/admission-denials/*.json' -delete
+start_client_b 0
+wait_for_denial_reason 'device limit reached'
+ip netns exec "$NS" ping -c 2 -W 2 10.67.0.1
+stop_client_b
+stop_pid "$CLIENT_DAEMON_PID"
+stop_pid "$CLIENT_LAUNCH_PID"
+wait_for_gone 'source A PPP interface before DeviceLimit release' ip netns exec "$NS" ip link show ppp0
+find "$ROOT/l2tp-state" -path '*/admission-denials/*.json' -delete
+start_client_b
+assert_l2tp_real_ip "$ROOT/l2tp-state" 10.252.0.2
+stop_client_b
+set_session_limits "$session_config" 0 0
+start_client
+assert_l2tp_real_ip "$ROOT/l2tp-state" 10.251.0.2
+
+echo '=== native concurrent L2TP IPLimit=1; source A stays up while source B is denied ==='
+set_session_limits "$session_config" 0 1
+find "$ROOT/l2tp-state" -path '*/admission-denials/*.json' -delete
+start_client_b 0
+wait_for_denial_reason 'IP limit reached'
+ip netns exec "$NS" ping -c 2 -W 2 10.67.0.1
+stop_client_b
+stop_pid "$CLIENT_DAEMON_PID"
+stop_pid "$CLIENT_LAUNCH_PID"
+wait_for_gone 'source A PPP interface before IPLimit release' ip netns exec "$NS" ip link show ppp0
+find "$ROOT/l2tp-state" -path '*/admission-denials/*.json' -delete
+start_client_b
+assert_l2tp_real_ip "$ROOT/l2tp-state" 10.252.0.2
+ip netns exec "$NS_B" ping -c 2 -W 2 10.67.0.1
+set_session_limits "$session_config" 1 0
+stage prepare >/dev/null
+session_config="$(find "$ROOT/l2tp-state/l2tp" -name session-helper.json -print -quit)"
+set_session_limits "$session_config" 1 0
+stage collect-first >/dev/null
+find "$ROOT/l2tp-state" -path '*/admission-denials/*.json' -delete
+start_client 0
+wait_for_denial_reason 'device limit reached'
+ip netns exec "$NS_B" ping -c 2 -W 2 10.67.0.1
+stop_pid "$CLIENT_DAEMON_PID"
+stop_pid "$CLIENT_LAUNCH_PID"
+wait_for_gone 'denied source A PPP interface after durable policy check' ip netns exec "$NS" ip link show ppp0
+set_session_limits "$session_config" 0 0
+stop_client_b
+start_client
+assert_l2tp_real_ip "$ROOT/l2tp-state" 10.251.0.2
+
 ip netns exec "$NS" ping -c 2 -W 2 10.67.0.1
 timeout 20 ip netns exec "$NS" nc -l -p 19092 >"$ROOT/downlink-received" 2>&1 &
 DOWNLINK_PID=$!; PIDS+=("$DOWNLINK_PID")

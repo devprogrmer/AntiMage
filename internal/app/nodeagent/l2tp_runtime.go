@@ -194,8 +194,8 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 		if err := os.WriteFile(files.SessionConfig, rawConfig, 0600); err != nil {
 			return l2TPRuntimeFiles{}, fmt.Errorf("l2tp %q: write session helper config: %w", tag, err)
 		}
-		connect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " start\n"
-		disconnect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " stop\n"
+		connect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " start \"${6:-}\"\n"
+		disconnect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " stop \"${6:-}\"\n"
 		if err := os.WriteFile(files.IPUpScript, []byte(connect), 0700); err != nil {
 			return l2TPRuntimeFiles{}, err
 		}
@@ -243,7 +243,7 @@ require authentication = yes
 name = antimage-l2tp
 ppp debug = no
 pppoptfile = %s
-pass peer = no
+pass peer = yes
 length bit = yes
 `, remoteRange, localIP, filepath.ToSlash(files.PPPOptions))
 }
@@ -272,7 +272,6 @@ func renderL2TPPPPOptions(inbound l2TPRuntimeInbound, files l2TPRuntimeFiles, lo
 	line("connect-delay 5000")
 	line("ipcp-accept-local")
 	line("ipcp-accept-remote")
-	line("ipparam antimage-l2tp")
 	line(localIP + ":")
 	if files.IPUpScript != "" {
 		line("ip-up-script " + filepath.ToSlash(files.IPUpScript))

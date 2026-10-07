@@ -83,11 +83,20 @@ func TestPrepareL2TPInboundRendersDaemonConfigs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, script := range []struct{ path, event string }{{files.IPUpScript, "start"}, {files.IPDownScript, "stop"}} {
+		raw, err := os.ReadFile(script.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), script.event+" \"${6:-}\"") {
+			t.Fatalf("L2TP %s hook does not forward pppd's transport peer argument:\n%s", script.event, raw)
+		}
+	}
 	for _, expected := range []string{
 		"ip range = 10.67.0.2-10.67.255.254",
 		"local ip = 10.67.0.1",
 		"pppoptfile = " + filepath.ToSlash(files.PPPOptions),
-		"pass peer = no",
+		"pass peer = yes",
 	} {
 		if !strings.Contains(string(rawXL2TP), expected) {
 			t.Fatalf("xl2tp config missing %q:\n%s", expected, rawXL2TP)
@@ -99,7 +108,6 @@ func TestPrepareL2TPInboundRendersDaemonConfigs(t *testing.T) {
 		"refuse-mschap",
 		"refuse-chap",
 		"refuse-pap",
-		"ipparam antimage-l2tp",
 		"ms-dns 1.1.1.1",
 		"ms-dns 8.8.8.8",
 		"mtu 1410",
@@ -126,7 +134,7 @@ func TestL2TPSystemIPPreUpHookIsManagedAndFiltersOtherPPPLinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{l2TPIPPreUpHookMarker, "${6:-}", "antimage-l2tp", "session-event", "pre-up"} {
+	for _, expected := range []string{l2TPIPPreUpHookMarker, "session-event", "pre-up", "${6:-}"} {
 		if !strings.Contains(string(raw), expected) {
 			t.Fatalf("system PPP pre-up hook missing %q:\n%s", expected, raw)
 		}

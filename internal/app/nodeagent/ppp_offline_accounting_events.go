@@ -27,6 +27,7 @@ type pppOfflineSession struct {
 
 var pppOfflineReadIdentity = pppOfflineInterfaceIdentity
 var pppOfflineReadProcess = offlineProcessIdentity
+var pppOfflineDetectProtocol = pppOfflineProcessProtocol
 var pppOfflineReadCounter = readL2TPInterfaceCounter
 var pppSessionHelperExecutable = os.Executable
 
@@ -75,6 +76,45 @@ func offlineProcessIdentity(pid string) (string, error) {
 	return strings.TrimSpace(string(boot)) + ":" + pid + ":" + fields[19], nil
 }
 
+// pppOfflineProcessProtocol resolves a pppd process to the VPN daemon that
+// owns its transport. Both protocols pass their live transport peer through
+// pppd's ipparam; ancestry prevents the two global pre-up hooks from applying
+// policy to the other protocol.
+func pppOfflineProcessProtocol(pid string) (string, error) {
+	if _, err := strconv.ParseUint(pid, 10, 32); err != nil {
+		return "", fmt.Errorf("invalid PPPD_PID: %w", err)
+	}
+	current := pid
+	for depth := 0; depth < 5; depth++ {
+		comm, err := os.ReadFile(filepath.Join("/proc", current, "comm"))
+		if err != nil {
+			return "", err
+		}
+		switch strings.TrimSpace(string(comm)) {
+		case "pptpd", "pptpctrl":
+			return "pptp", nil
+		case "xl2tpd":
+			return "l2tp", nil
+		}
+		stat, err := os.ReadFile(filepath.Join("/proc", current, "stat"))
+		if err != nil {
+			return "", err
+		}
+		end := strings.LastIndexByte(string(stat), ')')
+		if end < 0 {
+			return "", fmt.Errorf("invalid process stat for pid %s", current)
+		}
+		fields := strings.Fields(string(stat)[end+1:])
+		if len(fields) < 2 || fields[1] == "0" || fields[1] == current {
+			break
+		}
+		current = fields[1]
+	}
+	// Unrelated PPP consumers also run the global ip-pre-up dispatcher. They
+	// are outside these protocol hooks and must pass through untouched.
+	return "", nil
+}
+
 func pppOfflineSessionEvent(root, event string, record pppOfflineSession) error {
 	if !l2TPPPPInterfacePattern.MatchString(record.Interface) {
 		return fmt.Errorf("invalid PPP interface")
@@ -112,6 +152,31 @@ func pppOfflineSessionEvent(root, event string, record pppOfflineSession) error 
 func pppOfflineSessionActivePath(root, iface, process string) string {
 	sum := sha256.Sum256([]byte(process))
 	return filepath.Join(root, "ppp-accounting", "active", iface+"-"+hex.EncodeToString(sum[:12])+".json")
+}
+
+func pppOfflineAdmissionReservationPath(root, process string) string {
+	sum := sha256.Sum256([]byte(process))
+	return filepath.Join(root, "ppp-admission", "pending", hex.EncodeToString(sum[:16])+".json")
+}
+
+func pppOfflineWriteAdmissionReservation(root string, uid int64, inbound, process, clientIP string) error {
+	if uid <= 0 || strings.TrimSpace(inbound) == "" || strings.TrimSpace(process) == "" {
+		return fmt.Errorf("incomplete PPP admission reservation identity")
+	}
+	return offlineDurableJSON(pppOfflineAdmissionReservationPath(root, process), pppOfflineSession{
+		UserID: uid, InboundTag: inbound, Process: process, ClientIP: clientIP,
+	})
+}
+
+func pppOfflineRemoveAdmissionReservation(root, process string) error {
+	if strings.TrimSpace(process) == "" {
+		return nil
+	}
+	err := os.Remove(pppOfflineAdmissionReservationPath(root, process))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 func pppOfflineFindActiveSession(root, iface, process string) (pppOfflineSession, error) {

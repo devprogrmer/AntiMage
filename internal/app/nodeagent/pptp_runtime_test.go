@@ -81,11 +81,19 @@ func TestPreparePPTPInboundRendersDaemonConfigs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, script := range []struct{ path, event string }{{filepath.Join(root, "ip-up.sh"), "start"}, {filepath.Join(root, "ip-down.sh"), "stop"}} {
+		raw, err := os.ReadFile(script.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), script.event+" \"${6:-}\"") {
+			t.Fatalf("PPTP %s hook does not forward pppd's transport peer argument:\n%s", script.event, raw)
+		}
+	}
 	for _, expected := range []string{
 		"option " + filepath.ToSlash(filepath.Join(root, "ppp-options")),
 		"localip 10.68.0.1",
 		"remoteip 10.68.0.2-254",
-		"noipparam",
 	} {
 		if !strings.Contains(string(rawPPTPD), expected) {
 			t.Fatalf("pptpd config missing %q:\n%s", expected, rawPPTPD)
@@ -96,7 +104,6 @@ func TestPreparePPTPInboundRendersDaemonConfigs(t *testing.T) {
 		"require-mppe-128",
 		"ms-dns 1.1.1.1",
 		"ms-dns 8.8.8.8",
-		"ipparam antimage-pptp",
 	} {
 		if !strings.Contains(string(rawPPP), expected) {
 			t.Fatalf("ppp options missing %q:\n%s", expected, rawPPP)
@@ -123,7 +130,7 @@ func TestPPTPSystemIPPreUpHookIsManagedAndFiltersOtherPPPLinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{pptpIPPreUpHookMarker, "${6:-}", "antimage-pptp", "session-event", "pre-up"} {
+	for _, expected := range []string{pptpIPPreUpHookMarker, "session-event", "pre-up", "${6:-}"} {
 		if !strings.Contains(string(raw), expected) {
 			t.Fatalf("system PPP pre-up hook missing %q:\n%s", expected, raw)
 		}
