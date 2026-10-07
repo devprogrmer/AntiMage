@@ -1,0 +1,316 @@
+name: Native Protocol E2E
+
+on:
+  pull_request:
+    branches: ['**']
+    paths:
+      - 'internal/app/nodeagent/**'
+      - 'internal/app/nodecontroller/**'
+      - 'internal/app/api/**'
+      - 'internal/proto/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'scripts/ci/**'
+      - '.github/workflows/native-protocol-e2e.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native-runtime:
+    name: native-${{ matrix.protocol }}
+    runs-on: ${{ matrix.protocol == 'pptp' && 'ubuntu-22.04' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        protocol: [xray, wireguard, amneziawg, openvpn, l2tp, pptp, anyconnect, ikev2]
+    env:
+      CGO_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install native runtime dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            iproute2 iptables nftables iputils-ping tcpdump ppp wireguard-tools openvpn strongswan \
+            strongswan-swanctl charon-cmd xl2tpd ocserv openconnect openssl \
+            netcat-openbsd
+
+      - name: Build pinned AmneziaWG userspace tool
+        if: ${{ matrix.protocol == 'amneziawg' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends build-essential
+          source_dir="$RUNNER_TEMP/amneziawg-tools"
+          git clone https://github.com/amnezia-vpn/amneziawg-tools.git "$source_dir"
+          git -C "$source_dir" checkout 4cdc357c68b39a0d1e19417b7f03d604c1e1b4cf
+          make -C "$source_dir/src"
+          install -m 0755 "$source_dir/src/wg" "$RUNNER_TEMP/awg"
+
+      - name: Install native PPTP daemons
+        if: ${{ matrix.protocol == 'pptp' }}
+        run: sudo apt-get install -y --no-install-recommends pptpd pptp-linux
+
+      - name: Run native L2TP and PPP lifecycle
+        if: ${{ matrix.protocol == 'l2tp' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          api_test="$RUNNER_TEMP/antimage-api.test"
+          node_helper="$RUNNER_TEMP/antimage-node-helper"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          go test -c -o "$api_test" ./internal/app/api
+          go build -o "$node_helper" ./cmd/antimage_node
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
+            ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
+            bash scripts/ci/native-l2tp-driver.sh
+
+      - name: Run real Xray protocol E2E
+        if: ${{ matrix.protocol == 'xray' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='v26.7.11'
+          archive="$RUNNER_TEMP/Xray-linux-64-${version}.zip"
+          dir="$RUNNER_TEMP/xray-${version}"
+          curl --fail --location --retry 3 --output "$archive" \
+            "https://github.com/XTLS/Xray-core/releases/download/${version}/Xray-linux-64.zip"
+          echo 'aa11c3685c71da0ffc71e511db50404609e7e963bb914b048f59a6a00af8930e  '"$archive" | sha256sum --check -
+          mkdir -p "$dir"
+          python3 -m zipfile -e "$archive" "$dir"
+          chmod +x "$dir/xray"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          ANTIMAGE_XRAY_E2E_BINARY="$dir/xray" \
+            ANTIMAGE_XRAY_PANEL_TEST_BINARY="$nodecontroller_test" \
+            go test ./internal/app/nodeagent -run '^TestRealXrayOnlineAndStatsE2E$' -count=1 -v
+
+      - name: Run native WireGuard lifecycle
+        if: ${{ matrix.protocol == 'wireguard' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          api_test="$RUNNER_TEMP/antimage-api.test"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$api_test" ./internal/app/api
+          sudo env ANTIMAGE_NATIVE_RUN_OPENVPN=0 ANTIMAGE_NATIVE_RUN_PANEL=0 \
+            RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_VPN_API_TEST_BINARY="$api_test" \
+            bash scripts/ci/native-vpn-drivers.sh
+
+      - name: Run native OpenVPN lifecycle
+        if: ${{ matrix.protocol == 'openvpn' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          sudo env ANTIMAGE_NATIVE_RUN_WIREGUARD=0 ANTIMAGE_NATIVE_RUN_PANEL=0 \
+            RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
+            bash scripts/ci/native-vpn-drivers.sh
+
+      - name: Run native AmneziaWG lifecycle
+        if: ${{ matrix.protocol == 'amneziawg' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          api_test="$RUNNER_TEMP/antimage-api.test"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          go test -c -o "$api_test" ./internal/app/api
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" ANTIMAGE_AWG_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_AWG_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_AWG_API_TEST_BINARY="$api_test" \
+            ANTIMAGE_AWG_TOOL="$RUNNER_TEMP/awg" \
+            bash scripts/ci/native-amneziawg-driver.sh
+
+      - name: Run native PPTP lifecycle
+        if: ${{ matrix.protocol == 'pptp' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          api_test="$RUNNER_TEMP/antimage-api.test"
+          node_helper="$RUNNER_TEMP/antimage-node-helper"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          go test -c -o "$api_test" ./internal/app/api
+          go build -o "$node_helper" ./cmd/antimage_node
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_PPTP_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_PPTP_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_PPTP_API_TEST_BINARY="$api_test" \
+            ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
+            bash scripts/ci/native-pptp-driver.sh
+
+      - name: Run real AnyConnect and ocserv lifecycle
+        if: ${{ matrix.protocol == 'anyconnect' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_ANYCONNECT_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_ANYCONNECT_PANEL_TEST_BINARY="$nodecontroller_test" \
+            bash scripts/ci/native-anyconnect-driver.sh
+
+      - name: Run real strongSwan IKEv2 lifecycle
+        if: ${{ matrix.protocol == 'ikev2' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          sudo env \
+            RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_IKEV2_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_IKEV2_PANEL_BINARY="$nodecontroller_test" \
+            ANTIMAGE_IKEV2_TEMP_DIR="$RUNNER_TEMP" \
+            python3 scripts/ci/native-ikev2-driver.py
+
+      - name: Capture runner networking state after failure
+        if: failure()
+        shell: bash
+        run: |
+          for evidence in "$RUNNER_TEMP"/antimage-*-failure "$RUNNER_TEMP"/antimage-ikev2-*; do
+            [ -e "$evidence" ] || continue
+            sudo chown -R "$(id -u):$(id -g)" "$evidence"
+            sudo chmod -R u+rwX "$evidence"
+          done
+          {
+            date -u
+            sudo ip -details addr show || true
+            sudo ip route show table all || true
+            sudo ip netns list || true
+            sudo nft list ruleset || true
+            sudo tc -s qdisc show || true
+            sudo wg show all dump || true
+            sudo occtl --socket-file="$RUNNER_TEMP/ocserv.sock" show users || true
+            ps -ef || true
+          } > "$RUNNER_TEMP/native-runner-state.txt" 2>&1
+
+      - name: Upload native runtime evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.protocol }}-evidence-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/antimage-*-failure/**
+            ${{ runner.temp }}/antimage-ikev2-*/**
+            ${{ runner.temp }}/antimage-anyconnect-failure/**
+            ${{ runner.temp }}/native-runner-state.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  protocol-lifecycle-exact-once:
+    name: protocol-lifecycle-exact-once
+    # Ubuntu 24.04 no longer publishes pptpd; keep this combined legacy-PPP
+    # lifecycle on the same supported image used by the native PPTP job.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Install combined native lifecycle dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            iproute2 iptables nftables iputils-ping tcpdump ppp xl2tpd strongswan pptp-linux wireguard-tools openvpn openssl netcat-openbsd
+          sudo apt-get install -y --no-install-recommends pptpd
+          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
+      - name: Run real combined native lifecycle and SQLite lost-ACK replay
+        run: |
+          set -euo pipefail
+          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
+          api_test="$RUNNER_TEMP/antimage-api.test"
+          node_helper="$RUNNER_TEMP/antimage-node-helper"
+          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
+          go test -c -o "$api_test" ./internal/app/api
+          go build -o "$node_helper" ./cmd/antimage_node
+          sudo env \
+            RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_VPN_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_VPN_API_TEST_BINARY="$api_test" \
+            bash scripts/ci/native-vpn-drivers.sh
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
+            ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
+            bash scripts/ci/native-l2tp-driver.sh
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_PPTP_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_PPTP_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_PPTP_API_TEST_BINARY="$api_test" \
+            ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
+            bash scripts/ci/native-pptp-driver.sh
+      - name: Upload lifecycle evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: protocol-lifecycle-exact-once-evidence-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/antimage-native-vpn-failure/**
+            ${{ runner.temp }}/antimage-l2tp-failure/**
+            ${{ runner.temp }}/antimage-pptp-failure/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  protocol-policy:
+    name: protocol-policy-and-durable-state
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run protocol policy and durable-state integration suites
+        run: |
+          go test ./internal/app/nodeagent -run 'Test(AmneziaWG|OpenVPN|L2TP|PPTP|IKEv2|AnyConnect|WireGuard|Xray)' -count=1 -v
+
+  native-race:
+    name: native-race
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run Linux race verification
+        run: go test -race -timeout 30m ./internal/... -count=1

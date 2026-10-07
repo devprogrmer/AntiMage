@@ -17,6 +17,10 @@ import (
 )
 
 type amneziaWGUsageRuntimeConfig struct {
+	Generation        string                             `json:"generation,omitempty"`
+	PeerGenerations   map[string]string                  `json:"peer_generations,omitempty"`
+	Transitioning     bool                               `json:"transitioning,omitempty"`
+	Stopped           bool                               `json:"stopped,omitempty"`
 	InboundTag        string                             `json:"inbound_tag"`
 	InterfaceName     string                             `json:"interface_name"`
 	Peers             map[string]int64                   `json:"peers"`
@@ -32,6 +36,7 @@ type amneziaWGUsageSample struct {
 	Value      uint64 `json:"value"`
 }
 type amneziaWGUsagePendingBatch struct {
+	OnlineIPs    []*nodev1.OnlineUserIP `json:"online_ips,omitempty"`
 	BatchID      string                 `json:"batch_id"`
 	Samples      []amneziaWGUsageSample `json:"samples"`
 	NextBaseline map[string]uint64      `json:"next_baseline"`
@@ -80,13 +85,17 @@ func (s *Server) persistAmneziaWGUsageStateLocked() error {
 	if err := os.MkdirAll(filepath.Dir(s.amneziaWGUsageStatePath()), 0700); err != nil {
 		return err
 	}
-	return atomicWriteFile(s.amneziaWGUsageStatePath(), raw, 0600)
+	return amneziaWGDurableWrite(s.amneziaWGUsageStatePath(), raw)
 }
 
 func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.CollectUsageRequest) (*nodev1.UserUsageBatch, error) {
 	s.amneziaWGUsageMu.Lock()
 	defer s.amneziaWGUsageMu.Unlock()
 	if err := s.ensureAmneziaWGUsageStateLoadedLocked(); err != nil {
+		return nil, err
+	}
+	ledger, err := s.amneziaWGOfflineLocked(ctx, true, true)
+	if err != nil {
 		return nil, err
 	}
 	if s.amneziaWGUsagePending != nil {
@@ -101,6 +110,19 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 		inbound string
 	}
 	aggregated := map[aggregateKey]uint64{}
+	for key, counter := range ledger.Counters {
+		baseline := s.amneziaWGUsageBaseline[key]
+		if counter.Total < baseline {
+			return nil, fmt.Errorf("AWG logical counter below ACK baseline")
+		}
+		delta := counter.Total - baseline
+		item := aggregateKey{counter.UserID, counter.InboundTag}
+		if ^uint64(0)-aggregated[item] < delta {
+			return nil, fmt.Errorf("AWG batch overflow")
+		}
+		aggregated[item] += delta
+		next[key] = counter.Total
+	}
 	onlineIPs := []*nodev1.OnlineUserIP{}
 	type sessionDispatch struct {
 		callback nativeRuntimeSessionCallback
@@ -110,7 +132,8 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 	sessionDispatches := []sessionDispatch{}
 	entries, err := os.ReadDir(filepath.Join(s.cfg.DataDir, "amneziawg", "runtime"))
 	if os.IsNotExist(err) {
-		return &nodev1.UserUsageBatch{}, nil
+		entries = nil
+		err = nil
 	}
 	if err != nil {
 		return nil, err
@@ -125,11 +148,7 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 		if json.Unmarshal(raw, &cfg) != nil {
 			continue
 		}
-		peers, snapErr := amneziaWGSnapshot(cfg.InterfaceName)
-		if snapErr != nil {
-			s.appendLog("amneziawg stats query failed: " + snapErr.Error())
-			continue
-		}
+		peers := ledger.Snapshots[cfg.InterfaceName]
 		sessionEvents := []nativeSessionEvent{}
 		sessionPeers := map[string]amneziaWGSessionPeer{}
 		for _, peer := range peers {
@@ -138,18 +157,7 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 			if userID <= 0 {
 				continue
 			}
-			counter := peer.ReceivedBytes + peer.SentBytes
-			baselineKey := cfg.InboundTag + "\x00" + cfg.InterfaceName + "\x00" + publicKey
-			baseline, exists := s.amneziaWGUsageBaseline[baselineKey]
-			delta := counter
-			if exists && counter >= baseline {
-				delta = counter - baseline
-			}
-			next[baselineKey] = counter
-			if cfg.AccountingEnabled && delta > 0 {
-				aggregated[aggregateKey{userID, cfg.InboundTag}] += delta
-			}
-			if peer.LatestHandshake > 0 && now.Sub(time.Unix(peer.LatestHandshake, 0)) <= 3*time.Minute {
+			if wireGuardHandshakeActive(peer.LatestHandshake, now) {
 				address := cfg.PeerAddresses[publicKey]
 				if host, _, splitErr := net.SplitHostPort(peer.Endpoint); splitErr == nil && host != "" {
 					address = host
@@ -157,24 +165,11 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 				onlineIPs = append(onlineIPs, &nodev1.OnlineUserIP{Uid: "amneziawg:" + strconv.FormatInt(userID, 10), Ips: []*nodev1.OnlineIP{{Ip: address, LastSeenUnix: now.Unix()}}})
 				event := amneziaWGSessionEvent(cfg, peer, userID, "seen")
 				sessionEvents = append(sessionEvents, event)
-				sessionPeers[event.SessionID] = amneziaWGSessionPeer{interfaceName: cfg.InterfaceName, publicKey: publicKey}
+				sessionPeers[event.SessionID] = amneziaWGSessionPeer{interfaceName: cfg.InterfaceName, publicKey: publicKey, generation: cfg.Generation + "\x00" + cfg.PeerGenerations[publicKey]}
 			} else {
 				event := amneziaWGSessionEvent(cfg, peer, userID, "stop")
 				sessionEvents = append(sessionEvents, event)
-				sessionPeers[event.SessionID] = amneziaWGSessionPeer{interfaceName: cfg.InterfaceName, publicKey: publicKey}
-			}
-			policy := cfg.Policies[publicKey]
-			allowed, _ := nativeSessionUserPolicyAllowed(policy, now)
-			effectiveDelta := nativeSessionEffectiveLiveUsage(
-				policy,
-				delta,
-			)
-			if allowed && policy.DataLimit > 0 &&
-				nativeSessionPolicyWouldExceedDataLimit(
-					policy,
-					effectiveDelta,
-				) {
-				_ = amneziaWGRemovePeer(cfg.InterfaceName, publicKey)
+				sessionPeers[event.SessionID] = amneziaWGSessionPeer{interfaceName: cfg.InterfaceName, publicKey: publicKey, generation: cfg.Generation + "\x00" + cfg.PeerGenerations[publicKey]}
 			}
 		}
 		sessionDispatches = append(sessionDispatches, sessionDispatch{callback: cfg.Callback, events: sessionEvents, peers: sessionPeers})
@@ -183,7 +178,9 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 		s.dispatchNativeSessionEvents(dispatch.callback, dispatch.events, func(event nativeSessionEvent, eventErr error) {
 			if errors.Is(eventErr, errNativeSessionDeviceLimit) {
 				if peer, ok := dispatch.peers[event.SessionID]; ok {
-					_ = amneziaWGRemovePeer(peer.interfaceName, peer.publicKey)
+					if err := s.removeAmneziaWGSessionPeerWithCheckpoint(event.InboundTag, peer); err != nil {
+						s.appendLog("amneziawg session removal checkpoint failed: " + err.Error())
+					}
 				}
 				return
 			}
@@ -204,9 +201,15 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 	})
 	samples := make([]amneziaWGUsageSample, 0, len(keys))
 	for _, key := range keys {
+		if aggregated[key] == 0 {
+			continue
+		}
 		samples = append(samples, amneziaWGUsageSample{UserID: key.userID, InboundTag: key.inbound, Value: aggregated[key]})
 	}
-	pending := &amneziaWGUsagePendingBatch{BatchID: fmt.Sprintf("amneziawg-%d", now.UnixNano()), Samples: samples, NextBaseline: next}
+	if len(samples) == 0 && len(onlineIPs) == 0 {
+		return &nodev1.UserUsageBatch{}, nil
+	}
+	pending := &amneziaWGUsagePendingBatch{BatchID: fmt.Sprintf("amneziawg-%d", now.UnixNano()), Samples: samples, NextBaseline: next, OnlineIPs: onlineIPs}
 	s.amneziaWGUsagePending = pending
 	if err := s.persistAmneziaWGUsageStateLocked(); err != nil {
 		s.amneziaWGUsagePending = nil
@@ -218,6 +221,22 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 type amneziaWGSessionPeer struct {
 	interfaceName string
 	publicKey     string
+	generation    string
+}
+
+func (s *Server) removeAmneziaWGSessionPeerWithCheckpoint(tag string, peer amneziaWGSessionPeer) error {
+	s.amneziaWGUsageMu.Lock()
+	defer s.amneziaWGUsageMu.Unlock()
+	state, err := s.amneziaWGOfflineLocked(context.Background(), false, true)
+	if err != nil {
+		return err
+	}
+	key := tag + "\x00" + peer.interfaceName + "\x00" + peer.publicKey
+	counter, ok := state.Counters[key]
+	if !ok || counter.Generation != peer.generation || counter.Absent {
+		return nil
+	}
+	return amneziaWGRemovePeer(peer.interfaceName, peer.publicKey)
 }
 
 func amneziaWGSessionEvent(cfg amneziaWGUsageRuntimeConfig, peer wireGuardPeerCounters, userID int64, event string) nativeSessionEvent {
@@ -229,6 +248,7 @@ func amneziaWGUsageBatchProto(pending *amneziaWGUsagePendingBatch, onlineIPs []*
 	stats := []*nodev1.UserUsageSample{}
 	batchID := ""
 	if pending != nil {
+		onlineIPs = pending.OnlineIPs
 		batchID = pending.BatchID
 		for _, sample := range pending.Samples {
 			stats = append(stats, &nodev1.UserUsageSample{Uid: "amneziawg:" + strconv.FormatInt(sample.UserID, 10), InboundTag: sample.InboundTag, Value: sample.Value})
@@ -255,6 +275,7 @@ func (s *Server) ackAmneziaWGUserUsage(_ context.Context, req *nodev1.AckUsageRe
 		return &nodev1.AckUsageResponse{Acknowledged: false}, nil
 	}
 	old := s.amneziaWGUsageBaseline
+	oldAck := s.amneziaWGUsageLastAckedBatchID
 	pending := s.amneziaWGUsagePending
 	s.amneziaWGUsageBaseline = pending.NextBaseline
 	s.amneziaWGUsagePending = nil
@@ -262,6 +283,7 @@ func (s *Server) ackAmneziaWGUserUsage(_ context.Context, req *nodev1.AckUsageRe
 	if err := s.persistAmneziaWGUsageStateLocked(); err != nil {
 		s.amneziaWGUsageBaseline = old
 		s.amneziaWGUsagePending = pending
+		s.amneziaWGUsageLastAckedBatchID = oldAck
 		return nil, err
 	}
 	return &nodev1.AckUsageResponse{Acknowledged: true}, nil

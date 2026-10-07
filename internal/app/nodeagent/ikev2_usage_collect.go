@@ -2,18 +2,16 @@ package nodeagent
 
 import (
 	"context"
-	"fmt"
 	"net/netip"
-	"os/exec"
-	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
 type ikev2RawChildSA struct {
+	SPIIn    string
+	SPIOut   string
 	Name     string
 	UniqueID string
 	State    string
@@ -35,6 +33,8 @@ type ikev2RawSA struct {
 }
 
 type ikev2UsageSample struct {
+	Upload     uint64   `json:"upload,omitempty"`
+	Download   uint64   `json:"download,omitempty"`
 	UserID     int64    `json:"user_id"`
 	InboundTag string   `json:"inbound_tag"`
 	Value      uint64   `json:"value"`
@@ -43,6 +43,7 @@ type ikev2UsageSample struct {
 }
 
 type ikev2UsagePendingBatch struct {
+	SeenUnix     int64              `json:"seen_unix,omitempty"`
 	BatchID      string             `json:"batch_id"`
 	Samples      []ikev2UsageSample `json:"samples"`
 	NextBaseline map[string]uint64  `json:"next_baseline"`
@@ -349,7 +350,9 @@ func parseIKEv2SwanctlRaw(
 				sa.Children = append(
 					sa.Children,
 					ikev2RawChildSA{
-						Name: child.Name,
+						SPIIn:  ikev2RawScalar(child.Body, "spi-in"),
+						SPIOut: ikev2RawScalar(child.Body, "spi-out"),
+						Name:   child.Name,
 						UniqueID: ikev2RawScalar(
 							child.Body,
 							"uniqueid",
@@ -478,250 +481,6 @@ func (s *Server) activeIKEv2RuntimeInbounds() map[string]ikev2RuntimeInbound {
 	return result
 }
 
-func (s *Server) collectIKEv2UserUsage(
-	ctx context.Context,
-	_ *nodev1.CollectUsageRequest,
-) (*nodev1.UserUsageBatch, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-	}
-
-	runtimes := s.activeIKEv2RuntimeInbounds()
-	if len(runtimes) == 0 {
-		return &nodev1.UserUsageBatch{}, nil
-	}
-
-	s.ikev2UsageMu.Lock()
-	defer s.ikev2UsageMu.Unlock()
-
-	if err := s.ensureIKEv2UsageStateLoadedLocked(); err != nil {
-		return nil, err
-	}
-
-	if s.ikev2UsagePending != nil {
-		return ikev2UsageBatchProto(
-			s.ikev2UsagePending,
-		), nil
-	}
-
-	swanctlPath, err := exec.LookPath("swanctl")
-	if err != nil {
-		return nil, fmt.Errorf(
-			"ikev2 usage: swanctl is not installed",
-		)
-	}
-
-	output, err := exec.CommandContext(
-		ctx,
-		swanctlPath,
-		"--list-sas",
-		"--raw",
-	).CombinedOutput()
-
-	if err != nil {
-		detail := strings.TrimSpace(string(output))
-		if detail == "" {
-			detail = err.Error()
-		}
-
-		return nil, fmt.Errorf(
-			"ikev2 usage: swanctl --list-sas --raw: %s",
-			detail,
-		)
-	}
-
-	sas := parseIKEv2SwanctlRaw(string(output))
-
-	terminatedSAs, policyErr :=
-		s.enforceIKEv2Policies(
-			ctx,
-			runtimes,
-			sas,
-		)
-
-	if policyErr != nil {
-		s.appendLog(
-			"ikev2 policy enforcement failed: " +
-				policyErr.Error(),
-		)
-	}
-
-	nextBaseline := make(
-		map[string]uint64,
-		len(s.ikev2UsageBaseline),
-	)
-
-	for key, value := range s.ikev2UsageBaseline {
-		nextBaseline[key] = value
-	}
-
-	type aggregateKey struct {
-		UserID     int64
-		InboundTag string
-	}
-
-	aggregated := make(
-		map[aggregateKey]ikev2UsageSample,
-	)
-
-	for _, sa := range sas {
-		if !strings.EqualFold(
-			strings.TrimSpace(sa.State),
-			"ESTABLISHED",
-		) {
-			continue
-		}
-
-		inbound, exists := runtimes[sa.ConnectionName]
-		if !exists {
-			continue
-		}
-
-		identity := strings.TrimSpace(sa.RemoteEAPID)
-		if identity == "" {
-			identity = strings.TrimSpace(sa.RemoteID)
-		}
-		if identity == "" {
-			continue
-		}
-
-		var user ikev2RuntimeUser
-		found := false
-
-		for _, candidate := range inbound.Users {
-			if strings.TrimSpace(candidate.Username) ==
-				identity {
-				user = candidate
-				found = true
-				break
-			}
-		}
-
-		if !found || user.UserID <= 0 {
-			continue
-		}
-
-		key := aggregateKey{
-			UserID:     user.UserID,
-			InboundTag: strings.TrimSpace(inbound.Tag),
-		}
-
-		sample := aggregated[key]
-		sample.UserID = user.UserID
-		sample.InboundTag = key.InboundTag
-		if _, terminated :=
-			terminatedSAs[strings.TrimSpace(
-				sa.UniqueID,
-			)]; !terminated {
-			sample.Online = true
-		}
-
-		for _, vip := range sa.RemoteVIPs {
-			sample.IPs = ikev2AppendUniqueIP(
-				sample.IPs,
-				vip,
-			)
-		}
-
-		for _, child := range sa.Children {
-			if !strings.EqualFold(
-				strings.TrimSpace(child.State),
-				"INSTALLED",
-			) {
-				continue
-			}
-
-			total := ikev2SafeAdd(
-				child.BytesIn,
-				child.BytesOut,
-			)
-
-			baselineKey := ikev2UsageBaselineKey(
-				inbound.Tag,
-				sa,
-				child,
-			)
-
-			baseline, baselineExists :=
-				s.ikev2UsageBaseline[baselineKey]
-
-			delta := ikev2UsageDelta(
-				total,
-				baseline,
-				baselineExists,
-			)
-
-			nextBaseline[baselineKey] = total
-			sample.Value = ikev2SafeAdd(
-				sample.Value,
-				delta,
-			)
-		}
-
-		aggregated[key] = sample
-	}
-
-	if len(aggregated) == 0 {
-		return &nodev1.UserUsageBatch{}, nil
-	}
-
-	keys := make(
-		[]aggregateKey,
-		0,
-		len(aggregated),
-	)
-
-	for key := range aggregated {
-		keys = append(keys, key)
-	}
-
-	sort.Slice(
-		keys,
-		func(i int, j int) bool {
-			if keys[i].UserID ==
-				keys[j].UserID {
-				return keys[i].InboundTag <
-					keys[j].InboundTag
-			}
-
-			return keys[i].UserID <
-				keys[j].UserID
-		},
-	)
-
-	samples := make(
-		[]ikev2UsageSample,
-		0,
-		len(keys),
-	)
-
-	for _, key := range keys {
-		sample := aggregated[key]
-		sort.Strings(sample.IPs)
-		samples = append(samples, sample)
-	}
-
-	pending := &ikev2UsagePendingBatch{
-		BatchID: fmt.Sprintf(
-			"ikev2-%d",
-			time.Now().UTC().UnixNano(),
-		),
-		Samples:      samples,
-		NextBaseline: nextBaseline,
-	}
-
-	s.ikev2UsagePending = pending
-
-	if err := s.persistIKEv2UsageStateLocked(); err != nil {
-		s.ikev2UsagePending = nil
-		return nil, err
-	}
-
-	return ikev2UsageBatchProto(pending), nil
-}
-
 func (s *Server) ackIKEv2UserUsage(
 	_ context.Context,
 	req *nodev1.AckUsageRequest,
@@ -758,8 +517,11 @@ func (s *Server) ackIKEv2UserUsage(
 	previousLastAcked :=
 		s.ikev2UsageLastAckedBatchID
 
-	s.ikev2UsageBaseline =
-		pending.NextBaseline
+	next, err := offlineACKBaseline(s.ikev2UsageBaseline, pending.NextBaseline)
+	if err != nil {
+		return nil, err
+	}
+	s.ikev2UsageBaseline = next
 	s.ikev2UsagePending = nil
 	s.ikev2UsageLastAckedBatchID =
 		batchID
@@ -797,7 +559,7 @@ func ikev2UsageBatchProto(
 		len(pending.Samples),
 	)
 
-	now := time.Now().UTC().Unix()
+	now := offlinePendingSeenUnix(pending.SeenUnix, pending.BatchID)
 
 	for _, sample := range pending.Samples {
 		uid := "ikev2:" +

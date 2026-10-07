@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -38,6 +39,14 @@ type Server struct {
 	startedAt                        time.Time
 	lastConfig                       string
 	lastRuntime                      *exec.Cmd
+	xrayRuntimeGeneration            string
+	xrayStatsClient                  *xrayStatsClient
+	localAccountingFailures          map[string]string
+	localUsageMu                     sync.Mutex
+	localUsageLoaded                 bool
+	localUsageDeliveries             []localUsageDelivery
+	localQuotaViews                  map[localQuotaOwner]localQuotaView
+	runtimePolicy                    *runtimePolicySnapshot
 	openVPNRuntimes                  map[string]*openVPNProcess
 	anyConnectRuntimes               map[string]*anyConnectProcess
 	openVPNTProxySpecs               map[string]openVPNTProxySpec
@@ -76,6 +85,7 @@ type Server struct {
 	pptpUsageLoaded                  bool
 	pptpUsageLastAckedBatchID        string
 	ikev2UsageMu                     sync.Mutex
+	ikev2SpeedRules                  string // guarded by ikev2UsageMu
 	ikev2UsageBaseline               map[string]uint64
 	ikev2UsagePending                *ikev2UsagePendingBatch
 	ikev2UsageLoaded                 bool
@@ -95,10 +105,15 @@ type Server struct {
 	xrayUsageMu                      sync.Mutex
 	xrayUsageBaseline                map[string]uint64
 	xrayUsagePending                 *xrayUsagePendingBatch
+	xrayAccountingCounters           map[string]accountingCounter
+	xrayQuotaRevoked                 map[string]xrayQuotaRevocation
+	xrayAccountingGeneration         string
 	xrayUsageLoaded                  bool
 	xrayUsageLastAckedBatchID        string
+	xrayUsageBaselineAt              time.Time
 	xrayOutboundUsageMu              sync.Mutex
 	xrayOutboundUsageBaseline        map[string]uint64
+	xrayOutboundUsageGeneration      string
 	xrayOutboundUsagePending         *xrayOutboundUsagePendingBatch
 	xrayOutboundUsageLoaded          bool
 	mergedUsageMu                    sync.Mutex
@@ -164,6 +179,14 @@ func New(cfg Config) *Server {
 }
 
 func (s *Server) Run(ctx context.Context) error {
+	checkpointInterval, err := nodeAccountingCheckpointInterval()
+	if err != nil {
+		return err
+	}
+	quotaInterval, err := localQuotaInterval(os.Getenv("ANTIMAGE_NODE_QUOTA_ENFORCEMENT_INTERVAL"))
+	if err != nil {
+		return err
+	}
 	cert, err := tls.LoadX509KeyPair(s.cfg.CertFile, s.cfg.KeyFile)
 	if err != nil {
 		return fmt.Errorf("load node certificate: %w", err)
@@ -174,6 +197,7 @@ func (s *Server) Run(ctx context.Context) error {
 		return err
 	}
 	defer listener.Close()
+	defer s.closeXrayStatsClient()
 
 	defer func() {
 		s.stopAllOpenVPNRuntimes()
@@ -200,10 +224,23 @@ func (s *Server) Run(ctx context.Context) error {
 		ClientAuth:   tls.RequireAnyClientCert,
 		MinVersion:   tls.VersionTLS12,
 	})))
+	if err := s.restoreRuntimePolicy(ctx); err != nil {
+		return fmt.Errorf("restore offline runtime policy: %w", err)
+	}
 	nodev1.RegisterNodeControlServiceServer(grpcServer, s)
 	nodev1.RegisterNodeRuntimeServiceServer(grpcServer, s)
 	nodev1.RegisterNodeUsageServiceServer(grpcServer, s)
 	nodev1.RegisterNodeLogsServiceServer(grpcServer, s)
+	accountingCtx, stopAccounting := context.WithCancel(ctx)
+	quotaDone := make(chan struct{})
+	go func() {
+		defer close(quotaDone)
+		s.runLocalQuotaScheduler(accountingCtx, quotaInterval, checkpointInterval)
+	}()
+	defer func() {
+		stopAccounting()
+		<-quotaDone
+	}()
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -242,6 +279,16 @@ func (s *Server) Connect(context.Context, *nodev1.ConnectRequest) (*nodev1.Conne
 }
 
 func (s *Server) Health(context.Context, *nodev1.HealthRequest) (*nodev1.HealthResponse, error) {
+	s.mu.Lock()
+	var accountingFailure string
+	for protocol, failure := range s.localAccountingFailures {
+		accountingFailure = protocol + ": " + failure
+		break
+	}
+	s.mu.Unlock()
+	if accountingFailure != "" {
+		return nil, status.Error(codes.FailedPrecondition, "local accounting degraded: "+accountingFailure)
+	}
 	return &nodev1.HealthResponse{Runtime: s.runtimeState("healthy"), Metrics: s.metrics(true)}, nil
 }
 
@@ -253,6 +300,9 @@ func (s *Server) RestartRuntime(
 	ctx context.Context,
 	req *nodev1.RuntimeConfigRequest,
 ) (*nodev1.RuntimeActionResponse, error) {
+	if err := s.checkpointBeforeRuntimeTransition(ctx); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
 	s.stopAllOpenVPNRuntimes()
 	s.stopAllAnyConnectRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
@@ -275,9 +325,15 @@ func (s *Server) RestartRuntime(
 }
 
 func (s *Server) StopRuntime(
-	context.Context,
-	*nodev1.StopRuntimeRequest,
+	ctx context.Context,
+	_ *nodev1.StopRuntimeRequest,
 ) (*nodev1.RuntimeActionResponse, error) {
+	if err := s.checkpointBeforeRuntimeTransition(ctx); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+	if err := s.persistStoppedRuntimePolicy(); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, "persist stopped policy: "+err.Error())
+	}
 	s.stopAllOpenVPNRuntimes()
 	s.stopAllAnyConnectRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
@@ -402,7 +458,16 @@ func (s *Server) CollectUserUsage(
 	ctx context.Context,
 	req *nodev1.CollectUsageRequest,
 ) (*nodev1.UserUsageBatch, error) {
-	return s.collectUserUsageWithWireGuard(ctx, req)
+	batch, err := s.collectUserUsageWithWireGuard(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.recordLocalUsageDelivery(batch.GetBatchId()); err != nil {
+		s.recordLocalAccountingHealth("delivery", err)
+		return nil, err
+	}
+	s.recordLocalAccountingHealth("delivery", nil)
+	return batch, nil
 }
 
 func (s *Server) AckUserUsage(
@@ -486,6 +551,7 @@ func (s *Server) CollectOutboundUsage(ctx context.Context, req *nodev1.CollectUs
 	xrayRunning := s.lastRuntime != nil
 	xrayPath := s.cfg.XrayPath
 	xrayAPIPort := s.cfg.XrayAPIPort
+	xrayGeneration := s.xrayRuntimeGeneration
 	s.mu.Unlock()
 
 	if !xrayRunning {
@@ -495,7 +561,7 @@ func (s *Server) CollectOutboundUsage(ctx context.Context, req *nodev1.CollectUs
 	}
 
 	// Query Xray stats via CLI with outbound pattern
-	client := newXrayStatsClient(xrayPath, xrayAPIPort)
+	client := s.cachedXrayStatsClient(xrayPath, xrayAPIPort)
 
 	stats, err := client.queryStats(ctx, "outbound>>>", false)
 	if err != nil {
@@ -514,61 +580,23 @@ func (s *Server) CollectOutboundUsage(ctx context.Context, req *nodev1.CollectUs
 		nextBaseline[key] = value
 	}
 
-	type outboundTraffic struct {
-		upDelta   uint64
-		downDelta uint64
-	}
+	byTag, nextBaseline := xrayOutboundUsageDeltas(
+		stats,
+		s.xrayOutboundUsageBaseline,
+		nextBaseline,
+		s.xrayOutboundUsageGeneration,
+		xrayGeneration,
+	)
 
-	byTag := make(map[string]*outboundTraffic)
-
-	for _, stat := range stats {
-		statName, ok := parseXrayStatName(stat.Name)
-		if !ok || statName.Type != "outbound" {
-			continue
-		}
-
-		tag := statName.Tag
-		if tag == "" {
-			continue
-		}
-
-		// Build baseline key: tag:direction
-		baselineKey := tag + ":" + statName.Direction
-
-		baseline, exists := s.xrayOutboundUsageBaseline[baselineKey]
-
-		currentValue := uint64(0)
-		if stat.Value >= 0 {
-			currentValue = uint64(stat.Value)
-		}
-
-		delta := currentValue
-		if exists && currentValue >= baseline {
-			delta = currentValue - baseline
-		}
-
-		// Counter reset detection
-		if exists && currentValue < baseline {
-			delta = currentValue
-		}
-
-		nextBaseline[baselineKey] = currentValue
-
-		traffic := byTag[tag]
-		if traffic == nil {
-			traffic = &outboundTraffic{}
-			byTag[tag] = traffic
-		}
-
-		switch statName.Direction {
-		case "uplink":
-			traffic.upDelta = delta
-		case "downlink":
-			traffic.downDelta = delta
-		}
-	}
+	// A process generation is part of the counter identity. Persist it even
+	// when this sample has no traffic, so the first later counter is not
+	// compared with the previous Xray process.
+	s.xrayOutboundUsageGeneration = xrayGeneration
 
 	if len(byTag) == 0 {
+		if err := s.persistXrayOutboundUsageStateLocked(); err != nil {
+			return nil, err
+		}
 		return &nodev1.OutboundUsageBatch{
 			BatchId: fmt.Sprintf("outbound-%d", time.Now().Unix()),
 		}, nil
@@ -576,18 +604,19 @@ func (s *Server) CollectOutboundUsage(ctx context.Context, req *nodev1.CollectUs
 
 	samples := make([]xrayOutboundUsageSample, 0, len(byTag))
 	for tag, traffic := range byTag {
-		if traffic.upDelta == 0 && traffic.downDelta == 0 {
+		if traffic.Up == 0 && traffic.Down == 0 {
 			continue
 		}
 		samples = append(samples, xrayOutboundUsageSample{
 			Tag:  tag,
-			Up:   traffic.upDelta,
-			Down: traffic.downDelta,
+			Up:   traffic.Up,
+			Down: traffic.Down,
 		})
 	}
 
 	pending := &xrayOutboundUsagePendingBatch{
 		BatchID:      fmt.Sprintf("outbound-%d", time.Now().UTC().UnixNano()),
+		Generation:   xrayGeneration,
 		Samples:      samples,
 		NextBaseline: nextBaseline,
 	}
@@ -624,6 +653,7 @@ func (s *Server) AckOutboundUsage(ctx context.Context, req *nodev1.AckUsageReque
 	previousBaseline := s.xrayOutboundUsageBaseline
 
 	s.xrayOutboundUsageBaseline = pending.NextBaseline
+	s.xrayOutboundUsageGeneration = pending.Generation
 	s.xrayOutboundUsagePending = nil
 
 	if err := s.persistXrayOutboundUsageStateLocked(); err != nil {
@@ -685,13 +715,37 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	if _, _, err := xrayAPIPortFromRuntimeConfig(configJSON); err != nil {
 		return nil, status.Error(codes.InvalidArgument, "xray api port: "+err.Error())
 	}
+	// Capture old runtime counters before a config changes its API port or
+	// replaces the process. Refuse a controlled reset if durability failed.
+	checkpointCtx, cancelCheckpoint := context.WithTimeout(ctx, 2*time.Second)
+	checkpointErr := s.checkpointXrayAccounting(checkpointCtx)
+	cancelCheckpoint()
+	if checkpointErr != nil {
+		s.recordLocalAccountingHealth("xray", checkpointErr)
+		return nil, status.Error(codes.FailedPrecondition, "checkpoint before runtime change: "+checkpointErr.Error())
+	}
+	guarded, err := s.guardOfflineRuntimePolicy(req)
+	if err != nil {
+		s.recordLocalAccountingHealth("policy", err)
+		return nil, status.Error(codes.FailedPrecondition, "evaluate durable offline quota: "+err.Error())
+	}
+	req = guarded
+	configJSON = req.GetConfigJson()
+	// Persist the exact guarded policy that will be activated. Persisting the
+	// unguarded panel policy first would let a node restart offline and restore
+	// credentials that the durable quota guard had just denied.
+	if err := s.persistRuntimePolicy(req); err != nil {
+		s.recordLocalAccountingHealth("policy", err)
+		return nil, status.Error(codes.FailedPrecondition, "persist offline policy: "+err.Error())
+	}
+	s.recordLocalAccountingHealth("policy", nil)
 
 	if err := os.MkdirAll(s.cfg.DataDir, 0755); err != nil {
 		return nil, err
 	}
 
 	configPath := filepath.Join(s.cfg.DataDir, "xray-config.json")
-	if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
+	if err := writeAccountingState(configPath, []byte(configJSON)); err != nil {
 		return nil, err
 	}
 
@@ -708,6 +762,9 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
 		if err := s.startXray(ctx, configPath); err != nil {
 			return nil, status.Error(codes.Internal, "start xray: "+err.Error())
+		}
+		if err := s.markRestoredXrayRevocations(req.GetOvRuntimeJson(), configJSON); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 		message += " and runtime started"
 	} else {
@@ -727,6 +784,10 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	return s.action(req.GetOperationId(), message), nil
 }
 func (s *Server) startXray(ctx context.Context, configPath string) error {
+	var identity [16]byte
+	if _, err := rand.Read(identity[:]); err != nil {
+		return fmt.Errorf("create xray runtime generation: %w", err)
+	}
 	_ = s.stopRuntime()
 	cmd := xrayCommandContext(context.Background(), s.cfg.XrayPath, "run", "-config", configPath)
 	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+s.cfg.XrayAssetsDir)
@@ -738,6 +799,7 @@ func (s *Server) startXray(ctx context.Context, configPath string) error {
 	}
 	s.mu.Lock()
 	s.lastRuntime = cmd
+	s.xrayRuntimeGeneration = fmt.Sprintf("%x", identity)
 	s.mu.Unlock()
 	s.appendLog("xray runtime started")
 	go func() {

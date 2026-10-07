@@ -27,20 +27,22 @@ type pptpRuntimeInbound struct {
 }
 
 type pptpRuntimeUser struct {
-	UserID             int64   `json:"user_id"`
-	Username           string  `json:"username"`
-	VPNUsername        string  `json:"vpn_username"`
-	Password           string  `json:"password"`
-	IPv4Address        string  `json:"ipv4_address"`
-	Status             string  `json:"status"`
-	UsedTraffic        int64   `json:"used_traffic"`
-	DataLimit          *int64  `json:"data_limit,omitempty"`
-	Expire             *int64  `json:"expire,omitempty"`
-	DeviceLimit        int64   `json:"device_limit,omitempty"`
-	UploadSpeedLimit   int64   `json:"upload_speed_limit"`
-	DownloadSpeedLimit int64   `json:"download_speed_limit"`
-	UsageCoefficient   float64 `json:"usage_coefficient,omitempty"`
-	InboundCoefficient float64 `json:"inbound_coefficient,omitempty"`
+	UserID                int64   `json:"user_id"`
+	Username              string  `json:"username"`
+	VPNUsername           string  `json:"vpn_username"`
+	Password              string  `json:"password"`
+	IPv4Address           string  `json:"ipv4_address"`
+	Status                string  `json:"status"`
+	UsedTraffic           int64   `json:"used_traffic"`
+	DataLimit             *int64  `json:"data_limit,omitempty"`
+	Expire                *int64  `json:"expire,omitempty"`
+	DeviceLimit           int64   `json:"device_limit,omitempty"`
+	IPLimit               int64   `json:"ip_limit,omitempty"`
+	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
+	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
+	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
+	InboundCoefficient    float64 `json:"inbound_coefficient,omitempty"`
 }
 
 type pptpRuntimeFiles struct {
@@ -120,8 +122,7 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 
 	// Accounting/online detection no longer depends on PPP callbacks.
 	// Do not render callback scripts into PPP options when callback is absent.
-	needsSessionHelper := strings.TrimSpace(callback.URL) != "" ||
-		nativeSpeedUsersHaveLimits(pptpUsersAsOpenVPNUsers(inbound.Users))
+	needsSessionHelper := true // Accounting hooks must also run while the Panel is offline.
 
 	if !needsSessionHelper {
 		files.IPUpScript = ""
@@ -137,7 +138,7 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 	}
 
 	if needsSessionHelper {
-		executable, err := os.Executable()
+		executable, err := pppSessionHelperExecutable()
 		if err != nil {
 			return "", fmt.Errorf("pptp %q: resolve node executable: %w", tag, err)
 		}
@@ -174,8 +175,8 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 		if err := os.WriteFile(files.SessionConfig, rawConfig, 0600); err != nil {
 			return "", fmt.Errorf("pptp %q: write session helper config: %w", tag, err)
 		}
-		connect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " start\n"
-		disconnect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " stop\n"
+		connect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " start \"${6:-}\"\n"
+		disconnect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " stop \"${6:-}\"\n"
 		if err := os.WriteFile(files.IPUpScript, []byte(connect), 0700); err != nil {
 			return "", err
 		}
@@ -257,6 +258,8 @@ func renderPPTPPPPOptions(inbound pptpRuntimeInbound, files pptpRuntimeFiles, lo
 	line("lock")
 	line("hide-password")
 	line(localIP + ":")
+	// pptpd supplies the live transport peer address through ipparam. The
+	// shared PPP hooks identify the protocol from pppd's daemon ancestry.
 	if files.IPUpScript != "" {
 		line("ip-up-script " + filepath.ToSlash(files.IPUpScript))
 	}
@@ -320,18 +323,22 @@ func pptpUsersAsOpenVPNUsers(users []pptpRuntimeUser) []openVPNRuntimeUser {
 	result := make([]openVPNRuntimeUser, 0, len(users))
 	for _, user := range users {
 		result = append(result, openVPNRuntimeUser{
-			UserID:             user.UserID,
-			Username:           user.Username,
-			VPNUsername:        user.VPNUsername,
-			Password:           user.Password,
-			IPv4Address:        user.IPv4Address,
-			Status:             user.Status,
-			UsedTraffic:        user.UsedTraffic,
-			DataLimit:          user.DataLimit,
-			Expire:             user.Expire,
-			DeviceLimit:        user.DeviceLimit,
-			UploadSpeedLimit:   user.UploadSpeedLimit,
-			DownloadSpeedLimit: user.DownloadSpeedLimit,
+			UserID:                user.UserID,
+			Username:              user.Username,
+			VPNUsername:           user.VPNUsername,
+			Password:              user.Password,
+			IPv4Address:           user.IPv4Address,
+			Status:                user.Status,
+			UsedTraffic:           user.UsedTraffic,
+			DataLimit:             user.DataLimit,
+			Expire:                user.Expire,
+			DeviceLimit:           user.DeviceLimit,
+			IPLimit:               user.IPLimit,
+			ReflectedUsageBatchID: user.ReflectedUsageBatchID,
+			UploadSpeedLimit:      user.UploadSpeedLimit,
+			DownloadSpeedLimit:    user.DownloadSpeedLimit,
+			UsageCoefficient:      user.UsageCoefficient,
+			InboundCoefficient:    user.InboundCoefficient,
 		})
 	}
 	return result

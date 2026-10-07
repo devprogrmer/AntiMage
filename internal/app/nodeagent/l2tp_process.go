@@ -6,27 +6,29 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
 const (
+	l2TPIPSecBlockStart = "# BEGIN ANTIMAGE L2TP IPSEC"
+	l2TPIPSecBlockEnd   = "# END ANTIMAGE L2TP IPSEC"
+
+	l2TPSecretBlockStart  = "# BEGIN ANTIMAGE L2TP IPSEC SECRET"
+	l2TPCHAPBlockStart    = "# BEGIN ANTIMAGE L2TP CHAP"
+	l2TPCHAPBlockEnd      = "# END ANTIMAGE L2TP CHAP"
+	l2TPSecretBlockEnd    = "# END ANTIMAGE L2TP IPSEC SECRET"
+	l2TPIPPreUpHookMarker = "# ANTIMAGE MANAGED L2TP IP PRE-UP HOOK"
+)
+
+var (
+	l2TPCommandContext   = exec.CommandContext
+	l2TPLookPath         = exec.LookPath
 	l2TPIPSecConfigPath  = "/etc/ipsec.conf"
 	l2TPIPSecSecretsPath = "/etc/ipsec.secrets"
 	l2TPXL2TPConfigPath  = "/etc/xl2tpd/xl2tpd.conf"
 	l2TPCHAPSecretsPath  = "/etc/ppp/chap-secrets"
-
-	l2TPIPSecBlockStart = "# BEGIN ANTIMAGE L2TP IPSEC"
-	l2TPIPSecBlockEnd   = "# END ANTIMAGE L2TP IPSEC"
-
-	l2TPSecretBlockStart = "# BEGIN ANTIMAGE L2TP IPSEC SECRET"
-	l2TPCHAPBlockStart   = "# BEGIN ANTIMAGE L2TP CHAP"
-	l2TPCHAPBlockEnd     = "# END ANTIMAGE L2TP CHAP"
-	l2TPSecretBlockEnd   = "# END ANTIMAGE L2TP IPSEC SECRET"
-)
-
-var (
-	l2TPCommandContext = exec.CommandContext
-	l2TPLookPath       = exec.LookPath
+	l2TPIPPreUpHookPath  = "/etc/ppp/ip-pre-up.d/91-antimage-l2tp"
 )
 
 type l2TPProcess struct {
@@ -174,8 +176,8 @@ func installL2TPSystemConfig(
 		return fmt.Errorf("update %s: %w", l2TPIPSecSecretsPath, err)
 	}
 
-	if err := os.MkdirAll("/etc/ppp", 0755); err != nil {
-		return fmt.Errorf("create /etc/ppp: %w", err)
+	if err := os.MkdirAll(filepath.Dir(l2TPCHAPSecretsPath), 0755); err != nil {
+		return fmt.Errorf("create %s: %w", filepath.Dir(l2TPCHAPSecretsPath), err)
 	}
 
 	if err := updateL2TPManagedBlock(
@@ -187,8 +189,8 @@ func installL2TPSystemConfig(
 		return fmt.Errorf("update %s: %w", l2TPCHAPSecretsPath, err)
 	}
 
-	if err := os.MkdirAll("/etc/xl2tpd", 0755); err != nil {
-		return fmt.Errorf("create /etc/xl2tpd: %w", err)
+	if err := os.MkdirAll(filepath.Dir(l2TPXL2TPConfigPath), 0755); err != nil {
+		return fmt.Errorf("create %s: %w", filepath.Dir(l2TPXL2TPConfigPath), err)
 	}
 
 	if err := os.WriteFile(
@@ -318,12 +320,72 @@ func startL2TPSystemService(s *Server) error {
 	return nil
 }
 
+func renderL2TPSystemIPPreUpHook(executable, sessionConfig string) string {
+	return "#!/bin/sh\n" + l2TPIPPreUpHookMarker + "\n" +
+		"set -eu\n" +
+		"exec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(sessionConfig) + " pre-up \"${6:-}\"\n"
+}
+
+func installL2TPSystemIPPreUpHook(executable, sessionConfig string) error {
+	if strings.TrimSpace(executable) == "" || strings.TrimSpace(sessionConfig) == "" {
+		return fmt.Errorf("L2TP pre-up hook executable and session config are required")
+	}
+	if err := os.MkdirAll(filepath.Dir(l2TPIPPreUpHookPath), 0755); err != nil {
+		return err
+	}
+	if existing, err := os.ReadFile(l2TPIPPreUpHookPath); err == nil && !strings.Contains(string(existing), l2TPIPPreUpHookMarker) {
+		return fmt.Errorf("refusing to replace unmanaged PPP hook %q", l2TPIPPreUpHookPath)
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(l2TPIPPreUpHookPath), ".antimage-l2tp-hook-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+	if err := tmp.Chmod(0755); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.WriteString(renderL2TPSystemIPPreUpHook(executable, sessionConfig)); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, l2TPIPPreUpHookPath); err != nil {
+		return err
+	}
+	return os.Chmod(l2TPIPPreUpHookPath, 0755)
+}
+
+func clearL2TPSystemIPPreUpHook() error {
+	raw, err := os.ReadFile(l2TPIPPreUpHookPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(string(raw), l2TPIPPreUpHookMarker) {
+		return fmt.Errorf("refusing to remove unmanaged PPP hook %q", l2TPIPPreUpHookPath)
+	}
+	return os.Remove(l2TPIPPreUpHookPath)
+}
+
 func (s *Server) startL2TPInbound(
 	tag string,
 	ipsecConfig string,
 	ipsecSecrets string,
 	xl2tpConfig string,
 	chapSecrets string,
+	sessionConfig string,
 ) error {
 	tag = strings.TrimSpace(tag)
 	if tag == "" {
@@ -342,12 +404,25 @@ func (s *Server) startL2TPInbound(
 			err,
 		)
 	}
+	helper, err := pppSessionHelperExecutable()
+	if err != nil {
+		return fmt.Errorf("l2tp %q: resolve node executable: %w", tag, err)
+	}
+	helper, err = filepath.Abs(helper)
+	if err != nil {
+		return fmt.Errorf("l2tp %q: resolve absolute node executable: %w", tag, err)
+	}
+	if err := installL2TPSystemIPPreUpHook(helper, sessionConfig); err != nil {
+		return fmt.Errorf("l2tp %q: install system ip-pre-up hook: %w", tag, err)
+	}
 
 	if err := applyL2TPIPSec(s, tag); err != nil {
+		_ = clearL2TPSystemIPPreUpHook()
 		return err
 	}
 
 	if err := startL2TPSystemService(s); err != nil {
+		_ = clearL2TPSystemIPPreUpHook()
 		return fmt.Errorf(
 			"l2tp %q: %w",
 			tag,
@@ -366,6 +441,9 @@ func (s *Server) startL2TPInbound(
 }
 
 func clearL2TPSystemConfig(s *Server) {
+	if err := clearL2TPSystemIPPreUpHook(); err != nil {
+		s.appendLog("clear L2TP system ip-pre-up hook failed: " + err.Error())
+	}
 	if err := updateL2TPManagedBlock(
 		l2TPIPSecConfigPath,
 		l2TPIPSecBlockStart,

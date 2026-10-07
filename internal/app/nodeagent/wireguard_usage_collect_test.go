@@ -12,6 +12,7 @@ import (
 )
 
 func TestWireGuardUsageCollectRetryAckAndCounterReset(t *testing.T) {
+	mockWireGuardGenerationIdentity(t)
 	server := New(Config{DataDir: t.TempDir()})
 	ctx := context.Background()
 
@@ -139,6 +140,7 @@ func TestWireGuardUsageCollectRetryAckAndCounterReset(t *testing.T) {
 }
 
 func TestWireGuardUsageACKPersistsAcrossRestart(t *testing.T) {
+	mockWireGuardGenerationIdentity(t)
 	dataDir := t.TempDir()
 	ctx := context.Background()
 
@@ -186,6 +188,7 @@ func TestWireGuardUsageACKPersistsAcrossRestart(t *testing.T) {
 }
 
 func TestWireGuardUsageResolvesInterfaceByListenPort(t *testing.T) {
+	mockWireGuardGenerationIdentity(t)
 	server := New(Config{DataDir: t.TempDir()})
 	ctx := context.Background()
 
@@ -248,6 +251,7 @@ func TestWireGuardUsageResolvesInterfaceByListenPort(t *testing.T) {
 }
 
 func TestWireGuardUsageCollectionFailurePreservesBaseline(t *testing.T) {
+	mockWireGuardGenerationIdentity(t)
 	server := New(Config{DataDir: t.TempDir()})
 	ctx := context.Background()
 
@@ -328,6 +332,7 @@ func TestWireGuardUsageCollectionFailurePreservesBaseline(t *testing.T) {
 }
 
 func TestWireGuardUsageReportsHandshakeOnlineWithoutTraffic(t *testing.T) {
+	mockWireGuardGenerationIdentity(t)
 	server := New(Config{DataDir: t.TempDir()})
 	ctx := context.Background()
 
@@ -398,6 +403,7 @@ func TestWireGuardUsageReportsHandshakeOnlineWithoutTraffic(t *testing.T) {
 }
 
 func TestWireGuardHandshakeActiveRejectsStaleAndFutureValues(t *testing.T) {
+	mockWireGuardGenerationIdentity(t)
 	now := time.Now().UTC()
 
 	if !wireGuardHandshakeActive(now.Unix(), now) {
@@ -418,6 +424,7 @@ func TestWireGuardHandshakeActiveRejectsStaleAndFutureValues(t *testing.T) {
 }
 
 func TestWireGuardAccountingDisabledStillReportsOnlineWithoutUsage(t *testing.T) {
+	mockWireGuardGenerationIdentity(t)
 	server := New(Config{DataDir: t.TempDir()})
 	ctx := context.Background()
 
@@ -488,6 +495,7 @@ func TestWireGuardAccountingDisabledStillReportsOnlineWithoutUsage(t *testing.T)
 }
 
 func TestWireGuardPendingBatchRefreshesHandshakePresence(t *testing.T) {
+	mockWireGuardGenerationIdentity(t)
 	server := New(Config{DataDir: t.TempDir()})
 	ctx := context.Background()
 
@@ -596,6 +604,7 @@ func TestWireGuardPendingBatchRefreshesHandshakePresence(t *testing.T) {
 	}
 }
 func TestWireGuardUsageCarryWithLivePeerDoesNotDoubleCount(t *testing.T) {
+	mockWireGuardGenerationIdentity(t)
 	server := New(Config{DataDir: t.TempDir()})
 	ctx := context.Background()
 
@@ -676,8 +685,8 @@ func TestWireGuardUsageCarryWithLivePeerDoesNotDoubleCount(t *testing.T) {
 	if server.wireGuardUsagePending == nil {
 		t.Fatal("pending batch missing")
 	}
-	if got := server.wireGuardUsagePending.CarryValues[key]; got != 20 {
-		t.Fatalf("pending carry = %d, want 20", got)
+	if got := server.wireGuardUsagePending.CarryValues[key]; got != 50 {
+		t.Fatalf("pending durable checkpoint = %d, want 50", got)
 	}
 	if got := server.wireGuardUsagePending.NextBaseline[key]; got != 150 {
 		t.Fatalf(
@@ -685,10 +694,27 @@ func TestWireGuardUsageCarryWithLivePeerDoesNotDoubleCount(t *testing.T) {
 			got,
 		)
 	}
-	if got := server.wireGuardUsageCarry[key].Value; got != 20 {
+	if got := server.wireGuardUsageCarry[key].Value; got != 50 {
 		t.Fatalf(
-			"carry mutated before ACK = %d, want 20",
+			"carry must retain all checkpointed bytes before ACK = %d, want 50",
 			got,
 		)
+	}
+	restarted := New(Config{DataDir: server.cfg.DataDir})
+	retry, err := restarted.collectWireGuardUserUsage(ctx, &nodev1.CollectUsageRequest{})
+	if err != nil || retry.GetBatchId() != batch.GetBatchId() || retry.GetStats()[0].GetValue() != 50 {
+		t.Fatalf("checkpoint retry: %v %v", retry, err)
+	}
+	if _, err := restarted.ackWireGuardUserUsage(ctx, &nodev1.AckUsageRequest{BatchId: retry.GetBatchId()}); err != nil {
+		t.Fatal(err)
+	}
+	remaining, err := restarted.collectWireGuardUserUsage(ctx, &nodev1.CollectUsageRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sample := range remaining.GetStats() {
+		if sample.GetValue() != 0 {
+			t.Fatalf("checkpoint double counted after ACK: %v", remaining)
+		}
 	}
 }

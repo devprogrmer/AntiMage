@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/netip"
 	"os"
@@ -80,6 +81,15 @@ func TestPreparePPTPInboundRendersDaemonConfigs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, script := range []struct{ path, event string }{{filepath.Join(root, "ip-up.sh"), "start"}, {filepath.Join(root, "ip-down.sh"), "stop"}} {
+		raw, err := os.ReadFile(script.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), script.event+" \"${6:-}\"") {
+			t.Fatalf("PPTP %s hook does not forward pppd's transport peer argument:\n%s", script.event, raw)
+		}
+	}
 	for _, expected := range []string{
 		"option " + filepath.ToSlash(filepath.Join(root, "ppp-options")),
 		"localip 10.68.0.1",
@@ -99,8 +109,72 @@ func TestPreparePPTPInboundRendersDaemonConfigs(t *testing.T) {
 			t.Fatalf("ppp options missing %q:\n%s", expected, rawPPP)
 		}
 	}
+	if strings.Contains(string(rawPPP), "ip-pre-up-script") {
+		t.Fatalf("pppd 2.4.9 does not support custom ip-pre-up-script options:\n%s", rawPPP)
+	}
 	if strings.Contains(string(rawPPP), "chap-secrets") {
 		t.Fatalf("ppp options must not render unsupported chap-secrets option:\n%s", rawPPP)
+	}
+}
+
+func TestPPTPSystemIPPreUpHookIsManagedAndFiltersOtherPPPLinks(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ip-pre-up.d", "90-antimage-pptp")
+	oldPath := pptpIPPreUpHookPath
+	pptpIPPreUpHookPath = path
+	t.Cleanup(func() { pptpIPPreUpHookPath = oldPath })
+
+	if err := installPPTPSystemIPPreUpHook("/usr/bin/antimage-node", "/var/lib/antimage/pptp/session-helper.json"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{pptpIPPreUpHookMarker, "session-event", "pre-up", "${6:-}"} {
+		if !strings.Contains(string(raw), expected) {
+			t.Fatalf("system PPP pre-up hook missing %q:\n%s", expected, raw)
+		}
+	}
+	if err := installPPTPSystemIPPreUpHook("/usr/bin/antimage-node", "/var/lib/antimage/pptp/session-helper.json"); err != nil {
+		t.Fatalf("updating managed hook: %v", err)
+	}
+	if err := clearPPTPSystemIPPreUpHook(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("managed hook still exists after clear: %v", err)
+	}
+}
+
+func TestPreparePPTPInboundPersistsAllSessionEnforcementFields(t *testing.T) {
+	server := New(Config{DataDir: t.TempDir()})
+	limit := int64(50 * 1024 * 1024)
+	expire := int64(2_000_000_000)
+	configPath, err := server.preparePPTPInbound(pptpRuntimeInbound{
+		Tag: "pptp-policy", Port: 1723,
+		Settings: map[string]any{"ipv4_pool_cidr": "10.68.0.0/24"},
+		Users: []pptpRuntimeUser{{
+			UserID: 42, Username: "alice", VPNUsername: "alice-vpn", Password: "secret", IPv4Address: "10.68.0.42", Status: "active",
+			DataLimit: &limit, Expire: &expire, DeviceLimit: 3, IPLimit: 2,
+			UploadSpeedLimit: 1234, DownloadSpeedLimit: 5678, UsageCoefficient: 1.5, InboundCoefficient: 2,
+		}},
+	}, nativeRuntimeSessionCallback{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(configPath), "session-helper.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg nativeSessionHelperConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	policy := cfg.Policies["alice-vpn"]
+	if policy.DataLimit != limit || policy.Expire != expire || policy.DeviceLimit != 3 || policy.IPLimit != 2 ||
+		policy.UploadSpeedLimit != 1234 || policy.DownloadSpeedLimit != 5678 ||
+		policy.UsageCoefficient != 1.5 || policy.InboundCoefficient != 2 {
+		t.Fatalf("PPTP enforcement fields were not persisted: %+v", policy)
 	}
 }
 
@@ -240,21 +314,28 @@ func TestInstallPPTPSystemCHAPSecretsMergesMultipleInboundUsers(t *testing.T) {
 
 func TestApplyNativeRuntimePPTPInstallsSystemCHAPSecrets(t *testing.T) {
 	oldCHAPPath := pptpCHAPSecretsPath
+	oldHookPath := pptpIPPreUpHookPath
 	oldPPTPLookPath := pptpLookPath
 	oldPPTPCommand := pptpCommandContext
 	oldPPTPGrace := pptpStartupGrace
 	oldNetworkRun := openVPNNetworkRun
 	oldNetworkLookPath := openVPNNetworkLookPath
-	defer func() {
+	var server *Server
+	t.Cleanup(func() {
+		if server != nil {
+			server.stopAllPPTPRuntimes()
+		}
 		pptpCHAPSecretsPath = oldCHAPPath
+		pptpIPPreUpHookPath = oldHookPath
 		pptpLookPath = oldPPTPLookPath
 		pptpCommandContext = oldPPTPCommand
 		pptpStartupGrace = oldPPTPGrace
 		openVPNNetworkRun = oldNetworkRun
 		openVPNNetworkLookPath = oldNetworkLookPath
-	}()
+	})
 
 	pptpCHAPSecretsPath = filepath.Join(t.TempDir(), "chap-secrets")
+	pptpIPPreUpHookPath = filepath.Join(t.TempDir(), "ip-pre-up.d", "90-antimage-pptp")
 	if err := os.WriteFile(pptpCHAPSecretsPath, []byte(`"foreign"	*	"keep"	*
 `), 0600); err != nil {
 		t.Fatal(err)
@@ -271,7 +352,7 @@ func TestApplyNativeRuntimePPTPInstallsSystemCHAPSecrets(t *testing.T) {
 		return nil, nil
 	}
 
-	server := New(Config{DataDir: t.TempDir()})
+	server = New(Config{DataDir: t.TempDir()})
 	if err := server.applyNativeRuntime(`{
 		"pptp_inbounds": [{
 			"tag": "pptp-main",
@@ -292,8 +373,6 @@ func TestApplyNativeRuntimePPTPInstallsSystemCHAPSecrets(t *testing.T) {
 	}`); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(server.stopAllPPTPRuntimes)
-
 	raw, err := os.ReadFile(pptpCHAPSecretsPath)
 	if err != nil {
 		t.Fatal(err)
@@ -302,9 +381,19 @@ func TestApplyNativeRuntimePPTPInstallsSystemCHAPSecrets(t *testing.T) {
 	if !strings.Contains(text, `"alice"`) || !strings.Contains(text, `"foreign"`) {
 		t.Fatalf("runtime apply did not install PPTP chap secrets while preserving foreign entries:\n%s", text)
 	}
+	hook, err := os.ReadFile(pptpIPPreUpHookPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(hook), pptpIPPreUpHookMarker) || !strings.Contains(string(hook), "session-event") {
+		t.Fatalf("runtime apply did not install durable PPTP pre-up hook:\n%s", hook)
+	}
 
 	if err := server.applyNativeRuntime(`{}`); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(pptpIPPreUpHookPath); !os.IsNotExist(err) {
+		t.Fatalf("runtime removal left managed PPTP pre-up hook: %v", err)
 	}
 	raw, err = os.ReadFile(pptpCHAPSecretsPath)
 	if err != nil {

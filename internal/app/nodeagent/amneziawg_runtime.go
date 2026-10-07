@@ -1,6 +1,8 @@
 package nodeagent
 
 import (
+	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -25,21 +27,23 @@ type amneziaWGRuntimeInbound struct {
 }
 
 type amneziaWGRuntimePeer struct {
-	UserID             int64   `json:"user_id"`
-	Username           string  `json:"username"`
-	DeviceIndex        int     `json:"device_index"`
-	PublicKey          string  `json:"public_key"`
-	PresharedKey       string  `json:"preshared_key,omitempty"`
-	Address            string  `json:"address"`
-	Status             string  `json:"status"`
-	UsedTraffic        int64   `json:"used_traffic"`
-	DataLimit          *int64  `json:"data_limit,omitempty"`
-	Expire             *int64  `json:"expire,omitempty"`
-	DeviceLimit        int64   `json:"device_limit,omitempty"`
-	UploadSpeedLimit   int64   `json:"upload_speed_limit"`
-	DownloadSpeedLimit int64   `json:"download_speed_limit"`
-	UsageCoefficient   float64 `json:"usage_coefficient,omitempty"`
-	InboundCoefficient float64 `json:"inbound_coefficient,omitempty"`
+	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	UserID                int64   `json:"user_id"`
+	Username              string  `json:"username"`
+	DeviceIndex           int     `json:"device_index"`
+	PublicKey             string  `json:"public_key"`
+	PresharedKey          string  `json:"preshared_key,omitempty"`
+	Address               string  `json:"address"`
+	Status                string  `json:"status"`
+	UsedTraffic           int64   `json:"used_traffic"`
+	DataLimit             *int64  `json:"data_limit,omitempty"`
+	Expire                *int64  `json:"expire,omitempty"`
+	DeviceLimit           int64   `json:"device_limit,omitempty"`
+	IPLimit               int64   `json:"ip_limit,omitempty"`
+	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
+	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
+	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
+	InboundCoefficient    float64 `json:"inbound_coefficient,omitempty"`
 }
 
 type amneziaWGObfuscation struct {
@@ -48,6 +52,7 @@ type amneziaWGObfuscation struct {
 }
 
 type preparedAmneziaWGRuntime struct {
+	UsageConfig   amneziaWGUsageRuntimeConfig
 	Tag           string
 	InterfaceName string
 	ConfigPath    string
@@ -159,21 +164,25 @@ func (s *Server) prepareAmneziaWGInbound(inbound amneziaWGRuntimeInbound, callba
 	if len(callbacks) > 0 {
 		callback = callbacks[0]
 	}
-	usageRaw, err := json.Marshal(amneziaWGUsageRuntimeConfig{InboundTag: tag, InterfaceName: interfaceName, Peers: amneziaWGPeerUserMap(inbound.Peers), PeerAddresses: amneziaWGPeerAddressMap(inbound.Peers), Policies: amneziaWGPeerPolicies(inbound.Peers), AccountingEnabled: wireGuardBoolSetting(inbound.Settings, "accounting_enabled", true), Callback: callback})
-	if err != nil {
+	var token [16]byte
+	if _, err := rand.Read(token[:]); err != nil {
 		return preparedAmneziaWGRuntime{}, err
 	}
-	if err := atomicWriteFile(filepath.Join(dir, "usage-helper.json"), usageRaw, 0600); err != nil {
-		return preparedAmneziaWGRuntime{}, err
+	generation := fmt.Sprintf("%x", token)
+	peerGenerations := map[string]string{}
+	for _, peer := range inbound.Peers {
+		peerGenerations[peer.PublicKey] = generation
 	}
-	return preparedAmneziaWGRuntime{Tag: tag, InterfaceName: interfaceName, ConfigPath: path, ConfigText: configText, ServerCIDR: serverCIDR, SourceCIDR: pool.String(), MTU: mtu, Obfuscation: obfs, Routing: routing, Inbound: inbound}, nil
+	usage := amneziaWGUsageRuntimeConfig{Generation: generation, PeerGenerations: peerGenerations, InboundTag: tag, InterfaceName: interfaceName, Peers: amneziaWGPeerUserMap(inbound.Peers), PeerAddresses: amneziaWGPeerAddressMap(inbound.Peers), Policies: amneziaWGPeerPolicies(inbound.Peers), AccountingEnabled: wireGuardBoolSetting(inbound.Settings, "accounting_enabled", true), Callback: callback}
+	// Keep the active helper until apply checkpoints its old peer ownership.
+	return preparedAmneziaWGRuntime{UsageConfig: usage, Tag: tag, InterfaceName: interfaceName, ConfigPath: path, ConfigText: configText, ServerCIDR: serverCIDR, SourceCIDR: pool.String(), MTU: mtu, Obfuscation: obfs, Routing: routing, Inbound: inbound}, nil
 }
 
 func filterAmneziaWGRuntimeInboundByPolicy(inbound amneziaWGRuntimeInbound, now time.Time) amneziaWGRuntimeInbound {
 	filtered := inbound
 	filtered.Peers = make([]amneziaWGRuntimePeer, 0, len(inbound.Peers))
 	for _, peer := range inbound.Peers {
-		policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic}
+		policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic, ReflectedUsageBatchID: peer.ReflectedUsageBatchID}
 		if peer.DataLimit != nil {
 			policy.DataLimit = *peer.DataLimit
 		}
@@ -206,7 +215,7 @@ func amneziaWGPeerAddressMap(peers []amneziaWGRuntimePeer) map[string]string {
 func amneziaWGPeerPolicies(peers []amneziaWGRuntimePeer) map[string]nativeSessionUserPolicy {
 	out := map[string]nativeSessionUserPolicy{}
 	for _, peer := range peers {
-		policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic}
+		policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic, ReflectedUsageBatchID: peer.ReflectedUsageBatchID}
 		if peer.DataLimit != nil {
 			policy.DataLimit = *peer.DataLimit
 		}
@@ -215,6 +224,8 @@ func amneziaWGPeerPolicies(peers []amneziaWGRuntimePeer) map[string]nativeSessio
 		}
 		policy.UsageCoefficient = peer.UsageCoefficient
 		policy.InboundCoefficient = peer.InboundCoefficient
+		policy.DeviceLimit, policy.IPLimit = peer.DeviceLimit, peer.IPLimit
+		policy.UploadSpeedLimit, policy.DownloadSpeedLimit = peer.UploadSpeedLimit, peer.DownloadSpeedLimit
 		out[peer.PublicKey] = policy
 	}
 	return out
@@ -349,8 +360,46 @@ func (s *Server) preflightAmneziaWGRuntimes(prepared []preparedAmneziaWGRuntime)
 }
 
 func (s *Server) applyAmneziaWGRuntime(prepared preparedAmneziaWGRuntime) error {
+	s.amneziaWGUsageMu.Lock()
+	defer s.amneziaWGUsageMu.Unlock()
+	if _, err := s.amneziaWGOfflineLocked(context.Background(), false, true); err != nil {
+		return err
+	}
+	helperPath := filepath.Join(filepath.Dir(prepared.ConfigPath), "usage-helper.json")
+	// Keep the transition snapshot independent from the prepared config. JSON
+	// unmarshalling into a shallow copy would reuse these maps and let the old
+	// helper overwrite the newly prepared peer policies before the final write.
+	transition := prepared.UsageConfig
+	transition.PeerGenerations = cloneAmneziaWGMap(prepared.UsageConfig.PeerGenerations)
+	transition.Peers = cloneAmneziaWGMap(prepared.UsageConfig.Peers)
+	transition.PeerAddresses = cloneAmneziaWGMap(prepared.UsageConfig.PeerAddresses)
+	transition.Policies = cloneAmneziaWGMap(prepared.UsageConfig.Policies)
+	if raw, err := os.ReadFile(helperPath); err == nil {
+		if err := json.Unmarshal(raw, &transition); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	transition.Transitioning = true
+	raw, err := json.Marshal(transition)
+	if err != nil {
+		return err
+	}
+	// Filesystem and kernel mutation cannot commit atomically. A durable fence
+	// makes an interrupted reset explicit instead of guessing its generation.
+	if err := amneziaWGDurableWrite(helperPath, raw); err != nil {
+		return err
+	}
 	if err := amneziaWGApplyRuntime(prepared); err != nil {
 		return fmt.Errorf("amneziawg %q: %w", prepared.Tag, err)
+	}
+	raw, err = json.Marshal(prepared.UsageConfig)
+	if err != nil {
+		return err
+	}
+	if err := amneziaWGDurableWrite(helperPath, raw); err != nil {
+		return err
 	}
 	s.mu.Lock()
 	s.amneziaWGRuntimes[prepared.Tag] = amneziaWGRuntimeState{
@@ -363,6 +412,17 @@ func (s *Server) applyAmneziaWGRuntime(prepared preparedAmneziaWGRuntime) error 
 	}
 	s.appendLog(fmt.Sprintf("amneziawg runtime applied: tag=%s interface=%s listen=%d peers=%d", prepared.Tag, prepared.InterfaceName, prepared.Inbound.ListenPort, len(prepared.Inbound.Peers)))
 	return nil
+}
+
+func cloneAmneziaWGMap[K comparable, V any](source map[K]V) map[K]V {
+	if source == nil {
+		return nil
+	}
+	cloned := make(map[K]V, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func (s *Server) stopRemovedAmneziaWGRuntimes(desired map[string]preparedAmneziaWGRuntime) {
@@ -390,7 +450,7 @@ func (s *Server) stopRemovedAmneziaWGRuntimes(desired map[string]preparedAmnezia
 		if _, keep := desired[tag]; keep {
 			continue
 		}
-		if err := amneziaWGRemoveRuntime(state.InterfaceName); err != nil {
+		if err := s.stopAmneziaWGAccountingRuntime(state); err != nil {
 			s.appendLog("remove amneziawg interface failed: " + err.Error())
 			continue
 		}
@@ -405,6 +465,43 @@ func (s *Server) stopRemovedAmneziaWGRuntimes(desired map[string]preparedAmnezia
 
 func (s *Server) stopAllAmneziaWGRuntimes() {
 	s.stopRemovedAmneziaWGRuntimes(map[string]preparedAmneziaWGRuntime{})
+}
+
+func (s *Server) stopAmneziaWGAccountingRuntime(state amneziaWGRuntimeState) error {
+	s.amneziaWGUsageMu.Lock()
+	defer s.amneziaWGUsageMu.Unlock()
+	if _, err := s.amneziaWGOfflineLocked(context.Background(), false, true); err != nil {
+		return err
+	}
+	path := filepath.Join(s.cfg.DataDir, "amneziawg", "runtime", amneziaWGRuntimeDirName(state.Tag), "usage-helper.json")
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return amneziaWGRemoveRuntime(state.InterfaceName)
+	}
+	if err != nil {
+		return err
+	}
+	var cfg amneziaWGUsageRuntimeConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return err
+	}
+	cfg.Transitioning = true
+	raw, err = json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	if err := amneziaWGDurableWrite(path, raw); err != nil {
+		return err
+	}
+	if err := amneziaWGRemoveRuntime(state.InterfaceName); err != nil {
+		return err
+	}
+	cfg.Transitioning, cfg.Stopped = false, true
+	raw, err = json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return amneziaWGDurableWrite(path, raw)
 }
 
 func (s *Server) amneziaWGRuntimeStatePath() string {

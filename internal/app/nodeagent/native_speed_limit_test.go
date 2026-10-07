@@ -2,9 +2,41 @@ package nodeagent
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 )
+
+// TestNativeSpeedLimitNativeStage installs the production tc policy on an
+// isolated live tunnel. The CI driver then measures packets in both directions.
+func TestNativeSpeedLimitNativeStage(t *testing.T) {
+	interfaceName := strings.TrimSpace(os.Getenv("ANTIMAGE_NATIVE_SPEED_INTERFACE"))
+	address := strings.TrimSpace(os.Getenv("ANTIMAGE_NATIVE_SPEED_ADDRESS"))
+	if interfaceName == "" || address == "" {
+		t.Skip("requires isolated native tunnel speed harness")
+	}
+	const userID int64 = 17
+	const uploadRate int64 = 4_000_000
+	const downloadRate int64 = 6_000_000
+	if err := nativeSpeedAttachIPv4(interfaceName, address, userID, uploadRate, downloadRate); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("production tc policy applied to %s user=%d upload=4 Mbps download=6 Mbps", interfaceName, userID)
+}
+
+// TestNativeSpeedLimitNativeCleanupStage removes the policy after the native
+// driver has measured both directions. Keeping cleanup separate ensures the
+// tc policy remains active after the installer test process exits.
+func TestNativeSpeedLimitNativeCleanupStage(t *testing.T) {
+	interfaceName := strings.TrimSpace(os.Getenv("ANTIMAGE_NATIVE_SPEED_INTERFACE"))
+	if interfaceName == "" {
+		t.Skip("requires isolated native tunnel speed harness")
+	}
+	const userID int64 = 17
+	nativeSpeedClearInterface(interfaceName)
+	nativeSpeedDeleteAction(userID, nativeSpeedUpload)
+	nativeSpeedDeleteAction(userID, nativeSpeedDownload)
+}
 
 func TestNativeSpeedActionIndexSharedPerUser(t *testing.T) {
 	uploadA, err := nativeSpeedActionIndex(271, nativeSpeedUpload)
@@ -41,6 +73,15 @@ func TestNativeSpeedActionIndexSharedPerUser(t *testing.T) {
 
 	if uploadA == otherUser {
 		t.Fatal("different users must not share action index")
+	}
+}
+
+func TestNativeSpeedBurstAllowsAggregatedTunnelPackets(t *testing.T) {
+	if got := nativeSpeedBurstBytes(4_000_000); got < 256*1024 {
+		t.Fatalf("4 Mbps policer burst = %d bytes, want at least %d", got, 256*1024)
+	}
+	if got := nativeSpeedBurstBytes(1_000_000_000); got > 4*1024*1024 {
+		t.Fatalf("policer burst = %d bytes, exceeds the 4 MiB cap", got)
 	}
 }
 

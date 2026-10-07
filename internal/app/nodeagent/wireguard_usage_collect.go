@@ -65,35 +65,7 @@ func (s *Server) collectWireGuardUserUsage(
 	onlineUsers := make(map[int64]struct{})
 	configuredKeys := make(map[string]struct{})
 	carryValues := make(map[string]uint64)
-	if pendingAccounting == nil {
-		for baselineKey, carry := range s.wireGuardUsageCarry {
-			if carry.UserID <= 0 ||
-				strings.TrimSpace(carry.InboundTag) == "" ||
-				carry.Value == 0 {
-				continue
-			}
-
-			key := aggregateKey{
-				UserID:     carry.UserID,
-				InboundTag: strings.TrimSpace(carry.InboundTag),
-			}
-			sample := aggregated[key]
-			sample.UserID = carry.UserID
-			sample.InboundTag = key.InboundTag
-			if ^uint64(0)-sample.Value < carry.Value {
-				return nil, fmt.Errorf(
-					"wireguard carry aggregate overflow for user %d",
-					carry.UserID,
-				)
-			}
-			sample.Value += carry.Value
-			aggregated[key] = sample
-
-			nextBaseline[baselineKey] = carry.NextBaseline
-			configuredKeys[baselineKey] = struct{}{}
-			carryValues[baselineKey] = carry.Value
-		}
-	}
+	observedKeys := make(map[string]bool)
 	baselinePruningSafe := true
 	observedAt := time.Now().UTC()
 
@@ -233,6 +205,9 @@ func (s *Server) collectWireGuardUserUsage(
 			peers = matches[0].Peers
 		}
 
+		if err := s.checkpointWireGuardGenerationLocked(cfg, interfaceName, peers, true); err != nil {
+			return nil, err
+		}
 		if err := s.reconcileWireGuardSessions(
 			ctx,
 			cfg,
@@ -300,6 +275,7 @@ func (s *Server) collectWireGuardUserUsage(
 			}
 
 			nextBaseline[baselineKey] = total
+			observedKeys[baselineKey] = true
 			if delta == 0 {
 				continue
 			}
@@ -318,6 +294,37 @@ func (s *Server) collectWireGuardUserUsage(
 		}
 	}
 
+	if pendingAccounting == nil {
+		for baselineKey, carry := range s.wireGuardUsageCarry {
+			if carry.UserID <= 0 ||
+				strings.TrimSpace(carry.InboundTag) == "" ||
+				carry.Value == 0 {
+				continue
+			}
+
+			key := aggregateKey{
+				UserID:     carry.UserID,
+				InboundTag: strings.TrimSpace(carry.InboundTag),
+			}
+			sample := aggregated[key]
+			sample.UserID = carry.UserID
+			sample.InboundTag = key.InboundTag
+			if ^uint64(0)-sample.Value < carry.Value {
+				return nil, fmt.Errorf(
+					"wireguard carry aggregate overflow for user %d",
+					carry.UserID,
+				)
+			}
+			sample.Value += carry.Value
+			aggregated[key] = sample
+
+			if !observedKeys[baselineKey] {
+				nextBaseline[baselineKey] = carry.NextBaseline
+			}
+			configuredKeys[baselineKey] = struct{}{}
+			carryValues[baselineKey] = carry.Value
+		}
+	}
 	if pendingAccounting != nil {
 		return wireGuardUsageBatchProto(
 			pendingAccounting,

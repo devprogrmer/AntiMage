@@ -30,6 +30,7 @@ func TestRenderAnyConnectConfig(t *testing.T) {
 		ServerKey:     "/run/antimage/server.key",
 		UserConfigDir: "/run/antimage/users",
 		ControlSocket: "/run/antimage/ocserv.sock",
+		WorkerSocket:  "/run/antimage/ocserv-worker.sock",
 		PIDFile:       "/run/antimage/ocserv.pid",
 	}
 
@@ -46,7 +47,9 @@ func TestRenderAnyConnectConfig(t *testing.T) {
 		"dns = 1.1.1.1",
 		"dns = 8.8.8.8",
 		"config-per-user = /run/antimage/users",
-		"socket-file = /run/antimage/ocserv.sock",
+		"socket-file = /run/antimage/ocserv-worker.sock",
+		"occtl-socket-file = /run/antimage/ocserv.sock",
+		"use-occtl = true",
 		"pid-file = /run/antimage/ocserv.pid",
 	} {
 		if !strings.Contains(config, expected) {
@@ -73,5 +76,18 @@ func TestRenderAnyConnectConfigRejectsInvalidPool(t *testing.T) {
 	}, anyConnectRuntimeFiles{})
 	if err == nil {
 		t.Fatal("expected invalid pool error")
+	}
+}
+
+func TestRenderAnyConnectUserConfigConvertsBitsAndDirections(t *testing.T) {
+	config := renderAnyConnectUserConfig(anyConnectRuntimeUser{
+		UploadSpeedLimit:   3_000_000,
+		DownloadSpeedLimit: 10_000_000,
+	}, nil)
+	if !strings.Contains(config, "rx-data-per-sec = 375000") {
+		t.Fatalf("upload limit was not mapped to ocserv RX bytes/sec: %s", config)
+	}
+	if !strings.Contains(config, "tx-data-per-sec = 1250000") {
+		t.Fatalf("download limit was not mapped to ocserv TX bytes/sec: %s", config)
 	}
 }

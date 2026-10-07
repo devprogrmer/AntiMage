@@ -43,7 +43,8 @@ func (s *Server) prepareAnyConnectInbound(inbound anyConnectRuntimeInbound, call
 		ConfigPath: filepath.Join(root, "ocserv.conf"), PasswordFile: filepath.Join(root, "ocpasswd"),
 		ServerCert: filepath.Join(root, "server.crt"), ServerKey: filepath.Join(root, "server.key"),
 		CACert: filepath.Join(root, "ca.crt"), UserConfigDir: usersDir,
-		ControlSocket: filepath.Join(root, "ocserv.sock"), PIDFile: filepath.Join(root, "ocserv.pid"),
+		ControlSocket: filepath.Join(root, "ocserv.sock"), WorkerSocket: filepath.Join(root, "ocserv-worker.sock"),
+		PIDFile:     filepath.Join(root, "ocserv.pid"),
 		UsageConfig: filepath.Join(root, "usage-helper.json"),
 	}
 	if err := writeAtomicMode(files.ServerCert, []byte(cert+"\n"), 0644); err != nil {
@@ -156,7 +157,7 @@ func anyConnectSessionPolicy(user anyConnectRuntimeUser) nativeSessionUserPolicy
 	if user.Expire != nil {
 		expire = *user.Expire
 	}
-	return nativeSessionUserPolicy{Status: user.Status, UsedTraffic: user.UsedTraffic, DataLimit: limit, Expire: expire, UploadSpeedLimit: user.UploadSpeedLimit, DownloadSpeedLimit: user.DownloadSpeedLimit, UsageCoefficient: user.UsageCoefficient, InboundCoefficient: user.InboundCoefficient}
+	return nativeSessionUserPolicy{Status: user.Status, UsedTraffic: user.UsedTraffic, DataLimit: limit, Expire: expire, DeviceLimit: user.DeviceLimit, IPLimit: user.IPLimit, UploadSpeedLimit: user.UploadSpeedLimit, DownloadSpeedLimit: user.DownloadSpeedLimit, UsageCoefficient: user.UsageCoefficient, InboundCoefficient: user.InboundCoefficient}
 }
 
 func writeAtomicMode(path string, data []byte, mode os.FileMode) error {

@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -82,10 +83,20 @@ func TestPrepareL2TPInboundRendersDaemonConfigs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, script := range []struct{ path, event string }{{files.IPUpScript, "start"}, {files.IPDownScript, "stop"}} {
+		raw, err := os.ReadFile(script.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), script.event+" \"${6:-}\"") {
+			t.Fatalf("L2TP %s hook does not forward pppd's transport peer argument:\n%s", script.event, raw)
+		}
+	}
 	for _, expected := range []string{
 		"ip range = 10.67.0.2-10.67.255.254",
 		"local ip = 10.67.0.1",
 		"pppoptfile = " + filepath.ToSlash(files.PPPOptions),
+		"pass peer = yes",
 	} {
 		if !strings.Contains(string(rawXL2TP), expected) {
 			t.Fatalf("xl2tp config missing %q:\n%s", expected, rawXL2TP)
@@ -108,6 +119,126 @@ func TestPrepareL2TPInboundRendersDaemonConfigs(t *testing.T) {
 	if !strings.Contains(string(rawSecrets), `"alice-vpn"`) ||
 		!strings.Contains(string(rawSecrets), "10.67.0.42") {
 		t.Fatalf("chap secrets missing user binding:\n%s", rawSecrets)
+	}
+}
+
+func TestL2TPSystemIPPreUpHookIsManagedAndFiltersOtherPPPLinks(t *testing.T) {
+	oldPath := l2TPIPPreUpHookPath
+	l2TPIPPreUpHookPath = filepath.Join(t.TempDir(), "ip-pre-up.d", "91-antimage-l2tp")
+	t.Cleanup(func() { l2TPIPPreUpHookPath = oldPath })
+
+	if err := installL2TPSystemIPPreUpHook("/usr/bin/antimage-node", "/var/lib/antimage/l2tp/session-helper.json"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(l2TPIPPreUpHookPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{l2TPIPPreUpHookMarker, "session-event", "pre-up", "${6:-}"} {
+		if !strings.Contains(string(raw), expected) {
+			t.Fatalf("system PPP pre-up hook missing %q:\n%s", expected, raw)
+		}
+	}
+	if err := clearL2TPSystemIPPreUpHook(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(l2TPIPPreUpHookPath); !os.IsNotExist(err) {
+		t.Fatalf("managed L2TP hook remains after cleanup: %v", err)
+	}
+}
+
+func TestStartAndStopL2TPInboundManageSystemPreUpHook(t *testing.T) {
+	root := t.TempDir()
+	paths := []*string{
+		&l2TPIPSecConfigPath, &l2TPIPSecSecretsPath,
+		&l2TPXL2TPConfigPath, &l2TPCHAPSecretsPath, &l2TPIPPreUpHookPath,
+	}
+	oldPaths := make([]string, len(paths))
+	for i, path := range paths {
+		oldPaths[i] = *path
+	}
+	t.Cleanup(func() {
+		for i, path := range paths {
+			*path = oldPaths[i]
+		}
+	})
+	l2TPIPSecConfigPath = filepath.Join(root, "etc", "ipsec.conf")
+	l2TPIPSecSecretsPath = filepath.Join(root, "etc", "ipsec.secrets")
+	l2TPXL2TPConfigPath = filepath.Join(root, "etc", "xl2tpd", "xl2tpd.conf")
+	l2TPCHAPSecretsPath = filepath.Join(root, "etc", "ppp", "chap-secrets")
+	l2TPIPPreUpHookPath = filepath.Join(root, "etc", "ppp", "ip-pre-up.d", "91-antimage-l2tp")
+
+	oldLookPath, oldCommand, oldExecutable := l2TPLookPath, l2TPCommandContext, pppSessionHelperExecutable
+	l2TPLookPath = func(name string) (string, error) { return "/bin/true", nil }
+	l2TPCommandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "/bin/true")
+	}
+	pppSessionHelperExecutable = func() (string, error) { return "/bin/true", nil }
+	t.Cleanup(func() {
+		l2TPLookPath, l2TPCommandContext, pppSessionHelperExecutable = oldLookPath, oldCommand, oldExecutable
+	})
+
+	config := []struct{ path, body string }{
+		{l2TPIPSecConfigPath, "config setup\n"},
+		{l2TPIPSecSecretsPath, ""},
+		{l2TPXL2TPConfigPath, "[global]\n"},
+		{l2TPCHAPSecretsPath, ""},
+	}
+	sources := make([]string, len(config))
+	for i, item := range config {
+		sources[i] = filepath.Join(root, "source", filepath.Base(item.path))
+		if err := os.MkdirAll(filepath.Dir(sources[i]), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(sources[i], []byte(item.body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(l2TPIPSecConfigPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{DataDir: filepath.Join(root, "state")})
+	if err := server.startL2TPInbound("test", sources[0], sources[1], sources[2], sources[3], filepath.Join(root, "session.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(l2TPIPPreUpHookPath); err != nil {
+		t.Fatalf("L2TP startup did not install system pre-up hook: %v", err)
+	}
+	server.stopAllL2TPRuntimes()
+	if _, err := os.Stat(l2TPIPPreUpHookPath); !os.IsNotExist(err) {
+		t.Fatalf("L2TP shutdown did not remove managed pre-up hook: %v", err)
+	}
+}
+
+func TestPrepareL2TPInboundPersistsAllSessionEnforcementFields(t *testing.T) {
+	server := New(Config{DataDir: t.TempDir()})
+	limit := int64(50 * 1024 * 1024)
+	expire := int64(2_000_000_000)
+	files, err := server.prepareL2TPInbound(l2TPRuntimeInbound{
+		Tag: "l2tp-policy", Port: 1701,
+		Settings: map[string]any{"ipsec_psk": "shared secret", "ipv4_pool_cidr": "10.67.0.0/24"},
+		Users: []l2TPRuntimeUser{{
+			UserID: 42, Username: "alice", VPNUsername: "alice-vpn", Password: "secret", IPv4Address: "10.67.0.42", Status: "active",
+			DataLimit: &limit, Expire: &expire, DeviceLimit: 3, IPLimit: 2,
+			UploadSpeedLimit: 1234, DownloadSpeedLimit: 5678, UsageCoefficient: 1.5, InboundCoefficient: 2,
+		}},
+	}, nativeRuntimeSessionCallback{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(files.SessionConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg nativeSessionHelperConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	policy := cfg.Policies["alice-vpn"]
+	if policy.DataLimit != limit || policy.Expire != expire || policy.DeviceLimit != 3 || policy.IPLimit != 2 ||
+		policy.UploadSpeedLimit != 1234 || policy.DownloadSpeedLimit != 5678 ||
+		policy.UsageCoefficient != 1.5 || policy.InboundCoefficient != 2 {
+		t.Fatalf("L2TP enforcement fields were not persisted: %+v", policy)
 	}
 }
 

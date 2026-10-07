@@ -135,15 +135,16 @@ func (s *Server) dispatchNativeSessionEvents(
 	}
 	events = append([]nativeSessionEvent(nil), events...)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), nativeSessionHTTPClient.Timeout)
-		defer cancel()
 		for _, event := range events {
-			err := s.sendNativeSessionEvent(ctx, callback, event)
+			timeout := nativeSessionHTTPClient.Timeout
+			if timeout <= 0 {
+				timeout = 5 * time.Second
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			err := s.sendNativeSessionEventOfflineSafe(ctx, callback, event)
+			cancel()
 			if onResult != nil {
 				onResult(event, err)
-			}
-			if ctx.Err() != nil {
-				return
 			}
 		}
 	}()

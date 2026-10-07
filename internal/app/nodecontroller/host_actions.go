@@ -182,7 +182,7 @@ func (c Controller) updateServiceNow(ctx context.Context, req Request) (RuntimeR
 	}
 	res, err := client.Runtime().UpdateService(ctx, &nodev1.ServiceUpdateRequest{
 		OperationId: req.OperationID,
-		Channel:     strings.TrimSpace(req.Channel),
+		Channel:     normalizeNodeUpdateChannel(req.Channel),
 		Version:     strings.TrimSpace(req.Version),
 	})
 	if err != nil {
@@ -193,6 +193,17 @@ func (c Controller) updateServiceNow(ctx context.Context, req Request) (RuntimeR
 		return RuntimeResult{}, err
 	}
 	return runtimeResult(node, res.GetRuntime(), nil), nil
+}
+
+func normalizeNodeUpdateChannel(channel string) string {
+	switch strings.ToLower(strings.TrimSpace(channel)) {
+	case "latest", "release", "master", "stable":
+		return "stable"
+	case "development", "dev-builds", "dev":
+		return "dev"
+	default:
+		return strings.ToLower(strings.TrimSpace(channel))
+	}
 }
 
 func requireAcceptedMaintenanceResponse(res *nodev1.RuntimeActionResponse, action string) error {

@@ -134,7 +134,9 @@ func renderIKEv2SpeedRules(
 
 		fmt.Fprintf(
 			&b,
-			"    ip saddr %s limit rate over %d bytes/second counter drop\n",
+			// A byte-limit bucket must hold a complete IP packet even when the
+			// configured bytes/second is smaller than the tunnel MTU.
+			"    ip saddr %s limit rate over %d bytes/second burst 65536 bytes counter drop\n",
 			item.IPv4,
 			ikev2SpeedBytesPerSecond(
 				item.UploadRate,
@@ -156,7 +158,7 @@ func renderIKEv2SpeedRules(
 
 		fmt.Fprintf(
 			&b,
-			"    ip daddr %s limit rate over %d bytes/second counter drop\n",
+			"    ip daddr %s limit rate over %d bytes/second burst 65536 bytes counter drop\n",
 			item.IPv4,
 			ikev2SpeedBytesPerSecond(
 				item.DownloadRate,

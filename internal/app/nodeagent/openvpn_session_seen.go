@@ -93,27 +93,53 @@ func (s *Server) refreshOpenVPNSessions(
 	root string,
 	cfg nativeSessionHelperConfig,
 ) error {
-	statusPath := filepath.Join(
-		root,
-		"status.tsv",
-	)
-
-	raw, err := os.ReadFile(statusPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
+	cfg.OfflineRuntimeRoot = root
+	if !cfg.OfflinePolicyOnly && s.cfg.DataDir != "" {
+		if raw, readErr := os.ReadFile(filepath.Join(root, "session-helper.json")); readErr == nil {
+			if err := json.Unmarshal(raw, &cfg); err != nil {
+				return err
+			}
+			cfg.OfflineRuntimeRoot = root
 		}
-		return fmt.Errorf(
-			"read status: %w",
-			err,
-		)
+		if _, statErr := os.Stat(filepath.Join(root, "usage-helper.json")); statErr == nil {
+			preview, err := s.previewOpenVPNOffline(context.Background())
+			if err != nil {
+				return err
+			}
+			cfg, err = s.openVPNOfflinePolicySnapshot(cfg, preview)
+			cfg.OfflineClientsReady = true
+			cfg.OfflineClients = preview.OpenVPNClients[root]
+			cfg.OfflineBeforeDisconnect = func() error { return s.checkpointOpenVPNOffline(context.Background()) }
+			if err != nil {
+				return err
+			}
+		}
 	}
+	clients := cfg.OfflineClients
+	if !cfg.OfflineClientsReady {
+		statusPath := filepath.Join(
+			root,
+			"status.tsv",
+		)
 
-	clients, err := parseOpenVPNStatusV3(
-		string(raw),
-	)
-	if err != nil {
-		return err
+		raw, err := openVPNOfflineReadStatus(statusPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return fmt.Errorf(
+				"read status: %w",
+				err,
+			)
+		}
+
+		clients, err = parseOpenVPNStatusV3(
+			string(raw),
+		)
+		if err != nil {
+			return err
+		}
+
 	}
 
 	inboundTag := strings.TrimSpace(
@@ -137,6 +163,7 @@ func (s *Server) refreshOpenVPNSessions(
 		chan struct{},
 		openVPNSessionSeenConcurrency,
 	)
+	cfg.OfflineIPDenied = openVPNOfflineIPDenied(cfg, clients)
 
 	var wg sync.WaitGroup
 
@@ -166,6 +193,10 @@ func (s *Server) refreshOpenVPNSessions(
 			userID,
 			client,
 		) {
+			continue
+		}
+
+		if cfg.OfflinePolicyOnly {
 			continue
 		}
 
@@ -237,7 +268,7 @@ func (s *Server) refreshOpenVPNSessions(
 			)
 			defer cancel()
 
-			err := s.sendNativeSessionEvent(
+			err := s.sendNativeSessionEventOfflineSafe(
 				ctx,
 				cfg.Callback,
 				nativeSessionEvent{

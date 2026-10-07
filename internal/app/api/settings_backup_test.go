@@ -126,7 +126,7 @@ func TestTelegramManualBackupSendRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasSuffix(r.URL.Path, "/sendDocument") {
+		if !strings.HasSuffix(r.URL.Path, "/sendDocument") && !strings.HasSuffix(r.URL.Path, "/sendMessage") {
 			t.Fatalf("unexpected Telegram API path: %s", r.URL.Path)
 		}
 		_, _ = w.Write([]byte(`{"ok":true}`))
@@ -134,6 +134,7 @@ func TestTelegramManualBackupSendRoute(t *testing.T) {
 	defer api.Close()
 	server.telegramRepo = telegramapp.NewRepository(db, "sqlite")
 	server.telegramSender = telegramapp.NewSender(server.telegramRepo, api.URL)
+	server.telegramReports = telegramapp.NewReporter(server.telegramRepo, server.telegramSender)
 	server.telegramBackup = telegramapp.NewBackupDelivery(server.telegramRepo, server.telegramSender)
 	if _, err := db.Exec(`INSERT INTO telegram_settings (id, api_token, use_telegram, admin_chat_ids, backup_enabled, backup_scope, backup_interval_value, backup_interval_unit) VALUES (1, 'token', 1, '[111]', 1, 'database', 24, 'hours')`); err != nil {
 		t.Fatal(err)

@@ -40,7 +40,7 @@ func (s *Server) ensureMergedUsageStateLoadedLocked() error {
 
 	path := s.mergedUsageStatePath()
 
-	raw, err := os.ReadFile(path)
+	raw, err := readOfflineAccountingState(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			s.mergedUsageLoaded = true
@@ -92,59 +92,7 @@ func (s *Server) persistMergedUsageStateLocked() error {
 		)
 	}
 
-	path := s.mergedUsageStatePath()
-	tmp := path + ".tmp"
-
-	file, err := os.OpenFile(
-		tmp,
-		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
-		0600,
-	)
-	if err != nil {
-		return fmt.Errorf(
-			"open temporary merged usage state: %w",
-			err,
-		)
-	}
-
-	cleanup := func() {
-		_ = file.Close()
-		_ = os.Remove(tmp)
-	}
-
-	if _, err := file.Write(raw); err != nil {
-		cleanup()
-		return fmt.Errorf(
-			"write temporary merged usage state: %w",
-			err,
-		)
-	}
-
-	if err := file.Sync(); err != nil {
-		cleanup()
-		return fmt.Errorf(
-			"sync temporary merged usage state: %w",
-			err,
-		)
-	}
-
-	if err := file.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf(
-			"close temporary merged usage state: %w",
-			err,
-		)
-	}
-
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf(
-			"replace merged usage state: %w",
-			err,
-		)
-	}
-
-	return nil
+	return writeAccountingState(s.mergedUsageStatePath(), raw)
 }
 
 // mergeUserUsageBatches merges OpenVPN and Xray usage batches into a single batch
