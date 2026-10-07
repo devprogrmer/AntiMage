@@ -66,12 +66,12 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 		extra.Address = "10.74.0.3"
 		peers = append(peers, extra)
 	}
-	switch action {
-	case "native-policy-device-limit":
+	switch {
+	case strings.HasPrefix(action, "native-policy-device-limit"):
 		for i := range peers {
 			peers[i].DeviceLimit = 1
 		}
-	case "native-policy-ip-limit":
+	case strings.HasPrefix(action, "native-policy-ip-limit"):
 		for i := range peers {
 			peers[i].IPLimit = 1
 		}
@@ -158,8 +158,15 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 		}
 		waitForNativeLifecycleMarker(t)
 		t.Logf("production AmneziaWG session reconciliation observed native online IPs=%v", batch.GetOnlineIps())
-	case "native-policy-device-limit", "native-policy-ip-limit":
+	case "native-policy-device-limit-apply", "native-policy-ip-limit-apply":
 		iface := apply()
+		t.Logf("production AmneziaWG policy runtime applied: action=%s interface=%s", action, iface)
+	case "native-policy-device-limit-enforce", "native-policy-ip-limit-enforce":
+		ifaceRaw, err := os.ReadFile(filepath.Join(stateDir, "interface"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		iface := strings.TrimSpace(string(ifaceRaw))
 		awgTool := strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_TOOL"))
 		if awgTool == "" {
 			awgTool = "awg"

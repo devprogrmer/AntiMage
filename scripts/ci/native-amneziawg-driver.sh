@@ -186,8 +186,14 @@ ip netns exec "$NS2" "$AWG_TOOL" set awg-client2 listen-port 51823 private-key <
   peer "$server_pub" endpoint 10.252.0.1:51821 allowed-ips 10.74.0.1/32 persistent-keepalive 1
 ip netns exec "$NS2" ip link set awg-client2 up
 wait_for 'second native AWG peer handshake' ip netns exec "$NS2" ping -c 1 -W 1 10.74.0.1
-stage native-policy-device-limit "$ROOT/awg-state"
-stage native-policy-ip-limit "$ROOT/awg-state"
+stage native-policy-device-limit-apply "$ROOT/awg-state"
+wait_for 'device-limit AWG client handshake after runtime apply' ip netns exec "$NS" ping -c 1 -W 1 10.74.0.1
+wait_for 'device-limit AWG second client handshake after runtime apply' ip netns exec "$NS2" ping -c 1 -W 1 10.74.0.1
+stage native-policy-device-limit-enforce "$ROOT/awg-state"
+stage native-policy-ip-limit-apply "$ROOT/awg-state"
+wait_for 'IP-limit AWG client handshake after runtime apply' ip netns exec "$NS" ping -c 1 -W 1 10.74.0.1
+wait_for 'IP-limit AWG second client handshake after runtime apply' ip netns exec "$NS2" ping -c 1 -W 1 10.74.0.1
+stage native-policy-ip-limit-enforce "$ROOT/awg-state"
 
 echo '=== AmneziaWG production stop/apply restart and counter continuity ==='
 stage restart "$ROOT/awg-state"
