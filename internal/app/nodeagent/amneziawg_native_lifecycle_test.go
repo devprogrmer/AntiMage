@@ -199,7 +199,7 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 			}
 		}
 		if active != 2 {
-			t.Fatalf("native AWG %s test requires two real active peers; got %d", action, active)
+			t.Fatalf("native AWG %s test requires two real active peers; got %d of 2; snapshot=%+v", action, active, snapshot)
 		}
 		if _, err := s.collectAmneziaWGUserUsage(context.Background(), nil); err != nil {
 			t.Fatal(err)
