@@ -243,8 +243,8 @@ run_wireguard() {
     echo "WireGuard native IP limit kept ${policy_peer_count} peers; expected exactly one" >&2
     exit 1
   fi
-  ip netns del "$NS2"
   ip link del "$VETH_HOST2"
+  ip netns del "$NS2"
 
   echo 'WireGuard peer configuration immediately before quota:'
   wg show wg-native peers
