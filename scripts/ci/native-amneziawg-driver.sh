@@ -190,10 +190,14 @@ stage native-policy-device-limit-apply "$ROOT/awg-state"
 wait_for 'device-limit AWG client handshake after runtime apply' ip netns exec "$NS" ping -c 1 -W 1 10.74.0.1
 wait_for 'device-limit AWG second client handshake after runtime apply' ip netns exec "$NS2" ping -c 1 -W 1 10.74.0.1
 stage native-policy-device-limit-enforce "$ROOT/awg-state"
+panel_replay
+stage ack "$ROOT/awg-state"
 stage native-policy-ip-limit-apply "$ROOT/awg-state"
 wait_for 'IP-limit AWG client handshake after runtime apply' ip netns exec "$NS" ping -c 1 -W 1 10.74.0.1
 wait_for 'IP-limit AWG second client handshake after runtime apply' ip netns exec "$NS2" ping -c 1 -W 1 10.74.0.1
 stage native-policy-ip-limit-enforce "$ROOT/awg-state"
+panel_replay
+stage ack "$ROOT/awg-state"
 
 echo '=== AmneziaWG production stop/apply restart and counter continuity ==='
 stage restart "$ROOT/awg-state"

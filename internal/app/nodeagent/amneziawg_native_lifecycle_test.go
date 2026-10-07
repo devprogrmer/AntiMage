@@ -4,6 +4,7 @@ package nodeagent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -93,8 +94,36 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if strings.HasSuffix(action, "-apply") {
+			for _, policy := range prepared.UsageConfig.Policies {
+				if strings.HasPrefix(action, "native-policy-device-limit") && policy.DeviceLimit != 1 {
+					t.Fatalf("device-limit policy was not prepared: %+v", policy)
+				}
+				if strings.HasPrefix(action, "native-policy-ip-limit") && policy.IPLimit != 1 {
+					t.Fatalf("IP-limit policy was not prepared: %+v", policy)
+				}
+			}
+		}
 		if err := s.applyAmneziaWGRuntime(prepared); err != nil {
 			t.Fatal(err)
+		}
+		if strings.HasSuffix(action, "-apply") {
+			raw, err := os.ReadFile(filepath.Join(filepath.Dir(prepared.ConfigPath), "usage-helper.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var persisted amneziaWGUsageRuntimeConfig
+			if err := json.Unmarshal(raw, &persisted); err != nil {
+				t.Fatal(err)
+			}
+			for _, policy := range persisted.Policies {
+				if strings.HasPrefix(action, "native-policy-device-limit") && policy.DeviceLimit != 1 {
+					t.Fatalf("device-limit policy was not persisted: %+v", policy)
+				}
+				if strings.HasPrefix(action, "native-policy-ip-limit") && policy.IPLimit != 1 {
+					t.Fatalf("IP-limit policy was not persisted: %+v", policy)
+				}
+			}
 		}
 		if err := os.MkdirAll(stateDir, 0700); err != nil {
 			t.Fatal(err)
@@ -201,7 +230,29 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 		if active != 2 {
 			t.Fatalf("native AWG %s test requires two real active peers; got %d of 2; snapshot=%+v", action, active, snapshot)
 		}
-		if _, err := s.collectAmneziaWGUserUsage(context.Background(), nil); err != nil {
+		batch, err := s.collectAmneziaWGUserUsage(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var nativeBytes uint64
+		for _, sample := range batch.GetStats() {
+			if sample.GetUid() == "amneziawg:7" {
+				nativeBytes = sample.GetValue()
+			}
+		}
+		if nativeBytes == 0 || batch.GetBatchId() == "" {
+			t.Fatalf("native AWG %s policy traffic did not produce a durable usage batch: %+v", action, batch)
+		}
+		rawBatch, err := proto.Marshal(batch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		batchFiles, err := filepath.Glob(filepath.Join(stateDir, "native-batch-*.pb"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		batchPath := filepath.Join(stateDir, fmt.Sprintf("native-batch-%06d.pb", len(batchFiles)+1))
+		if err := os.WriteFile(batchPath, rawBatch, 0600); err != nil {
 			t.Fatal(err)
 		}
 		configured, err := exec.Command(awgTool, "show", iface, "peers").Output()
@@ -217,7 +268,7 @@ func TestAmneziaWGNativeAccountingStage(t *testing.T) {
 		if remaining != 1 {
 			t.Fatalf("native AWG %s did not enforce one-of-two peer policy: remaining=%d peers=%s", action, remaining, configured)
 		}
-		t.Logf("production AmneziaWG %s retained exactly one of two active native peer credentials", action)
+		t.Logf("production AmneziaWG %s retained exactly one of two active native peer credentials and persisted native bytes=%d batch=%s", action, nativeBytes, batch.GetBatchId())
 	case "ack":
 		s.amneziaWGUsageMu.Lock()
 		if err := s.ensureAmneziaWGUsageStateLoadedLocked(); err != nil {
