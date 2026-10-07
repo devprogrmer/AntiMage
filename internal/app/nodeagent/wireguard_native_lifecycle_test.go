@@ -21,6 +21,7 @@ import (
 func TestWireGuardNativeAccountingStage(t *testing.T) {
 	dir := strings.TrimSpace(os.Getenv("ANTIMAGE_WIREGUARD_NATIVE_STATE"))
 	pubkey := strings.TrimSpace(os.Getenv("ANTIMAGE_WIREGUARD_NATIVE_PEER"))
+	extraPubkey := strings.TrimSpace(os.Getenv("ANTIMAGE_WIREGUARD_EXTRA_PEER_PUBLIC_KEY"))
 	iface := strings.TrimSpace(os.Getenv("ANTIMAGE_WIREGUARD_NATIVE_INTERFACE"))
 	if dir == "" || pubkey == "" || iface == "" {
 		t.Skip("requires isolated native WireGuard harness")
@@ -46,15 +47,35 @@ func TestWireGuardNativeAccountingStage(t *testing.T) {
 	if callback.URL != "" && callback.Token == "" {
 		t.Fatal("WireGuard Panel session callback token is required with callback URL")
 	}
+	peerOwners := map[string]int64{pubkey: 7}
+	peerAddresses := map[string]string{pubkey: "10.200.0.2"}
+	policies := map[string]nativeSessionUserPolicy{
+		pubkey: {Status: "active", DataLimit: quotaLimit},
+	}
+	if extraPubkey != "" {
+		peerOwners[extraPubkey] = 7
+		peerAddresses[extraPubkey] = "10.200.0.3"
+		policy := nativeSessionUserPolicy{Status: "active"}
+		switch action {
+		case "policy-device-limit":
+			policy.DeviceLimit = 1
+		case "policy-ip-limit":
+			policy.IPLimit = 1
+		}
+		policies[extraPubkey] = policy
+		if action == "policy-device-limit" {
+			policies[pubkey] = nativeSessionUserPolicy{Status: "active", DeviceLimit: 1}
+		} else if action == "policy-ip-limit" {
+			policies[pubkey] = nativeSessionUserPolicy{Status: "active", IPLimit: 1}
+		}
+	}
 	cfg := wireGuardUsageRuntimeConfig{
 		InboundTag: "native", InterfaceName: iface,
-		Peers:             map[string]int64{pubkey: 7},
-		PeerAddresses:     map[string]string{pubkey: "10.200.0.2"},
+		Peers:             peerOwners,
+		PeerAddresses:     peerAddresses,
 		AccountingEnabled: &accounting,
 		Callback:          callback,
-		Policies: map[string]nativeSessionUserPolicy{
-			pubkey: {Status: "active", DataLimit: quotaLimit},
-		},
+		Policies:          policies,
 	}
 	raw, err := json.Marshal(cfg)
 	if err != nil {
@@ -83,6 +104,22 @@ func TestWireGuardNativeAccountingStage(t *testing.T) {
 			t.Fatalf("offline quota did not remove native peer; counters=%s", counters)
 		}
 		t.Log("production WireGuard offline quota removed the over-limit native peer after checkpoint")
+	case "policy-device-limit", "policy-ip-limit":
+		if extraPubkey == "" {
+			t.Fatal("native peer policy verification requires a second peer")
+		}
+		if err := s.wireGuardOfflineTick(context.Background(), true, true); err != nil {
+			t.Fatal(err)
+		}
+		peers, err := exec.Command("wg", "show", iface, "peers").Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		remaining := strings.Fields(string(peers))
+		if len(remaining) != 1 || (remaining[0] != pubkey && remaining[0] != extraPubkey) {
+			t.Fatalf("native %s did not retain exactly one of two peer credentials: %s", action, peers)
+		}
+		t.Logf("production WireGuard %s retained exactly one of two active peers with distinct endpoint IPs", action)
 	case "quota-watch":
 		// Exercise the same serial scheduler used by the node agent while the
 		// isolated kernel peer sends traffic. The test exits only after the
