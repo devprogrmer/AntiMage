@@ -1,0 +1,39 @@
+# AntiMage Platform Roadmap
+
+This roadmap tracks the independent AntiMage control-plane work described in the platform requirements. PR #84 remains separate and is still open. No dependency on its APIs has been identified in the update work currently in progress; before a later accounting-related phase starts, compare it against the merged `dev` APIs.
+
+## Delivery order
+
+Each phase should be a reviewable PR targeting `dev`. A later phase may target the preceding phase branch when it needs unmerged APIs. Do not merge these PRs as part of this work. Keep unrelated local files out of every commit.
+
+| Phase | Scope | Current state | Exit evidence |
+| --- | --- | --- | --- |
+| A. Product foundation | AntiMage shell/primitives/navigation; Simple/Advanced mode; real-data Command Center; persistent diagnostics and UI; sanitized request errors and IDs; generic persistent operations; read-only Update Center/version catalog; no dashboard regressions. | In Progress on `codex/antimage-next-platform`; local acceptance evidence is being finalized. The Update Center reports the available panel/catalog data and explicitly shows node lifecycle versions as unavailable where the current API cannot verify them. Update execution, rollback, and installer behavior remain Phase B. | Close every Phase A item in the status table below, push the Phase A branch, open its PR to `dev`, pass all required workflows on one SHA, and review the PR diff. |
+| B. Updates and version state | Build catalog; exact stable/dev selection; panel/node update state machines; checksum verification; rollback; restart/reconnect/version/runtime verification; persisted history; drift; locks; safe bulk behavior. | Deferred until Phase A exit. Earlier panel/node update work remains in the working tree but this phase is not being advanced. Canary rollout is explicitly deferred because the current bulk flow has no persistent coordinator and continues after an individual failure. | Full Go/dashboard suites, migration upgrade tests, race checks, installer harness, and Linux/systemd lifecycle evidence including failed update and verified rollback. |
+| C. Delivery and protocol profiles | Per-host client settings, presets, WireGuard advanced settings, client routing rules, subscription placeholder policies/engine, smart profile delivery, preserve existing URLs. | Not Started. Existing unrelated/local WireGuard dual-stack edits are preserved but are not Phase C acceptance. | Backend/API/runtime/UI coverage, compatibility tests for existing subscription links, protocol-specific validation and native connectivity evidence. |
+| D. Access and policy | Policy engine, periodic quota cycles, sessions/devices/IP views and actions, accurate capability labels for protocols without reliable device identity. | Not Started. | Persisted policy evaluation, permission tests, live session/runtime evidence and explicit unsupported-state tests. |
+| E. Fleet operations | Nodes, groups/clusters, health and telemetry, smart selection, failover, desired-state reconciliation, bounded self-healing, accounting visibility, event timeline. | Not Started. | Multi-node integration tests, failure injection, reconciliation/failover evidence and no fabricated metrics. |
+| F. Security and recovery | Scoped API tokens, 2FA/WebAuthn where feasible, secret protections, certificate operations, GeoIP/GeoSite operations, backups and disaster-recovery verification. | Not Started. | Authorization/security tests, secret-redaction checks, certificate/asset lifecycle tests and restore verification isolated from production data. |
+| G. Operator experience and scale | Command palette, global search, inline health, service wizards, Simple/Advanced modes, accessibility, large-installation performance and final visual differentiation. | Not Started. Simple/Advanced navigation is being established as a Phase A foundation; this phase remains deferred. | Keyboard/mobile/RTL review, permission-aware search, synthetic scale measurements, screenshots and full acceptance suite. |
+
+## Phase A evidence status
+
+| Item | Status | Evidence or boundary |
+| --- | --- | --- |
+| AntiMage-native shell, primitives, navigation and Simple/Advanced mode | Implemented | Dedicated shell and navigation model are present; browser smoke covers primary navigation in LTR and RTL. |
+| Command Center and preserved legacy dashboard routes | Implemented | Existing route registrations remain; the Command Center displays unavailable values instead of inventing fleet or traffic aggregates. |
+| Diagnostics collector, persistence, authorization and dashboard | Implemented | API integration tests cover refresh, source failures, resolution, acknowledgement, permissions and redaction. |
+| Sanitized browser errors and request/correlation IDs | Implemented | Request-error unit tests and API request-ID tests cover sanitized metadata and response propagation. |
+| Generic operations schema, store, API and history view | Implemented | Store/reopen tests and API route tests cover persistent records and request IDs. Concrete updater execution adapters remain Phase B work. |
+| Read-only Update Center and version catalog | Implemented | Catalog provider tests cover stable/dev metadata; runtime, installed metadata and desired targets remain separate when reported. |
+| LTR desktop, RTL desktop and mobile drawer smoke | Verified | Playwright checks render errors, navigation, overflow, technical-string direction, drawer side, accessible controls and dialog behavior. |
+| Node version tuple on legacy nodes | Deferred | The page reports the lifecycle tuple as unavailable until the node API supplies verified desired, installed and running versions; it does not infer one version from another. |
+| Update execution, checksum enforcement, rollback and rollout coordination | Deferred | These belong to Phase B and are not acceptance claims for Phase A. |
+
+Phase A remains **In Progress** until the local suite is green, the branch is pushed, the PR is open, required checks pass on one SHA, and the PR diff is reviewed.
+
+## Cross-phase acceptance gate
+
+Do not call a feature complete until its persisted state, service/API, authorization, dashboard flow, error handling, tests, documentation and applicable native/integration evidence are all present. UI-only and backend-only work does not pass this gate. Never label protocol capability as supported when runtime evidence is unreliable.
+
+The current local environment can run Go and dashboard tests, but it does not provide root/systemd or `/dev/ppp`; therefore those local tests cannot establish real service-restart, PPP, or native VPN lifecycle behavior. Record any unavailable integration proof as a release blocker or a clearly scoped deferred item instead of treating unit-test success as a substitute.

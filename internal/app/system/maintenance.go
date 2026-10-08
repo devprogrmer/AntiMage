@@ -35,16 +35,17 @@ func (e MaintenanceError) Error() string {
 }
 
 type RuntimeInfo struct {
-	Mode        string         `json:"mode"`
-	InstallMode string         `json:"install_mode"`
-	Service     string         `json:"service"`
-	Image       string         `json:"image"`
-	Tag         *string        `json:"tag"`
-	Channel     string         `json:"channel"`
-	Python      *string        `json:"python"`
-	Go          string         `json:"go"`
-	Binary      map[string]any `json:"binary"`
-	Update      *UpdateStatus  `json:"update,omitempty"`
+	Mode             string         `json:"mode"`
+	InstallMode      string         `json:"install_mode"`
+	RunningVersion   string         `json:"running_version"`
+	Service          string         `json:"service"`
+	Image            string         `json:"image"`
+	Tag              *string        `json:"tag"`
+	Channel          string         `json:"channel"`
+	Python           *string        `json:"python"`
+	Go               string         `json:"go"`
+	Binary           map[string]any `json:"binary"`
+	Update           *UpdateStatus  `json:"update,omitempty"`
 }
 
 type ReleaseInfo map[string]any
@@ -119,12 +120,31 @@ func NewMaintenanceServiceWithDeps(runtimeDetector RuntimeDetector, updateChecke
 
 func (s *MaintenanceService) Info(ctx context.Context) (MaintenanceInfo, error) {
 	panel := s.Runtime.Info()
-	panel.Update = ptr(s.Updates.Status(ctx, "antimagepanel/AntiMage", panel.Tag, panel.Channel))
+	current := strings.TrimSpace(panel.RunningVersion)
+	currentVersion := stringPtrFromAny(current)
+	channel := strings.ToLower(strings.TrimSpace(panel.Channel))
+	if channel == "" || channel == "unknown" {
+		channel = InferUpdateChannel(currentVersion)
+	}
+	panel.Update = ptr(s.Updates.Status(ctx, "devprogrmer/AntiMage", currentVersion, channel))
 	return MaintenanceInfo{
 		Panel:      panel,
 		Node:       nil,
-		NodeUpdate: s.Updates.Status(ctx, "antimagepanel/AntiMage-node", nil, ""),
+		NodeUpdate: s.Updates.Status(ctx, "devprogrmer/AntiMage", nil, ""),
 	}, nil
+}
+
+func (s *MaintenanceService) Versions(ctx context.Context, target string, refresh bool) (VersionCatalog, error) {
+	provider, ok := s.Updates.(VersionCatalogProvider)
+	if !ok {
+		return VersionCatalog{}, MaintenanceError{Status: http.StatusServiceUnavailable, Detail: "Version catalog is unavailable"}
+	}
+	repo := "devprogrmer/AntiMage"
+	catalog, err := provider.Versions(ctx, repo, target, refresh)
+	if err != nil {
+		return VersionCatalog{}, MaintenanceError{Status: http.StatusBadGateway, Detail: "Version catalog lookup failed: " + err.Error()}
+	}
+	return catalog, nil
 }
 
 func (s *MaintenanceService) Update(_ context.Context, req MaintenanceUpdateRequest) (MaintenanceOperationSnapshot, error) {
@@ -266,15 +286,16 @@ func (DefaultRuntimeDetector) Info() RuntimeInfo {
 		}
 	}
 	return RuntimeInfo{
-		Mode:        mode,
-		InstallMode: mode,
-		Service:     serviceName(),
-		Image:       image,
-		Tag:         tag,
-		Channel:     InferUpdateChannel(tag),
-		Python:      nil,
-		Go:          runtime.Version(),
-		Binary:      metadata,
+		Mode:             mode,
+		InstallMode:      mode,
+		RunningVersion:   BuildVersion,
+		Service:          serviceName(),
+		Image:            image,
+		Tag:              tag,
+		Channel:          InferUpdateChannel(stringPtrFromAny(BuildVersion)),
+		Python:           nil,
+		Go:               runtime.Version(),
+		Binary:           metadata,
 	}
 }
 
@@ -429,6 +450,8 @@ func resolveAntiMageCLI() (string, error) {
 type GitHubUpdateChecker struct {
 	APIBase        string
 	RawBase        string
+	OS             string
+	Arch           string
 	HTTPClient     *http.Client
 	ManifestBranch string
 	ManifestPath   string
@@ -436,9 +459,10 @@ type GitHubUpdateChecker struct {
 	CacheTTL       time.Duration
 	ErrorTTL       time.Duration
 
-	mu       sync.Mutex
-	cache    map[string]githubUpdateCacheEntry
-	inFlight map[string]*githubUpdateCall
+	mu           sync.Mutex
+	cache        map[string]githubUpdateCacheEntry
+	inFlight     map[string]*githubUpdateCall
+	catalogCache map[string]versionCatalogCacheEntry
 }
 
 type githubUpdateCacheEntry struct {
