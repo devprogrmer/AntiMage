@@ -75,6 +75,8 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertNoColumn(t, ctx, db, "sqlite", "nodes", "nobetci_port")
 	assertNoColumn(t, ctx, db, "sqlite", "panel_settings", "use_nobetci")
 	assertTableColumns(t, ctx, db, "sqlite", "node_operations", []string{"operation_type", "status", "idempotency_key"})
+	assertTableColumns(t, ctx, db, "sqlite", "diagnostics", []string{"id", "source", "resource_type", "resource_id", "severity", "code", "summary", "detail", "first_seen_at", "last_seen_at", "occurrence_count", "status", "recommended_action"})
+	assertTableColumns(t, ctx, db, "sqlite", "operations", []string{"id", "operation_type", "target_type", "target_id", "requested_by", "request_id", "state", "phase", "progress", "created_at", "started_at", "updated_at", "completed_at", "error", "metadata_json"})
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_configs", []string{"id", "name", "enabled", "settings", "created_at", "updated_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_targets", []string{"config_id", "node_id", "listeners"})
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_templates", []string{"id", "name", "archive", "created_at"})
@@ -459,6 +461,29 @@ func TestDetectGooseVersion(t *testing.T) {
 	if !version.HasGoose || version.GooseVersion != latestGooseVersion {
 		t.Fatalf("unexpected goose version: %#v", version)
 	}
+}
+
+func TestPreGooseLatestSchemaRunsPlatformMaintenanceMigrations(t *testing.T) {
+	ctx := context.Background()
+	db := openSQLiteTestDB(t)
+	if err := RunMigrationsTo(ctx, db, "sqlite", legacyGooseBaselineVersion); err != nil {
+		t.Fatalf("create latest pre-update schema: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `DROP TABLE goose_db_version`); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunMigrations(ctx, db, "sqlite"); err != nil {
+		t.Fatalf("upgrade pre-Goose schema: %v", err)
+	}
+	version, err := Version(ctx, db, "sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version.GooseVersion != latestGooseVersion {
+		t.Fatalf("goose version = %d, want %d", version.GooseVersion, latestGooseVersion)
+	}
+	assertTableColumns(t, ctx, db, "sqlite", "diagnostics", []string{"id", "status", "last_seen_at"})
+	assertTableColumns(t, ctx, db, "sqlite", "operations", []string{"id", "state", "request_id", "metadata_json"})
 }
 
 func TestPreGooseVersion45SchemaStillRunsHostFinalMaskMigration(t *testing.T) {

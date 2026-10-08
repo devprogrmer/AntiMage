@@ -1,4 +1,5 @@
 import { type FetchOptions, $fetch as ohMyFetch } from "ofetch";
+import { recordRequestError, requestErrorOperation } from "./requestErrors";
 
 // The embedded dashboard always talks to the gateway under /api. Keep an
 // explicit environment override for hosted deployments, but make the
@@ -22,6 +23,29 @@ export const apiBaseURL =
 export const $fetch = ohMyFetch.create({
 	baseURL: apiBaseURL,
 	credentials: "include",
+	onResponseError({ request, options, response }) {
+		const rawURL = typeof request === "string" ? request : request.url;
+		let endpoint = rawURL;
+		try {
+			const parsed = new URL(rawURL, window.location.origin);
+			const safePath = parsed.pathname.split("/").map((segment) => segment.length >= 16 || /^[a-f0-9]{16,}$/i.test(segment) ? "[redacted]" : segment).join("/");
+			endpoint = `${safePath}${parsed.search ? "?[redacted]" : ""}`;
+		} catch {
+			endpoint = rawURL.split("?")[0];
+		}
+		const method = String(options.method || (typeof request === "string" ? "GET" : request.method)).toUpperCase();
+		const payload = response._data as { request_id?: unknown } | undefined;
+		const message = `HTTP ${response.status} request failed`;
+		recordRequestError({
+			request_id: response.headers.get("x-request-id") || (typeof payload?.request_id === "string" ? payload.request_id : null),
+			endpoint,
+			method,
+			status: response.status,
+			operation: requestErrorOperation(method, endpoint),
+			sanitized_message: message,
+			timestamp: new Date().toISOString(),
+		});
+	},
 });
 
 export const fetcher = <T = any>(

@@ -4,6 +4,10 @@ import dashboardapp "github.com/antimage/antimage/internal/app/dashboard"
 
 const DefaultVersion = "0.1.3"
 
+// BuildVersion is injected by scripts/build_binary.sh. Local builds retain a
+// stable fallback while release artifacts report their own running identity.
+var BuildVersion = DefaultVersion
+
 type UsageStats struct {
 	Current int64   `json:"current"`
 	Total   int64   `json:"total"`
