@@ -50,6 +50,8 @@ func NewController(repo Repository) Controller {
 	}
 }
 
+func (c Controller) Configured() bool { return c.repo.db != nil }
+
 // WGRuntime returns the normalized WireGuard runtime payload for a node.  The
 // payload is shared by the dashboard and node agents so protocol-specific
 // clients do not need to reconstruct peer state from Xray records.
