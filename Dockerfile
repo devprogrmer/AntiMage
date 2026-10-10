@@ -23,7 +23,9 @@ RUN hugo --source ./tutorials --destination /out --cleanDestinationDir --gc --mi
 
 FROM golang:1.25-bookworm AS builder
 ARG GOPROXY=https://proxy.golang.org,direct
-ENV GOPROXY=${GOPROXY}
+ARG ANTIMAGE_BUILD_COMMIT=unknown
+ENV GOPROXY=${GOPROXY} \
+    ANTIMAGE_BUILD_COMMIT=${ANTIMAGE_BUILD_COMMIT}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
