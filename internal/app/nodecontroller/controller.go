@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/antimage/antimage/internal/app/logging"
 	"github.com/antimage/antimage/internal/app/nodeclient"
+	operationapp "github.com/antimage/antimage/internal/app/operations"
 	outboundsubapp "github.com/antimage/antimage/internal/app/outboundsub"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	"google.golang.org/grpc"
@@ -23,6 +25,10 @@ import (
 )
 
 type Controller struct {
+	recoveryLifetime  *atomic.Pointer[controllerRecoveryContext]
+	recoveryWorkers   *sync.Map
+	rolloutWorkers    *sync.Map
+	rolloutApply      func(context.Context, Request) (RuntimeResult, error)
 	repo              Repository
 	outboundSubs      outboundsubapp.Service
 	nodeLocks         *sync.Map
@@ -41,6 +47,9 @@ const (
 
 func NewController(repo Repository) Controller {
 	return Controller{
+		recoveryLifetime:  &atomic.Pointer[controllerRecoveryContext]{},
+		recoveryWorkers:   &sync.Map{},
+		rolloutWorkers:    &sync.Map{},
 		repo:              repo,
 		outboundSubs:      outboundsubapp.NewService(repo.db, repo.dialect),
 		nodeLocks:         &sync.Map{},
@@ -160,9 +169,6 @@ func (c Controller) ConnectedNodeIDs(ctx context.Context) ([]int64, error) {
 func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, error) {
 	unlock := c.lockNode(req.NodeID)
 	defer unlock()
-	if err := c.repo.QueueSyncConfig(ctx, &req.NodeID, nil); err != nil {
-		return RuntimeResult{}, err
-	}
 	if err := c.repo.SetConnecting(ctx, req.NodeID); err != nil {
 		return RuntimeResult{}, err
 	}
@@ -171,17 +177,26 @@ func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, er
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("connect", req.NodeID, err)
 	}
-	supersededIDs, err := c.fullSyncOperationIDs(ctx, node.ID)
-	if err != nil {
-		return RuntimeResult{}, err
-	}
-
-	connect, err := client.Control().Connect(ctx, &nodev1.ConnectRequest{MasterId: "antimage-master"})
+	connection, err := client.Control().Connect(ctx, &nodev1.ConnectRequest{MasterId: "antimage-master"})
 	if err != nil {
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("connect", req.NodeID, err)
 	}
-	state := connect.GetRuntime()
+	if !client.Supports("shared_fencing_v1") || !client.Supports("command_idempotency_v1") {
+		// A legacy handshake remains a valid read-only connection. Do not enqueue
+		// an unexecutable config mutation or imply that its remote runtime is fenced.
+		return c.finishRuntime(ctx, node, connection.GetRuntime(), "Legacy agent connected; upgrade required for destructive maintenance and configuration sync")
+	}
+	if err := c.repo.SetRuntimeState(ctx, node.ID, connection.GetRuntime()); err != nil {
+		return RuntimeResult{}, err
+	}
+	if err := c.repo.QueueSyncConfig(ctx, &req.NodeID, nil); err != nil {
+		return RuntimeResult{}, err
+	}
+	supersededIDs, err := c.fullSyncOperationIDs(ctx, node.ID)
+	if err != nil {
+		return RuntimeResult{}, err
+	}
 	configJSON := strings.TrimSpace(req.ConfigJSON)
 	if configJSON == "" {
 		configJSON, err = c.buildRuntimeConfig(ctx, node)
@@ -198,20 +213,20 @@ func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, er
 	if err := c.prepareRuntimeRevision(ctx, client, node.ID, syncReq); err != nil {
 		return RuntimeResult{}, err
 	}
-	syncRes, err := client.Runtime().SyncConfig(ctx, syncReq)
-	if err != nil {
-		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
-		return RuntimeResult{}, friendlyNodeError("sync", req.NodeID, err)
-	}
-	state = syncRes.GetRuntime()
-	result, err := c.finishRuntime(ctx, node, state, "connected")
-	if err != nil {
-		return RuntimeResult{}, err
-	}
-	if _, err := c.repo.MarkOperationsDone(ctx, supersededIDs); err != nil {
-		return RuntimeResult{}, err
-	}
-	return result, nil
+	var result RuntimeResult
+	err = c.executeLegacyNodeCommand(legacyConfigEvidence(ctx, syncReq.ConfigJson), node.ID, syncReq.OperationId, "sync_config", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
+		syncReq.Fence = fence
+		return client.Runtime().SyncConfig(worker, syncReq)
+	}, func(worker context.Context, response *nodev1.RuntimeActionResponse) error {
+		var finishErr error
+		result, finishErr = c.finishRuntime(worker, node, response.GetRuntime(), "connected")
+		if finishErr != nil {
+			return finishErr
+		}
+		_, finishErr = c.repo.MarkOperationsDone(worker, supersededIDs)
+		return finishErr
+	})
+	return result, err
 }
 
 func (c Controller) Reconnect(ctx context.Context, req Request) (RuntimeResult, error) {
@@ -225,11 +240,10 @@ func (c Controller) StopNodeRuntime(ctx context.Context, nodeID int64) error {
 	if err != nil {
 		return friendlyNodeError("stop runtime", nodeID, err)
 	}
-	_, err = client.Runtime().StopRuntime(ctx, &nodev1.StopRuntimeRequest{OperationId: newOperationID("stop", nodeID)})
-	if err != nil {
-		return friendlyNodeError("stop runtime", nodeID, err)
-	}
-	return nil
+	id := newOperationID("stop", nodeID)
+	return c.executeLegacyNodeCommand(ctx, nodeID, id, "stop_runtime", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
+		return client.Runtime().StopRuntime(worker, &nodev1.StopRuntimeRequest{OperationId: id, Fence: fence})
+	}, nil)
 }
 
 func (c Controller) Restart(ctx context.Context, req Request) (result RuntimeResult, err error) {
@@ -272,19 +286,20 @@ func (c Controller) restartNow(ctx context.Context, req Request) (RuntimeResult,
 	if err := c.prepareRuntimeRevision(ctx, client, node.ID, runtimeReq); err != nil {
 		return RuntimeResult{}, err
 	}
-	res, err := client.Runtime().RestartRuntime(ctx, runtimeReq)
-	if err != nil {
-		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
-		return RuntimeResult{}, friendlyNodeError("restart", req.NodeID, err)
-	}
-	result, err := c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
-	if err != nil {
-		return RuntimeResult{}, err
-	}
-	if _, err := c.repo.MarkOperationsDone(ctx, supersededIDs); err != nil {
-		return RuntimeResult{}, err
-	}
-	return result, nil
+	var result RuntimeResult
+	err = c.executeLegacyNodeCommand(legacyConfigEvidence(ctx, runtimeReq.ConfigJson), node.ID, runtimeReq.OperationId, "core_restart", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
+		runtimeReq.Fence = fence
+		return client.Runtime().RestartRuntime(worker, runtimeReq)
+	}, func(worker context.Context, res *nodev1.RuntimeActionResponse) error {
+		var finishErr error
+		result, finishErr = c.finishRuntime(worker, node, res.GetRuntime(), res.GetMessage())
+		if finishErr != nil {
+			return finishErr
+		}
+		_, finishErr = c.repo.MarkOperationsDone(worker, supersededIDs)
+		return finishErr
+	})
+	return result, err
 }
 
 func (c Controller) fullSyncOperationIDs(ctx context.Context, nodeID int64) ([]int64, error) {
@@ -704,6 +719,14 @@ func (c Controller) processSingleOperation(ctx context.Context, operation Operat
 	result.Processed++
 	err = c.runOperation(ctx, operation)
 	if err != nil {
+		if errors.Is(err, ErrCommandOutcomeUnknown) || errors.Is(err, operationapp.ErrLeaseLost) {
+			if operation.NodeID.Valid {
+				blockedNodes[operation.NodeID.Int64] = true
+			}
+			statusCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			return c.repo.MarkOperationOutcomeUnknown(statusCtx, operation.ID)
+		}
 		if isPermanentOperationError(err) {
 			_ = c.repo.MarkOperationFailed(ctx, operation.ID, err.Error())
 			result.Failed++
@@ -937,15 +960,13 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow, 
 		if err := c.prepareRuntimeRevision(ctx, client, node.ID, runtimeReq); err != nil {
 			return err
 		}
-		res, err := client.Runtime().SyncConfig(ctx, runtimeReq)
-		if err != nil {
-			if !isRuntimeUserOperation(operation.OperationType) {
-				_ = c.repo.SetError(ctx, operation.NodeID.Int64, err.Error())
-			}
-			return err
-		}
-		_, err = c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
-		return err
+		return c.executeLegacyNodeCommand(legacyConfigEvidence(ctx, runtimeReq.ConfigJson), node.ID, runtimeReq.OperationId, "sync_config", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
+			runtimeReq.Fence = fence
+			return client.Runtime().SyncConfig(worker, runtimeReq)
+		}, func(worker context.Context, res *nodev1.RuntimeActionResponse) error {
+			_, finishErr := c.finishRuntime(worker, node, res.GetRuntime(), res.GetMessage())
+			return finishErr
+		})
 	case "update_runtime", "update_geo", "restart_service", "update_service", "reboot_host", "apply_tor_proxy", "configure_windscribe", "configure_psiphon":
 		var req Request
 		if err := json.Unmarshal(operation.Payload, &req); err != nil {
@@ -1073,10 +1094,13 @@ func operationContext(parent context.Context, operation OperationRow) (context.C
 
 func isPermanentOperationError(err error) bool {
 	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "unsupported node operation") ||
+	return strings.Contains(message, "conflicting maintenance operation") ||
+		strings.Contains(message, "already has an active update operation") ||
+		strings.Contains(message, "unsupported node operation") ||
 		strings.Contains(message, "config_json is required") ||
 		strings.Contains(message, "invalid character") ||
 		strings.Contains(message, "node update required for safe user reconciliation") ||
+		strings.Contains(message, "node agent upgrade required for shared destructive fencing") ||
 		strings.Contains(message, "unable to locate antimage-node cli") ||
 		strings.Contains(message, "node not found")
 }
@@ -1215,6 +1239,8 @@ func runtimeResult(node NodeRow, state *nodev1.RuntimeState, metrics *nodev1.Met
 		result.Started = state.GetStarted()
 		result.XrayVersion = firstNonEmpty(state.GetCoreVersion(), result.XrayVersion)
 		result.NodeServiceVersion = state.GetNodeVersion()
+		result.RunningNodeVersion = state.GetNodeVersion()
+		result.InstalledNodeVersion = state.GetInstalledVersion()
 		result.InstallMode = state.GetInstallMode()
 		result.UpdateChannel = state.GetUpdateChannel()
 		result.Message = state.GetMessage()

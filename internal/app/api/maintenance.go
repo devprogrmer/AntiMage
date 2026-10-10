@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,6 +56,31 @@ func (s *Server) handleMaintenanceVersions(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, catalog)
 }
 
+func (s *Server) handleMaintenanceHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	limit := 25
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 100 {
+			writeError(w, http.StatusBadRequest, "limit must be between 1 and 100")
+			return
+		}
+		limit = parsed
+	}
+	operations, err := s.maintenanceService().History(limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for i := range operations {
+		operations[i] = publicMaintenanceSnapshot(operations[i])
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"operations": operations})
+}
+
 func (s *Server) handleMaintenanceOperations(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -67,8 +93,21 @@ func (s *Server) handleMaintenanceOperations(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusInternalServerError, "unable to read operation history")
 		return
 	}
+	for i := range items {
+		items[i] = publicOperation(items[i])
+		events, err := operationapp.ListAudit(ctx, s.db, items[i].ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "unable to read operation audit history")
+			return
+		}
+		if items[i].Metadata == nil {
+			items[i].Metadata = make(map[string]any)
+		}
+		items[i].Metadata["audit_events"] = events
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"operations": items})
 }
+
 func (s *Server) handleMaintenanceUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/api/maintenance/update" {
 		writeError(w, http.StatusNotFound, "not found")
@@ -88,7 +127,7 @@ func (s *Server) handleMaintenanceUpdate(w http.ResponseWriter, r *http.Request)
 		writeMaintenanceError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "accepted", "operation": status})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "accepted", "operation": publicMaintenanceSnapshot(status)})
 }
 
 func (s *Server) handleMaintenanceRestart(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +144,38 @@ func (s *Server) handleMaintenanceRestart(w http.ResponseWriter, r *http.Request
 		writeMaintenanceError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "accepted", "operation": status})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "accepted", "operation": publicMaintenanceSnapshot(status)})
+}
+
+func (s *Server) handleMaintenanceBackups(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	backups, err := s.maintenanceService().Backups()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "unable to read verified backups")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"backups": backups})
+}
+
+func (s *Server) handleMaintenanceRollback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var payload systemapp.RollbackRequest
+	if err := decodeOptionalJSON(r, &payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid rollback request")
+		return
+	}
+	status, err := s.maintenanceService().Rollback(r.Context(), payload)
+	if err != nil {
+		writeMaintenanceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "accepted", "operation": publicMaintenanceSnapshot(status)})
 }
 
 func (s *Server) handleMaintenanceSoftReload(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +195,7 @@ func (s *Server) handleMaintenanceSoftReload(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":    "ok",
 		"message":   "Panel soft reload scheduled successfully",
-		"operation": status,
+		"operation": publicMaintenanceSnapshot(status),
 	})
 }
 
@@ -142,7 +212,7 @@ func (s *Server) handleMaintenanceStatus(w http.ResponseWriter, r *http.Request)
 		s.handleMaintenanceStatusWebSocket(w, r)
 		return
 	}
-	writeJSON(w, http.StatusOK, s.maintenanceService().Status())
+	writeJSON(w, http.StatusOK, publicMaintenanceSnapshot(s.maintenanceService().Status()))
 }
 
 func (s *Server) handleMaintenanceStatusWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -162,7 +232,7 @@ func (s *Server) handleMaintenanceStatusWebSocket(w http.ResponseWriter, r *http
 				if operationID != "" && status.ID != operationID {
 					continue
 				}
-				if err := websocket.JSON.Send(conn, status); err != nil {
+				if err := websocket.JSON.Send(conn, publicMaintenanceSnapshot(status)); err != nil {
 					return
 				}
 			}
@@ -172,12 +242,16 @@ func (s *Server) handleMaintenanceStatusWebSocket(w http.ResponseWriter, r *http
 
 func (s *Server) maintenanceService() *systemapp.MaintenanceService {
 	if s.maintenance == nil {
-		s.maintenance = systemapp.NewMaintenanceService()
+		s.maintenance = systemapp.NewMaintenanceServiceWithDB(s.db, s.dialect)
 	}
 	return s.maintenance
 }
 
 func writeMaintenanceError(w http.ResponseWriter, err error) {
-	status, detail := systemapp.HTTPStatus(err)
+	status, _ := systemapp.HTTPStatus(err)
+	detail := "Maintenance request could not be accepted. Inspect diagnostics using the request ID."
+	if status == http.StatusConflict {
+		detail = "A conflicting maintenance operation owns this panel. Inspect active operation history."
+	}
 	writeError(w, status, detail)
 }

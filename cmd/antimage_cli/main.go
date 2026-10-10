@@ -211,6 +211,8 @@ func (c *cli) run(args []string) error {
 	}
 
 	switch args[0] {
+	case "maintenance":
+		return c.runMaintenance(args[1:])
 	case "admin":
 		return c.runAdmin(args[1:])
 	case "user":

@@ -43,7 +43,7 @@ func (s *Server) systemStatsForRequest(ctx context.Context, r *http.Request) (sy
 
 func (s *Server) systemStatsService() *systemapp.Service {
 	if s.systemService == nil {
-		s.systemService = systemapp.NewService(s.db, s.dialect, systemapp.DefaultVersion)
+		s.systemService = systemapp.NewService(s.db, s.dialect, "")
 	}
 	return s.systemService
 }

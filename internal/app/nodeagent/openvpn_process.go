@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,7 +14,7 @@ import (
 )
 
 var (
-	openVPNCommandContext = exec.CommandContext
+	openVPNCommandContext = managedprocess.CommandContext
 	openVPNLookPath       = exec.LookPath
 
 	openVPNStartupGrace     = 300 * time.Millisecond
@@ -238,7 +239,7 @@ func stopOpenVPNProcess(
 			terminateErr,
 			os.ErrProcessDone,
 		) {
-		killErr := runtime.cmd.Process.Kill()
+		killErr := managedprocess.Kill(runtime.cmd)
 
 		if killErr != nil &&
 			!errors.Is(
@@ -265,12 +266,13 @@ func stopOpenVPNProcess(
 
 	select {
 	case <-runtime.done:
+		_ = managedprocess.Kill(runtime.cmd)
 		return nil
 
 	case <-time.After(openVPNShutdownGrace):
 	}
 
-	killErr := runtime.cmd.Process.Kill()
+	killErr := managedprocess.Kill(runtime.cmd)
 	if killErr != nil &&
 		!errors.Is(
 			killErr,
@@ -284,6 +286,7 @@ func stopOpenVPNProcess(
 
 	select {
 	case <-runtime.done:
+		_ = managedprocess.Kill(runtime.cmd)
 		return nil
 
 	case <-time.After(openVPNKillGrace):

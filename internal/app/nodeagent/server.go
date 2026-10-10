@@ -3,8 +3,12 @@ package nodeagent
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/json"
+	"errors"
 	"fmt"
+	systemapp "github.com/antimage/antimage/internal/app/system"
 	"net"
 	"os"
 	"os/exec"
@@ -15,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/host"
@@ -47,6 +52,10 @@ type Server struct {
 	localUsageDeliveries             []localUsageDelivery
 	localQuotaViews                  map[localQuotaOwner]localQuotaView
 	runtimePolicy                    *runtimePolicySnapshot
+	runtimeExited                    <-chan struct{}
+	activeConfigSHA256               string
+	runningCoreVersion               string
+	coreStartedAt                    time.Time
 	openVPNRuntimes                  map[string]*openVPNProcess
 	anyConnectRuntimes               map[string]*anyConnectProcess
 	openVPNTProxySpecs               map[string]openVPNTProxySpec
@@ -140,7 +149,7 @@ var (
 	torCommandContext  = exec.CommandContext
 	torLookPath        = exec.LookPath
 	torReadyCheck      = waitForTorSOCKSReady
-	xrayCommandContext = exec.CommandContext
+	xrayCommandContext = managedprocess.CommandContext
 )
 
 func New(cfg Config) *Server {
@@ -278,7 +287,7 @@ func (s *Server) Connect(context.Context, *nodev1.ConnectRequest) (*nodev1.Conne
 	}, nil
 }
 
-func (s *Server) Health(context.Context, *nodev1.HealthRequest) (*nodev1.HealthResponse, error) {
+func (s *Server) Health(ctx context.Context, req *nodev1.HealthRequest) (*nodev1.HealthResponse, error) {
 	s.mu.Lock()
 	var accountingFailure string
 	for protocol, failure := range s.localAccountingFailures {
@@ -289,14 +298,36 @@ func (s *Server) Health(context.Context, *nodev1.HealthRequest) (*nodev1.HealthR
 	if accountingFailure != "" {
 		return nil, status.Error(codes.FailedPrecondition, "local accounting degraded: "+accountingFailure)
 	}
-	return &nodev1.HealthResponse{Runtime: s.runtimeState("healthy"), Metrics: s.metrics(true)}, nil
+	state := s.runtimeState("healthy")
+	if req.GetCommandId() != "" {
+		if err := readNativeCommandEvidence(ctx, req, state); err != nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "command evidence unavailable: %v", err)
+		}
+		s.addGeoEvidence(req, state)
+	}
+	if req.GetOperationId() != "" && req.GetCommandId() == "" {
+		name, err := s.installedServiceName()
+		if err != nil {
+			return nil, err
+		}
+		evidence, err := systemapp.InspectBinaryTransaction(os.Getenv("ANTIMAGE_NODE_APP_DIR"), req.OperationId, req.TransactionBackupId, "node", name, runtime.GOARCH, req.InspectRestore)
+		if err != nil {
+			evidence.NextAction = "manual_recovery_required"
+		}
+		payload, marshalErr := json.Marshal(evidence)
+		if marshalErr != nil {
+			return nil, status.Error(codes.Internal, "unable to serialize transaction evidence")
+		}
+		state.MaintenanceTransactionJson = string(payload)
+	}
+	response := &nodev1.HealthResponse{Runtime: state}
+	if req.GetIncludeMetrics() || (req.GetCommandId() == "" && req.GetOperationId() == "") {
+		response.Metrics = s.metrics(true)
+	}
+	return response, nil
 }
 
-func (s *Server) StartRuntime(ctx context.Context, req *nodev1.RuntimeConfigRequest) (*nodev1.RuntimeActionResponse, error) {
-	return s.applyConfig(ctx, req, "started")
-}
-
-func (s *Server) RestartRuntime(
+func (s *Server) restartRuntime(
 	ctx context.Context,
 	req *nodev1.RuntimeConfigRequest,
 ) (*nodev1.RuntimeActionResponse, error) {
@@ -324,7 +355,7 @@ func (s *Server) RestartRuntime(
 	return s.applyConfig(ctx, req, "restarted")
 }
 
-func (s *Server) StopRuntime(
+func (s *Server) stopRuntimeAction(
 	ctx context.Context,
 	_ *nodev1.StopRuntimeRequest,
 ) (*nodev1.RuntimeActionResponse, error) {
@@ -334,6 +365,11 @@ func (s *Server) StopRuntime(
 	if err := s.persistStoppedRuntimePolicy(); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, "persist stopped policy: "+err.Error())
 	}
+	// Native stop helpers do not yet return verified kernel/process evidence.
+	// Never turn their cleared bookkeeping into a durable stop assertion.
+	s.mu.Lock()
+	nativePresent := len(s.openVPNRuntimes)+len(s.anyConnectRuntimes)+len(s.l2TPRuntimes)+len(s.pptpRuntimes)+len(s.ikev2Runtimes)+len(s.wireGuardRuntimes)+len(s.amneziaWGRuntimes) > 0
+	s.mu.Unlock()
 	s.stopAllOpenVPNRuntimes()
 	s.stopAllAnyConnectRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
@@ -350,13 +386,13 @@ func (s *Server) StopRuntime(
 	s.stopAllWireGuardRuntimes()
 	s.stopAllAmneziaWGRuntimes()
 	s.clearNativeSpeedLimitsLogged()
-	_ = s.stopRuntime()
+	if err := s.stopRuntimeContext(ctx); err != nil {
+		return nil, status.Errorf(codes.Internal, "runtime stop could not be verified: %v", err)
+	}
 
-	return s.action("", "stopped"), nil
-}
-
-func (s *Server) SyncConfig(ctx context.Context, req *nodev1.RuntimeConfigRequest) (*nodev1.RuntimeActionResponse, error) {
-	return s.applyConfig(ctx, req, "config synced")
+	response := s.action("", "stopped")
+	response.Runtime.RuntimeStopVerified = !nativePresent && !response.Runtime.Started
+	return response, nil
 }
 
 func (s *Server) AddUser(context.Context, *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
@@ -779,6 +815,8 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	if req.GetDesiredRevision() > s.appliedRev {
 		s.appliedRev = req.GetDesiredRevision()
 	}
+	digest := sha256.Sum256([]byte(configJSON))
+	s.activeConfigSHA256 = fmt.Sprintf("%x", digest)
 	s.mu.Unlock()
 
 	return s.action(req.GetOperationId(), message), nil
@@ -788,7 +826,15 @@ func (s *Server) startXray(ctx context.Context, configPath string) error {
 	if _, err := rand.Read(identity[:]); err != nil {
 		return fmt.Errorf("create xray runtime generation: %w", err)
 	}
-	_ = s.stopRuntime()
+	if err := s.stopRuntimeContext(ctx); err != nil {
+		return err
+	}
+	configBytes, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	configDigest := sha256.Sum256(configBytes)
+	version := xrayVersionContext(ctx, s.cfg.XrayPath)
 	cmd := xrayCommandContext(context.Background(), s.cfg.XrayPath, "run", "-config", configPath)
 	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+s.cfg.XrayAssetsDir)
 	cmd.Stdout = logWriter{server: s}
@@ -797,13 +843,27 @@ func (s *Server) startXray(ctx context.Context, configPath string) error {
 		s.appendLog("failed to start xray: " + err.Error())
 		return err
 	}
+	exited := make(chan struct{})
 	s.mu.Lock()
 	s.lastRuntime = cmd
 	s.xrayRuntimeGeneration = fmt.Sprintf("%x", identity)
+	s.runtimeExited = exited
+	s.runningCoreVersion = version
+	s.coreStartedAt = time.Now().UTC()
+	s.activeConfigSHA256 = fmt.Sprintf("%x", configDigest)
 	s.mu.Unlock()
 	s.appendLog("xray runtime started")
 	go func() {
+		defer close(exited)
 		err := cmd.Wait()
+		s.mu.Lock()
+		if s.lastRuntime == cmd {
+			s.lastRuntime = nil
+			s.runningCoreVersion = ""
+			s.coreStartedAt = time.Time{}
+			s.activeConfigSHA256 = ""
+		}
+		s.mu.Unlock()
 		if err != nil {
 			s.appendLog("xray runtime stopped: " + err.Error())
 		} else {
@@ -814,14 +874,37 @@ func (s *Server) startXray(ctx context.Context, configPath string) error {
 }
 
 func (s *Server) stopRuntime() error {
+	return s.stopRuntimeContext(context.Background())
+}
+
+func (s *Server) stopRuntimeContext(ctx context.Context) error {
 	s.mu.Lock()
 	cmd := s.lastRuntime
-	s.lastRuntime = nil
+	exited := s.runtimeExited
 	s.mu.Unlock()
 	if cmd == nil || cmd.Process == nil {
 		return nil
 	}
-	return cmd.Process.Kill()
+	var err error
+	if cmd.Cancel != nil {
+		err = cmd.Cancel()
+	} else {
+		err = cmd.Process.Kill()
+	}
+	if err != nil && !errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
+	if exited == nil {
+		return fmt.Errorf("runtime exit evidence unavailable")
+	}
+	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	select {
+	case <-exited:
+		return nil
+	case <-bounded.Done():
+		return bounded.Err()
+	}
 }
 
 func (s *Server) action(operationID, message string) *nodev1.RuntimeActionResponse {
@@ -838,9 +921,15 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 	s.mu.Lock()
 	started := s.lastRuntime != nil
 	applied := s.appliedRev
+	configHash, coreVersion, coreStartedAt := s.activeConfigSHA256, s.runningCoreVersion, s.coreStartedAt
 	torProxyCount := len(s.torProxies)
 	s.mu.Unlock()
-	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync"}
+	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "runtime_evidence_v1"}
+	if s.verifiedInstallerAvailable() {
+		capabilities = append(capabilities, "verified_updates_v1", "shared_fencing_v1", "command_idempotency_v1", "config_identity_v1")
+	} else if !strings.EqualFold(s.cfg.InstallMode, "binary") && nativeFencingAvailable() {
+		capabilities = append(capabilities, "shared_fencing_v1", "command_idempotency_v1", "config_identity_v1")
+	}
 	if _, err := torLookPath("tor"); err == nil {
 		capabilities = append(capabilities, "tor_proxy")
 	}
@@ -848,15 +937,31 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 		capabilities = append(capabilities, "tor_proxy_running")
 	}
 	return &nodev1.RuntimeState{
-		Connected:       true,
-		Started:         started,
-		CoreVersion:     xrayVersion(s.cfg.XrayPath),
-		NodeVersion:     s.cfg.Version,
-		InstallMode:     s.cfg.InstallMode,
-		UpdateChannel:   s.cfg.UpdateChannel,
-		Message:         message,
-		Capabilities:    capabilities,
-		AppliedRevision: applied,
+		Connected:                true,
+		Started:                  started,
+		CoreVersion:              xrayVersion(s.cfg.XrayPath),
+		NodeVersion:              s.cfg.Version,
+		InstallMode:              s.cfg.InstallMode,
+		UpdateChannel:            s.cfg.UpdateChannel,
+		Message:                  message,
+		Capabilities:             capabilities,
+		AppliedRevision:          applied,
+		ProcessStartedAtUnixNano: s.startedAt.UnixNano(),
+		SampledAtUnixNano:        time.Now().UnixNano(),
+		BinaryTag:                BuildVersion,
+		CommitSha:                BuildCommit,
+		BuildChannel:             BuildChannel,
+		OperatingSystem:          runtime.GOOS,
+		Architecture:             runtime.GOARCH,
+		InstalledVersion:         installedServiceVersion(),
+		ActiveConfigSha256:       configHash,
+		RunningCoreVersion:       coreVersion,
+		CoreProcessStartedAtUnixNano: func() int64 {
+			if coreStartedAt.IsZero() {
+				return 0
+			}
+			return coreStartedAt.UnixNano()
+		}(),
 	}
 }
 
@@ -959,10 +1064,18 @@ func bytesPerSecond(previous, current uint64, seconds float64) uint64 {
 }
 
 func xrayVersion(path string) string {
+	return xrayVersionContext(context.Background(), path)
+}
+
+func xrayVersionContext(parent context.Context, path string) string {
 	if strings.TrimSpace(path) == "" {
 		return ""
 	}
-	out, err := exec.Command(path, "-version").Output()
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+	command := managedprocess.CommandContext(ctx, path, "-version")
+	command.WaitDelay = time.Second
+	out, err := command.Output()
 	if err != nil {
 		return ""
 	}

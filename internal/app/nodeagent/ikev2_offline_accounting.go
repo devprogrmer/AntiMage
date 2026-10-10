@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
@@ -275,7 +276,7 @@ func compactOfflineBoot(previous map[string]uint64, boot string) (map[string]uin
 var ikev2OfflineSnapshot = func(ctx context.Context) ([]ikev2RawSA, error) {
 	queryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	raw, err := offlineCommandOutput(exec.CommandContext(queryCtx, "swanctl", "--list-sas", "--raw"))
+	raw, err := offlineCommandOutput(managedprocess.CommandContext(queryCtx, "swanctl", "--list-sas", "--raw"))
 	if err != nil {
 		return nil, fmt.Errorf("ikev2 accounting snapshot: %w", err)
 	}

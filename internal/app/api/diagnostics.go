@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/antimage/antimage/internal/app/diagnostics"
 	"github.com/antimage/antimage/internal/app/migrations"
 	"github.com/antimage/antimage/internal/app/nodecontroller"
+	operationapp "github.com/antimage/antimage/internal/app/operations"
 	"github.com/antimage/antimage/internal/app/xrayconfig"
 )
 
@@ -111,7 +114,10 @@ func (s *Server) collectDiagnostics(ctx context.Context, r *http.Request, store 
 	if err := s.collectFailedOperationDiagnostics(ctx, &observations); err != nil {
 		return err
 	}
-	completeSources = append(completeSources, "node-operations", "version-drift")
+	if err := s.collectUpdateLifecycleDiagnostics(ctx, &observations); err != nil {
+		return err
+	}
+	completeSources = append(completeSources, "node-operations", "version-drift", "update-lifecycle")
 	backupSettings, backupErr := s.telegramRepo.Settings(ctx)
 	if backupErr != nil {
 		observations = append(observations, diagnostics.Observation{Source: "backup", ResourceType: "panel", Severity: "warning", Code: "backup.status_unavailable", Summary: "Backup delivery status could not be read", Detail: "The stored backup delivery state is unavailable; no raw error details are persisted.", RecommendedAction: "Inspect backup and Telegram delivery settings."})
@@ -153,6 +159,13 @@ func (s *Server) collectDiagnostics(ctx context.Context, r *http.Request, store 
 	if connectivityComplete {
 		completeSources = append(completeSources, "node-connectivity")
 	}
+	ownershipComplete, err := s.collectOwnershipDiagnostics(ctx, &observations)
+	if err != nil {
+		return err
+	}
+	if ownershipComplete {
+		completeSources = append(completeSources, "operation-ownership")
+	}
 	seen := make(map[string]struct{}, len(observations))
 	for _, observation := range observations {
 		item, err := store.Observe(ctx, observation, now)
@@ -163,6 +176,57 @@ func (s *Server) collectDiagnostics(ctx context.Context, r *http.Request, store 
 	}
 	// Resolve only after every source above returned successfully.
 	return store.ResolveMissingSources(ctx, seen, now, completeSources)
+}
+
+func (s *Server) collectUpdateLifecycleDiagnostics(ctx context.Context, observations *[]diagnostics.Observation) error {
+	items, err := operationapp.List(ctx, s.db, 500)
+	if err != nil {
+		return err
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].CreatedAt == items[j].CreatedAt {
+			return items[i].ID > items[j].ID
+		}
+		return items[i].CreatedAt > items[j].CreatedAt
+	})
+	seen := map[string]bool{}
+	for _, op := range items {
+		if op.Type != "node_update" && op.Type != "node_rollback" && op.Type != "node_rollout" {
+			continue
+		}
+		key := op.TargetType + ":" + op.TargetID
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		var metadata struct {
+			Update nodecontroller.NodeUpdateOperation `json:"update"`
+		}
+		payload, err := json.Marshal(op.Metadata)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(payload, &metadata); err != nil {
+			return err
+		}
+		severity, code, summary := "", "", ""
+		switch {
+		case metadata.Update.RecoveryError != "":
+			severity, code, summary = "critical", "update.recovery_failed", "Interrupted operation could not be safely recovered"
+		case metadata.Update.RollbackError != "":
+			severity, code, summary = "critical", "update.rollback_failed", "Rollback failed; manual recovery required"
+		case op.Phase == "canary_failed":
+			severity, code, summary = "error", "rollout.canary_failed", "Rollout stopped after failed canary verification"
+		case op.State == "failed":
+			severity, code, summary = "error", "update.failed", "Update or rollback operation failed"
+		case op.Phase == "waiting_for_reconnect" && ((!metadata.Update.ReconnectDeadline.IsZero() && !time.Now().Before(metadata.Update.ReconnectDeadline)) || (metadata.Update.ReconnectDeadline.IsZero() && time.Now().Unix()-op.UpdatedAt > 300)):
+			severity, code, summary = "error", "update.reconnect_stuck", "Update is waiting beyond its reconnect deadline"
+		}
+		if code != "" {
+			*observations = append(*observations, diagnostics.Observation{Source: "update-lifecycle", ResourceType: op.TargetType, ResourceID: op.TargetID, Severity: severity, Code: code, Summary: summary, Detail: "Inspect the persisted operation history for the correlated operation and request IDs. Raw command output is omitted.", RecommendedAction: "Inspect the current runtime and verified backup before retrying; do not repeat binary replacement without recovery verification."})
+		}
+	}
+	return nil
 }
 
 func (s *Server) collectNodeDiagnostics(ctx context.Context, observations *[]diagnostics.Observation) (bool, error) {
@@ -179,6 +243,10 @@ func (s *Server) collectNodeDiagnostics(ctx context.Context, observations *[]dia
 				if node.Status == "disabled" || node.Status == "limited" {
 					continue
 				}
+				profile := nodecontroller.ClassifyDestructiveCapabilities(node.Capabilities)
+				if node.Status == "connected" && (!profile.SupportsFencing || !profile.SupportsCommandIdempotency) {
+					*observations = append(*observations, diagnostics.Observation{Source: "node-connectivity", ResourceType: "node", ResourceID: strconv.FormatInt(node.ID, 10), Severity: "warning", Code: "node.fencing_upgrade_required", Summary: "Node agent upgrade required for verified update and fencing", Detail: "This connected agent does not advertise shared destructive fencing and command idempotency. Destructive maintenance is constrained until support is available.", RecommendedAction: "Upgrade the node agent and its managed installer before requesting destructive maintenance."})
+				}
 				if node.Status == "error" || node.AgentStatus == "degraded" {
 					detail := "The node agent did not return healthy runtime metrics."
 					if node.Message != nil && strings.TrimSpace(*node.Message) != "" {
@@ -189,18 +257,27 @@ func (s *Server) collectNodeDiagnostics(ctx context.Context, observations *[]dia
 			}
 		}
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT u.node_id, u.resolved_version, u.running_version FROM node_update_operations u WHERE u.id = (SELECT latest.id FROM node_update_operations latest WHERE latest.node_id = u.node_id ORDER BY latest.started_at DESC LIMIT 1) AND COALESCE(u.resolved_version,'') <> '' AND COALESCE(u.running_version,'') <> '' AND u.resolved_version <> u.running_version`)
+	rows, err := s.db.QueryContext(ctx, `SELECT target_id,metadata_json FROM operations o WHERE operation_type='node_update' AND target_type='node' AND id=(SELECT latest.id FROM operations latest WHERE latest.operation_type='node_update' AND latest.target_type='node' AND latest.target_id=o.target_id ORDER BY latest.created_at DESC,latest.id DESC LIMIT 1)`)
 	if err != nil {
 		return connectivityComplete, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var nodeID int64
-		var desired, running string
-		if err := rows.Scan(&nodeID, &desired, &running); err != nil {
+		var nodeID, payload string
+		if err := rows.Scan(&nodeID, &payload); err != nil {
 			return connectivityComplete, err
 		}
-		*observations = append(*observations, diagnostics.Observation{Source: "version-drift", ResourceType: "node", ResourceID: strconv.FormatInt(nodeID, 10), Severity: "warning", Code: "node.version_drift", Summary: "Node running version differs from resolved target", Detail: "The node's reported running version differs from the last update's resolved version.", RecommendedAction: "Inspect the node update history and reported runtime version."})
+		var metadata struct {
+			Update nodecontroller.NodeUpdateOperation `json:"update"`
+		}
+		if err := json.Unmarshal([]byte(payload), &metadata); err != nil {
+			return connectivityComplete, err
+		}
+		u := metadata.Update
+		if u.DesiredVersion == "" || u.RunningVersion == "" || u.DesiredVersion == u.RunningVersion {
+			continue
+		}
+		*observations = append(*observations, diagnostics.Observation{Source: "version-drift", ResourceType: "node", ResourceID: nodeID, Severity: "warning", Code: "node.version_drift", Summary: "Node running version differs from desired target", Detail: "The persisted runtime evidence differs from the last update's desired version.", RecommendedAction: "Refresh node runtime evidence and inspect the update history."})
 	}
 	return connectivityComplete, rows.Err()
 }

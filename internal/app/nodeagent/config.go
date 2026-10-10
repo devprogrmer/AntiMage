@@ -26,6 +26,10 @@ type Config struct {
 // running binary independently of the installer's persisted target version.
 var BuildVersion = "dev"
 
+// These values identify the executable, independently of installer metadata.
+var BuildCommit = ""
+var BuildChannel = "unknown"
+
 func LoadConfig() Config {
 	dataDir := envString("ANTIMAGE_NODE_DATA_DIR", envString("ANTIMAGE_DATA_DIR", "/var/lib/antimage-node"))
 	return Config{

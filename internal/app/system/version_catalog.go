@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"runtime"
 	"strconv"
 	"strings"
@@ -130,8 +131,16 @@ func (c *GitHubUpdateChecker) fetchVersionCatalog(ctx context.Context, repo, tar
 		if sha == "" {
 			continue
 		}
+		var commitInfo map[string]any
+		if err := c.getJSON(ctx, api+"/commits/"+url.PathEscape(tag), &commitInfo); err != nil {
+			return VersionCatalog{}, fmt.Errorf("resolve release commit %s: %w", tag, err)
+		}
+		commit := strings.TrimSpace(stringFromAny(commitInfo["sha"]))
+		if decoded, err := hex.DecodeString(commit); err != nil || len(decoded) != 20 {
+			return VersionCatalog{}, fmt.Errorf("release %s has no exact commit", tag)
+		}
 		stable = append(stable, BuildCatalogEntry{
-			Version: tag, Channel: "stable", PublishedAt: stringFromAny(release["published_at"]),
+			Version: tag, Channel: "stable", Commit: commit, PublishedAt: stringFromAny(release["published_at"]),
 			ArtifactName: want, DownloadURL: stringFromAny(asset["browser_download_url"]), SHA256: sha,
 			Size: int64FromAny(asset["size"]), OS: "linux", Architecture: arch,
 		})
