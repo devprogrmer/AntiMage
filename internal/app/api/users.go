@@ -336,9 +336,22 @@ func (s *Server) handleUserDeviceRevoke(w http.ResponseWriter, r *http.Request, 
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
+	admin := principal.Context.Admin
+	if err := userapp.EnsureUserPermission(admin, userapp.UserPermissionRevoke); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	if err := userapp.EnsureUserManagementAvailable(admin, "revoke devices"); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
 	user, err := s.userService.UserGet(ctx, userapp.UserGetRequest{Username: username, RequestOrigin: requestOrigin(r), Admin: s.userAdminContext(principal, nil)})
 	if err != nil {
 		writeUserReadError(w, err)
+		return
+	}
+	if err := userapp.EnsureAdminUserServiceScopeAvailable(admin, user.ServiceID, "revoke devices"); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
 	protocol := normalizedVPNProtocol(r.URL.Query().Get("protocol"))
@@ -352,7 +365,13 @@ func (s *Server) handleUserDeviceRevoke(w http.ResponseWriter, r *http.Request, 
 	if protocol == "amneziawg" {
 		table = "amneziawg_devices"
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT device_index, public_key FROM `+table+` WHERE user_id=? AND inbound_tag=?`, user.ID, inbound)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT device_index, public_key FROM `+table+` WHERE user_id=? AND inbound_tag=?`, user.ID, inbound)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -371,12 +390,26 @@ func (s *Server) handleUserDeviceRevoke(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusNotFound, "device not found")
 		return
 	}
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM `+table+` WHERE user_id=? AND inbound_tag=? AND device_index=?`, user.ID, inbound, deviceIndex); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE user_id=? AND inbound_tag=? AND device_index=?`, user.ID, inbound, deviceIndex); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE vpn_user_sessions SET ended_at=CURRENT_TIMESTAMP WHERE user_id=? AND protocol=? AND device_id=? AND ended_at IS NULL`, user.ID, protocol, deviceID)
-	if err := s.nodeControllerQueueSync(ctx, nil, map[string]any{"source": "device_revoke", "user_id": user.ID}); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE vpn_user_sessions SET ended_at=CURRENT_TIMESTAMP WHERE user_id=? AND protocol=? AND device_id=? AND ended_at IS NULL`, user.ID, protocol, deviceID); err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	now := time.Now().UTC()
+	payload, err := json.Marshal(map[string]any{"source": "device_revoke", "user_id": user.ID})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "unable to encode device revocation sync")
+		return
+	}
+	keySum := sha256.Sum256([]byte(fmt.Sprintf("device_revoke:%d:%s:%d", user.ID, deviceID, now.UnixNano())))
+	if _, err := tx.ExecContext(ctx, `INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at) VALUES ('sync_config', NULL, ?, ?, 'pending', 0, ?, ?, ?)`, user.ID, string(payload), hex.EncodeToString(keySum[:]), now, now); err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
