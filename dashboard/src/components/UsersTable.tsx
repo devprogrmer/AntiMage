@@ -2046,7 +2046,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 												{" · "}{record.online ? t("online") : t("offline")}
 											</Text>
 										)}
-										{ipDialog?.mode === "devices" && record.device_id && ["wg", "wireguard", "awg", "amneziawg"].includes(record.protocol) && (
+										{ipDialog?.mode === "devices" && canRevokeSub && !isAdminDisabled && record.device_id && ["wg", "wireguard", "awg", "amneziawg"].includes(record.protocol) && (
 											<Button mt={2} size="xs" variant="outline" colorScheme="red" leftIcon={<RevokeIcon />} isLoading={contextAction === "revoke-device"} onClick={() => handleRevokeDevice(record)}>
 												{t("usersTable.revokeDevice")}
 											</Button>
