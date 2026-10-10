@@ -31,12 +31,13 @@ func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclie
 			if syncErr := c.prepareRuntimeRevision(ctx, client, node.ID, runtimeReq); syncErr != nil {
 				return syncErr
 			}
-			res, syncErr := client.Runtime().SyncConfig(ctx, runtimeReq)
-			if syncErr != nil {
-				return syncErr
-			}
-			_, syncErr = c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
-			return syncErr
+			return c.executeLegacyNodeCommand(legacyConfigEvidence(ctx, runtimeReq.ConfigJson), node.ID, runtimeReq.OperationId, "sync_config", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
+				runtimeReq.Fence = fence
+				return client.Runtime().SyncConfig(worker, runtimeReq)
+			}, func(worker context.Context, res *nodev1.RuntimeActionResponse) error {
+				_, finishErr := c.finishRuntime(worker, node, res.GetRuntime(), res.GetMessage())
+				return finishErr
+			})
 		}
 		return err
 	}

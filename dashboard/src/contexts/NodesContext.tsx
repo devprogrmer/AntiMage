@@ -450,6 +450,7 @@ export const useNodes = create<NodeStore>((set, get) => ({
 	updateNodeService(body) {
 		return fetch(`/node/${body.id}/service/update`, {
 			method: "POST",
+			timeout: 9 * 60 * 1000,
 			body: {
 				channel: normalizeNodeUpdateChannel(body.channel),
 				version: body.version,

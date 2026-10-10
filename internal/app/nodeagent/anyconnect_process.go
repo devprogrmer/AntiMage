@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"fmt"
+	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	"os"
 	"os/exec"
 	"sort"
@@ -13,7 +14,7 @@ import (
 
 var (
 	anyConnectLookPath       = exec.LookPath
-	anyConnectCommandContext = exec.CommandContext
+	anyConnectCommandContext = managedprocess.CommandContext
 	anyConnectStartupGrace   = 400 * time.Millisecond
 )
 
@@ -118,16 +119,18 @@ func stopAnyConnectProcess(p *anyConnectProcess) error {
 	default:
 	}
 	if err := openVPNTerminateProcess(p.cmd.Process); err != nil {
-		_ = p.cmd.Process.Kill()
+		_ = managedprocess.Kill(p.cmd)
 	}
 	select {
 	case <-p.done:
+		_ = managedprocess.Kill(p.cmd)
 		return nil
 	case <-time.After(openVPNShutdownGrace):
 	}
-	_ = p.cmd.Process.Kill()
+	_ = managedprocess.Kill(p.cmd)
 	select {
 	case <-p.done:
+		_ = managedprocess.Kill(p.cmd)
 		return nil
 	case <-time.After(openVPNKillGrace):
 		return fmt.Errorf("process did not exit after forced kill")

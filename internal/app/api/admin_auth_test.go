@@ -211,6 +211,7 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			port INTEGER NOT NULL DEFAULT 62050,
 			api_port INTEGER NOT NULL DEFAULT 62051,
 			xray_version TEXT NULL,
+			node_binary_tag TEXT NULL,
 			status TEXT DEFAULT 'connected',
 			last_status_change DATETIME NULL,
 			message TEXT NULL,

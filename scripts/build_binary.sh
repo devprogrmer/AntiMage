@@ -16,7 +16,12 @@ if [[ -z "$build_version" ]]; then
         build_version="0.1.3"
     fi
 fi
-build_ldflags="-X github.com/antimage/antimage/internal/app/system.BuildVersion=${build_version} -X github.com/antimage/antimage/internal/app/nodeagent.BuildVersion=${build_version}"
+build_commit="$(git rev-parse HEAD)"
+build_channel="stable"
+if [[ "$build_version" == dev-* ]]; then
+    build_channel="dev"
+fi
+build_ldflags="-X github.com/antimage/antimage/internal/app/system.BuildVersion=${build_version} -X github.com/antimage/antimage/internal/app/nodeagent.BuildVersion=${build_version} -X github.com/antimage/antimage/internal/app/nodeagent.BuildCommit=${build_commit} -X github.com/antimage/antimage/internal/app/nodeagent.BuildChannel=${build_channel}"
 
 if [ ! -f "dashboard/build/index.html" ] && [ ! -f "dashboard/dist/index.html" ]; then
     echo "Dashboard build is missing. Build dashboard/build or dashboard/dist before creating binaries." >&2

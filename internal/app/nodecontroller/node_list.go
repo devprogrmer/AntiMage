@@ -8,6 +8,7 @@ import (
 	"time"
 
 	nodeapp "github.com/antimage/antimage/internal/app/node"
+	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
 func (c Controller) List(ctx context.Context, req Request) (NodeListResult, error) {
@@ -123,19 +124,20 @@ func (c Controller) Sync(ctx context.Context, req Request) (RuntimeResult, error
 	if err := c.prepareRuntimeRevision(ctx, client, node.ID, runtimeReq); err != nil {
 		return RuntimeResult{}, err
 	}
-	res, err := client.Runtime().SyncConfig(ctx, runtimeReq)
-	if err != nil {
-		_ = c.repo.SetError(ctx, node.ID, err.Error())
-		return RuntimeResult{}, friendlyNodeError("sync", node.ID, err)
-	}
-	result, err := c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
-	if err != nil {
-		return RuntimeResult{}, err
-	}
-	if _, err := c.repo.MarkOperationsDone(ctx, supersededIDs); err != nil {
-		return RuntimeResult{}, err
-	}
-	return result, nil
+	var result RuntimeResult
+	err = c.executeLegacyNodeCommand(legacyConfigEvidence(ctx, runtimeReq.ConfigJson), node.ID, runtimeReq.OperationId, "sync_config", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
+		runtimeReq.Fence = fence
+		return client.Runtime().SyncConfig(worker, runtimeReq)
+	}, func(worker context.Context, res *nodev1.RuntimeActionResponse) error {
+		var finishErr error
+		result, finishErr = c.finishRuntime(worker, node, res.GetRuntime(), res.GetMessage())
+		if finishErr != nil {
+			return finishErr
+		}
+		_, finishErr = c.repo.MarkOperationsDone(worker, supersededIDs)
+		return finishErr
+	})
+	return result, err
 }
 
 func applyRuntimeToNodeItem(item *NodeListItem, runtime RuntimeResult) {
@@ -159,6 +161,22 @@ func applyRuntimeToNodeItem(item *NodeListItem, runtime RuntimeResult) {
 	}
 	if strings.TrimSpace(runtime.UpdateChannel) != "" {
 		item.NodeUpdateChannel = &runtime.UpdateChannel
+	}
+	if value := strings.TrimSpace(runtime.DesiredNodeVersion); value != "" {
+		item.DesiredNodeVersion = &value
+	}
+	if value := strings.TrimSpace(runtime.InstalledNodeVersion); value != "" {
+		item.InstalledNodeVersion = &value
+	}
+	running := strings.TrimSpace(runtime.RunningNodeVersion)
+	if running == "" {
+		running = strings.TrimSpace(runtime.NodeServiceVersion)
+	}
+	if running != "" {
+		item.RunningNodeVersion = &running
+	}
+	if value := strings.TrimSpace(runtime.NodeUpdatePolicy); value != "" {
+		item.NodeUpdatePolicy = &value
 	}
 	item.CPU = runtime.CPU
 	item.Memory = runtime.Memory

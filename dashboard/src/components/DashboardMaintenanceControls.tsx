@@ -46,12 +46,24 @@ import { getAPIWebSocketURL } from "utils/websocket";
 import { DashboardBackupControls } from "./AntiMageBackupPanel";
 import { PanelSelect as Select } from "./common/PanelSelect";
 
-type UpdateChannel = "current" | "latest" | "dev";
+type UpdateChannel = "stable" | "dev";
 type MaintenanceAction = "update" | "restart" | "soft-reload";
 
 type MaintenanceOperation = {
 	id?: string;
+	target_type?: string;
 	action?: string;
+	requested_channel?: string;
+	update_policy?: string;
+	requested_version?: string;
+	resolved_version?: string;
+	desired_version?: string;
+	previous_version?: string;
+	installed_version?: string;
+	running_version?: string;
+	started_at?: number;
+	updated_at?: number;
+	finished_at?: number;
 	phase?: string;
 	message?: string;
 	progress?: number | null;
@@ -59,6 +71,7 @@ type MaintenanceOperation = {
 	restarting?: boolean;
 	needs_reload?: boolean;
 	error?: string;
+	rollback_error?: string;
 	logs?: string[];
 };
 
@@ -66,6 +79,7 @@ type MaintenanceInfo = {
 	panel?: {
 		image?: string;
 		tag?: string | null;
+		running_version?: string;
 		mode?: string;
 		install_mode?: string;
 		channel?: string;
@@ -79,6 +93,19 @@ type MaintenanceInfo = {
 		} | null;
 	} | null;
 };
+
+type BuildCatalogEntry = {
+	version: string;
+	channel: string;
+	commit?: string;
+	published_at?: string;
+	workflow_run_id?: string;
+	artifact_name: string;
+	sha256: string;
+	architecture: string;
+};
+
+type VersionCatalog = { stable: BuildCatalogEntry[]; dev: BuildCatalogEntry[] };
 
 const shouldWaitForPanelReturn = (operation?: MaintenanceOperation | null) =>
 	Boolean(
@@ -123,9 +150,11 @@ export const DashboardMaintenanceControls = ({
 	const outputBg = useColorModeValue("gray.50", "blackAlpha.400");
 	const outputBorder = useColorModeValue("gray.200", "whiteAlpha.200");
 	const [selectedChannel, setSelectedChannel] =
-		useState<UpdateChannel>("current");
+		useState<UpdateChannel>("stable");
+	const [selectedVersion, setSelectedVersion] = useState("");
 	const [operation, setOperation] = useState<MaintenanceOperation | null>(null);
 	const [waitingForAPI, setWaitingForAPI] = useState(false);
+	const [panelVerificationError, setPanelVerificationError] = useState("");
 	const [devUpdateArmed, setDevUpdateArmed] = useState(false);
 	const [isUpdateMenuOpen, setUpdateMenuOpen] = useState(false);
 	const [isUpdateDialogOpen, setUpdateDialogOpen] = useState(false);
@@ -149,17 +178,48 @@ export const DashboardMaintenanceControls = ({
 	const hostActionsAvailable = installMode === "binary";
 	const fallbackVersion = channel?.toLowerCase() === "dev" ? "dev" : version;
 	const currentVersion =
-		panel?.tag || update?.current || fallbackVersion || "-";
-	const selectedTarget =
+		panel?.running_version ||
+		panel?.tag ||
+		update?.current ||
+		fallbackVersion ||
+		"-";
+	const versions = useQuery<VersionCatalog>(
+		["maintenance-versions", "panel", selectedChannel],
+		() =>
+			fetch<VersionCatalog>("/maintenance/versions", {
+				query: { target: "panel" },
+				timeout: 20_000,
+			}),
+		{
+			enabled: canMaintain && isUpdateMenuOpen,
+			staleTime: 10 * 60 * 1000,
+			retry: false,
+		},
+	);
+	const history = useQuery<{ operations: MaintenanceOperation[] }>(
+		["maintenance-history"],
+		() => fetch("/maintenance/history", { query: { limit: 10 } }),
+		{ enabled: canMaintain && isUpdateDialogOpen, staleTime: 5_000, retry: false },
+	);
+	const availableVersions =
 		selectedChannel === "dev"
+			? versions.data?.dev || []
+			: versions.data?.stable || [];
+	const selectedBuild =
+		availableVersions.find((item) => item.version === selectedVersion) ||
+		availableVersions[0];
+	const selectedTarget =
+		selectedVersion ||
+		selectedBuild?.version ||
+		(selectedChannel === "dev"
 			? update?.latest_dev?.tag
-			: selectedChannel === "latest"
-				? update?.latest_release?.tag
-				: update?.target;
+			: update?.latest_release?.tag);
 
 	useEffect(() => {
-		if (panel?.channel === "dev" || panel?.channel === "latest") {
-			setSelectedChannel(panel.channel);
+		if (panel?.channel === "dev") {
+			setSelectedChannel("dev");
+		} else if (panel?.channel === "stable" || panel?.channel === "latest") {
+			setSelectedChannel("stable");
 		}
 	}, [panel?.channel]);
 
@@ -170,23 +230,82 @@ export const DashboardMaintenanceControls = ({
 		}
 	}, []);
 
-	const startPanelReturnPolling = useCallback(() => {
-		if (panelReturnPollRef.current !== null) return;
-		const startedAt = Date.now();
-		panelReturnSawOfflineRef.current = false;
-		setWaitingForAPI(true);
-		panelReturnPollRef.current = window.setInterval(async () => {
-			try {
-				await fetch<MaintenanceInfo>("/maintenance/info", { timeout: 2500 });
-				if (panelReturnSawOfflineRef.current || Date.now() - startedAt > 7000) {
-					clearPanelReturnPolling();
-					window.location.reload();
+	const startPanelReturnPolling = useCallback(
+		(status: MaintenanceOperation) => {
+			if (panelReturnPollRef.current !== null) return;
+			const startedAt = Date.now();
+			panelReturnSawOfflineRef.current = false;
+			setPanelVerificationError("");
+			setWaitingForAPI(true);
+			panelReturnPollRef.current = window.setInterval(async () => {
+				try {
+					const info = await fetch<MaintenanceInfo>("/maintenance/info", {
+						timeout: 2500,
+					});
+					if (status.action === "update") {
+						const running = info.panel?.running_version?.trim() || "";
+						const installed = info.panel?.tag?.trim() || "";
+						const requested = status.requested_version?.trim() || "latest";
+						const matchesExact =
+							running === requested ||
+							(requested.startsWith("dev-") &&
+								running.startsWith(requested) &&
+								/^[a-f0-9]{7,40}$/i.test(running.slice(4)));
+						const verified =
+							requested === "latest"
+								? Boolean(running && installed && running === installed)
+								: requested === "dev"
+									? Boolean(running.startsWith("dev-") && installed === running)
+									: matchesExact;
+						if (!verified) {
+							if (Date.now() - startedAt > 180_000) {
+								setPanelVerificationError(
+									t("dashboardMaintenance.versionVerificationFailed", {
+										expected: requested,
+										running: running || "unknown",
+									}),
+								);
+								setOperation({
+									...status,
+									phase: "verification_failed",
+									running: false,
+									restarting: false,
+									needs_reload: false,
+								});
+								setWaitingForAPI(false);
+								clearPanelReturnPolling();
+							}
+							return;
+						}
+					}
+					if (
+						panelReturnSawOfflineRef.current ||
+						Date.now() - startedAt > 7000
+					) {
+						clearPanelReturnPolling();
+						window.location.reload();
+					}
+				} catch {
+					panelReturnSawOfflineRef.current = true;
+					if (Date.now() - startedAt > 180_000) {
+						setPanelVerificationError(
+							t("dashboardMaintenance.panelReturnTimeout"),
+						);
+						setOperation({
+							...status,
+							phase: "verification_failed",
+							running: false,
+							restarting: false,
+							needs_reload: false,
+						});
+						setWaitingForAPI(false);
+						clearPanelReturnPolling();
+					}
 				}
-			} catch {
-				panelReturnSawOfflineRef.current = true;
-			}
-		}, 2000);
-	}, [clearPanelReturnPolling]);
+			}, 2000);
+		},
+		[clearPanelReturnPolling, t],
+	);
 
 	useEffect(() => () => clearPanelReturnPolling(), [clearPanelReturnPolling]);
 	useEffect(
@@ -208,7 +327,7 @@ export const DashboardMaintenanceControls = ({
 				const status = JSON.parse(event.data) as MaintenanceOperation;
 				if (status.id !== operation.id) return;
 				setOperation(status);
-				if (shouldWaitForPanelReturn(status)) startPanelReturnPolling();
+				if (shouldWaitForPanelReturn(status)) startPanelReturnPolling(status);
 				if (
 					status.action === "update" &&
 					!status.running &&
@@ -227,6 +346,7 @@ export const DashboardMaintenanceControls = ({
 		body?: Record<string, unknown>,
 	) => {
 		try {
+			setPanelVerificationError("");
 			const result = await fetch<{ operation?: MaintenanceOperation }>(
 				`/maintenance/${action}`,
 				{ method: "POST", body, timeout: 3000 },
@@ -244,6 +364,10 @@ export const DashboardMaintenanceControls = ({
 	) => {
 		const nextOperation = result.operation || {
 			action,
+			requested_version:
+				action === "update"
+					? selectedTarget || (selectedChannel === "dev" ? "dev" : "latest")
+					: undefined,
 			phase: result.wentOffline ? "restarting" : "queued",
 			message: result.wentOffline
 				? t("settings.panel.maintenanceWaitingForAPI")
@@ -262,13 +386,17 @@ export const DashboardMaintenanceControls = ({
 			toast,
 		);
 		if (result.wentOffline || shouldWaitForPanelReturn(nextOperation)) {
-			startPanelReturnPolling();
+			startPanelReturnPolling(nextOperation);
 		}
 		window.setTimeout(() => info.refetch(), 6000);
 	};
 
 	const updateMutation = useMutation(
-		() => triggerAction("update", { channel: selectedChannel }),
+		() =>
+			triggerAction("update", {
+				channel: selectedChannel,
+				version: selectedVersion,
+			}),
 		{
 			retry: false,
 			onSuccess: (result) => handleSuccess("update", result),
@@ -338,8 +466,16 @@ export const DashboardMaintenanceControls = ({
 					gridColumn={{ base: "1 / -1", md: "auto" }}
 					justifySelf="start"
 				>
-					{currentVersion}
+					<Box as="span" dir="ltr" sx={{ unicodeBidi: "isolate" }}>{currentVersion}</Box>
 				</Tag>
+				{panel?.tag && panel.tag !== currentVersion && (
+					<Tag colorScheme="orange">
+						{t("dashboardMaintenance.versionDrift", {
+							installed: panel.tag,
+							running: currentVersion,
+						})}
+					</Tag>
+				)}
 				{canMaintain && (
 					<Box gridColumn={{ base: "1 / -1", md: "auto" }}>
 						<Popover
@@ -454,19 +590,79 @@ export const DashboardMaintenanceControls = ({
 														setSelectedChannel(
 															event.target.value as UpdateChannel,
 														);
+														setSelectedVersion("");
 														setDevUpdateArmed(false);
 													}}
 												>
-													<option value="current">
-														{t("settings.panel.updateChannelCurrent")}
-													</option>
-													<option value="latest">
+													<option value="stable">
 														{t("settings.panel.updateChannelLatest")}
 													</option>
 													<option value="dev">
 														{t("settings.panel.updateChannelDev")}
 													</option>
 												</Select>
+												<Stack
+													direction="row"
+													spacing={2}
+													mt={3}
+													align="center"
+												>
+													<FormLabel fontSize="sm" mb={0} flex="1">
+														{t(
+															"settings.panel.updateTargetVersion",
+															"Target version",
+														)}
+													</FormLabel>
+													<Button
+														size="xs"
+														variant="ghost"
+														leftIcon={<ArrowPathIcon width={14} height={14} />}
+														isLoading={versions.isFetching}
+														onClick={() => versions.refetch()}
+													>
+														{t("settings.panel.checkForUpdates", "Refresh")}
+													</Button>
+												</Stack>
+												<Select
+													size="sm"
+													portalled={false}
+													value={selectedVersion}
+													onChange={(event) =>
+														setSelectedVersion(event.target.value)
+													}
+													isDisabled={
+														versions.isLoading || availableVersions.length === 0
+													}
+												>
+													<option value="">
+														{selectedChannel === "dev"
+															? t(
+																	"settings.panel.latestSuccessfulDev",
+																	"Latest successful dev build",
+																)
+															: t("settings.panel.updateChannelLatest")}
+													</option>
+													{availableVersions.map((build) => (
+														<option key={build.version} value={build.version}>
+															{build.version}
+															{build.commit
+																? ` | ${build.commit.slice(0, 7)}`
+																: ""}
+														</option>
+													))}
+												</Select>
+												{selectedBuild && (
+													<Text fontSize="xs" color="panel.textMuted">
+														{[
+															selectedBuild.published_at,
+															selectedBuild.commit
+																? `SHA ${selectedBuild.commit}`
+																: "",
+														]
+															.filter(Boolean)
+															.join(" | ")}
+													</Text>
+												)}
 												<FormHelperText>
 													{selectedTarget
 														? t("settings.panel.updateTargetHint", {
@@ -558,6 +754,12 @@ export const DashboardMaintenanceControls = ({
 					{operation?.error ? <ModalCloseButton /> : null}
 					<ModalBody pb={6}>
 						<Stack spacing={4}>
+							{panelVerificationError && (
+								<Alert status="error" borderRadius="lg">
+									<AlertIcon />
+									{panelVerificationError}
+								</Alert>
+							)}
 							<Alert
 								status={operation?.error ? "error" : "info"}
 								borderRadius="lg"
@@ -606,6 +808,18 @@ export const DashboardMaintenanceControls = ({
 								{cleanTerminalOutput(operation?.logs) ||
 									t("settings.panel.waitingForOutput.variant2")}
 							</Box>
+							{(history.data?.operations.length ?? 0) > 0 && (
+								<Stack spacing={1} maxH="180px" overflowY="auto">
+									<Text fontWeight="semibold">{t("settings.panel.updateHistory")}</Text>
+									{history.data?.operations.map((item) => {
+										const started = item.started_at ?? 0;
+										const ended = item.finished_at ?? item.updated_at ?? started;
+										const elapsed = Math.max(0, ended - started);
+										const target = item.running_version || item.installed_version || item.resolved_version || item.requested_version || "-";
+										return <Text key={item.id} fontSize="xs">{new Date(started * 1000).toLocaleString()} · {item.previous_version || "-"} → {target} · {item.requested_channel || "-"} ({item.update_policy || "-"}) · {item.phase} · {elapsed}s{item.error ? ` · ${item.error}` : ""}{item.rollback_error ? ` · rollback: ${item.rollback_error}` : ""}</Text>;
+									})}
+								</Stack>
+							)}
 						</Stack>
 					</ModalBody>
 				</ModalContent>

@@ -7,6 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
+
+	managedprocess "github.com/antimage/antimage/internal/platform/process"
 )
 
 const (
@@ -25,8 +28,9 @@ const (
 )
 
 var (
-	l2TPCommandContext = exec.CommandContext
+	l2TPCommandContext = managedprocess.CommandContext
 	l2TPLookPath       = exec.LookPath
+	l2TPCommandTimeout = 15 * time.Second
 )
 
 type l2TPProcess struct {
@@ -61,8 +65,10 @@ func runL2TPCommand(
 		return fmt.Errorf("executable %q not installed", name)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), l2TPCommandTimeout)
+	defer cancel()
 	cmd := l2TPCommandContext(
-		context.Background(),
+		ctx,
 		path,
 		args...,
 	)
@@ -249,9 +255,9 @@ func stopCommandProcess(cmd *exec.Cmd) error {
 		return nil
 	}
 
-	if err := cmd.Process.Signal(os.Interrupt); err != nil &&
+	if err := managedprocess.Interrupt(cmd); err != nil &&
 		!errors.Is(err, os.ErrProcessDone) {
-		if killErr := cmd.Process.Kill(); killErr != nil &&
+		if killErr := managedprocess.Kill(cmd); killErr != nil &&
 			!errors.Is(killErr, os.ErrProcessDone) {
 			return fmt.Errorf(
 				"interrupt process: %v; kill process: %w",

@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"fmt"
+	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	"os/exec"
 	"strings"
 	"time"
@@ -21,7 +22,7 @@ func runIKEv2Firewall(
 		return nil, err
 	}
 
-	return exec.CommandContext(
+	return managedprocess.CommandContext(
 		ctx,
 		path,
 		args...,

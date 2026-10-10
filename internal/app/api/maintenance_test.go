@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 
@@ -42,6 +43,11 @@ func (fakeUpdateChecker) Status(_ context.Context, repo string, current *string,
 		LatestDev:     &latestDev,
 		CheckedAt:     1_780_000_000,
 	}
+}
+
+func (fakeUpdateChecker) Versions(_ context.Context, repo string, target string, refresh bool) (systemapp.VersionCatalog, error) {
+	entry := systemapp.BuildCatalogEntry{Version: "dev-abcdef0", Channel: "dev", Commit: "abcdef0" + strings.Repeat("0", 33), WorkflowRunID: "1234", PublishedAt: "2026-10-01T00:00:00Z", ArtifactName: "antimage-linux-amd64-dev-abcdef0.tar.gz", DownloadURL: "https://downloads.example/build", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Size: 123, OS: "linux", Architecture: "amd64"}
+	return systemapp.VersionCatalog{Stable: []systemapp.BuildCatalogEntry{{Version: "v1.2.0", Channel: "stable", Commit: strings.Repeat("a", 40), PublishedAt: "2026-10-01T00:00:00Z", ArtifactName: "antimage-linux-amd64.tar.gz", DownloadURL: "https://downloads.example/release", SHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Size: 456, OS: "linux", Architecture: "amd64"}}, Dev: []systemapp.BuildCatalogEntry{entry}}, nil
 }
 
 type recordingScheduler struct {
@@ -124,6 +130,7 @@ func TestMaintenanceInfoBinaryAndDockerMock(t *testing.T) {
 		*info.Panel.Tag != tag ||
 		info.Panel.Channel != "dev" ||
 		info.Panel.Update == nil ||
+		info.Panel.Update.Current != nil ||
 		info.Panel.Update.Target == nil ||
 		*info.Panel.Update.Target != "dev-abcdef0" ||
 		info.Node != nil ||
@@ -157,6 +164,28 @@ func TestMaintenanceInfoBinaryAndDockerMock(t *testing.T) {
 	}
 	if dockerInfo.Panel.Mode != "docker" {
 		t.Fatalf("expected docker mode, got %#v", dockerInfo)
+	}
+}
+
+func TestMaintenanceVersionsRequiresTargetAndReturnsCatalog(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 1, "owner", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+	token := adminBearerToken(t, server, "owner", "pass123")
+	server.maintenance = systemapp.NewMaintenanceServiceWithDeps(fakeRuntimeDetector{}, fakeUpdateChecker{}, &recordingScheduler{})
+	rec := adminJSONRequest(t, server, http.MethodGet, "/api/maintenance/versions?target=panel&refresh=true", token, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("catalog status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var catalog systemapp.VersionCatalog
+	if err := json.Unmarshal(rec.Body.Bytes(), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Stable) != 1 || len(catalog.Dev) != 1 || catalog.Dev[0].Commit != "abcdef0"+strings.Repeat("0", 33) {
+		t.Fatalf("unexpected catalog: %#v", catalog)
+	}
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/maintenance/versions?target=other", token, "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid target status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -197,16 +226,30 @@ func TestMaintenanceActionsAcceptedAndValidated(t *testing.T) {
 		t.Fatalf("unexpected maintenance status: %#v", status)
 	}
 	rec = adminJSONRequest(t, server, http.MethodPost, "/api/maintenance/restart", token, `{}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("restart during update status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	server.maintenance = systemapp.NewMaintenanceServiceWithDeps(
+		fakeRuntimeDetector{info: systemapp.RuntimeInfo{Mode: "binary", InstallMode: "binary", Channel: "latest", Binary: map[string]any{}}},
+		fakeUpdateChecker{},
+		scheduler,
+	)
+	rec = adminJSONRequest(t, server, http.MethodPost, "/api/maintenance/restart", token, `{}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("restart status=%d body=%s", rec.Code, rec.Body.String())
 	}
+	server.maintenance = systemapp.NewMaintenanceServiceWithDeps(
+		fakeRuntimeDetector{info: systemapp.RuntimeInfo{Mode: "binary", InstallMode: "binary", Channel: "latest", Binary: map[string]any{}}},
+		fakeUpdateChecker{},
+		scheduler,
+	)
 	rec = adminJSONRequest(t, server, http.MethodPost, "/api/maintenance/soft-reload", token, `{}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("soft reload status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	args := scheduler.snapshot()
 	if len(args) != 3 ||
-		!equalStringSlices(args[0], []string{"update", "--dev"}) ||
+		(len(args[0]) != 7 || args[0][2] != "dev-abcdef0" || args[0][3] != "--resolved-build") ||
 		!equalStringSlices(args[1], []string{"restart", "-n"}) ||
 		!equalStringSlices(args[2], []string{"restart", "-n"}) {
 		t.Fatalf("unexpected scheduled args: %#v", args)
