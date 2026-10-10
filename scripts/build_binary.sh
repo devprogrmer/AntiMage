@@ -16,7 +16,13 @@ if [[ -z "$build_version" ]]; then
         build_version="0.1.3"
     fi
 fi
-build_commit="$(git rev-parse HEAD)"
+build_commit="${ANTIMAGE_BUILD_COMMIT:-}"
+if [[ -z "$build_commit" ]]; then
+    build_commit="$(git rev-parse HEAD 2>/dev/null || true)"
+fi
+if [[ -z "$build_commit" ]]; then
+    build_commit="unknown"
+fi
 build_channel="stable"
 if [[ "$build_version" == dev-* ]]; then
     build_channel="dev"
