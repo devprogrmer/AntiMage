@@ -42,6 +42,10 @@ BINARY_SERVER="$BINARY_BIN_DIR/antimage-server"
 BINARY_CLI="$BINARY_BIN_DIR/antimage-cli"
 BINARY_CLI_LAUNCHER="/usr/local/bin/antimage-cli"
 BINARY_METADATA_FILE="$APP_DIR/.binary-release.json"
+BINARY_UPDATE_BACKUP_DIR="$APP_DIR/.update-rollback"
+BINARY_UPDATE_BACKUP_ACTIVE=0
+RESOLVED_BUILD_JSON=""
+UPDATE_OPERATION_ID=""
 BINARY_ARTIFACT_PREFIX="${BINARY_ARTIFACT_PREFIX:-antimage-binaries}"
 BINARY_SERVICE_UNIT="/etc/systemd/system/$APP_NAME.service"
 CERTBOT_VENV_DIR="$APP_DIR/certbot-venv"
@@ -51,6 +55,62 @@ ANTIMAGE_SCRIPT_FLAVOR="${ANTIMAGE_SCRIPT_FLAVOR:-binary}"
 ANTIMAGE_SCRIPT_SOURCE_FILE="${ANTIMAGE_SCRIPT_SOURCE_FILE:-antimage-binary.sh}"
 ANTIMAGE_SCRIPT_INSTALL_PATH="${ANTIMAGE_SCRIPT_INSTALL_PATH:-/usr/local/bin/antimage}"
 ANTIMAGE_MYSQL_CONFIG_ROOT="${ANTIMAGE_MYSQL_CONFIG_ROOT:-/etc/mysql}"
+
+panel_update_restore_backup() {
+    local identity
+    identity="${UPDATE_BACKUP_ID:-}"
+    if [ -z "$identity" ]; then
+        [ -f "$BINARY_UPDATE_BACKUP_DIR/identity" ] || { echo "Panel backup identity is missing" >&2; return 1; }
+        identity=$(cat "$BINARY_UPDATE_BACKUP_DIR/identity")
+    fi
+    panel_owned_boundary managed_binary_backup restore "$APP_DIR" "$identity" panel "$APP_NAME"
+}
+
+panel_update_restore_on_exit() {
+    local status=$?
+    trap - EXIT
+    if [ "$BINARY_UPDATE_BACKUP_ACTIVE" = "1" ]; then
+        set +e
+        if panel_update_restore_backup; then
+            panel_update_commit_backup
+        else
+            echo "Panel restoration failed; recovery identity retained" >&2
+        fi
+    fi
+    exit "$status"
+}
+trap panel_update_restore_on_exit EXIT
+
+prepare_panel_update_backup() {
+    local configure_database="$1" identity
+    [ "$configure_database" = "0" ] && [ "${ANTIMAGE_API_UPDATE:-0}" = "1" ] && is_binary_install || return 0
+    if [ -e "$BINARY_UPDATE_BACKUP_DIR" ]; then
+        if [ -n "${UPDATE_OPERATION_ID:-}" ] && [ -f "$BINARY_UPDATE_BACKUP_DIR/identity" ] && [ "$(cat "$BINARY_UPDATE_BACKUP_DIR/identity")" = "$UPDATE_OPERATION_ID" ]; then
+            managed_binary_backup verify "$APP_DIR" "$UPDATE_OPERATION_ID" panel "$APP_NAME" >/dev/null || return 1
+            BINARY_UPDATE_BACKUP_ACTIVE=1
+            return 0
+        fi
+        echo "A previous update is awaiting verification" >&2
+        return 1
+    fi
+    identity="${UPDATE_OPERATION_ID:-panel-$(date +%s%N)}"
+    if [ -f "$APP_DIR/.update-backups/$identity/manifest.json" ]; then
+        managed_binary_backup verify "$APP_DIR" "$identity" panel "$APP_NAME" >/dev/null || return 1
+    else
+        managed_binary_backup create "$APP_DIR" "$identity" panel "$APP_NAME" "$BINARY_SERVER" "$BINARY_CLI" "$BINARY_METADATA_FILE" "$CHANNEL_FILE" || return 1
+    fi
+    mkdir -m 700 "$BINARY_UPDATE_BACKUP_DIR" || return 1
+    printf '%s\n' "$identity" > "$BINARY_UPDATE_BACKUP_DIR/identity"
+    sync -f "$BINARY_UPDATE_BACKUP_DIR/identity"
+    BINARY_UPDATE_BACKUP_ACTIVE=1
+}
+
+panel_update_commit_backup() {
+    [ -f "$BINARY_UPDATE_BACKUP_DIR/identity" ] || { echo "No update awaits verification" >&2; return 1; }
+    rm -f "$BINARY_UPDATE_BACKUP_DIR/identity"
+    rmdir "$BINARY_UPDATE_BACKUP_DIR"
+    # Operation-specific archives are retained for explicit rollback.
+}
 
 colorized_echo() {
     local color=$1
@@ -3415,7 +3475,10 @@ write_binary_release_metadata() {
     local binary_arch="$2"
     local asset_url="$3"
 
+    local resolved_metadata="${RESOLVED_BUILD_JSON:-}"
+    [ -n "$resolved_metadata" ] || resolved_metadata='{}'
     jq -n \
+        --argjson build "$resolved_metadata" \
         --arg image "antimage-server (binary)" \
         --arg tag "$resolved_version" \
         --arg asset_url "$asset_url" \
@@ -3425,6 +3488,11 @@ write_binary_release_metadata() {
         --arg installed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{
             install_mode: "binary",
+            commit: ($build.commit // ""),
+            sha256: ($build.sha256 // ""),
+            size: ($build.size // null),
+            os: ($build.os // "linux"),
+            architecture: ($build.architecture // ""),
             image: $image,
             tag: $tag,
             asset_url: $asset_url,
@@ -3433,6 +3501,36 @@ write_binary_release_metadata() {
             cli_binary: $cli_binary,
             installed_at: $installed_at
         }' > "$BINARY_METADATA_FILE"
+}
+
+verify_panel_artifact_checksum() {
+    local asset_url="$1"
+    local asset_path="$2"
+    local asset_name="${asset_url##*/}"
+    local checksums_name="checksums.txt"
+    local checksums_url
+    local checksums_file="${asset_path}.checksums"
+    local expected actual
+
+    if [[ "$asset_name" =~ dev-([a-fA-F0-9]{7,40}) ]]; then
+        checksums_name="checksums-dev-${BASH_REMATCH[1]}.txt"
+    fi
+    checksums_url="${asset_url%/*}/${checksums_name}"
+    curl -fsSL --retry 2 --connect-timeout 15 "$checksums_url" -o "$checksums_file" || {
+        colorized_echo red "Unable to download checksum metadata for ${asset_name}." >&2
+        return 1
+    }
+    expected=$(awk -v name="$asset_name" '$2 == name { print $1; exit }' "$checksums_file")
+    rm -f "$checksums_file"
+    if [[ ! "$expected" =~ ^[a-fA-F0-9]{64}$ ]]; then
+        colorized_echo red "Checksum metadata does not contain a valid SHA256 for ${asset_name}." >&2
+        return 1
+    fi
+    actual=$(sha256sum "$asset_path" | awk '{print $1}')
+    if [ "${actual,,}" != "${expected,,}" ]; then
+        colorized_echo red "SHA256 verification failed for ${asset_name}." >&2
+        return 1
+    fi
 }
 
 create_binary_service() {
@@ -3462,6 +3560,403 @@ EOF
     systemctl daemon-reload
 }
 
+managed_binary_install() {
+    managed_binary_backup verify "$1" "$2" "$3" "$4" >/dev/null || return 1
+    python3 - "$@" <<'PY'
+import fcntl, hashlib, json, os, pathlib, platform, re, shutil, signal, stat, sys, tempfile, time
+app, identity, kind, target = sys.argv[1:5]
+app = pathlib.Path(app).resolve()
+if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,95}', identity): raise ValueError('Invalid transaction identity')
+arguments = sys.argv[5:]
+if not arguments or len(arguments) % 2: raise ValueError('Source/destination pairs required')
+root = app / '.update-transactions'
+if root.is_symlink(): raise ValueError('Transaction root cannot be a symlink')
+root.mkdir(mode=0o700, exist_ok=True)
+directory = root / identity
+if directory.is_symlink(): raise ValueError('Transaction directory cannot be a symlink')
+directory.mkdir(mode=0o700, exist_ok=True)
+def sync_dir(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try: os.fsync(descriptor)
+    finally: os.close(descriptor)
+def digest(path):
+    value = hashlib.sha256()
+    with path.open('rb') as stream:
+        while True:
+            chunk = stream.read(1048576)
+            if not chunk: break
+            value.update(chunk)
+    return value.hexdigest()
+lock = os.open(directory / '.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(TimeoutError('Install deadline exceeded')))
+signal.alarm(180)
+fcntl.flock(lock, fcntl.LOCK_EX)
+records = []
+seen = set()
+for index in range(0, len(arguments), 2):
+    source, destination = map(pathlib.Path, arguments[index:index + 2])
+    if destination.is_symlink() or app not in destination.resolve().parents: raise ValueError('Installation escapes application directory')
+    if str(destination) in seen: raise ValueError('Duplicate production destination')
+    seen.add(str(destination))
+    if source.is_symlink() or not source.is_file(): raise ValueError('Installation requires regular artifacts')
+    with source.open('rb') as stream:
+        header = stream.read(20)
+        expected = {'x86_64':62,'i386':3,'i686':3,'aarch64':183,'armv7l':40,'armv6l':40,'ppc64le':21,'s390x':22,'riscv64':243}.get(platform.machine())
+        if len(header)<20 or header[:4]!=b'\x7fELF' or header[5] not in (1,2) or int.from_bytes(header[18:20], 'little' if header[5]==1 else 'big')!=expected: raise ValueError('Executable artifact architecture is incompatible')
+    attributes = destination.stat() if destination.exists() else source.stat()
+    records.append({'source': str(source), 'destination': str(destination), 'sha256': digest(source), 'size': source.stat().st_size, 'mode': 0o755, 'uid': attributes.st_uid, 'gid': attributes.st_gid, 'reference': str(index // 2)})
+state_path = directory / 'state.json'
+if state_path.is_symlink(): raise ValueError('Installation state cannot be a symlink')
+phases = ['artifact_ready', 'backup_verified', 'replacement_ready', 'replacement_committed', 'runtime_restart_required']
+identity_record = {'operation_id': identity, 'target_type': kind, 'target_id': target, 'files': [{key:value for key,value in record.items() if key != 'source'} for record in records]}
+state = json.loads(state_path.read_text()) if state_path.exists() else {**identity_record, 'phase': 'artifact_ready', 'deadline_at_unix_nanos':time.time_ns()+180_000_000_000}
+if any(state.get(key) != value for key,value in identity_record.items()): raise ValueError('Immutable installation target changed')
+if state.get('phase') not in phases: raise ValueError('Invalid installation phase')
+if phases.index(state['phase']) < phases.index('replacement_committed'):
+    remaining = int(state.get('deadline_at_unix_nanos',0))-time.time_ns()
+    if remaining <= 0: raise TimeoutError('Persisted installation deadline expired')
+    signal.alarm(max(1,(remaining+999_999_999)//1_000_000_000))
+def persist(phase):
+    if phases.index(state['phase']) > phases.index(phase): return
+    state['phase'] = phase
+    descriptor, temporary = tempfile.mkstemp(prefix='.state-', dir=directory)
+    try:
+        with os.fdopen(descriptor,'w') as stream:
+            json.dump(state,stream); stream.flush(); os.fsync(stream.fileno())
+        os.replace(temporary,state_path); sync_dir(directory)
+    finally: pathlib.Path(temporary).unlink(missing_ok=True)
+def matches(record, path):
+    if not path.is_file() or path.is_symlink(): return False
+    attributes = path.stat()
+    return attributes.st_size == record['size'] and digest(path) == record['sha256'] and stat.S_IMODE(attributes.st_mode) == record['mode'] and attributes.st_uid == record['uid'] and attributes.st_gid == record['gid']
+if phases.index(state['phase']) >= phases.index('replacement_committed'):
+    if not all(matches(record,pathlib.Path(record['destination'])) for record in records): raise ValueError('Committed production identity changed; manual recovery required')
+else:
+    persist('artifact_ready'); persist('backup_verified')
+    staged = []
+    for record in records:
+        destination = pathlib.Path(record['destination'])
+        if matches(record,destination): continue
+        temporary = destination.parent / ('.install-' + identity + '-' + record['reference'])
+        if temporary.is_symlink(): raise ValueError('Staged executable cannot be a symlink')
+        if not matches(record,temporary):
+            temporary.unlink(missing_ok=True)
+            descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(descriptor,'wb') as stream, pathlib.Path(record['source']).open('rb') as original:
+                shutil.copyfileobj(original,stream); stream.flush(); os.fchmod(stream.fileno(),record['mode']); os.fchown(stream.fileno(),record['uid'],record['gid']); os.fsync(stream.fileno())
+            sync_dir(destination.parent)
+        staged.append((record,temporary,destination))
+    persist('replacement_ready')
+    for record,temporary,destination in staged:
+        if not matches(record,temporary): raise ValueError('Staged executable identity changed')
+        os.replace(temporary,destination); sync_dir(destination.parent)
+    if not all(matches(record,pathlib.Path(record['destination'])) for record in records): raise ValueError('Production installation identity verification failed')
+    persist('replacement_committed')
+persist('runtime_restart_required')
+signal.alarm(0)
+os.close(lock)
+print(json.dumps(state),flush=True)
+PY
+}
+
+managed_binary_backup() {
+    python3 - "$@" <<'PY'
+import hashlib, json, os, pathlib, platform, re, shutil, stat, sys, tempfile, time, fcntl, signal
+action, application, identity, target_type, target_id = sys.argv[1:6]
+application = pathlib.Path(application).resolve()
+if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,95}', identity):
+    raise SystemExit('Invalid backup identity')
+root = application / '.update-backups'
+if root.is_symlink(): raise SystemExit('Backup root cannot be a symlink')
+root.mkdir(mode=0o700, exist_ok=True)
+architecture = {'x86_64':'amd64','i386':'386','i686':'386','aarch64':'arm64','armv7l':'arm','armv6l':'arm','ppc64le':'ppc64le','s390x':'s390x','riscv64':'riscv64'}.get(platform.machine(), platform.machine())
+backup = root / identity
+def sync_file(path):
+    with path.open('rb') as stream: os.fsync(stream.fileno())
+def sync_dir(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try: os.fsync(descriptor)
+    finally: os.close(descriptor)
+def checksum(path):
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        while True:
+            chunk = stream.read(1048576)
+            if not chunk: break
+            digest.update(chunk)
+    return digest.hexdigest()
+def contained(path):
+    path = pathlib.Path(path)
+    if path.is_symlink() or application not in path.resolve().parents:
+        raise ValueError('Backup destination escapes application directory')
+    return path
+if action == 'create':
+    if backup.exists(): raise SystemExit('Backup identity already exists')
+    staged = pathlib.Path(tempfile.mkdtemp(prefix='.preparing-', dir=root))
+    try:
+        metadata = application / '.binary-release.json'
+        build = json.loads(metadata.read_text()) if metadata.exists() else {}
+        manifest = {'identity': identity, 'target_type': target_type, 'target_id': target_id,
+                    'version': build.get('tag', ''), 'commit': build.get('commit', ''),
+                    'created_at': int(time.time()), 'source_operation_id': identity,
+                    'os': platform.system().lower(), 'architecture': architecture,
+                    'schema_version': build.get('schema_version'), 'files': []}
+        for number, source in enumerate(sys.argv[6:]):
+            source = contained(source)
+            if not source.exists(): continue
+            attributes = source.stat()
+            if not stat.S_ISREG(attributes.st_mode): raise ValueError('Backup requires regular files')
+            copy = staged / str(number)
+            shutil.copy2(source, copy)
+            os.chown(copy, attributes.st_uid, attributes.st_gid)
+            sync_file(copy)
+            manifest['files'].append({'reference': str(number), 'destination': str(source),
+                                      'sha256': checksum(copy), 'size': copy.stat().st_size,
+                                      'mode': stat.S_IMODE(attributes.st_mode),
+                                      'uid': attributes.st_uid, 'gid': attributes.st_gid})
+        if not manifest['files']: raise ValueError('No recoverable files exist')
+        path = staged / 'manifest.json'
+        path.write_text(json.dumps(manifest))
+        sync_file(path)
+        sync_dir(staged)
+        os.rename(staged, backup)
+        sync_dir(root)
+    except BaseException:
+        shutil.rmtree(staged)
+        raise
+elif action in ('verify', 'restore'):
+    if backup.is_symlink(): raise ValueError('Backup directory cannot be a symlink')
+    manifest = json.loads((backup / 'manifest.json').read_text())
+    if manifest['identity'] != identity or manifest['target_type'] != target_type or str(manifest['target_id']) != target_id:
+        raise ValueError('Backup identity does not match target')
+    if manifest.get('os') != platform.system().lower() or manifest.get('architecture') != architecture:
+        raise ValueError('Backup platform metadata is incompatible')
+    lock_path = backup / '.restore.lock'
+    if lock_path.is_symlink(): raise ValueError('Restore lock cannot be a symlink')
+    lock = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(TimeoutError('Restore deadline exceeded')))
+    signal.alarm(180)
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    records = []
+    destinations = set()
+    references = set()
+    for record in manifest['files']:
+        if not str(record['reference']).isdigit(): raise ValueError('Invalid backup reference')
+        source = backup / record['reference']
+        destination = contained(record['destination'])
+        if str(destination) in destinations or str(record['reference']) in references:
+            raise ValueError('Duplicate backup destination or reference')
+        destinations.add(str(destination)); references.add(str(record['reference']))
+        if source.is_symlink() or source.stat().st_size != record['size'] or checksum(source) != record['sha256']:
+            raise ValueError('Backup integrity verification failed')
+        if record['mode'] & 0o111:
+            with source.open('rb') as stream: header = stream.read(20)
+            expected = {'amd64':62,'386':3,'arm64':183,'arm':40,'ppc64le':21,'s390x':22,'riscv64':243}.get(architecture)
+            if len(header) < 20 or header[:4] != b'\x7fELF' or header[5] not in (1,2) or int.from_bytes(header[18:20], 'little' if header[5] == 1 else 'big') != expected:
+                raise ValueError('Backup executable architecture is incompatible')
+        records.append((record, source, destination))
+    if action == 'restore':
+        transaction_path = backup / 'restore-state.json'
+        if transaction_path.is_symlink(): raise ValueError('Restore transaction cannot be a symlink')
+        fingerprint = checksum(backup / 'manifest.json')
+        transaction = json.loads(transaction_path.read_text()) if transaction_path.exists() else {'identity':identity,'manifest_sha256':fingerprint,'phase':'rollback_prepared','deadline_at_unix_nanos':time.time_ns()+180_000_000_000}
+        if transaction.get('identity') != identity or transaction.get('manifest_sha256') != fingerprint:
+            raise ValueError('Restore transaction identity changed')
+        phases = ['rollback_prepared','backup_verified','restore_ready','restore_committed','rollback_restart_required']
+        if transaction.get('phase') not in phases: raise ValueError('Invalid restore phase')
+        if phases.index(transaction['phase']) < phases.index('restore_committed'):
+            remaining = int(transaction.get('deadline_at_unix_nanos',0))-time.time_ns()
+            if remaining <= 0: raise TimeoutError('Persisted restore deadline expired')
+            signal.alarm(max(1,(remaining+999_999_999)//1_000_000_000))
+        def persist_phase(phase):
+            if phases.index(transaction['phase']) > phases.index(phase): return
+            transaction['phase'] = phase
+            descriptor, name = tempfile.mkstemp(prefix='.restore-state-', dir=backup)
+            try:
+                with os.fdopen(descriptor,'w') as stream:
+                    json.dump(transaction,stream); stream.flush(); os.fsync(stream.fileno())
+                os.replace(name,transaction_path); sync_dir(backup)
+            finally:
+                pathlib.Path(name).unlink(missing_ok=True)
+        def matches(record,destination):
+            if not destination.is_file() or destination.is_symlink(): return False
+            attributes=destination.stat()
+            return attributes.st_size==record['size'] and checksum(destination)==record['sha256'] and stat.S_IMODE(attributes.st_mode)==record['mode'] and attributes.st_uid==record['uid'] and attributes.st_gid==record['gid']
+        if phases.index(transaction['phase']) >= phases.index('restore_committed'):
+            if not all(matches(record,destination) for record,_,destination in records):
+                raise ValueError('Committed restore production identity changed; manual recovery required')
+        else:
+            persist_phase('rollback_prepared')
+            persist_phase('backup_verified')
+            prepared=[]
+            for record,source,destination in records:
+                if matches(record,destination): continue
+                staged=destination.parent / ('.restore-'+identity+'-'+record['reference'])
+                if staged.is_symlink(): raise ValueError('Restore staging cannot be a symlink')
+                if not staged.exists() or not matches(record,staged):
+                    if staged.exists(): staged.unlink()
+                    descriptor=os.open(staged,os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW,0o600)
+                    with os.fdopen(descriptor,'wb') as stream, source.open('rb') as original:
+                        shutil.copyfileobj(original,stream); stream.flush(); os.fsync(stream.fileno())
+                        os.fchmod(stream.fileno(),record['mode']); os.fchown(stream.fileno(),record['uid'],record['gid']); os.fsync(stream.fileno())
+                    sync_dir(destination.parent)
+                prepared.append((record,staged,destination))
+            persist_phase('restore_ready')
+            for record,staged,destination in prepared:
+                if not matches(record,staged): raise ValueError('Restore staged identity changed')
+                os.replace(staged,destination); sync_dir(destination.parent)
+            if not all(matches(record,destination) for record,_,destination in records): raise ValueError('Restored production identity verification failed')
+            persist_phase('restore_committed')
+        persist_phase('rollback_restart_required')
+    signal.alarm(0)
+    os.close(lock)
+else:
+    raise ValueError('Unsupported backup action')
+print(json.dumps(manifest), flush=True)
+PY
+}
+
+download_resolved_build() {
+    python3 - "$1" "$2" "$3" "$4" "${5:-}" "${6:-}" <<'PY'
+import fcntl, hashlib, json, os, pathlib, re, shutil, signal, struct, sys, tarfile, tempfile, time, urllib.parse, urllib.request
+target = json.loads(sys.argv[1])
+directory = pathlib.Path(sys.argv[2])
+arch, kind = sys.argv[3:5]
+operation, app = sys.argv[5:7]
+if target.get('os') != 'linux' or target.get('arch') != arch:
+    raise SystemExit('Resolved artifact platform mismatch')
+size = target.get('size')
+digest = target.get('sha256', '').lower()
+if not isinstance(size, int) or size <= 0 or size > 2147483648:
+    raise SystemExit('Invalid resolved artifact size')
+if len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest):
+    raise SystemExit('Invalid resolved artifact checksum')
+url = target.get('download_url', '')
+parsed = urllib.parse.urlparse(url)
+if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.fragment:
+    raise SystemExit('Resolved artifact requires HTTPS')
+class HTTPSRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if urllib.parse.urlparse(newurl).scheme != 'https':
+            raise ValueError('Artifact redirect must remain HTTPS')
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+def expire(*_): raise TimeoutError('Absolute artifact phase deadline expired')
+signal.signal(signal.SIGALRM, expire)
+signal.alarm(180)
+def sync_directory(path):
+    fd=os.open(path,os.O_RDONLY|os.O_DIRECTORY)
+    try: os.fsync(fd)
+    finally: os.close(fd)
+def atomic_json(path,value):
+    with tempfile.NamedTemporaryFile(mode='w',dir=path.parent,prefix='.artifact-state-',delete=False) as output:
+        name=output.name
+        json.dump(value,output);output.flush();os.fsync(output.fileno())
+    try: os.replace(name,path);sync_directory(path.parent)
+    finally:
+        if os.path.exists(name): os.unlink(name)
+cache=directory
+if operation:
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,95}',operation) or not app:
+        raise ValueError('Operation-owned artifact identity is required')
+    root=pathlib.Path(app).resolve()/'.maintenance-artifacts'
+    if root.is_symlink(): raise ValueError('Artifact root cannot be a symlink')
+    root.mkdir(mode=0o700,exist_ok=True)
+    cache=root/operation
+    if cache.is_symlink(): raise ValueError('Artifact operation directory cannot be a symlink')
+    cache.mkdir(mode=0o700,exist_ok=True)
+lock=os.open(cache/'.artifact.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
+fcntl.flock(lock,fcntl.LOCK_EX)
+archive=cache/'resolved-artifact'
+partial=cache/'resolved-artifact.partial'
+record=cache/'target.json'
+for path in (archive,partial,record):
+    if path.is_symlink(): raise ValueError('Artifact state cannot be a symlink')
+identity={'operation_id':operation,'target':target,'kind':kind}
+if record.exists():
+    state=json.loads(record.read_text())
+    if any(state.get(key)!=value for key,value in identity.items()):
+        raise ValueError('Persisted immutable artifact target differs')
+else:
+    state=dict(identity,download_deadline_at=time.time()+180)
+    atomic_json(record,state)
+def valid_artifact(path):
+    if not path.is_file() or path.stat().st_size!=size: return False
+    hasher=hashlib.sha256()
+    with path.open('rb') as source:
+        while True:
+            chunk=source.read(1048576)
+            if not chunk: break
+            hasher.update(chunk)
+    return hasher.hexdigest()==digest
+if archive.exists():
+    # A completed marker never overrides actual bytes. Reject corruption rather
+    # than silently downloading and installing a replacement.
+    if not valid_artifact(archive): raise ValueError('Cached artifact size or checksum mismatch')
+else:
+    if partial.exists():
+        if valid_artifact(partial):
+            os.replace(partial,archive);sync_directory(cache)
+        else:
+            # Only this verified operation directory and exact owned file.
+            partial.unlink();sync_directory(cache)
+    if not archive.exists():
+        remaining=state['download_deadline_at']-time.time()
+        if remaining<=0: raise TimeoutError('Persisted artifact download deadline expired')
+        signal.setitimer(signal.ITIMER_REAL,remaining)
+        opener=urllib.request.build_opener(HTTPSRedirect())
+        count=0
+        with opener.open(url,timeout=min(120,remaining)) as response, partial.open('xb') as output:
+            if response.status!=200: raise ValueError('Artifact download was not successful')
+            while True:
+                chunk=response.read(min(1048576,size+1-count))
+                if not chunk: break
+                count+=len(chunk)
+                if count>size: raise ValueError('Artifact exceeds resolved size')
+                output.write(chunk)
+            output.flush();os.fsync(output.fileno())
+        if not valid_artifact(partial): raise ValueError('Resolved artifact size or checksum mismatch')
+        os.replace(partial,archive);sync_directory(cache)
+state['artifact_ready']=True
+atomic_json(record,state)
+machines = {'amd64': 62, '386': 3, 'arm64': 183, 'armv5': 40, 'armv6': 40,
+            'armv7': 40, 'arm': 40, 'ppc64le': 21, 's390x': 22, 'riscv64': 243}
+def check_elf(path):
+    with path.open('rb') as stream: header = stream.read(20)
+    if len(header) != 20 or header[:4] != b'\x7fELF' or header[5] not in (1, 2):
+        raise ValueError('Artifact contains no ELF executable')
+    endian = '<' if header[5] == 1 else '>'
+    if struct.unpack(endian + 'H', header[18:20])[0] != machines.get(arch):
+        raise ValueError('ELF architecture mismatch')
+if kind == 'node':
+    check_elf(archive)
+    with archive.open('rb') as source, (directory/'antimage-node').open('xb') as output:
+        shutil.copyfileobj(source,output);output.flush();os.fsync(output.fileno())
+elif kind == 'panel':
+    required = {'antimage-server', 'antimage-cli'}
+    seen = set()
+    with tarfile.open(archive, 'r:gz') as package:
+        for member in package:
+            name = member.name.removeprefix('./')
+            if name not in required: continue
+            if name in seen or not member.isfile() or member.size <= 0 or member.size > 1073741824:
+                raise ValueError('Invalid or duplicate binary archive member')
+            seen.add(name)
+            path = directory / name
+            with package.extractfile(member) as source, path.open('xb') as output:
+                while True:
+                    chunk = source.read(1048576)
+                    if not chunk: break
+                    output.write(chunk)
+                output.flush()
+                os.fsync(output.fileno())
+            check_elf(path)
+    if seen != required: raise ValueError('Resolved panel archive is incomplete')
+else:
+    raise ValueError('Unsupported target type')
+print('Artifact verified: ' + target['version'], flush=True)
+PY
+}
+
 install_binary_antimage() {
     local antimage_version="$1"
     local database_type="$2"
@@ -3489,7 +3984,12 @@ install_binary_antimage() {
     binary_arch=$(detect_binary_arch)
     tmp_dir=$(mktemp -d)
 
-    if [ -n "${ANTIMAGE_BINARY_SERVER_OVERRIDE:-}" ] || [ -n "${ANTIMAGE_BINARY_CLI_OVERRIDE:-}" ]; then
+    if [ -n "${RESOLVED_BUILD_JSON:-}" ]; then
+        resolved_version=$(printf '%s' "${RESOLVED_BUILD_JSON:-}" | jq -er '.version')
+        [ "$resolved_version" = "$antimage_version" ] || { echo "Resolved version differs from requested installer target" >&2; return 1; }
+        artifact_url=$(printf '%s' "${RESOLVED_BUILD_JSON:-}" | jq -er '.download_url')
+        download_resolved_build "${RESOLVED_BUILD_JSON:-}" "$tmp_dir" "$binary_arch" panel "${UPDATE_OPERATION_ID:-}" "$APP_DIR" || { rm -rf "$tmp_dir"; return 1; }
+    elif [ -n "${ANTIMAGE_BINARY_SERVER_OVERRIDE:-}" ] || [ -n "${ANTIMAGE_BINARY_CLI_OVERRIDE:-}" ]; then
         if [ ! -f "${ANTIMAGE_BINARY_SERVER_OVERRIDE:-}" ] || [ ! -f "${ANTIMAGE_BINARY_CLI_OVERRIDE:-}" ]; then
             colorized_echo red "Both ANTIMAGE_BINARY_SERVER_OVERRIDE and ANTIMAGE_BINARY_CLI_OVERRIDE must point to existing files." >&2
             rm -rf "$tmp_dir"
@@ -3504,6 +4004,7 @@ install_binary_antimage() {
         artifact_name="${artifact_name:-antimage-binaries.zip}"
         package_path="$tmp_dir/$artifact_name"
         ui_spinner_run "Downloading AntiMage dev binary artifact" curl -fL "$artifact_url" -o "$package_path"
+        verify_panel_artifact_checksum "$artifact_url" "$package_path" || { rm -rf "$tmp_dir"; exit 1; }
         if [[ "$package_path" == *.zip ]]; then
             ui_spinner_run "Extracting AntiMage dev artifact" unzip -j -o "$package_path" -d "$tmp_dir"
             dev_package_path="$tmp_dir/antimage-linux-${binary_arch}.tar.gz"
@@ -3523,10 +4024,13 @@ install_binary_antimage() {
         IFS='|' read -r binary_source_type resolved_version server_asset_url cli_asset_url < <(get_binary_release_asset_metadata "$antimage_version" "$binary_arch")
         if [ "$binary_source_type" = "split" ]; then
             ui_spinner_run "Downloading AntiMage server binary" curl -fL "$server_asset_url" -o "$tmp_dir/antimage-server"
+            verify_panel_artifact_checksum "$server_asset_url" "$tmp_dir/antimage-server" || { rm -rf "$tmp_dir"; exit 1; }
             ui_spinner_run "Downloading AntiMage CLI binary" curl -fL "$cli_asset_url" -o "$tmp_dir/antimage-cli"
+            verify_panel_artifact_checksum "$cli_asset_url" "$tmp_dir/antimage-cli" || { rm -rf "$tmp_dir"; exit 1; }
         else
             package_path="$tmp_dir/antimage-binary.tar.gz"
             ui_spinner_run "Downloading AntiMage binary package" curl -fL "$server_asset_url" -o "$package_path"
+            verify_panel_artifact_checksum "$server_asset_url" "$package_path" || { rm -rf "$tmp_dir"; exit 1; }
             ui_spinner_run "Unpacking AntiMage binary package" tar -xzf "$package_path" -C "$tmp_dir"
         fi
     fi
@@ -3538,8 +4042,18 @@ install_binary_antimage() {
     fi
 
     mkdir -p "$BINARY_BIN_DIR" "$DATA_DIR" "$APP_DIR/scripts"
-    install -m 755 "$tmp_dir/antimage-server" "$BINARY_SERVER"
-    install -m 755 "$tmp_dir/antimage-cli" "$BINARY_CLI"
+    prepare_panel_update_backup "$configure_database"
+    local staged_server="${BINARY_SERVER}.new.$$"
+    local staged_cli="${BINARY_CLI}.new.$$"
+    install -m 755 "$tmp_dir/antimage-server" "$staged_server"
+    install -m 755 "$tmp_dir/antimage-cli" "$staged_cli"
+    if [ -n "${UPDATE_OPERATION_ID:-}" ] && [ -f "$APP_DIR/.update-backups/$UPDATE_OPERATION_ID/manifest.json" ]; then
+        panel_owned_boundary managed_binary_install "$APP_DIR" "$UPDATE_OPERATION_ID" panel "$APP_NAME" "$staged_server" "$BINARY_SERVER" "$staged_cli" "$BINARY_CLI" || return 1
+        rm -f "$staged_server" "$staged_cli"
+    else
+        mv -f "$staged_server" "$BINARY_SERVER"
+        mv -f "$staged_cli" "$BINARY_CLI"
+    fi
 
     # Install/update runtime templates shipped with binary packages.
     if [ -d "$tmp_dir/templates" ]; then
@@ -3572,8 +4086,10 @@ install_binary_antimage() {
     fi
 
     write_binary_release_metadata "${resolved_version:-$antimage_version}" "$binary_arch" "${artifact_url:-${server_asset_url:-}}"
+    echo "Resolved AntiMage version: ${resolved_version:-$antimage_version}"
     echo "binary" > "$INSTALL_MODE_FILE"
     create_binary_service
+    BINARY_UPDATE_BACKUP_ACTIVE=0
     rm -rf "$tmp_dir"
     colorized_echo green "AntiMage binary files installed successfully"
 }
@@ -3589,6 +4105,10 @@ up_antimage() {
 }
 
 schedule_binary_service_restart() {
+    if [ -n "${FENCE_OPERATION_ID:-}" ]; then
+        panel_schedule_owned_restart
+        return $?
+    fi
     local delay_seconds="${1:-1}"
     local unit_name="${APP_NAME}-delayed-restart-$(date +%s%N)"
     local restart_script="sleep ${delay_seconds}; systemctl restart ${APP_NAME}.service"
@@ -3606,7 +4126,7 @@ schedule_binary_service_restart() {
 }
 
 restart_binary_service_now() {
-    systemctl restart "$APP_NAME.service"
+    panel_owned_boundary systemctl restart "$APP_NAME.service"
 }
 
 repair_docker_compose_startup_gates() {
@@ -4646,6 +5166,14 @@ update_command() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --operation-id)
+                UPDATE_OPERATION_ID="${2:?operation ID is required}"
+                shift 2
+                ;;
+            --resolved-build)
+                RESOLVED_BUILD_JSON="${2:?resolved build JSON is required}"
+                shift 2
+                ;;
             --dev)
                 if [[ "$antimage_version_set" == "true" ]]; then
                     colorized_echo red "Error: Cannot use --dev and --version options simultaneously."
@@ -4699,7 +5227,9 @@ update_command() {
     fi
     
     colorized_echo blue "Updating AntiMage CLI..."
-    update_antimage_script "$antimage_version"
+    if [ -z "${RESOLVED_BUILD_JSON:-}" ]; then
+        update_antimage_script "$antimage_version"
+    fi
 
     colorized_echo blue "Updating requested version: $antimage_version"
     update_antimage "$antimage_version"
@@ -4723,6 +5253,40 @@ update_command() {
     up_antimage
     
     colorized_echo blue "AntiMage updated successfully"
+}
+
+update_commit_command() {
+    check_running_as_root
+    is_binary_install || { echo "Panel update finalization requires a binary installation" >&2; return 1; }
+    panel_update_commit_backup
+}
+
+update_rollback_command() {
+    check_running_as_root
+    is_binary_install || { echo "Panel rollback requires a binary installation" >&2; return 1; }
+    local target_version="" reason=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --backup-id) UPDATE_BACKUP_ID="${2:?Backup identity required}"; shift 2 ;;
+            --target-version) target_version="${2:?Previous version required}"; shift 2 ;;
+            --reason) reason="${2-}"; shift 2 ;;
+            *) echo "Unknown rollback option: $1" >&2; return 1 ;;
+        esac
+    done
+    if [ -n "${UPDATE_BACKUP_ID:-}" ]; then
+        python3 - "$APP_DIR" "$UPDATE_BACKUP_ID" "$target_version" <<'PY'
+import json,pathlib,re,sys
+app,identity,version=sys.argv[1:]
+if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,95}',identity): raise SystemExit('Invalid backup identity')
+metadata=json.loads((pathlib.Path(app)/'.update-backups'/identity/'manifest.json').read_text())
+if not version or metadata.get('version')!=version: raise SystemExit('Backup version does not match rollback target')
+PY
+        [ "$?" -eq 0 ] || return 1
+    fi
+    panel_update_restore_backup
+    panel_owned_boundary systemctl daemon-reload
+    panel_schedule_owned_restart
+    panel_owned_boundary panel_update_commit_backup
 }
 
 update_antimage_script() {
@@ -5259,6 +5823,240 @@ usage() {
     echo
 }
 
+# Embedded in the installed CLI. Accepted generations and queued job checks use
+# the same persistent file and execution lock, including after agent restart.
+node_command_fence() {
+    python3 - "$1" "$APP_DIR" "$FENCE_OPERATION_ID" "$LEASE_GENERATION" "$COMMAND_ID" "$RESOURCE_GENERATION" "$RESOURCE_ID" <<'PY'
+import fcntl,json,os,pathlib,re,signal,sys,tempfile
+mode,app,operation,generation,command,resource_generation,resource_id=sys.argv[1:]
+pattern=r'[A-Za-z0-9][A-Za-z0-9_.-]{0,95}'
+if not re.fullmatch(pattern,operation) or not re.fullmatch(pattern,command) or not re.fullmatch(pattern,resource_id):
+    raise SystemExit('Invalid command fencing identity')
+if not generation.isdigit() or not 0<int(generation)<2**63:
+    raise SystemExit('Positive command fencing generation is required')
+generation=int(generation)
+if not resource_generation.isdigit() or not 0<int(resource_generation)<2**63:
+    raise SystemExit('Positive resource generation is required')
+resource_generation=int(resource_generation)
+root=pathlib.Path(app).resolve()/'.maintenance-fences'
+if root.is_symlink(): raise SystemExit('Fence root cannot be a symlink')
+root.mkdir(mode=0o700,exist_ok=True)
+lock=root/'.generation.lock'
+fd=os.open(lock,os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
+def expired(*_): raise TimeoutError('Node execution lock deadline expired')
+signal.signal(signal.SIGALRM,expired)
+signal.alarm(15)
+if mode.endswith('-held'):
+    execution=(root/'.execution.lock').stat()
+    if os.fstat(9).st_ino!=execution.st_ino or os.fstat(9).st_dev!=execution.st_dev:
+        raise SystemExit('Inherited execution lock is unavailable')
+    fcntl.flock(9,fcntl.LOCK_EX|fcntl.LOCK_NB)
+if mode.endswith('-boundary-held'):
+    if os.fstat(8).st_ino!=os.fstat(fd).st_ino or os.fstat(8).st_dev!=os.fstat(fd).st_dev:
+        raise SystemExit('Destructive boundary lock is unavailable')
+    fcntl.flock(8,fcntl.LOCK_EX|fcntl.LOCK_NB)
+else:
+    fcntl.flock(fd,fcntl.LOCK_EX)
+def persist(path,state):
+    temporary=None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w',dir=root,prefix='.fence-',delete=False) as output:
+            temporary=output.name
+            json.dump(state,output)
+            output.flush();os.fsync(output.fileno())
+        os.replace(temporary,path)
+        parent=os.open(root,os.O_RDONLY|os.O_DIRECTORY)
+        try: os.fsync(parent)
+        finally: os.close(parent)
+    finally:
+        if temporary and os.path.exists(temporary): os.unlink(temporary)
+resource_record=root/'resource.json'
+if resource_record.is_symlink(): raise SystemExit('Resource record cannot be a symlink')
+resource=json.loads(resource_record.read_text()) if resource_record.exists() else {'generation':0,'owner_operation_id':'','resource_id':resource_id}
+if resource['resource_id']!=resource_id: raise SystemExit('Resource identity mismatch')
+if resource_generation<resource['generation']: raise SystemExit('Stale resource generation rejected')
+if mode.startswith('accept'):
+    if resource_generation==resource['generation'] and resource['owner_operation_id']!=operation:
+        raise SystemExit('Resource generation belongs to another operation')
+    if resource_generation>resource['generation']:
+        resource={'generation':resource_generation,'owner_operation_id':operation,'resource_id':resource_id}
+        persist(resource_record,resource)
+elif resource_generation!=resource['generation'] or resource['owner_operation_id']!=operation:
+    raise SystemExit('Job has been superseded by another resource owner')
+record=root/('operation-'+operation+'.json')
+if record.is_symlink(): raise SystemExit('Fence record cannot be a symlink')
+state=json.loads(record.read_text()) if record.exists() else {'generation':0,'commands':{}}
+if generation<state['generation']: raise SystemExit('Stale command generation rejected')
+if mode.startswith('accept'):
+    if generation>state['generation']:
+        state={'generation':generation,'commands':{key:value for key,value in state['commands'].items() if value in ('completed','started')},'command_resource_generations':state.get('command_resource_generations',{})}
+    if state['commands'].get(command)=='started':
+        raise SystemExit('Command outcome unknown; reconcile target state before replay')
+    completed=state['commands'].get(command)=='completed'
+    if not completed: state['commands'][command]='accepted'
+elif mode.startswith('complete'):
+    if generation!=state['generation'] or state['commands'].get(command) not in ('accepted','started'):
+        raise SystemExit('Completion belongs to an obsolete command')
+    completed=False
+    state['commands'][command]='completed'
+elif mode.startswith('start'):
+    if generation!=state['generation'] or state['commands'].get(command)!='accepted':
+        raise SystemExit('Command already dispatched; reconcile before replay')
+    completed=False
+    state['commands'][command]='started'
+    state.setdefault('command_resource_generations',{})[command]=resource_generation
+elif mode.startswith('check'):
+    if generation!=state['generation'] or state['commands'].get(command) not in ('accepted','started'):
+        raise SystemExit('Queued command no longer owns accepted generation')
+else: raise SystemExit('Unknown fencing mode')
+if mode.startswith(('accept','complete','start')):
+    persist(record,state)
+    if completed: raise SystemExit('Command already executed; reconcile target state')
+print('Command generation verified',flush=True)
+PY
+}
+
+finish_node_command() {
+    [ -n "${LEASE_GENERATION:-}" ] || return 0
+    node_command_fence complete-held
+}
+
+lock_node_command() {
+    # Installed destructive callers must first establish persistent ownership.
+    # Bootstrap callers without a managed operation never enter this helper.
+    [ -n "${LEASE_GENERATION:-}" ] || return 0
+    [ ! -L "$APP_DIR/.maintenance-fences" ] || return 1
+    mkdir -p -m 700 "$APP_DIR/.maintenance-fences"
+    [ ! -L "$APP_DIR/.maintenance-fences/.execution.lock" ] || return 1
+    exec 9>"$APP_DIR/.maintenance-fences/.execution.lock"
+    flock -x -w 15 9 || return 1
+    # Persist dispatch before the first destructive boundary. A crash keeps the
+    # started receipt, so another process cannot execute this command again.
+    node_command_fence start-held
+}
+
+require_node_command_ownership() {
+    if [ -z "${LEASE_GENERATION:-}" ] || [ -z "${RESOURCE_GENERATION:-}" ] || [ -z "${COMMAND_ID:-}" ]; then
+        echo "Destructive CLI command requires an operation authorized by the Panel; root does not bypass maintenance ownership" >&2
+        return 1
+    fi
+    node_command_fence check
+}
+
+node_guarded_boundary() {
+    [ -n "${LEASE_GENERATION:-}" ] || { "$@"; return $?; }
+    [ ! -L "$APP_DIR/.maintenance-fences/.generation.lock" ] || return 1
+    exec 8>"$APP_DIR/.maintenance-fences/.generation.lock"
+    flock -x -w 15 8 || return 1
+    node_command_fence check-boundary-held || { flock -u 8; return 1; }
+    local result=0
+    if "$@"; then result=0; else result=$?; fi
+    flock -u 8
+    return "$result"
+}
+
+panel_database_fence_check() {
+    [ -n "${FENCE_OPERATION_ID:-}" ] && [ -n "${PANEL_EXECUTOR_ID:-}" ] || {
+        echo "An active service operation and executor are required for destructive Panel commands" >&2
+        return 1
+    }
+    antimage_cli maintenance check --operation-id "$FENCE_OPERATION_ID" \
+        --executor-id "$PANEL_EXECUTOR_ID" --lease-generation "$LEASE_GENERATION" \
+        --resource-generation "$RESOURCE_GENERATION" --command-id "$COMMAND_ID" \
+        --action "$PANEL_FENCE_ACTION"
+}
+
+panel_check_and_execute() {
+    panel_database_fence_check || return 1
+    "$@"
+}
+
+panel_owned_boundary() {
+    panel_database_fence_check || return 1
+    node_guarded_boundary panel_check_and_execute "$@"
+}
+
+panel_owned_dispatch() {
+    local action="$1"; shift
+    panel_database_fence_check || return 1
+    node_command_fence accept || return 1
+    lock_node_command || return 1
+    local result=0
+    case "$action" in
+        update|resume-panel-install) update_command "$@" || result=$? ;;
+        restart) restart_command "$@" || result=$? ;;
+        update-rollback|resume-panel-restore) update_rollback_command "$@" || result=$? ;;
+        update-commit) panel_owned_boundary update_commit_command "$@" || result=$? ;;
+        fenced-panel-restart|resume-panel-restart) panel_owned_boundary systemctl restart "$APP_NAME.service" || result=$? ;;
+        *) echo "Unsupported owned Panel command" >&2; result=1 ;;
+    esac
+    if [ "$result" -eq 0 ]; then
+        finish_node_command || return 1
+    fi
+    # A failed/interrupted command retains its started journal record. It must
+    # be reconciled from DB/files/runtime rather than dispatched a second time.
+    return "$result"
+}
+
+panel_schedule_owned_restart() {
+    local next_action="restart-activate"
+    case "$PANEL_FENCE_ACTION" in update|update-rollback|resume-panel-install|resume-panel-restore) next_action="update-activate" ;; esac
+    local next_command
+    next_command=$(python3 - "$FENCE_OPERATION_ID" "$next_action" <<'PY'
+import hashlib,sys
+print('panel-command-'+hashlib.sha256((sys.argv[1]+'|'+sys.argv[2]).encode()).hexdigest()[:32])
+PY
+    ) || return 1
+    command -v systemd-run >/dev/null 2>&1 || {
+        echo "Owned Panel activation requires a bounded service-manager unit" >&2
+        return 1
+    }
+    systemd-run --unit "${APP_NAME}-activate-${next_command}" --collect \
+        --property=RuntimeMaxSec=180 --property=TimeoutStopSec=10 --property=KillMode=control-group \
+        -- "$ANTIMAGE_SCRIPT_INSTALL_PATH" fenced-panel-restart \
+        --fence-operation-id "$FENCE_OPERATION_ID" --executor-id "$PANEL_EXECUTOR_ID" \
+        --lease-generation "$LEASE_GENERATION" --resource-generation "$RESOURCE_GENERATION" \
+        --command-id "$next_command" --owned-action "$next_action"
+}
+
+panel_route_destructive_command() {
+    local cmd="$1"; shift
+    # The DB check is the authority; merely supplying these flags or being root
+    # grants no execution rights. Strip only fencing options for legacy parsers.
+    local args=()
+    PANEL_FENCE_ACTION="$cmd"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --fence-operation-id) FENCE_OPERATION_ID="${2:?Operation required}"; shift 2 ;;
+            --executor-id) PANEL_EXECUTOR_ID="${2:?Executor required}"; shift 2 ;;
+            --lease-generation) LEASE_GENERATION="${2:?Lease generation required}"; shift 2 ;;
+            --resource-generation) RESOURCE_GENERATION="${2:?Resource generation required}"; shift 2 ;;
+            --command-id) COMMAND_ID="${2:?Command identity required}"; shift 2 ;;
+            --owned-action) PANEL_FENCE_ACTION="${2:?Owned action required}"; shift 2 ;;
+            -h|--help) echo "Use: antimage cli maintenance request <action> [options]"; return 0 ;;
+            *) args+=("$1"); shift ;;
+        esac
+    done
+    RESOURCE_ID="panel"
+    if [ -n "${FENCE_OPERATION_ID:-}" ]; then
+        case "$cmd:$PANEL_FENCE_ACTION" in
+            update:update|restart:restart|update-rollback:update-rollback|update-commit:update-commit|fenced-panel-restart:update-activate|fenced-panel-restart:restart-activate|resume-panel-install:resume-panel-install|resume-panel-restore:resume-panel-restore|resume-panel-restart:resume-panel-restart)
+                panel_owned_dispatch "$cmd" "${args[@]}" ;;
+            *) echo "Command/action fencing mismatch" >&2; return 1 ;;
+        esac
+        return $?
+    fi
+    case "$cmd" in
+        update|restart|update-rollback)
+            antimage_cli maintenance request "$cmd" "${args[@]}" ;;
+        core-update)
+            antimage_cli maintenance request core-update "${args[@]}" ;;
+        *)
+            echo "This destructive command has no authorized service operation; use the authenticated maintenance service" >&2
+            return 1 ;;
+    esac
+}
+
 dispatch_command() {
     local cmd="$1"
     shift || true
@@ -5269,6 +6067,14 @@ dispatch_command() {
             ensure_script_matches_installed_mode
             ;;
     esac
+    if is_antimage_installed; then
+        case "$cmd" in
+            up|down|restart|update|update-commit|update-rollback|fenced-panel-restart|resume-panel-install|resume-panel-restore|resume-panel-restart|uninstall|core-update|edit|edit-env|install|script-install|install-script|script-update|update-script|script-uninstall|uninstall-script|migrate|backup-service|database-maintenance|enable-phpmyadmin|disable-phpmyadmin|prepare-external-app-hosting|prepare-external-app-node-hosting|ssl)
+                panel_route_destructive_command "$cmd" "$@"
+                return $?
+                ;;
+        esac
+    fi
     case "$cmd" in
         up) up_command "$@" ;;
         down) down_command "$@" ;;
@@ -5282,6 +6088,8 @@ dispatch_command() {
         database-maintenance) database_maintenance_command "$@" ;;
         install) install_command "$@" ;;
         update) update_command "$@" ;;
+        update-commit) update_commit_command "$@" ;;
+        update-rollback) update_rollback_command "$@" ;;
         uninstall) uninstall_command "$@" ;;
         script-install|install-script) install_antimage_script "$@" ;;
         script-update|update-script) install_antimage_script "$@" ;;

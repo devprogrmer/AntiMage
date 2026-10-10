@@ -1136,6 +1136,7 @@ CREATE TABLE nodes (
 	status TEXT,
 	message TEXT,
 	xray_version TEXT,
+	node_binary_tag TEXT,
 	agent_status TEXT DEFAULT 'unknown',
 	xray_status TEXT DEFAULT 'unknown',
 	desired_revision INTEGER DEFAULT 0,

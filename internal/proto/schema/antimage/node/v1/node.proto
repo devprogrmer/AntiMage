@@ -74,6 +74,10 @@ message ConnectResponse {
 
 message HealthRequest {
   bool include_metrics = 1;
+  string operation_id = 2;
+  string command_id = 3;
+  string transaction_backup_id = 4;
+  bool inspect_restore = 5;
 }
 
 message HealthResponse {
@@ -91,6 +95,28 @@ message RuntimeState {
   string message = 7;
   repeated string capabilities = 8;
   uint64 applied_revision = 9;
+  int64 process_started_at_unix_nano = 10;
+  int64 sampled_at_unix_nano = 11;
+  string binary_tag = 12;
+  string commit_sha = 13;
+  string build_channel = 14;
+  string operating_system = 15;
+  string architecture = 16;
+  string installed_version = 17;
+  string active_config_sha256 = 18;
+  string running_core_version = 19;
+  int64 core_process_started_at_unix_nano = 20;
+  string evidence_operation_id = 21;
+  string evidence_command_id = 22;
+  int64 evidence_resource_generation = 23;
+  string evidence_command_state = 24;
+  bool runtime_stop_verified = 25;
+  int64 evidence_process_started_at_unix_nano = 26;
+  string geo_transaction_phase = 27;
+  string geo_dataset_sha256 = 28;
+  bool geo_reload_verified = 29;
+  int64 current_resource_generation = 30;
+  string maintenance_transaction_json = 31;
 }
 
 message RuntimeConfigRequest {
@@ -99,11 +125,22 @@ message RuntimeConfigRequest {
   bool include_db_users = 3;
   string ov_runtime_json = 4;
   uint64 desired_revision = 5;
+  DestructiveFence fence = 6;
 }
 
 message StopRuntimeRequest {
   string operation_id = 1;
   bool collect_usage_before_stop = 2;
+  DestructiveFence fence = 3;
+}
+
+// Shared with installed binary update/rollback, never a Core/Geo-local counter.
+message DestructiveFence {
+  string operation_id = 1;
+  string command_id = 2;
+  string resource_id = 3;
+  int64 resource_generation = 4;
+  int64 lease_generation = 5;
 }
 
 message RuntimeActionResponse {
@@ -111,6 +148,11 @@ message RuntimeActionResponse {
   bool accepted = 2;
   RuntimeState runtime = 3;
   string message = 4;
+  string backup_json = 5;
+  int64 lease_generation = 6;
+  string command_id = 7;
+  int64 resource_generation = 8;
+  string resource_id = 9;
 }
 
 message InboundUserRequest {
@@ -202,11 +244,14 @@ message RouteTestTraffic {
 message RuntimeUpdateRequest {
   string operation_id = 1;
   string version = 2;
+  DestructiveFence fence = 3;
 }
 
 message GeoUpdateRequest {
   string operation_id = 1;
   repeated GeoFile files = 2;
+  DestructiveFence fence = 3;
+  bool resume_reload_only = 4;
 }
 
 message GeoFile {
@@ -216,16 +261,26 @@ message GeoFile {
 
 message ServiceRestartRequest {
   string operation_id = 1;
+  DestructiveFence fence = 2;
 }
 
 message ServiceUpdateRequest {
   string operation_id = 1;
   string channel = 2;
   string version = 3;
+  string resolved_build_json = 4;
+  string action = 5;
+  string backup_identity = 6;
+  int64 lease_generation = 7;
+  string command_id = 8;
+  string fence_operation_id = 9;
+  int64 resource_generation = 10;
+  string resource_id = 11;
 }
 
 message HostRebootRequest {
   string operation_id = 1;
+  DestructiveFence fence = 2;
 }
 
 message IPBlockRequest {

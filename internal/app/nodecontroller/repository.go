@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	operationapp "github.com/antimage/antimage/internal/app/operations"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
@@ -137,7 +138,7 @@ func (r Repository) SetDesiredRevision(ctx context.Context, nodeID int64, revisi
 	if revision == 0 {
 		return nil
 	}
-	_, err := r.db.ExecContext(ctx, `UPDATE nodes
+	_, err := operationapp.ExecFencedTarget(ctx, r.db, "node", fmt.Sprint(nodeID), `UPDATE nodes
 SET desired_revision = CASE WHEN desired_revision < ? THEN ? ELSE desired_revision END
 WHERE id = ?`, revision, revision, nodeID)
 	return err
@@ -167,7 +168,7 @@ func (r Repository) SetRuntimeState(ctx context.Context, nodeID int64, state *no
 	if state.GetStarted() {
 		xrayStatus = "running"
 	}
-	_, err = r.db.ExecContext(ctx, `UPDATE nodes SET
+	_, err = operationapp.ExecFencedTarget(ctx, r.db, "node", fmt.Sprint(nodeID), `UPDATE nodes SET
 agent_status = 'connected', xray_status = ?, applied_revision = ?, node_capabilities = ?, last_seen_at = ?
 WHERE id = ?`, xrayStatus, state.GetAppliedRevision(), string(capabilities), r.timeArg(time.Now().UTC()), nodeID)
 	return err
@@ -953,6 +954,13 @@ func rowsAffectedOrDefault(res sql.Result, fallback int) int {
 	return int(affected)
 }
 
+// Unknown dispatched outcomes must not be selected by stale-running recovery
+// or the pending/retrying dispatcher. Reconciliation owns their next action.
+func (r Repository) MarkOperationOutcomeUnknown(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE node_operations SET status = 'outcome_unknown', last_error = ?, updated_at = ? WHERE id = ? AND status = 'running'`, "dispatched command requires external reconciliation", r.timeArg(time.Now().UTC()), id)
+	return err
+}
+
 func (r Repository) MarkOperationRetrying(ctx context.Context, id int64, message string) error {
 	if len(message) > 4096 {
 		message = message[:4096]
@@ -1274,8 +1282,9 @@ func isNodeOperationUniqueConstraint(err error) bool {
 }
 
 func (r Repository) updateStatus(ctx context.Context, nodeID int64, status string, message string, version string) (bool, error) {
-	result, err := r.db.ExecContext(
+	result, err := operationapp.ExecFencedTarget(
 		ctx,
+		r.db, "node", fmt.Sprint(nodeID),
 		`UPDATE nodes
 SET last_status_change = CASE WHEN COALESCE(status, '') <> ? THEN ? ELSE last_status_change END,
     status = ?,

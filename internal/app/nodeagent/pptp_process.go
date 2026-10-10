@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"fmt"
+	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +18,7 @@ const (
 )
 
 var (
-	pptpCommandContext  = exec.CommandContext
+	pptpCommandContext  = managedprocess.CommandContext
 	pptpLookPath        = exec.LookPath
 	pptpStartupGrace    = 300 * time.Millisecond
 	pptpShutdownGrace   = 3 * time.Second
@@ -252,11 +253,14 @@ func stopPPTPProcess(runtime *pptpProcess) error {
 	_ = stopCommandProcess(runtime.cmd)
 	select {
 	case <-runtime.done:
+		// The supervisor may exit on INT while a worker ignores that signal.
+		// Finish termination of the still-owned group before reporting stopped.
+		_ = managedprocess.Kill(runtime.cmd)
 		return nil
 	case <-time.After(pptpShutdownGrace):
 	}
 	if runtime.cmd != nil && runtime.cmd.Process != nil {
-		_ = runtime.cmd.Process.Kill()
+		_ = managedprocess.Kill(runtime.cmd)
 	}
 	select {
 	case <-runtime.done:

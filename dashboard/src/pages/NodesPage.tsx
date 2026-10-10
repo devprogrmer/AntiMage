@@ -93,6 +93,10 @@ import { ConfirmDialog } from "../components/dialogs/ConfirmDialog";
 import { GeoUpdateDialog } from "../components/GeoUpdateDialog";
 import { NodeFormModal } from "../components/NodeFormModal";
 import { NodeModalStatusBadge } from "../components/NodeModalStatusBadge";
+import {
+	NodeServiceUpdateDialog,
+	type NodeUpdateTarget,
+} from "../components/NodeServiceUpdateDialog";
 
 const normalizeVersion = (value?: string | null) => {
 	if (!value) return "";
@@ -609,6 +613,17 @@ export const NodesPage: FC = () => {
 	const [updatingBulkService, setUpdatingBulkService] = useState(false);
 	const [serviceActionConfirm, setServiceActionConfirm] =
 		useState<ServiceActionConfirm | null>(null);
+	const [serviceUpdateTarget, setServiceUpdateTarget] =
+		useState<NodeType | null>(null);
+	const [bulkServiceUpdateNodes, setBulkServiceUpdateNodes] = useState<
+		NodeType[]
+	>([]);
+	const [bulkServiceUpdateStatuses, setBulkServiceUpdateStatuses] = useState<
+		Record<
+			number,
+			{ state: "pending" | "completed" | "failed"; error?: string }
+		>
+	>({});
 	const [hostCleanupLoading, setHostCleanupLoading] = useState(false);
 	const [selectedNodeIds, setSelectedNodeIds] = useState<number[]>([]);
 	const [bulkNodeActionLoading, setBulkNodeActionLoading] = useState<
@@ -895,22 +910,27 @@ export const NodesPage: FC = () => {
 			},
 		});
 
-	const { mutate: updateServiceMutate, isLoading: isUpdatingService } =
-		useMutation(updateNodeService, {
-			onMutate: (node: NodeType) => {
-				setUpdatingServiceNodeId(node.id ?? null);
-			},
-			onSuccess: () => {
-				generateSuccessMessage(t("nodes.updateServiceTriggered"), toast);
-				queryClient.invalidateQueries(FetchNodesQueryKey);
-			},
-			onError: (err) => {
-				generateErrorMessage(err, toast);
-			},
-			onSettled: () => {
-				setUpdatingServiceNodeId(null);
-			},
-		});
+	const {
+		mutateAsync: updateServiceMutateAsync,
+		isLoading: isUpdatingService,
+	} = useMutation(updateNodeService, {
+		onMutate: (node: NodeType) => {
+			setUpdatingServiceNodeId(node.id ?? null);
+		},
+		onSuccess: () => {
+			generateSuccessMessage(
+				t("nodes.serviceUpdateDialog.verifiedSuccess"),
+				toast,
+			);
+			queryClient.invalidateQueries(FetchNodesQueryKey);
+		},
+		onError: (err) => {
+			generateErrorMessage(err, toast);
+		},
+		onSettled: () => {
+			setUpdatingServiceNodeId(null);
+		},
+	});
 
 	const { mutate: rebootHostMutate, isLoading: isRebootingHost } = useMutation(
 		rebootNodeHost,
@@ -999,14 +1019,10 @@ export const NodesPage: FC = () => {
 		setServiceActionConfirm({ type: "restart", node, label });
 	};
 
-	const handleUpdateNodeService = useCallback(
-		(node: NodeType) => {
-			if (!node?.id) return;
-			const label = node.name || node.address || t("nodes.thisNode");
-			setServiceActionConfirm({ type: "update", node, label });
-		},
-		[t],
-	);
+	const handleUpdateNodeService = useCallback((node: NodeType) => {
+		if (!node?.id) return;
+		setServiceUpdateTarget(node);
+	}, []);
 
 	const handleRebootNodeHost = useCallback(
 		(node: NodeType) => {
@@ -1062,10 +1078,8 @@ export const NodesPage: FC = () => {
 			});
 			return;
 		}
-		setServiceActionConfirm({
-			type: "update-all",
-			count: targetNodes.length,
-		});
+		setBulkServiceUpdateStatuses({});
+		setBulkServiceUpdateNodes(targetNodes);
 	};
 
 	const closeServiceActionConfirm = () => {
@@ -1086,17 +1100,6 @@ export const NodesPage: FC = () => {
 		}
 		if (serviceActionConfirm.type === "restart") {
 			restartServiceMutate(serviceActionConfirm.node);
-			setServiceActionConfirm(null);
-			return;
-		}
-		if (serviceActionConfirm.type === "update") {
-			updateServiceMutate({
-				...serviceActionConfirm.node,
-				channel: getNodeUpdateChannel(
-					serviceActionConfirm.node,
-					nodeUpdateChannel,
-				),
-			});
 			setServiceActionConfirm(null);
 			return;
 		}
@@ -1136,6 +1139,11 @@ export const NodesPage: FC = () => {
 			);
 			const hostImpact = serviceActionConfirm.hostImpact;
 			setServiceActionConfirm(null);
+			if (actionType === "bulk-update") {
+				setBulkServiceUpdateStatuses({});
+				setBulkServiceUpdateNodes(targetNodes);
+				return;
+			}
 			setBulkNodeActionLoading(actionType);
 			let successCount = 0;
 			let failedCount = 0;
@@ -1150,83 +1158,60 @@ export const NodesPage: FC = () => {
 					return;
 				}
 			}
-			if (actionType === "bulk-update") {
+			for (const node of targetNodes) {
+				if (node.id == null) {
+					continue;
+				}
 				try {
-					await apiFetch("/nodes/service/update", {
-						method: "POST",
-						headers: recentActionHeaders,
-						body: {
-							nodes: targetNodes.map((node) => ({
-								id: node.id,
-								channel: getNodeUpdateChannel(node, nodeUpdateChannel),
-							})),
-						},
-					});
-					successCount = targetNodes.length;
-					completedIDs.push(
-						...targetNodes.flatMap((node) =>
-							node.id == null ? [] : [node.id],
-						),
-					);
+					switch (actionType) {
+						case "bulk-enable":
+							await apiFetch(`/node/${node.id}`, {
+								method: "PUT",
+								headers: recentActionHeaders,
+								body: { status: "connecting" },
+							});
+							break;
+						case "bulk-disable":
+							await apiFetch(`/node/${node.id}`, {
+								method: "PUT",
+								headers: recentActionHeaders,
+								body: { status: "disabled" },
+							});
+							break;
+						case "bulk-delete":
+							await apiFetch(`/node/${node.id}`, {
+								method: "DELETE",
+								headers: recentActionHeaders,
+							});
+							break;
+						case "bulk-reset":
+							await apiFetch(`/node/${node.id}/usage/reset`, {
+								method: "POST",
+								headers: recentActionHeaders,
+							});
+							break;
+						case "bulk-restart":
+							await apiFetch(`/node/${node.id}/service/restart`, {
+								method: "POST",
+								headers: recentActionHeaders,
+							});
+							break;
+						case "bulk-reboot":
+							await apiFetch(`/node/${node.id}/host/reboot`, {
+								method: "POST",
+								headers: recentActionHeaders,
+							});
+							break;
+						default:
+							break;
+					}
+					successCount += 1;
+					completedIDs.push(node.id);
 				} catch (err) {
-					failedCount = targetNodes.length;
+					failedCount += 1;
 					generateErrorMessage(err, toast);
 				}
-			} else
-				for (const node of targetNodes) {
-					if (node.id == null) {
-						continue;
-					}
-					try {
-						switch (actionType) {
-							case "bulk-enable":
-								await apiFetch(`/node/${node.id}`, {
-									method: "PUT",
-									headers: recentActionHeaders,
-									body: { status: "connecting" },
-								});
-								break;
-							case "bulk-disable":
-								await apiFetch(`/node/${node.id}`, {
-									method: "PUT",
-									headers: recentActionHeaders,
-									body: { status: "disabled" },
-								});
-								break;
-							case "bulk-delete":
-								await apiFetch(`/node/${node.id}`, {
-									method: "DELETE",
-									headers: recentActionHeaders,
-								});
-								break;
-							case "bulk-reset":
-								await apiFetch(`/node/${node.id}/usage/reset`, {
-									method: "POST",
-									headers: recentActionHeaders,
-								});
-								break;
-							case "bulk-restart":
-								await apiFetch(`/node/${node.id}/service/restart`, {
-									method: "POST",
-									headers: recentActionHeaders,
-								});
-								break;
-							case "bulk-reboot":
-								await apiFetch(`/node/${node.id}/host/reboot`, {
-									method: "POST",
-									headers: recentActionHeaders,
-								});
-								break;
-							default:
-								break;
-						}
-						successCount += 1;
-						completedIDs.push(node.id);
-					} catch (err) {
-						failedCount += 1;
-						generateErrorMessage(err, toast);
-					}
-				}
+			}
 			setBulkNodeActionLoading(null);
 			queryClient.invalidateQueries(FetchNodesQueryKey);
 			refetchNodes();
@@ -1252,49 +1237,70 @@ export const NodesPage: FC = () => {
 			return;
 		}
 
-		const targetNodes = (nodes ?? []).filter(
-			(node) => node.id != null && node.node_install_mode === "binary",
-		);
-		if (targetNodes.length === 0) {
-			setServiceActionConfirm(null);
+		setServiceActionConfirm(null);
+		setBulkServiceUpdateNodes([]);
+	};
+
+	const submitNodeServiceUpdate = async (target: NodeUpdateTarget) => {
+		if (bulkServiceUpdateNodes.length > 0) {
+			setUpdatingBulkService(true);
+			const pendingNodes = bulkServiceUpdateNodes.filter(
+				(item) =>
+					item.id != null &&
+					bulkServiceUpdateStatuses[item.id]?.state !== "completed",
+			);
+			for (const item of pendingNodes) {
+				if (!item.id) continue;
+				setBulkServiceUpdateStatuses((current) => ({
+					...current,
+					[item.id as number]: { state: "pending" },
+				}));
+				try {
+					await apiFetch(`/node/${item.id}/service/update`, {
+						method: "POST",
+						body: { channel: target.channel, version: target.version },
+						timeout: 9 * 60 * 1000,
+					});
+					setBulkServiceUpdateStatuses((current) => ({
+						...current,
+						[item.id as number]: { state: "completed" },
+					}));
+				} catch (error) {
+					setBulkServiceUpdateStatuses((current) => ({
+						...current,
+						[item.id as number]: {
+							state: "failed",
+							error: error instanceof Error ? error.message : String(error),
+						},
+					}));
+				}
+			}
+			setUpdatingBulkService(false);
+			queryClient.invalidateQueries(FetchNodesQueryKey);
+			for (const item of pendingNodes) {
+				if (item.id != null)
+					queryClient.invalidateQueries([
+						"node-service-update-history",
+						item.id,
+					]);
+			}
+			refetchNodes();
 			return;
 		}
-
-		setUpdatingBulkService(true);
-		setServiceActionConfirm(null);
-		let successCount = 0;
-		let failedCount = 0;
+		if (!serviceUpdateTarget?.id) return;
 		try {
-			await apiFetch("/nodes/service/update", {
-				method: "POST",
-				body: {
-					nodes: targetNodes.map((node) => ({
-						id: node.id,
-						channel: getNodeUpdateChannel(node, nodeUpdateChannel),
-					})),
-				},
+			await updateServiceMutateAsync({
+				...serviceUpdateTarget,
+				channel: target.channel,
+				version: target.version,
 			});
-			successCount = targetNodes.length;
-		} catch (err) {
-			failedCount = targetNodes.length;
-			generateErrorMessage(err, toast);
-		}
-		setUpdatingBulkService(false);
-		queryClient.invalidateQueries(FetchNodesQueryKey);
-		refetchNodes();
-		if (successCount > 0) {
-			generateSuccessMessage(
-				t("nodes.updateAllNodeServicesTriggered", { count: successCount }),
-				toast,
-			);
-		}
-		if (failedCount > 0) {
-			toast({
-				title: t("nodes.updateAllNodeServicesFailed", { count: failedCount }),
-				status: "error",
-				isClosable: true,
-				position: "top",
-			});
+			setServiceUpdateTarget(null);
+			queryClient.invalidateQueries([
+				"node-service-update-history",
+				serviceUpdateTarget.id,
+			]);
+		} catch {
+			// Mutation error is surfaced by the shared mutation handler.
 		}
 	};
 
@@ -3000,6 +3006,22 @@ export const NodesPage: FC = () => {
 				description={versionDialogDescription}
 				allowPersist={false}
 				isSubmitting={versionDialogLoading}
+			/>
+			<NodeServiceUpdateDialog
+				isOpen={
+					Boolean(serviceUpdateTarget) || bulkServiceUpdateNodes.length > 0
+				}
+				node={serviceUpdateTarget ?? bulkServiceUpdateNodes[0] ?? null}
+				nodes={bulkServiceUpdateNodes}
+				bulkStatuses={bulkServiceUpdateStatuses}
+				isSubmitting={isUpdatingService || updatingBulkService}
+				onClose={() => {
+					if (!isUpdatingService && !updatingBulkService) {
+						setServiceUpdateTarget(null);
+						setBulkServiceUpdateNodes([]);
+					}
+				}}
+				onSubmit={submitNodeServiceUpdate}
 			/>
 			<GeoUpdateDialog
 				isOpen={Boolean(geoDialogTarget)}

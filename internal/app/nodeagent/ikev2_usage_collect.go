@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"fmt"
+	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	"net/netip"
 	"os/exec"
 	"sort"
@@ -513,7 +514,7 @@ func (s *Server) collectIKEv2UserUsage(
 		)
 	}
 
-	output, err := exec.CommandContext(
+	output, err := managedprocess.CommandContext(
 		ctx,
 		swanctlPath,
 		"--list-sas",

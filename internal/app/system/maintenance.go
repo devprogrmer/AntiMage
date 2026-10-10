@@ -3,9 +3,12 @@ package system
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	managedprocess "github.com/antimage/antimage/internal/platform/process"
+	"github.com/antimage/antimage/internal/platform/requestctx"
 	"io"
 	"net/http"
 	"os"
@@ -23,6 +26,7 @@ const hostOperationDisabledDetail = "This host-level action is available only on
 var (
 	releaseVersionPattern = regexp.MustCompile(`^v?\d+(?:\.\d+){1,3}(?:[-+._A-Za-z0-9]*)?$`)
 	devVersionPattern     = regexp.MustCompile(`^dev-[0-9a-fA-F]{7,40}$`)
+	processStartedAt      = time.Now().UnixNano()
 )
 
 type MaintenanceError struct {
@@ -38,6 +42,7 @@ type RuntimeInfo struct {
 	Mode             string         `json:"mode"`
 	InstallMode      string         `json:"install_mode"`
 	RunningVersion   string         `json:"running_version"`
+	ProcessStartedAt int64          `json:"process_started_at_unix_nano"`
 	Service          string         `json:"service"`
 	Image            string         `json:"image"`
 	Tag              *string        `json:"tag"`
@@ -71,6 +76,7 @@ type MaintenanceInfo struct {
 type MaintenanceUpdateRequest struct {
 	Channel string `json:"channel"`
 	Version string `json:"version"`
+	Policy  string `json:"policy,omitempty"`
 }
 
 type RuntimeDetector interface {
@@ -89,15 +95,31 @@ type ProgressCommandScheduler interface {
 	ScheduleWithProgress(args []string, onOutput func(string), onDone func(error)) error
 }
 
+type ContextProgressCommandScheduler interface {
+	ScheduleWithProgressContext(context.Context, []string, func(string), func(error)) error
+}
+
 type MaintenanceService struct {
+	opMu     sync.Mutex
 	Runtime  RuntimeDetector
 	Updates  UpdateChecker
 	Commands CommandScheduler
 	ops      *MaintenanceOperationStore
+	// A reconstructed service must retry observation after the previous executor's
+	// lease expires, including phases that normally belong to a live worker.
+	recoveryPending bool
 }
 
 func NewMaintenanceService() *MaintenanceService {
 	return NewMaintenanceServiceWithDeps(DefaultRuntimeDetector{}, NewGitHubUpdateChecker(), DefaultCommandScheduler{})
+}
+
+func NewMaintenanceServiceWithDB(db *sql.DB, dialect string) *MaintenanceService {
+	service := NewMaintenanceService()
+	service.ops = NewMaintenanceOperationStoreWithDB(db, dialect)
+	service.recoveryPending = service.ops.Latest().Running
+	service.reconcilePersistedOperation()
+	return service
 }
 
 func NewMaintenanceServiceWithDeps(runtimeDetector RuntimeDetector, updateChecker UpdateChecker, scheduler CommandScheduler) *MaintenanceService {
@@ -147,36 +169,74 @@ func (s *MaintenanceService) Versions(ctx context.Context, target string, refres
 	return catalog, nil
 }
 
-func (s *MaintenanceService) Update(_ context.Context, req MaintenanceUpdateRequest) (MaintenanceOperationSnapshot, error) {
-	if err := requireBinaryRuntime(s.Runtime.Info()); err != nil {
+func (s *MaintenanceService) Update(ctx context.Context, req MaintenanceUpdateRequest) (MaintenanceOperationSnapshot, error) {
+	runtimeInfo := s.Runtime.Info()
+	if err := requireBinaryRuntime(runtimeInfo); err != nil {
 		return MaintenanceOperationSnapshot{}, err
 	}
-	args, err := BuildAntiMageUpdateArgs(req.Channel, req.Version)
+	if _, err := BuildAntiMageUpdateArgs(req.Channel, req.Version); err != nil {
+		return MaintenanceOperationSnapshot{}, err
+	}
+	catalog, err := s.Versions(ctx, "panel", true)
 	if err != nil {
 		return MaintenanceOperationSnapshot{}, err
 	}
-	return s.startOperation("update", args, "Preparing panel update")
-}
-
-func (s *MaintenanceService) Restart(context.Context) (MaintenanceOperationSnapshot, error) {
-	if err := requireBinaryRuntime(s.Runtime.Info()); err != nil {
+	target, err := ResolveInstall(catalog, req.Channel, req.Policy, req.Version, "linux", runtime.GOARCH)
+	if err != nil {
+		return MaintenanceOperationSnapshot{}, MaintenanceError{Status: http.StatusBadRequest, Detail: err.Error()}
+	}
+	args, err := BuildAntiMageUpdateArgs(target.Channel, target.Version)
+	if err != nil {
 		return MaintenanceOperationSnapshot{}, err
 	}
-	return s.startOperation("restart", []string{"restart", "-n"}, "Preparing panel restart")
-}
-
-func (s *MaintenanceService) SoftReload(context.Context) (MaintenanceOperationSnapshot, error) {
-	if err := requireBinaryRuntime(s.Runtime.Info()); err != nil {
+	payload, err := json.Marshal(target)
+	if err != nil {
 		return MaintenanceOperationSnapshot{}, err
 	}
-	return s.startOperation("soft-reload", []string{"restart", "-n"}, "Preparing panel reload")
+	args = append(args, "--resolved-build", string(payload))
+	return s.startOperation(ctx, "update", args, "Preparing panel update", runtimeInfo.RunningVersion, runtimeInfo.ProcessStartedAt)
+}
+
+func (s *MaintenanceService) Restart(ctx context.Context) (MaintenanceOperationSnapshot, error) {
+	runtimeInfo := s.Runtime.Info()
+	if err := requireBinaryRuntime(runtimeInfo); err != nil {
+		return MaintenanceOperationSnapshot{}, err
+	}
+	return s.startOperation(ctx, "restart", []string{"restart", "-n"}, "Preparing panel restart", runtimeInfo.RunningVersion, runtimeInfo.ProcessStartedAt)
+}
+
+func (s *MaintenanceService) SoftReload(ctx context.Context) (MaintenanceOperationSnapshot, error) {
+	runtimeInfo := s.Runtime.Info()
+	if err := requireBinaryRuntime(runtimeInfo); err != nil {
+		return MaintenanceOperationSnapshot{}, err
+	}
+	return s.startOperation(ctx, "soft-reload", []string{"restart", "-n"}, "Preparing panel reload", runtimeInfo.RunningVersion, runtimeInfo.ProcessStartedAt)
 }
 
 func (s *MaintenanceService) Status() MaintenanceOperationSnapshot {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	if s.ops == nil {
 		s.ops = NewMaintenanceOperationStore()
 	}
+	// Unknown outcomes retain ownership until runtime evidence proves completion.
+	// Polling also advances an expired outcome to manual recovery.
+	if op := s.ops.Latest(); op.Running {
+		if op.Action == "restart" && time.Since(time.Unix(0, op.StartedAtNanos)) > 3*time.Minute && op.Phase != "manual_recovery_required" {
+			s.ops.MarkOutcomeUnknown(op.ID)
+		}
+		if current := s.ops.Latest(); s.recoveryPending || current.TransactionRecoveryDispatched || current.Phase == "outcome_unknown" || current.Phase == "manual_recovery_required" || current.Phase == "finalizing" {
+			s.reconcilePersistedOperation()
+		}
+	}
 	return s.ops.Latest()
+}
+
+func (s *MaintenanceService) History(limit int) ([]MaintenanceOperationSnapshot, error) {
+	if s.ops == nil {
+		s.ops = NewMaintenanceOperationStore()
+	}
+	return s.ops.History(limit)
 }
 
 func (s *MaintenanceService) Subscribe() (<-chan MaintenanceOperationSnapshot, func()) {
@@ -186,15 +246,44 @@ func (s *MaintenanceService) Subscribe() (<-chan MaintenanceOperationSnapshot, f
 	return s.ops.Subscribe()
 }
 
-func (s *MaintenanceService) startOperation(action string, args []string, message string) (MaintenanceOperationSnapshot, error) {
+func (s *MaintenanceService) startOperation(ctx context.Context, action string, args []string, message string, previousVersion string, processStartedAt int64) (MaintenanceOperationSnapshot, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	if s.ops == nil {
 		s.ops = NewMaintenanceOperationStore()
 	}
-	op := s.ops.Start(action, args, message)
+	if active := s.ops.Latest(); active.Running {
+		return MaintenanceOperationSnapshot{}, MaintenanceError{Status: http.StatusConflict, Detail: "A panel maintenance operation is already in progress"}
+	}
+	op := s.ops.StartWithContext(ctx, action, args, message, previousVersion)
+	s.recoveryPending = false
+	s.ops.SetCorrelation(op.ID, requestctx.ID(ctx), requestctx.Admin(ctx))
+	s.ops.SetPreviousProcessStartedAt(op.ID, processStartedAt)
+	if err := s.ops.PersistenceError(); err != nil {
+		s.ops.Finish(op.ID, err)
+		return s.ops.Get(op.ID), fmt.Errorf("persist panel maintenance operation: %w", err)
+	}
+	if err := s.ops.AcquireExecution(context.WithoutCancel(ctx), op.ID); err != nil {
+		return s.ops.Get(op.ID), err
+	}
+	if action == "update" {
+		args = append(args, "--operation-id", op.ID)
+	}
+	var fenceErr error
+	args, fenceErr = s.ops.FencedArgs(op.ID, args)
+	if fenceErr != nil {
+		return s.ops.Get(op.ID), fenceErr
+	}
 	onOutput := func(line string) {
 		s.ops.AppendOutput(op.ID, line)
 	}
 	onDone := func(err error) {
+		// A nonzero installer exit can follow a committed replacement or restore.
+		// Only filesystem/runtime reconciliation can prove the resulting state.
+		if err != nil {
+			s.ops.MarkOutcomeUnknown(op.ID)
+			return
+		}
 		s.ops.Finish(op.ID, err)
 	}
 	if action == "restart" || action == "soft-reload" {
@@ -203,6 +292,15 @@ func (s *MaintenanceService) startOperation(action string, args []string, messag
 			return s.ops.Get(op.ID), err
 		}
 		s.ops.MarkRestarting(op.ID, "Command accepted. Waiting for AntiMage to restart.")
+		return s.ops.Get(op.ID), nil
+	}
+	if scheduler, ok := s.Commands.(ContextProgressCommandScheduler); ok {
+		worker, cancel := context.WithDeadline(context.WithoutCancel(ctx), time.Unix(0, op.StartedAtNanos).Add(3*time.Minute))
+		if err := scheduler.ScheduleWithProgressContext(worker, args, onOutput, func(err error) { cancel(); onDone(err) }); err != nil {
+			cancel()
+			s.ops.Finish(op.ID, err)
+			return s.ops.Get(op.ID), err
+		}
 		return s.ops.Get(op.ID), nil
 	}
 	if scheduler, ok := s.Commands.(ProgressCommandScheduler); ok {
@@ -220,6 +318,144 @@ func (s *MaintenanceService) startOperation(action string, args []string, messag
 	return s.ops.Get(op.ID), nil
 }
 
+func (s *MaintenanceService) reconcilePersistedOperation() {
+	op := s.ops.Latest()
+	if !op.Running || op.ID == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.ops.AcquireExecution(ctx, op.ID); err != nil {
+		return
+	}
+	runtimeInfo := s.Runtime.Info()
+	running := strings.TrimSpace(runtimeInfo.RunningVersion)
+	if !s.reconcilePanelTransaction(op, runtimeInfo) {
+		return
+	}
+	if op.Phase == "outcome_unknown" || op.Phase == "manual_recovery_required" {
+		target := op.RequestedVersion
+		if op.ResolvedTarget != nil {
+			target = op.ResolvedTarget.Version
+		}
+		if op.Action == "rollback" {
+			target = op.TargetPreviousVersion
+		}
+		if op.Action == "restart" {
+			target = op.PreviousVersion
+		}
+		if runtimeInfo.ProcessStartedAt > op.StartedAtNanos && target != "" && target != "latest" && target != "dev" && panelVersionMatches(target, running, stringPtrValue(runtimeInfo.Tag)) && (!op.FinalizationDispatched || panelFinalizationCompleted(op.ID)) {
+			if op.Action == "update" && !op.FinalizationDispatched {
+				s.finalizePanelUpdate(op, running)
+			} else {
+				s.ops.MarkVerified(op.ID, running)
+			}
+		} else if time.Since(time.Unix(0, op.StartedAtNanos)) > 3*time.Minute {
+			s.ops.MarkManualRecoveryRequired(op.ID)
+		}
+		return
+	}
+	if op.Action == "rollback" {
+		if runtimeInfo.ProcessStartedAt > op.StartedAtNanos && panelVersionMatches(op.TargetPreviousVersion, running, stringPtrValue(runtimeInfo.Tag)) {
+			s.ops.MarkVerified(op.ID, running)
+		} else if time.Since(time.Unix(0, op.StartedAtNanos)) > 3*time.Minute {
+			s.ops.MarkManualRecoveryRequired(op.ID)
+		}
+		return
+	}
+	if op.Action != "update" {
+		if runtimeInfo.ProcessStartedAt > op.StartedAtNanos {
+			s.ops.MarkVerified(op.ID, running)
+		} else if time.Since(time.Unix(0, op.StartedAtNanos)) > 3*time.Minute {
+			s.ops.MarkManualRecoveryRequired(op.ID)
+		}
+		return
+	}
+	if op.Phase == "rolling_back" {
+		if runtimeInfo.ProcessStartedAt > op.PhaseStartedAtNanos && panelVersionMatches(op.PreviousVersion, running, stringPtrValue(runtimeInfo.Tag)) {
+			s.ops.MarkRolledBack(op.ID, running)
+			return
+		}
+		if time.Since(time.Unix(0, op.PhaseStartedAtNanos)) > 3*time.Minute {
+			s.ops.MarkManualRecoveryRequired(op.ID)
+		}
+		return
+	}
+	// The old process may still serve requests while the installer prepares the
+	// replacement. Its version is not evidence of a failed new process.
+	if runtimeInfo.ProcessStartedAt <= op.StartedAtNanos && time.Since(time.Unix(0, op.StartedAtNanos)) <= 3*time.Minute {
+		return
+	}
+	requestedTarget := op.RequestedVersion
+	if op.ResolvedTarget != nil {
+		requestedTarget = op.ResolvedTarget.Version
+	}
+	if requestedTarget == "latest" || requestedTarget == "dev" {
+		requestedTarget = op.ResolvedVersion
+	}
+	if requestedTarget != "" && panelVersionMatches(requestedTarget, running, stringPtrValue(runtimeInfo.Tag)) {
+		if runtimeInfo.ProcessStartedAt > op.StartedAtNanos {
+			if op.FinalizationDispatched {
+				if panelFinalizationCompleted(op.ID) {
+					s.ops.MarkVerified(op.ID, running)
+				} else if time.Since(time.Unix(0, op.StartedAtNanos)) > 3*time.Minute {
+					s.ops.MarkManualRecoveryRequired(op.ID)
+				}
+				return
+			}
+			s.finalizePanelUpdate(op, running)
+			return
+		}
+		if time.Since(time.Unix(0, op.StartedAtNanos)) <= 3*time.Minute {
+			return
+		}
+		updateError := "requested panel version is present but a post-update process restart was not observed"
+		s.ops.MarkRollingBack(op.ID, updateError)
+		if err := s.scheduleOwnedMaintenance(op.ID, []string{"update-rollback"}); err != nil {
+			s.ops.MarkRollbackFailed(op.ID, err.Error())
+		}
+		return
+	}
+	updateError := fmt.Sprintf("panel restarted with running version %q; requested %q (resolved %q)", running, op.RequestedVersion, op.ResolvedVersion)
+	if op.PreviousVersion == "" {
+		s.ops.Finish(op.ID, errors.New(updateError))
+		return
+	}
+	s.ops.MarkRollingBack(op.ID, updateError)
+	err := s.scheduleOwnedMaintenance(op.ID, []string{"update-rollback"})
+	if err != nil {
+		s.ops.MarkRollbackFailed(op.ID, err.Error())
+	}
+}
+
+func panelVersionMatches(requested, running, installed string) bool {
+	requested = strings.TrimSpace(requested)
+	running = strings.TrimSpace(running)
+	installed = strings.TrimSpace(installed)
+	if requested == "" || running == "" {
+		return false
+	}
+	if requested == "latest" || requested == "dev" {
+		return running == installed && (requested != "dev" || strings.HasPrefix(running, "dev-"))
+	}
+	if strings.EqualFold(running, requested) {
+		return true
+	}
+	if strings.HasPrefix(requested, "dev-") && strings.HasPrefix(running, requested) {
+		requestedSHA := strings.TrimPrefix(requested, "dev-")
+		runningSHA := strings.TrimPrefix(running, "dev-")
+		return len(requestedSHA) >= 7 && len(runningSHA) >= len(requestedSHA) && len(runningSHA) <= 40 && devVersionPattern.MatchString(running)
+	}
+	return false
+}
+
+func stringPtrValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
 func requireBinaryRuntime(info RuntimeInfo) error {
 	if strings.EqualFold(strings.TrimSpace(info.Mode), "binary") {
 		return nil
@@ -235,15 +471,27 @@ func BuildAntiMageUpdateArgs(channel string, version string) ([]string, error) {
 	if normalizedVersion != "" {
 		switch normalizedVersion {
 		case "latest":
+			if normalizedChannel == "dev" {
+				return nil, MaintenanceError{Status: http.StatusUnprocessableEntity, Detail: "Latest release version cannot be selected for the dev channel"}
+			}
 			return append(args, "--version", "latest"), nil
 		case "dev":
+			if normalizedChannel != "" && normalizedChannel != "dev" {
+				return nil, MaintenanceError{Status: http.StatusUnprocessableEntity, Detail: "Dev version requires the dev channel"}
+			}
 			return append(args, "--dev"), nil
 		}
 		if devVersionPattern.MatchString(normalizedVersion) {
+			if normalizedChannel != "" && normalizedChannel != "dev" {
+				return nil, MaintenanceError{Status: http.StatusUnprocessableEntity, Detail: "Dev version requires the dev channel"}
+			}
 			return append(args, "--version", normalizedVersion), nil
 		}
 		if !releaseVersionPattern.MatchString(normalizedVersion) {
 			return nil, MaintenanceError{Status: http.StatusUnprocessableEntity, Detail: "Invalid update version"}
+		}
+		if normalizedChannel == "dev" {
+			return nil, MaintenanceError{Status: http.StatusUnprocessableEntity, Detail: "Stable version cannot be selected for the dev channel"}
 		}
 		return append(args, "--version", normalizedVersion), nil
 	}
@@ -289,6 +537,7 @@ func (DefaultRuntimeDetector) Info() RuntimeInfo {
 		Mode:             mode,
 		InstallMode:      mode,
 		RunningVersion:   BuildVersion,
+		ProcessStartedAt: processStartedAt,
 		Service:          serviceName(),
 		Image:            image,
 		Tag:              tag,
@@ -362,30 +611,51 @@ func (DefaultCommandScheduler) Schedule(args []string) error {
 		if systemdRun, err := exec.LookPath("systemd-run"); err == nil && systemdRun != "" {
 			unit := fmt.Sprintf("antimage-host-action-%d", time.Now().UnixNano())
 			command = append(
-				[]string{systemdRun, "--unit", unit, "--collect", "--description", "AntiMage host action", "--"},
+				[]string{systemdRun, "--unit", unit, "--collect", "--property=RuntimeMaxSec=180", "--property=TimeoutStopSec=10", "--property=KillMode=control-group", "--description", "AntiMage host action", "--"},
 				command...,
 			)
 		}
 	}
-	cmd := exec.Command(command[0], command[1:]...)
+	worker, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	cmd := managedprocess.CommandContext(worker, command[0], command[1:]...)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	if err := cmd.Start(); err != nil {
+		cancel()
 		return MaintenanceError{Status: http.StatusInternalServerError, Detail: "Failed to schedule AntiMage command: " + err.Error()}
 	}
-	if cmd.Process != nil {
-		_ = cmd.Process.Release()
-	}
+	go func() {
+		defer cancel()
+		_ = cmd.Wait()
+	}()
 	return nil
 }
 
 func (DefaultCommandScheduler) ScheduleWithProgress(args []string, onOutput func(string), onDone func(error)) error {
+	worker, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	err := (DefaultCommandScheduler{}).ScheduleWithProgressContext(worker, args, onOutput, func(err error) {
+		cancel()
+		if onDone != nil {
+			onDone(err)
+		}
+	})
+	if err != nil {
+		cancel()
+	}
+	return err
+}
+
+func (DefaultCommandScheduler) ScheduleWithProgressContext(ctx context.Context, args []string, onOutput func(string), onDone func(error)) error {
 	cli, err := resolveAntiMageCLI()
 	if err != nil {
 		return err
 	}
 	command := append([]string{cli}, args...)
-	cmd := exec.Command(command[0], command[1:]...)
+	cmd := managedprocess.CommandContext(ctx, command[0], command[1:]...)
+	cmd.Env = os.Environ()
+	if len(args) > 0 && (args[0] == "update" || args[0] == "resume-panel-install") {
+		cmd.Env = append(cmd.Env, "ANTIMAGE_API_UPDATE=1")
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return MaintenanceError{Status: http.StatusInternalServerError, Detail: "Failed to capture AntiMage command output: " + err.Error()}
@@ -407,10 +677,16 @@ func (DefaultCommandScheduler) ScheduleWithProgress(args []string, onOutput func
 			}
 		}
 	}
-	go readPipe(stdout)
-	go readPipe(stderr)
+	var readers sync.WaitGroup
+	readers.Add(2)
+	go func() { defer readers.Done(); readPipe(stdout) }()
+	go func() { defer readers.Done(); readPipe(stderr) }()
 	go func() {
 		err := cmd.Wait()
+		readers.Wait()
+		if ctx.Err() != nil {
+			err = errors.Join(err, ctx.Err())
+		}
 		if onDone != nil {
 			onDone(err)
 		}

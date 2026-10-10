@@ -15,6 +15,8 @@ func TestGitHubVersionCatalogFiltersToDownloadableVerifiedArtifactsAndRefreshes(
 		requests.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
+		case "/repos/test/AntiMage/commits/v1.2.0":
+			_, _ = w.Write([]byte(`{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`))
 		case "/repos/test/AntiMage/releases":
 			_, _ = w.Write([]byte(`[{
 "tag_name":"v1.2.0","name":"v1.2.0","draft":false,"prerelease":false,"published_at":"2026-10-01T00:00:00Z",

@@ -31,6 +31,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  recovery-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+      - name: Verify production file transactions and fencing helpers
+        run: |
+          bash -n scripts/antimage/antimage-binary.sh scripts/antimage/antimage-node-binary.sh
+          python3 scripts/ci/managed-backup-test.py
+          python3 scripts/ci/transactional-install-test.py
+          python3 scripts/ci/node-command-fence-test.py
+          python3 scripts/ci/panel-cli-fence-test.py
+          python3 scripts/ci/resolved-artifact-test.py
+      - name: Verify real Node and Panel service crash recovery
+        run: |
+          sudo env "PATH=$PATH" "GOMODCACHE=$(go env GOMODCACHE)" "GOCACHE=$(go env GOCACHE)" python3 scripts/ci/linux-service-lifecycle-test.py
+      - name: Verify execution ownership, reconciliation and process cancellation
+        run: go test -race ./internal/app/operations ./internal/app/nodeagent ./internal/app/nodecontroller ./internal/app/system ./internal/platform/process ./cmd/antimage_cli -count=1 -timeout=10m
   dashboard:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -396,6 +417,7 @@ jobs:
                 ;;
               antimage-node-linux-*)
                 arch="${name#antimage-node-linux-}"
+                cp "$asset" "dev-upload-assets/antimage-node-${build_tag}-linux-${arch}"
                 cp "$asset" "dev-upload-assets/antimage-node-dev-linux-${arch}"
                 ;;
             esac
@@ -406,6 +428,7 @@ jobs:
           fi
           cd dev-upload-assets
           sha256sum antimage-* > checksums.txt
+          cp checksums.txt "checksums-${build_tag}.txt"
           echo "build_tag=${build_tag}" >> "${GITHUB_OUTPUT}"
 
       - name: Publish dev build assets
@@ -464,6 +487,9 @@ jobs:
                     if ($name | test("^antimage-(?<platform>(linux|windows)-[A-Za-z0-9_]+)-dev-[0-9a-fA-F]+(\\.tar\\.gz|\\.zip)$")) then
                       ($name | capture("^antimage-(?<platform>(linux|windows)-[A-Za-z0-9_]+)-dev-[0-9a-fA-F]+(\\.tar\\.gz|\\.zip)$")) as $match
                       | .[$match.platform] = {name: $name, url: ($download_base + "/" + $name)}
+                    elif ($name | test("^antimage-node-dev-[0-9a-fA-F]+-linux-[A-Za-z0-9_]+$")) then
+                      ($name | capture("^antimage-node-(?<tag>dev-[0-9a-fA-F]+)-linux-(?<arch>[A-Za-z0-9_]+)$")) as $match
+                      | .["node-linux-" + $match.arch] = {name: $name, url: ($download_base + "/" + $name)}
                     else
                       .
                     end);

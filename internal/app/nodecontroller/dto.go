@@ -9,6 +9,7 @@ type Request struct {
 	MaxLines                int      `json:"max_lines,omitempty"`
 	Version                 string   `json:"version,omitempty"`
 	Channel                 string   `json:"channel,omitempty"`
+	Policy                  string   `json:"policy,omitempty"`
 	Files                   []File   `json:"files,omitempty"`
 	OutboundTag             string   `json:"outbound_tag,omitempty"`
 	OutboundProtocol        string   `json:"outbound_protocol,omitempty"`
@@ -118,26 +119,31 @@ type InboundTrafficSpeed struct {
 }
 
 type RuntimeResult struct {
-	NodeID             int64    `json:"node_id"`
-	Name               string   `json:"name"`
-	Status             string   `json:"status"`
-	Message            string   `json:"message,omitempty"`
-	XrayVersion        string   `json:"xray_version,omitempty"`
-	NodeServiceVersion string   `json:"node_service_version,omitempty"`
-	InstallMode        string   `json:"node_install_mode,omitempty"`
-	UpdateChannel      string   `json:"node_update_channel,omitempty"`
-	Connected          bool     `json:"connected"`
-	Started            bool     `json:"started"`
-	AgentStatus        string   `json:"agent_status"`
-	XrayStatus         string   `json:"xray_status"`
-	DesiredRevision    uint64   `json:"desired_revision"`
-	AppliedRevision    uint64   `json:"applied_revision"`
-	Capabilities       []string `json:"capabilities,omitempty"`
-	CPU                CPUInfo  `json:"cpu"`
-	Memory             MemInfo  `json:"memory"`
-	Transfer           NetInfo  `json:"transfer"`
-	UptimeSeconds      uint64   `json:"uptime_seconds"`
-	Logs               []string `json:"logs,omitempty"`
+	NodeID               int64                `json:"node_id"`
+	Name                 string               `json:"name"`
+	Status               string               `json:"status"`
+	Message              string               `json:"message,omitempty"`
+	XrayVersion          string               `json:"xray_version,omitempty"`
+	NodeServiceVersion   string               `json:"node_service_version,omitempty"`
+	InstallMode          string               `json:"node_install_mode,omitempty"`
+	UpdateChannel        string               `json:"node_update_channel,omitempty"`
+	DesiredNodeVersion   string               `json:"desired_node_version,omitempty"`
+	InstalledNodeVersion string               `json:"installed_node_version,omitempty"`
+	RunningNodeVersion   string               `json:"running_node_version,omitempty"`
+	NodeUpdatePolicy     string               `json:"node_update_policy,omitempty"`
+	UpdateOperation      *NodeUpdateOperation `json:"update_operation,omitempty"`
+	Connected            bool                 `json:"connected"`
+	Started              bool                 `json:"started"`
+	AgentStatus          string               `json:"agent_status"`
+	XrayStatus           string               `json:"xray_status"`
+	DesiredRevision      uint64               `json:"desired_revision"`
+	AppliedRevision      uint64               `json:"applied_revision"`
+	Capabilities         []string             `json:"capabilities,omitempty"`
+	CPU                  CPUInfo              `json:"cpu"`
+	Memory               MemInfo              `json:"memory"`
+	Transfer             NetInfo              `json:"transfer"`
+	UptimeSeconds        uint64               `json:"uptime_seconds"`
+	Logs                 []string             `json:"logs,omitempty"`
 }
 
 type WindscribeLocation struct {
@@ -227,8 +233,13 @@ type NodeListItem struct {
 	Message                *string  `json:"message"`
 	XrayVersion            *string  `json:"xray_version"`
 	NodeServiceVersion     *string  `json:"node_service_version"`
+	NodeBinaryTag          *string  `json:"node_binary_tag"`
 	NodeInstallMode        *string  `json:"node_install_mode"`
 	NodeUpdateChannel      *string  `json:"node_update_channel"`
+	DesiredNodeVersion     *string  `json:"desired_version,omitempty"`
+	InstalledNodeVersion   *string  `json:"installed_version,omitempty"`
+	RunningNodeVersion     *string  `json:"running_version,omitempty"`
+	NodeUpdatePolicy       *string  `json:"node_update_policy,omitempty"`
 	CPU                    CPUInfo  `json:"cpu"`
 	Memory                 MemInfo  `json:"memory"`
 	Transfer               NetInfo  `json:"transfer"`
