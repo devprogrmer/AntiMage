@@ -1,5 +1,6 @@
 //go:build linux && cgo && phasec_e2e
 
+// This suite is the real runtime gate for the Phase C roadmap evidence table.
 package api
 
 import (
