@@ -857,6 +857,15 @@ func (c Controller) runOperation(ctx context.Context, operation OperationRow) er
 		unlock = c.lockNode(operation.NodeID.Int64)
 	}
 	defer unlock()
+	if operation.NodeID.Valid && isRuntimeSyncOperation(operation.OperationType) && isDeviceRevokeSync(operation) {
+		node, err := c.repo.Node(ctx, operation.NodeID.Int64)
+		if err != nil {
+			return err
+		}
+		if !strings.EqualFold(strings.TrimSpace(node.Status), "connected") {
+			return fmt.Errorf("node %d is %s; waiting for reconnect before runtime sync", node.ID, strings.TrimSpace(node.Status))
+		}
+	}
 	prepared, err := c.prepareRuntimeConfigOperation(ctx, operation)
 	if err != nil {
 		if operation.NodeID.Valid && !isRuntimeUserOperation(operation.OperationType) {
@@ -1053,6 +1062,12 @@ func runtimeHasCapability(state *nodev1.RuntimeState, capability string) bool {
 
 func (c Controller) fanOutGlobalRuntimeSyncOperation(ctx context.Context, operation OperationRow) error {
 	nodes, err := c.repo.UsageNodes(ctx, 0, 0)
+	if isDeviceRevokeSync(operation) {
+		// Revocation needs durable delivery to every enabled node, including
+		// disconnected nodes. PendingOperations defers their dispatch until
+		// reconnect; a successful recovery sync acknowledges their queued work.
+		nodes, err = c.repo.UsageCollectionNodes(ctx, 0, 0)
+	}
 	if err != nil {
 		return err
 	}
@@ -1068,6 +1083,13 @@ func (c Controller) fanOutGlobalRuntimeSyncOperation(ctx context.Context, operat
 		}
 	}
 	return nil
+}
+
+func isDeviceRevokeSync(operation OperationRow) bool {
+	var payload struct {
+		Source string `json:"source"`
+	}
+	return json.Unmarshal(operation.Payload, &payload) == nil && payload.Source == "device_revoke"
 }
 
 func (c Controller) queueNodeSpecificSyncRetry(ctx context.Context, nodeID int64, payload []byte) error {

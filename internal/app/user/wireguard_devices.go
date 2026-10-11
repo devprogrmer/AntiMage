@@ -2,6 +2,8 @@ package user
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/netip"
 	"sort"
@@ -53,15 +55,44 @@ func (r Repository) ReconcileWireGuardDevices(ctx context.Context, inboundTag st
 	}
 	desired := limit
 	if desired <= 0 {
-		desired = len(existing)
-		if desired == 0 {
-			desired = 1
+		desired = 1
+		for index := range existing {
+			if index >= desired {
+				desired = index + 1
+			}
 		}
 	}
 	if limit > 0 {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM wireguard_devices WHERE inbound_tag = ? AND user_id = ? AND device_index >= ?`, inboundTag, userID, limit); err != nil {
 			return nil, err
 		}
+	}
+	fingerprint := WireGuardCredentialFingerprint(credentialKey)
+	revoked := map[int]bool{}
+	revocations, err := tx.QueryContext(ctx, `SELECT device_index, credential_fingerprint FROM wireguard_device_revocations WHERE inbound_tag = ? AND user_id = ?`, inboundTag, userID)
+	if err != nil {
+		return nil, err
+	}
+	for revocations.Next() {
+		var index int
+		var storedFingerprint string
+		if err := revocations.Scan(&index, &storedFingerprint); err != nil {
+			revocations.Close()
+			return nil, err
+		}
+		if storedFingerprint == fingerprint {
+			revoked[index] = true
+		}
+	}
+	if err := revocations.Err(); err != nil {
+		revocations.Close()
+		return nil, err
+	}
+	if err := revocations.Close(); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM wireguard_device_revocations WHERE inbound_tag = ? AND user_id = ? AND credential_fingerprint <> ?`, inboundTag, userID, fingerprint); err != nil {
+		return nil, err
 	}
 	used := map[string]struct{}{}
 	allRows, err := tx.QueryContext(ctx, `SELECT address FROM wireguard_devices WHERE inbound_tag = ?`, inboundTag)
@@ -97,6 +128,9 @@ func (r Repository) ReconcileWireGuardDevices(ctx context.Context, inboundTag st
 			devices = append(devices, item)
 			continue
 		}
+		if revoked[index] {
+			continue
+		}
 		privateKey, publicKey := "", ""
 		if index == 0 && strings.TrimSpace(credentialKey) != "" {
 			pair, e := WGKeyPairFromCredentialKey(credentialKey)
@@ -125,4 +159,12 @@ func (r Repository) ReconcileWireGuardDevices(ctx context.Context, inboundTag st
 		return nil, err
 	}
 	return devices, nil
+}
+
+// WireGuardCredentialFingerprint uses the same normalization as key derivation,
+// so spelling changes cannot make a revoked credential appear to be rotated.
+func WireGuardCredentialFingerprint(credentialKey string) string {
+	key := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(credentialKey, "-", "")))
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
 }

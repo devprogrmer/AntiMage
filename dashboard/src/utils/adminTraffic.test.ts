@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { AdminRole, AdminTrafficLimitMode } from "types/Admin";
-import { isUserManagementLocked } from "./adminTraffic";
+import {
+	canManageUserServiceScope,
+	isUserManagementLocked,
+} from "./adminTraffic";
 
 const serviceLimit = {
 	service_id: 7,
@@ -38,5 +41,30 @@ describe("isUserManagementLocked", () => {
 		admin.service_limits[1].created_traffic = 100;
 		expect(isUserManagementLocked(admin, 8)).toBe(true);
 		expect(isUserManagementLocked(admin, 9)).toBe(false);
+	});
+});
+
+describe("canManageUserServiceScope", () => {
+	it("requires an assigned service and honors its traffic cap", () => {
+		const admin = {
+			role: AdminRole.Standard,
+			use_service_traffic_limits: true,
+			service_limits: [serviceLimit],
+		};
+
+		expect(canManageUserServiceScope(admin, 7)).toBe(false);
+		expect(canManageUserServiceScope(admin, 8)).toBe(false);
+		admin.service_limits[0].used_traffic = 99;
+		expect(canManageUserServiceScope(admin, 7)).toBe(true);
+	});
+
+	it("keeps Full Access unrestricted", () => {
+		expect(
+			canManageUserServiceScope({
+				role: AdminRole.FullAccess,
+				use_service_traffic_limits: true,
+				service_limits: [],
+			}, 8),
+		).toBe(true);
 	});
 });
