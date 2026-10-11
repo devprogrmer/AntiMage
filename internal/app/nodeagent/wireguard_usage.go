@@ -34,6 +34,7 @@ type wireGuardRuntimePeer struct {
 	DataLimit             *int64  `json:"data_limit,omitempty"`
 	Expire                *int64  `json:"expire,omitempty"`
 	DeviceLimit           int64   `json:"device_limit,omitempty"`
+	IPLimit               int64   `json:"ip_limit,omitempty"`
 	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
 	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
 	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
@@ -417,6 +418,8 @@ func (s *Server) syncWireGuardUsageConfigs(
 			}
 
 			policies[publicKey] = nativeSessionUserPolicy{
+				IPLimit:     peer.IPLimit,
+				DeviceLimit: peer.DeviceLimit,
 
 				Status: strings.ToLower(
 
@@ -429,6 +432,9 @@ func (s *Server) syncWireGuardUsageConfigs(
 				DataLimit: dataLimit,
 
 				Expire: expire,
+
+				UploadSpeedLimit:   peer.UploadSpeedLimit,
+				DownloadSpeedLimit: peer.DownloadSpeedLimit,
 
 				UsageCoefficient: peer.UsageCoefficient,
 

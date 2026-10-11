@@ -50,6 +50,13 @@ func (s *Server) ensurePPTPUsageStateLoadedLocked() error {
 	}
 
 	s.pptpUsageBaseline = state.Baseline
+	if state.Pending != nil && state.Pending.SeenUnix == 0 {
+		info, err := os.Stat(s.pptpUsageStatePath())
+		if err != nil {
+			return err
+		}
+		state.Pending.SeenUnix = info.ModTime().UTC().Unix()
+	}
 	s.pptpUsagePending = state.Pending
 	s.pptpUsageLastAckedBatchID = state.LastAckedBatchID
 	s.pptpUsageLoaded = true
@@ -74,51 +81,5 @@ func (s *Server) persistPPTPUsageStateLocked() error {
 		return fmt.Errorf("marshal pptp usage state: %w", err)
 	}
 
-	path := s.pptpUsageStatePath()
-	tmp := path + ".tmp"
-	file, err := os.OpenFile(
-		tmp,
-		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
-		0600,
-	)
-	if err != nil {
-		return fmt.Errorf(
-			"open temporary pptp usage state: %w",
-			err,
-		)
-	}
-
-	cleanup := func() {
-		_ = file.Close()
-		_ = os.Remove(tmp)
-	}
-	if _, err := file.Write(raw); err != nil {
-		cleanup()
-		return fmt.Errorf(
-			"write temporary pptp usage state: %w",
-			err,
-		)
-	}
-	if err := file.Sync(); err != nil {
-		cleanup()
-		return fmt.Errorf(
-			"sync temporary pptp usage state: %w",
-			err,
-		)
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf(
-			"close temporary pptp usage state: %w",
-			err,
-		)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf(
-			"replace pptp usage state: %w",
-			err,
-		)
-	}
-	return nil
+	return writeAccountingState(s.pptpUsageStatePath(), raw)
 }

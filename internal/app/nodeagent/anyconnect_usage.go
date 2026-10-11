@@ -7,10 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
@@ -27,6 +25,7 @@ type anyConnectUsageSample struct {
 	Download   uint64   `json:"download,omitempty"`
 }
 type anyConnectUsagePendingBatch struct {
+	SeenUnix     int64                   `json:"seen_unix,omitempty"`
 	BatchID      string                  `json:"batch_id"`
 	Samples      []anyConnectUsageSample `json:"samples"`
 	NextBaseline map[string]uint64       `json:"next_baseline"`
@@ -37,14 +36,33 @@ type anyConnectUsageDiskState struct {
 	LastAckedBatchID string                       `json:"last_acked_batch_id,omitempty"`
 }
 type anyConnectLiveSession struct {
+	StartedAt                          string
+	DisconnectID, GenerationID         string
 	ID, Username, ClientIP, AssignedIP string
 	Received, Sent, RXSpeed, TXSpeed   uint64
 }
 
 func parseAnyConnectUsersJSON(raw []byte) ([]anyConnectLiveSession, error) {
 	var root any
-	if err := json.Unmarshal(raw, &root); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	decoder.UseNumber()
+	if err := decoder.Decode(&root); err != nil {
 		return nil, err
+	}
+	switch value := root.(type) {
+	case []any:
+	case map[string]any:
+		valid := false
+		for _, key := range []string{"users", "sessions", "user_list"} {
+			if _, ok := value[key].([]any); ok {
+				valid = true
+			}
+		}
+		if !valid {
+			return nil, fmt.Errorf("unknown occtl users response")
+		}
+	default:
+		return nil, fmt.Errorf("invalid occtl users response")
 	}
 	rows := findAnyConnectRows(root)
 	out := make([]anyConnectLiveSession, 0, len(rows))
@@ -53,7 +71,18 @@ func parseAnyConnectUsersJSON(raw []byte) ([]anyConnectLiveSession, error) {
 		if username == "" {
 			continue
 		}
-		out = append(out, anyConnectLiveSession{ID: jsonString(row, "full_session", "session", "id", "session_id"), Username: username, ClientIP: jsonString(row, "remote_ip", "ip_real", "client_ip"), AssignedIP: jsonString(row, "ipv4", "ip_remote", "vpn_ip", "assigned_ip", "local_device_ip"), Received: jsonUint(row, "raw_rx", "bytes_in", "rx_bytes", "rx"), Sent: jsonUint(row, "raw_tx", "bytes_out", "tx_bytes", "tx"), RXSpeed: jsonUint(row, "rx_per_sec"), TXSpeed: jsonUint(row, "tx_per_sec")})
+		for _, keys := range [][]string{{"raw_rx", "bytes_in", "rx_bytes", "rx"}, {"raw_tx", "bytes_out", "tx_bytes", "tx"}} {
+			normalized := normalizeAnyConnectRow(row)
+			for _, key := range keys {
+				if value, ok := normalized[key]; ok {
+					if _, err := strconv.ParseUint(strings.TrimSpace(fmt.Sprint(value)), 10, 64); err != nil {
+						return nil, fmt.Errorf("invalid occtl counter %s: %w", key, err)
+					}
+					break
+				}
+			}
+		}
+		out = append(out, anyConnectLiveSession{StartedAt: jsonString(row, "connected_at", "connected_since", "created_at", "session_start"), DisconnectID: jsonString(row, "id"), GenerationID: jsonString(row, "full_session", "session", "session_id"), ID: jsonString(row, "full_session", "session", "session_id", "id"), Username: username, ClientIP: jsonString(row, "remote_ip", "ip_real", "client_ip"), AssignedIP: jsonString(row, "ipv4", "ip_remote", "vpn_ip", "assigned_ip", "local_device_ip"), Received: jsonUint(row, "raw_rx", "bytes_in", "rx_bytes", "rx"), Sent: jsonUint(row, "raw_tx", "bytes_out", "tx_bytes", "tx"), RXSpeed: jsonUint(row, "rx_per_sec"), TXSpeed: jsonUint(row, "tx_per_sec")})
 	}
 	return out, nil
 }
@@ -90,6 +119,9 @@ func jsonUint(row map[string]any, keys ...string) uint64 {
 	for _, k := range keys {
 		if v, ok := normalized[normalizeAnyConnectJSONKey(k)]; ok {
 			switch n := v.(type) {
+			case json.Number:
+				u, _ := strconv.ParseUint(string(n), 10, 64)
+				return u
 			case float64:
 				if n > 0 {
 					return uint64(n)
@@ -117,96 +149,6 @@ func normalizeAnyConnectJSONKey(key string) string {
 	return key
 }
 
-func (s *Server) collectAnyConnectUserUsage(ctx context.Context, _ *nodev1.CollectUsageRequest) (*nodev1.UserUsageBatch, error) {
-	s.anyConnectUsageMu.Lock()
-	defer s.anyConnectUsageMu.Unlock()
-	if err := s.ensureAnyConnectUsageStateLoadedLocked(); err != nil {
-		return nil, err
-	}
-	if s.anyConnectUsagePending != nil {
-		return anyConnectUsageBatchProto(s.anyConnectUsagePending), nil
-	}
-	next := map[string]uint64{}
-	for k, v := range s.anyConnectUsageBaseline {
-		next[k] = v
-	}
-	aggregate := map[string]anyConnectUsageSample{}
-	for _, tag := range s.activeAnyConnectRuntimeTags() {
-		root := filepath.Join(s.cfg.DataDir, "anyconnect", openVPNRuntimeDirName(tag))
-		rawCfg, err := os.ReadFile(filepath.Join(root, "usage-helper.json"))
-		if err != nil {
-			continue
-		}
-		var cfg anyConnectUsageRuntimeConfig
-		if json.Unmarshal(rawCfg, &cfg) != nil {
-			continue
-		}
-		path, err := anyConnectLookPath("occtl")
-		if err != nil {
-			return nil, fmt.Errorf("anyconnect %q: occtl executable not installed", tag)
-		}
-		cmd := anyConnectUsageCommandContext(ctx, path, "-s", cfg.SocketPath, "--json", "show", "users")
-		raw, err := cmd.Output()
-		if err != nil {
-			s.appendLog("anyconnect usage query failed for " + tag + ": " + err.Error())
-			continue
-		}
-		sessions, err := parseAnyConnectUsersJSON(raw)
-		if err != nil {
-			s.appendLog("anyconnect usage parse failed for " + tag + ": " + err.Error())
-			continue
-		}
-		for _, session := range sessions {
-			userID := cfg.Users[session.Username]
-			if userID <= 0 {
-				continue
-			}
-			total := session.Received + session.Sent
-			sessionID := session.ID
-			if sessionID == "" {
-				sessionID = session.Username + "|" + session.AssignedIP + "|" + session.ClientIP
-			}
-			baseKey := tag + "|" + sessionID
-			base, exists := s.anyConnectUsageBaseline[baseKey]
-			delta := total
-			if exists && total >= base {
-				delta = total - base
-			}
-			next[baseKey] = total
-			key := fmt.Sprintf("%d|%s", userID, tag)
-			sample := aggregate[key]
-			sample.UserID = userID
-			sample.InboundTag = tag
-			sample.Online = true
-			sample.Value += delta
-			sample.Upload += session.RXSpeed
-			sample.Download += session.TXSpeed
-			if session.ClientIP != "" {
-				sample.IPs = appendUniqueString(sample.IPs, session.ClientIP)
-			}
-			aggregate[key] = sample
-		}
-	}
-	if len(aggregate) == 0 {
-		return &nodev1.UserUsageBatch{}, nil
-	}
-	keys := make([]string, 0, len(aggregate))
-	for k := range aggregate {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	samples := make([]anyConnectUsageSample, 0, len(keys))
-	for _, k := range keys {
-		samples = append(samples, aggregate[k])
-	}
-	pending := &anyConnectUsagePendingBatch{BatchID: fmt.Sprintf("anyconnect-%d", time.Now().UTC().UnixNano()), Samples: samples, NextBaseline: next}
-	s.anyConnectUsagePending = pending
-	if err := s.persistAnyConnectUsageStateLocked(); err != nil {
-		s.anyConnectUsagePending = nil
-		return nil, err
-	}
-	return anyConnectUsageBatchProto(pending), nil
-}
 func appendUniqueString(values []string, value string) []string {
 	for _, v := range values {
 		if v == value {
@@ -220,7 +162,7 @@ func anyConnectUsageBatchProto(p *anyConnectUsagePendingBatch) *nodev1.UserUsage
 		return &nodev1.UserUsageBatch{}
 	}
 	batch := &nodev1.UserUsageBatch{BatchId: p.BatchID}
-	now := time.Now().Unix()
+	now := offlinePendingSeenUnix(p.SeenUnix, p.BatchID)
 	for _, s := range p.Samples {
 		uid := "anyconnect:" + strconv.FormatInt(s.UserID, 10)
 		if s.Value == 0 && s.Online {
@@ -256,7 +198,11 @@ func (s *Server) ackAnyConnectUserUsage(_ context.Context, req *nodev1.AckUsageR
 		return &nodev1.AckUsageResponse{}, nil
 	}
 	oldBase, oldID := s.anyConnectUsageBaseline, s.anyConnectUsageLastAckedBatchID
-	s.anyConnectUsageBaseline = p.NextBaseline
+	next, err := offlineACKBaseline(s.anyConnectUsageBaseline, p.NextBaseline)
+	if err != nil {
+		return nil, err
+	}
+	s.anyConnectUsageBaseline = next
 	s.anyConnectUsagePending = nil
 	s.anyConnectUsageLastAckedBatchID = id
 	if err := s.persistAnyConnectUsageStateLocked(); err != nil {
@@ -274,7 +220,7 @@ func (s *Server) ensureAnyConnectUsageStateLoadedLocked() error {
 	if s.anyConnectUsageLoaded {
 		return nil
 	}
-	raw, err := os.ReadFile(s.anyConnectUsageStatePath())
+	raw, err := readOfflineAccountingState(s.anyConnectUsageStatePath())
 	if os.IsNotExist(err) {
 		s.anyConnectUsageLoaded = true
 		return nil
@@ -288,6 +234,12 @@ func (s *Server) ensureAnyConnectUsageStateLoadedLocked() error {
 	}
 	if state.Baseline == nil {
 		state.Baseline = map[string]uint64{}
+	}
+	if len(state.Baseline) > maxAccountingCounterSeries {
+		return fmt.Errorf("AnyConnect usage state exceeds safe series capacity")
+	}
+	if state.Pending != nil && strings.TrimSpace(state.Pending.BatchID) == "" {
+		return fmt.Errorf("AnyConnect pending batch has no id")
 	}
 	s.anyConnectUsageBaseline = state.Baseline
 	s.anyConnectUsagePending = state.Pending
@@ -304,5 +256,5 @@ func (s *Server) persistAnyConnectUsageStateLocked() error {
 	if err != nil {
 		return err
 	}
-	return writeAtomicMode(path, raw, 0600)
+	return persistOfflineAccountingFile(path, raw)
 }

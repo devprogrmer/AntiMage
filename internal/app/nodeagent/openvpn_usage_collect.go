@@ -50,10 +50,6 @@ func (s *Server) collectOpenVPNUserUsage(
 		return nil, err
 	}
 
-	if s.openVPNUsagePending != nil {
-		return openVPNUsageBatchProto(s.openVPNUsagePending), nil
-	}
-
 	if s.openVPNUsageBaseline == nil {
 		s.openVPNUsageBaseline = make(map[string]uint64)
 	}
@@ -66,27 +62,59 @@ func (s *Server) collectOpenVPNUserUsage(
 		nextBaseline[key] = value
 	}
 
+	// Seed legacy pending native snapshots: their deltas are already in the batch.
+	if pending := s.openVPNUsagePending; pending != nil {
+		legacy := true
+		for key := range pending.NextBaseline {
+			if _, _, ok := offlineAccountingOwner(key); ok {
+				legacy = false
+				break
+			}
+		}
+		if legacy {
+			values := make([]offlinePendingSample, 0, len(pending.Samples))
+			for _, sample := range pending.Samples {
+				values = append(values, offlinePendingSample{sample.UserID, sample.InboundTag, sample.Value})
+			}
+			if err := offlineSeedLegacyPending(nextBaseline, pending.BatchID, values); err != nil {
+				return nil, err
+			}
+			for key, value := range pending.NextBaseline {
+				if nextBaseline[key] < value {
+					nextBaseline[key] = value
+				}
+			}
+		}
+	}
+
 	type aggregateKey struct {
 		UserID     int64
 		InboundTag string
 	}
 
 	aggregated := make(map[aggregateKey]openVPNUsageSample)
+	for key, total := range nextBaseline {
+		uid, tag, ok := offlineAccountingOwner(key)
+		if !ok {
+			continue
+		}
+		sent := nextBaseline[offlineAccountingSentKey(key)]
+		if sent > total {
+			return nil, fmt.Errorf("invalid offline accounting baseline")
+		}
+		if total > sent {
+			aggregated[aggregateKey{uid, tag}] = openVPNUsageSample{UserID: uid, InboundTag: tag, Value: total - sent}
+		}
+	}
 	scannedInboundTags := make(map[string]struct{})
 	activeSessionKeys := make(map[string]struct{})
 
-	for _, tag := range s.activeOpenVPNRuntimeTags() {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		root := filepath.Join(
-			s.cfg.DataDir,
-			"openvpn",
-			openVPNRuntimeDirName(tag),
-		)
+	roots, err := offlineHelperRoots(s.cfg.DataDir, "openvpn")
+	if err != nil {
+		return nil, err
+	}
+	for _, root := range roots {
+		tag := filepath.Base(root)
 
 		usageConfigPath := filepath.Join(
 			root,
@@ -123,7 +151,7 @@ func (s *Server) collectOpenVPNUserUsage(
 			statusPath = filepath.Join(root, "status.tsv")
 		}
 
-		rawStatus, err := os.ReadFile(statusPath)
+		rawStatus, err := openVPNOfflineReadStatus(statusPath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
@@ -144,6 +172,12 @@ func (s *Server) collectOpenVPNUserUsage(
 					tag + ": " + err.Error(),
 			)
 			continue
+		}
+		if preview := offlinePreview(ctx); preview != nil {
+			if preview.OpenVPNClients == nil {
+				preview.OpenVPNClients = make(map[string][]openVPNStatusClient)
+			}
+			preview.OpenVPNClients[root] = clients
 		}
 
 		scannedInboundTags[cfg.InboundTag] = struct{}{}
@@ -170,13 +204,23 @@ func (s *Server) collectOpenVPNUserUsage(
 				continue
 			}
 
-			sessionKey := openVPNStatusSessionKey(
-				cfg.InboundTag,
-				client,
-			)
+			generation, err := s.openVPNOfflineGeneration(cfg.InboundTag, root, offlinePreview(ctx) == nil)
+			if err != nil {
+				return nil, err
+			}
+			if generation == "" && strings.TrimSpace(client.ConnectedSince) == "" {
+				return nil, fmt.Errorf("OpenVPN accounting requires daemon generation or connected-since identity")
+			}
+			sessionKey := openVPNStatusSessionKey(cfg.InboundTag, client) + "\x00since\x00" + client.ConnectedSince + "\x00generation\x00" + generation
 
 			baseline, exists :=
-				s.openVPNUsageBaseline[sessionKey]
+				nextBaseline[sessionKey]
+
+			if !exists {
+				legacyKey := openVPNStatusSessionKey(cfg.InboundTag, client)
+				baseline, exists = nextBaseline[legacyKey]
+				delete(nextBaseline, legacyKey)
+			}
 
 			delta := total
 
@@ -202,12 +246,41 @@ func (s *Server) collectOpenVPNUserUsage(
 			sample.InboundTag = cfg.InboundTag
 			sample.Online = true
 
-			if ^uint64(0)-sample.Value >= delta {
-				sample.Value += delta
+			owner := offlineAccountingTotalKey(userID, cfg.InboundTag)
+			if ^uint64(0)-sample.Value < delta || ^uint64(0)-nextBaseline[owner] < delta {
+				return nil, fmt.Errorf("offline accounting overflow")
 			}
+			sample.Value += delta
+			nextBaseline[owner] += delta
 
 			aggregated[key] = sample
 		}
+	}
+
+	if len(nextBaseline) > maxAccountingCounterSeries {
+		return nil, fmt.Errorf("offline accounting capacity exceeded; refusing to discard usage")
+	}
+	if preview := offlinePreview(ctx); preview != nil {
+		preview.Baseline = nextBaseline
+		if pending := s.openVPNUsagePending; pending != nil {
+			preview.PendingID = pending.BatchID
+			for _, sample := range pending.Samples {
+				preview.PendingSamples = append(preview.PendingSamples, offlinePendingSample{sample.UserID, sample.InboundTag, sample.Value})
+			}
+		}
+		return &nodev1.UserUsageBatch{}, nil
+	}
+	previousSampled := s.openVPNUsageBaseline
+	s.openVPNUsageBaseline = nextBaseline
+	if err := s.persistOpenVPNUsageStateLocked(); err != nil {
+		s.openVPNUsageBaseline = previousSampled
+		return nil, err
+	}
+	if s.openVPNUsagePending != nil {
+		return openVPNUsageBatchProto(s.openVPNUsagePending), nil
+	}
+	if offlineCheckpointOnly(ctx) {
+		return &nodev1.UserUsageBatch{}, nil
 	}
 
 	if len(aggregated) == 0 {
@@ -291,7 +364,15 @@ func (s *Server) ackOpenVPNUserUsage(
 	previousBaseline := s.openVPNUsageBaseline
 	previousLastAcked := s.openVPNUsageLastAckedBatchID
 
-	s.openVPNUsageBaseline = pending.NextBaseline
+	values := make([]offlinePendingSample, 0, len(pending.Samples))
+	for _, sample := range pending.Samples {
+		values = append(values, offlinePendingSample{sample.UserID, sample.InboundTag, sample.Value})
+	}
+	ackBaseline, err := offlineAckSnapshot(s.openVPNUsageBaseline, pending.NextBaseline, batchID, values)
+	if err != nil {
+		return nil, err
+	}
+	s.openVPNUsageBaseline = ackBaseline
 	s.openVPNUsagePending = nil
 	s.openVPNUsageLastAckedBatchID = batchID
 

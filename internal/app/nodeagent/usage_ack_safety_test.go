@@ -105,6 +105,31 @@ func TestPartialMergedACKRetry(t *testing.T) {
 	}
 }
 
+func TestAckUserUsageDispatchesEverySupportedPrefix(t *testing.T) {
+	server := New(Config{DataDir: t.TempDir()})
+	server.openVPNUsageLoaded, server.openVPNUsageLastAckedBatchID = true, "openvpn-done"
+	server.xrayUsageLoaded, server.xrayUsageLastAckedBatchID = true, "xray-done"
+	server.wireGuardUsageLoaded, server.wireGuardUsageLastAckedBatchID = true, "wireguard-done"
+	server.amneziaWGUsageLoaded, server.amneziaWGUsageLastAckedBatchID = true, "amneziawg-done"
+	server.l2TPUsageLoaded, server.l2TPUsageLastAckedBatchID = true, "l2tp-done"
+	server.pptpUsageLoaded, server.pptpUsageLastAckedBatchID = true, "pptp-done"
+	server.ikev2UsageLoaded, server.ikev2UsageLastAckedBatchID = true, "ikev2-done"
+	server.anyConnectUsageLoaded, server.anyConnectUsageLastAckedBatchID = true, "anyconnect-done"
+	server.mergedUsageLoaded, server.mergedUsageLastAckedBatchID = true, "merged-done"
+	server.combinedUsageLoaded, server.combinedUsageLastAckedBatchID = true, "combined-done"
+
+	for _, batchID := range []string{
+		"xray-done", "openvpn-done", "wireguard-done", "amneziawg-done",
+		"l2tp-done", "pptp-done", "ikev2-done", "anyconnect-done",
+		"merged-done", "combined-done",
+	} {
+		response, err := server.AckUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: batchID})
+		if err != nil || !response.GetAcknowledged() {
+			t.Fatalf("ACK dispatch for %q: acknowledged=%v err=%v", batchID, response.GetAcknowledged(), err)
+		}
+	}
+}
+
 // TestIdempotentChildACK verifies repeated ACK of already-ACKed batch is safe
 func TestIdempotentChildACK(t *testing.T) {
 	server := &Server{

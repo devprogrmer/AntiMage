@@ -12,6 +12,15 @@ func (s *Server) recordWireGuardUsageCarryLocked(
 	userID int64,
 	total uint64,
 ) error {
+	return s.updateWireGuardUsageCarryLocked(inboundTag, interfaceName, publicKey, userID, total, true)
+}
+
+func (s *Server) updateWireGuardUsageCarryLocked(
+	inboundTag, interfaceName, publicKey string,
+	userID int64,
+	total uint64,
+	persist bool,
+) error {
 	inboundTag = strings.TrimSpace(inboundTag)
 	interfaceName = strings.TrimSpace(interfaceName)
 	publicKey = strings.TrimSpace(publicKey)
@@ -107,6 +116,9 @@ func (s *Server) recordWireGuardUsageCarryLocked(
 	}
 
 	s.wireGuardUsageCarry[key] = updated
+	if !persist {
+		return nil
+	}
 
 	if err := s.persistWireGuardUsageStateLocked(); err != nil {
 		if hasCarry {

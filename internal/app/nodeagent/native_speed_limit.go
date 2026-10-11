@@ -62,8 +62,12 @@ func nativeSpeedActionIndex(
 func nativeSpeedBurstBytes(rate int64) int64 {
 	burst := rate / 8 / 20
 
-	if burst < 4096 {
-		burst = 4096
+	// Tunnel devices can pass GSO-aggregated skbs that are much larger than
+	// an MTU. A smaller policer bucket drops whole aggregates and causes TCP
+	// to settle far below the configured steady-state rate.
+	const minBurst = 256 * 1024
+	if burst < minBurst {
+		burst = minBurst
 	}
 
 	const maxBurst = 4 * 1024 * 1024

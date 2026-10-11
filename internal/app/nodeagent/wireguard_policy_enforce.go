@@ -1,6 +1,7 @@
 package nodeagent
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -18,6 +19,8 @@ func (s *Server) enforceWireGuardPoliciesLocked(
 	peers []wireGuardPeerCounters,
 	now time.Time,
 ) []wireGuardPeerCounters {
+	var enforcementErr error
+	defer func() { s.recordLocalAccountingHealth("wireguard-policy", enforcementErr) }()
 	if len(cfg.Policies) == 0 {
 		return peers
 	}
@@ -27,6 +30,8 @@ func (s *Server) enforceWireGuardPoliciesLocked(
 		0,
 		len(peers),
 	)
+	ipsByUser := map[int64]map[string]bool{}
+	credentialsByUser := map[int64]map[string]bool{}
 
 	for _, peer := range peers {
 		publicKey := strings.TrimSpace(peer.PublicKey)
@@ -62,24 +67,38 @@ func (s *Server) enforceWireGuardPoliciesLocked(
 				userID,
 			)
 			if err != nil {
-				s.appendLog(
-					"wireguard live policy usage failed for " +
-						cfg.InboundTag + " user " +
-						fmt.Sprint(userID) + ": " + err.Error(),
-				)
+				enforcementErr = errors.Join(enforcementErr, fmt.Errorf("wireguard %s user %d live quota: %w", cfg.InboundTag, userID, err))
 
 				remaining = append(remaining, peer)
 				continue
 			}
 
 			allowed, reason =
-				nativeSessionUserPolicyAllowedWithLiveUsage(
+				s.localQuotaAllowed(
+					"wireguard", userID, cfg.InboundTag,
 					policy,
 					liveBytes,
 					now,
 				)
 		}
 
+		if allowed && wireGuardHandshakeActive(peer.LatestHandshake, now) {
+			if credentialsByUser[userID] == nil {
+				credentialsByUser[userID] = map[string]bool{}
+			}
+			if policy.DeviceLimit > 0 && !credentialsByUser[userID][publicKey] && int64(len(credentialsByUser[userID])) >= policy.DeviceLimit {
+				allowed, reason = false, "device credential limit reached"
+			}
+			if ipsByUser[userID] == nil {
+				ipsByUser[userID] = map[string]bool{}
+			}
+			if allowed && offlineIPLimitExceeded(ipsByUser[userID], wireGuardEndpointHost(peer.Endpoint), policy.IPLimit) {
+				allowed, reason = false, "IP limit reached"
+			}
+			if allowed {
+				credentialsByUser[userID][publicKey] = true
+			}
+		}
 		if allowed {
 			remaining = append(remaining, peer)
 			continue
@@ -91,11 +110,7 @@ func (s *Server) enforceWireGuardPoliciesLocked(
 			peer,
 			userID,
 		); err != nil {
-			s.appendLog(
-				"wireguard policy disconnect blocked for " +
-					cfg.InboundTag + " user " +
-					fmt.Sprint(userID) + ": " + err.Error(),
-			)
+			enforcementErr = errors.Join(enforcementErr, fmt.Errorf("wireguard %s user %d disconnect: %w", cfg.InboundTag, userID, err))
 
 			remaining = append(remaining, peer)
 			continue

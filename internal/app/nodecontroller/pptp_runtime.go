@@ -27,20 +27,22 @@ type PPTPRuntimeInbound struct {
 }
 
 type PPTPRuntimeUser struct {
-	UserID             int64   `json:"user_id"`
-	Username           string  `json:"username"`
-	VPNUsername        string  `json:"vpn_username"`
-	Password           string  `json:"password"`
-	IPv4Address        string  `json:"ipv4_address"`
-	Status             string  `json:"status"`
-	UsedTraffic        int64   `json:"used_traffic"`
-	DataLimit          *int64  `json:"data_limit,omitempty"`
-	Expire             *int64  `json:"expire,omitempty"`
-	DeviceLimit        int64   `json:"device_limit,omitempty"`
-	UploadSpeedLimit   int64   `json:"upload_speed_limit"`
-	DownloadSpeedLimit int64   `json:"download_speed_limit"`
-	UsageCoefficient   float64 `json:"usage_coefficient,omitempty"`
-	InboundCoefficient float64 `json:"inbound_coefficient,omitempty"`
+	UserID                int64   `json:"user_id"`
+	Username              string  `json:"username"`
+	VPNUsername           string  `json:"vpn_username"`
+	Password              string  `json:"password"`
+	IPv4Address           string  `json:"ipv4_address"`
+	Status                string  `json:"status"`
+	UsedTraffic           int64   `json:"used_traffic"`
+	DataLimit             *int64  `json:"data_limit,omitempty"`
+	Expire                *int64  `json:"expire,omitempty"`
+	DeviceLimit           int64   `json:"device_limit,omitempty"`
+	IPLimit               int64   `json:"ip_limit,omitempty"`
+	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
+	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
+	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
+	InboundCoefficient    float64 `json:"inbound_coefficient,omitempty"`
 }
 
 func (r Repository) PPTPRuntime(ctx context.Context, nodeID int64) (PPTPRuntime, error) {
@@ -112,7 +114,7 @@ func (r Repository) PPTPUsersForServices(ctx context.Context, serviceIDs []int64
 		args = append(args, id)
 	}
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, username, COALESCE(credential_key, ''), status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(ip_limit, 0), COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0)
+SELECT id, username, COALESCE(credential_key, ''), status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(device_limit, 0), COALESCE(ip_limit, 0), COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0)
 FROM users
 WHERE status IN ('active', 'on_hold')
   AND service_id IN (`+strings.Join(placeholders, ",")+`)
@@ -126,7 +128,7 @@ ORDER BY id`, args...)
 		var item PPTPRuntimeUser
 		var credentialKey string
 		var dataLimit, expire sql.NullInt64
-		if err := rows.Scan(&item.UserID, &item.Username, &credentialKey, &item.Status, &item.UsedTraffic, &dataLimit, &expire, &item.DeviceLimit, &item.UploadSpeedLimit, &item.DownloadSpeedLimit); err != nil {
+		if err := rows.Scan(&item.UserID, &item.Username, &credentialKey, &item.Status, &item.UsedTraffic, &dataLimit, &expire, &item.DeviceLimit, &item.IPLimit, &item.UploadSpeedLimit, &item.DownloadSpeedLimit); err != nil {
 			return nil, err
 		}
 		password, err := userapp.PPTPPasswordFromCredentialKey(credentialKey)

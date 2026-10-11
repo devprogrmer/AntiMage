@@ -28,21 +28,23 @@ type AWGRuntimeInbound struct {
 }
 
 type AWGRuntimePeer struct {
-	UserID             int64   `json:"user_id"`
-	Username           string  `json:"username"`
-	DeviceIndex        int     `json:"device_index"`
-	PublicKey          string  `json:"public_key"`
-	PresharedKey       string  `json:"preshared_key,omitempty"`
-	Address            string  `json:"address"`
-	Status             string  `json:"status"`
-	UsedTraffic        int64   `json:"used_traffic"`
-	DataLimit          *int64  `json:"data_limit,omitempty"`
-	Expire             *int64  `json:"expire,omitempty"`
-	DeviceLimit        int64   `json:"device_limit,omitempty"`
-	UploadSpeedLimit   int64   `json:"upload_speed_limit"`
-	DownloadSpeedLimit int64   `json:"download_speed_limit"`
-	UsageCoefficient   float64 `json:"usage_coefficient,omitempty"`
-	InboundCoefficient float64 `json:"inbound_coefficient,omitempty"`
+	UserID                int64   `json:"user_id"`
+	Username              string  `json:"username"`
+	DeviceIndex           int     `json:"device_index"`
+	PublicKey             string  `json:"public_key"`
+	PresharedKey          string  `json:"preshared_key,omitempty"`
+	Address               string  `json:"address"`
+	Status                string  `json:"status"`
+	UsedTraffic           int64   `json:"used_traffic"`
+	DataLimit             *int64  `json:"data_limit,omitempty"`
+	Expire                *int64  `json:"expire,omitempty"`
+	DeviceLimit           int64   `json:"device_limit,omitempty"`
+	IPLimit               int64   `json:"ip_limit,omitempty"`
+	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
+	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
+	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
+	InboundCoefficient    float64 `json:"inbound_coefficient,omitempty"`
 }
 
 func (r Repository) AWGRuntime(ctx context.Context, nodeID int64) (AWGRuntime, error) {
@@ -108,7 +110,7 @@ func (r Repository) AWGUsersForServices(ctx context.Context, inboundTag string, 
 		marks[i], args[i] = "?", id
 	}
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, username, status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(device_limit, 0), COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0)
+SELECT id, username, status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(device_limit, 0), COALESCE(ip_limit, 0), COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0)
 FROM users
 WHERE status IN ('active', 'on_hold') AND service_id IN (`+strings.Join(marks, ",")+`)
 ORDER BY id`, args...)
@@ -116,15 +118,15 @@ ORDER BY id`, args...)
 		return nil, err
 	}
 	type runtimeUser struct {
-		id, deviceLimit, uploadSpeedLimit, downloadSpeedLimit int64
-		username, status                                      string
-		used                                                  int64
-		dataLimit, expire                                     sql.NullInt64
+		id, deviceLimit, ipLimit, uploadSpeedLimit, downloadSpeedLimit int64
+		username, status                                               string
+		used                                                           int64
+		dataLimit, expire                                              sql.NullInt64
 	}
 	users := []runtimeUser{}
 	for rows.Next() {
 		var item runtimeUser
-		if err := rows.Scan(&item.id, &item.username, &item.status, &item.used, &item.dataLimit, &item.expire, &item.deviceLimit, &item.uploadSpeedLimit, &item.downloadSpeedLimit); err != nil {
+		if err := rows.Scan(&item.id, &item.username, &item.status, &item.used, &item.dataLimit, &item.expire, &item.deviceLimit, &item.ipLimit, &item.uploadSpeedLimit, &item.downloadSpeedLimit); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -152,7 +154,7 @@ ORDER BY id`, args...)
 			peers = append(peers, AWGRuntimePeer{
 				UserID: item.id, Username: item.username, DeviceIndex: device.DeviceIndex,
 				PublicKey: device.PublicKey, PresharedKey: device.PresharedKey, Address: device.Address,
-				Status: item.status, UsedTraffic: item.used, DataLimit: nullableOVInt64(item.dataLimit), Expire: nullableOVInt64(item.expire), DeviceLimit: item.deviceLimit, UploadSpeedLimit: item.uploadSpeedLimit, DownloadSpeedLimit: item.downloadSpeedLimit,
+				Status: item.status, UsedTraffic: item.used, DataLimit: nullableOVInt64(item.dataLimit), Expire: nullableOVInt64(item.expire), DeviceLimit: item.deviceLimit, IPLimit: item.ipLimit, UploadSpeedLimit: item.uploadSpeedLimit, DownloadSpeedLimit: item.downloadSpeedLimit,
 			})
 		}
 	}

@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -14,6 +15,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 type realXrayLogBuffer struct {
@@ -78,7 +82,7 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 	clientPort := nextPort()
 
 	const (
-		userEmail = "42.alice"
+		userEmail = "7.rb1_bmF0aXZl.native-user"
 		userID    = "11111111-1111-4111-8111-111111111111"
 	)
 
@@ -207,8 +211,8 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 		t.Fatalf("write client config: %v", err)
 	}
 
-	serverLogs := realXrayStartProcess(t, xrayPath, serverConfigPath)
-	realXrayWaitForTCP(t, apiPort, serverLogs)
+	serverProcess := realXrayStartProcess(t, xrayPath, serverConfigPath)
+	realXrayWaitForTCP(t, apiPort, serverProcess.logs)
 
 	accepted := make(chan net.Conn, 1)
 	acceptErr := make(chan error, 1)
@@ -222,9 +226,14 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 		accepted <- conn
 	}()
 
-	clientLogs := realXrayStartProcess(t, xrayPath, clientConfigPath)
-	clientConn := realXrayDialUntilReady(t, clientPort, clientLogs)
-	defer clientConn.Close()
+	clientProcess := realXrayStartProcess(t, xrayPath, clientConfigPath)
+	realXrayWaitForTCP(t, clientPort, clientProcess.logs)
+	clientConn := realXrayDialUntilReady(t, clientPort, clientProcess.logs)
+	defer func() {
+		if clientConn != nil {
+			_ = clientConn.Close()
+		}
+	}()
 
 	payload := []byte("antimage-real-xray-e2e")
 	if _, err := clientConn.Write(payload); err != nil {
@@ -234,14 +243,18 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 	var upstreamConn net.Conn
 	select {
 	case upstreamConn = <-accepted:
-		defer upstreamConn.Close()
+		defer func() {
+			if upstreamConn != nil {
+				_ = upstreamConn.Close()
+			}
+		}()
 	case err := <-acceptErr:
 		t.Fatalf("echo accept: %v", err)
 	case <-time.After(5 * time.Second):
 		t.Fatalf(
 			"VLESS tunnel did not reach destination\nserver:\n%s\nclient:\n%s",
-			serverLogs.String(),
-			clientLogs.String(),
+			serverProcess.logs.String(),
+			clientProcess.logs.String(),
 		)
 	}
 
@@ -299,11 +312,91 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 	}
 
 	statsClient := newXrayStatsClient(xrayPath, apiPort)
-	realXrayWaitForPositiveUserTraffic(
-		t,
-		statsClient,
-		userEmail,
-	)
+	panelTestBinary := strings.TrimSpace(os.Getenv("ANTIMAGE_XRAY_PANEL_TEST_BINARY"))
+	if panelTestBinary != "" {
+		nativeState := filepath.Join(tmp, "xray-agent-state")
+		generationA := realXrayRuntimeGeneration(serverProcess)
+		batchA := runNativeXrayAccountingStage(t, "collect-first", nativeState, xrayPath, apiPort, generationA, "")
+		if batchA.GetBatchId() == "" || nativeXrayBatchValue(batchA) == 0 {
+			t.Fatalf("production Xray collector did not create positive native batch A: batch=%v", batchA)
+		}
+		runNativeXrayPanelDB(t, panelTestBinary, nativeState, false)
+
+		// A separate test process models a real node-agent restart while the panel
+		// ACK is lost. It must load and replay the immutable pending batch.
+		replayA := runNativeXrayAccountingStage(t, "collect-first", nativeState, xrayPath, apiPort, generationA, "")
+		if !proto.Equal(replayA, batchA) {
+			t.Fatalf("Xray batch A changed across node process restart: replay=%v want=%v", replayA, batchA)
+		}
+		runNativeXrayPanelDB(t, panelTestBinary, nativeState, false)
+		assertNativeXrayPanelReceipt(t, nativeState, batchA.GetBatchId(), nativeXrayBatchValue(batchA))
+		runNativeXrayAccountingStage(t, "ack", nativeState, xrayPath, apiPort, generationA, batchA.GetBatchId())
+
+		// Restart the actual native Xray daemon after the first batch was ACKed.
+		// Reinitialize node accounting in a separate process and checkpoint the
+		// new native generation before reconnecting the VLESS client.
+		serverProcess.stop()
+		_ = upstreamConn.Close()
+		_ = clientConn.Close()
+		serverProcess = realXrayStartProcess(t, xrayPath, serverConfigPath)
+		realXrayWaitForTCP(t, apiPort, serverProcess.logs)
+		generationB := realXrayRuntimeGeneration(serverProcess)
+		runNativeXrayAccountingStage(t, "checkpoint", nativeState, xrayPath, apiPort, generationB, "")
+		statsClient.rpc.close()
+		statsClient = newXrayStatsClient(xrayPath, apiPort)
+		onlineClient = newXrayOnlineClient(xrayPath, apiPort)
+
+		acceptedAfterRestart := make(chan net.Conn, 1)
+		acceptAfterRestartErr := make(chan error, 1)
+		go func() {
+			conn, acceptErr := echoListener.Accept()
+			if acceptErr != nil {
+				acceptAfterRestartErr <- acceptErr
+				return
+			}
+			acceptedAfterRestart <- conn
+		}()
+		clientConn = realXrayDialUntilReady(t, clientPort, clientProcess.logs)
+		select {
+		case upstreamConn = <-acceptedAfterRestart:
+		case acceptErr := <-acceptAfterRestartErr:
+			t.Fatalf("accept destination after Xray runtime restart: %v", acceptErr)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("reconnected VLESS stream did not reach destination after runtime restart\nserver:\n%s\nclient:\n%s", serverProcess.logs.String(), clientProcess.logs.String())
+		}
+
+		beforeBatchB, err := statsClient.queryStats(context.Background(), "user>>>", false)
+		if err != nil {
+			t.Fatalf("read Xray counters before batch B traffic: %v", err)
+		}
+		beforeBatchBBytes := nativeXrayUserCounterTotal(beforeBatchB, userEmail)
+		continued := bytes.Repeat([]byte("xray-native-exact-once-"), 32*1024)
+		if _, err := clientConn.Write(continued); err != nil {
+			t.Fatalf("write batch B through Xray: %v", err)
+		}
+		if err := upstreamConn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		gotBatchB := make([]byte, len(continued))
+		if _, err := io.ReadFull(upstreamConn, gotBatchB); err != nil {
+			t.Fatalf("read batch B through Xray: %v", err)
+		}
+		if !bytes.Equal(gotBatchB, continued) {
+			t.Fatal("Xray batch B tunnel payload did not round-trip")
+		}
+		realXrayWaitForPositiveUserTraffic(t, statsClient, userEmail)
+		realXrayWaitForNativeCounterIncrease(t, statsClient, userEmail, beforeBatchBBytes)
+
+		// A fresh node-agent process collects after the native runtime restart.
+		// SQLite reapplies A and B after reopening; totals increase by B once.
+		batchB := runNativeXrayAccountingStage(t, "collect-next", nativeState, xrayPath, apiPort, generationB, "")
+		if batchB.GetBatchId() == "" || batchB.GetBatchId() == batchA.GetBatchId() || nativeXrayBatchValue(batchB) == 0 {
+			t.Fatalf("production Xray collector did not create positive post-restart batch B: batch=%v", batchB)
+		}
+		runNativeXrayPanelDB(t, panelTestBinary, nativeState, false)
+		assertNativeXrayPanelReceipt(t, nativeState, batchB.GetBatchId(), nativeXrayBatchValue(batchA)+nativeXrayBatchValue(batchB))
+		runNativeXrayAccountingStage(t, "ack", nativeState, xrayPath, apiPort, generationB, batchB.GetBatchId())
+	}
 
 	// Keep the connection open but idle. Online state must come from OnlineMap,
 	// not from a fresh traffic delta.
@@ -319,6 +412,29 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 		t.Fatalf("idle connected user count=%d, want >0", idleCount)
 	}
 
+	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	err = statsClient.removeUserRPC(ctx, "vless-e2e", userEmail)
+	cancel()
+	if err != nil {
+		t.Fatalf("remove real Xray user: %v", err)
+	}
+	// Removing authentication does not terminate an already authenticated stream.
+	continuedAfterRemoval := []byte("existing-stream-after-user-removal")
+	if err := upstreamConn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := clientConn.Write(continuedAfterRemoval); err != nil {
+		t.Fatalf("write existing stream after user removal: %v", err)
+	}
+	gotContinued := make([]byte, len(continuedAfterRemoval))
+	if _, err := io.ReadFull(upstreamConn, gotContinued); err != nil {
+		t.Fatalf("read existing stream after user removal: %v", err)
+	}
+	if !bytes.Equal(gotContinued, continuedAfterRemoval) {
+		t.Fatalf("existing stream payload=%q, want %q", gotContinued, continuedAfterRemoval)
+	}
+	t.Log("native user removal succeeded, but the existing VLESS stream still transfers traffic; hard per-user quota requires a stream termination hook")
+
 	if err := clientConn.Close(); err != nil {
 		t.Fatalf("close client connection: %v", err)
 	}
@@ -327,6 +443,217 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 	}
 
 	realXrayWaitForOffline(t, onlineClient, userEmail)
+}
+
+func newNativeXrayAccountingServer(t *testing.T, dataDir, xrayPath string, apiPort int, generation string) *Server {
+	t.Helper()
+	s := New(Config{DataDir: dataDir, XrayPath: xrayPath, XrayAPIPort: apiPort})
+	s.mu.Lock()
+	s.lastRuntime = &exec.Cmd{} // The pinned native Xray process is owned by this E2E harness.
+	s.xrayRuntimeGeneration = generation
+	s.mu.Unlock()
+	t.Cleanup(s.closeXrayStatsClient)
+	return s
+}
+
+// TestXrayNativeAccountingStage is re-executed in a new test process to verify
+// durable node accounting state across actual process boundaries while the
+// pinned native Xray daemon remains independently managed by the E2E harness.
+func TestXrayNativeAccountingStage(t *testing.T) {
+	action := strings.TrimSpace(os.Getenv("ANTIMAGE_XRAY_NATIVE_ACTION"))
+	if action == "" {
+		t.Skip("requires the real Xray E2E subprocess harness")
+	}
+	dataDir := strings.TrimSpace(os.Getenv("ANTIMAGE_XRAY_NATIVE_STATE"))
+	xrayPath := strings.TrimSpace(os.Getenv("ANTIMAGE_XRAY_NATIVE_PATH"))
+	generation := strings.TrimSpace(os.Getenv("ANTIMAGE_XRAY_NATIVE_GENERATION"))
+	apiPort, err := strconv.Atoi(strings.TrimSpace(os.Getenv("ANTIMAGE_XRAY_NATIVE_API_PORT")))
+	if dataDir == "" || xrayPath == "" || generation == "" || err != nil || apiPort <= 0 {
+		t.Fatalf("invalid Xray native accounting subprocess configuration: state=%q path=%q generation=%q api_port=%q", dataDir, xrayPath, generation, os.Getenv("ANTIMAGE_XRAY_NATIVE_API_PORT"))
+	}
+	s := newNativeXrayAccountingServer(t, dataDir, xrayPath, apiPort, generation)
+	switch action {
+	case "collect-first", "collect-next":
+		batch, err := s.collectXrayUserUsage(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if batch.GetBatchId() == "" || nativeXrayBatchValue(batch) == 0 {
+			t.Fatalf("production Xray collector returned no positive native batch: %v", batch)
+		}
+		name := "native-first-batch.pb"
+		if action == "collect-next" {
+			name = "native-next-batch.pb"
+		}
+		writeNativeXrayBatch(t, dataDir, name, batch)
+		t.Logf("fresh node-agent process emitted Xray batch %s with %d raw bytes", batch.GetBatchId(), nativeXrayBatchValue(batch))
+	case "checkpoint":
+		if err := s.checkpointXrayAccounting(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		s.xrayUsageMu.Lock()
+		generationAfterCheckpoint := s.xrayAccountingGeneration
+		s.xrayUsageMu.Unlock()
+		if generationAfterCheckpoint != generation {
+			t.Fatalf("Xray accounting checkpoint generation=%q want=%q", generationAfterCheckpoint, generation)
+		}
+		t.Logf("fresh node-agent process checkpointed Xray runtime generation %s without opening an empty billable batch", generation)
+	case "ack":
+		batchID := strings.TrimSpace(os.Getenv("ANTIMAGE_XRAY_NATIVE_BATCH_ID"))
+		if batchID == "" {
+			t.Fatal("ACK subprocess requires a batch ID")
+		}
+		ack, err := s.ackXrayUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: batchID})
+		if err != nil || !ack.GetAcknowledged() {
+			t.Fatalf("DB-confirmed ACK of Xray batch %s: response=%v err=%v", batchID, ack, err)
+		}
+		reloaded := New(Config{DataDir: dataDir, XrayPath: xrayPath, XrayAPIPort: apiPort})
+		reloaded.xrayUsageMu.Lock()
+		err = reloaded.ensureXrayUsageStateLoadedLocked()
+		pending := reloaded.xrayUsagePending
+		lastAcked := reloaded.xrayUsageLastAckedBatchID
+		reloaded.xrayUsageMu.Unlock()
+		if err != nil || pending != nil || lastAcked != batchID {
+			t.Fatalf("Xray ACK was not durable across another process reload: pending=%v last_acked=%q want=%q err=%v", pending, lastAcked, batchID, err)
+		}
+		t.Logf("fresh node-agent process durably ACKed and pruned Xray batch %s", batchID)
+	default:
+		t.Fatalf("unknown Xray native accounting subprocess action %q", action)
+	}
+}
+
+func runNativeXrayAccountingStage(t *testing.T, action, dataDir, xrayPath string, apiPort int, generation, batchID string) *nodev1.UserUsageBatch {
+	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(executable, "-test.run=^TestXrayNativeAccountingStage$", "-test.v")
+	cmd.Env = append(os.Environ(),
+		"ANTIMAGE_XRAY_NATIVE_ACTION="+action,
+		"ANTIMAGE_XRAY_NATIVE_STATE="+dataDir,
+		"ANTIMAGE_XRAY_NATIVE_PATH="+xrayPath,
+		"ANTIMAGE_XRAY_NATIVE_API_PORT="+strconv.Itoa(apiPort),
+		"ANTIMAGE_XRAY_NATIVE_GENERATION="+generation,
+		"ANTIMAGE_XRAY_NATIVE_BATCH_ID="+batchID,
+	)
+	output, err := cmd.CombinedOutput()
+	t.Logf("Xray native node-agent subprocess (%s):\n%s", action, output)
+	if err != nil {
+		t.Fatalf("Xray native node-agent subprocess %s: %v", action, err)
+	}
+	if action == "ack" || action == "checkpoint" {
+		return nil
+	}
+	name := "native-first-batch.pb"
+	if action == "collect-next" {
+		name = "native-next-batch.pb"
+	}
+	raw, err := os.ReadFile(filepath.Join(dataDir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch := &nodev1.UserUsageBatch{}
+	if err := proto.Unmarshal(raw, batch); err != nil {
+		t.Fatal(err)
+	}
+	return batch
+}
+
+func realXrayRuntimeGeneration(process *realXrayProcess) string {
+	return fmt.Sprintf("native-xray-process-%d", process.cmd.Process.Pid)
+}
+
+func nativeXrayBatchValue(batch *nodev1.UserUsageBatch) uint64 {
+	for _, sample := range batch.GetStats() {
+		if sample.GetUid() == "xray:7" {
+			return sample.GetValue()
+		}
+	}
+	return 0
+}
+
+func writeNativeXrayBatch(t *testing.T, dir, name string, batch *nodev1.UserUsageBatch) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := proto.Marshal(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runNativeXrayPanelDB(t *testing.T, binary, dir string, requireFinal bool) {
+	t.Helper()
+	cmd := exec.Command(binary, "-test.run=^TestXrayNativePanelDB$", "-test.v")
+	cmd.Env = append(os.Environ(), "ANTIMAGE_XRAY_NATIVE_STATE="+dir)
+	if requireFinal {
+		cmd.Env = append(cmd.Env, "ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL=1")
+	}
+	output, err := cmd.CombinedOutput()
+	t.Logf("Xray native SQLite exact-once result:\n%s", output)
+	if err != nil {
+		t.Fatalf("Xray native SQLite exact-once validation: %v", err)
+	}
+}
+
+func assertNativeXrayPanelReceipt(t *testing.T, dir, batchID string, rawTotal uint64) {
+	t.Helper()
+	var receipt struct {
+		BatchIDs       []string `json:"batch_ids"`
+		RawTotal       uint64   `json:"raw_total"`
+		EffectiveTotal uint64   `json:"effective_total"`
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "native-panel-receipt.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, id := range receipt.BatchIDs {
+		if id == batchID {
+			found = true
+		}
+	}
+	if !found || receipt.RawTotal != rawTotal || receipt.EffectiveTotal != rawTotal*3 {
+		t.Fatalf("Xray Panel receipt does not reflect exact native batches: %+v want_batch=%s want_raw=%d", receipt, batchID, rawTotal)
+	}
+}
+
+func nativeXrayUserCounterTotal(stats []xrayStat, email string) uint64 {
+	var total uint64
+	for _, stat := range stats {
+		name, ok := parseXrayStatName(stat.Name)
+		if ok && name.Type == "user" && name.Metric == "traffic" && name.Email == email && stat.Value > 0 {
+			total += uint64(stat.Value)
+		}
+	}
+	return total
+}
+
+func realXrayWaitForNativeCounterIncrease(t *testing.T, client *xrayStatsClient, email string, previous uint64) {
+	t.Helper()
+	deadline := time.Now().Add(6 * time.Second)
+	var latest uint64
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		stats, err := client.queryStats(ctx, "user>>>", false)
+		cancel()
+		if err == nil {
+			latest = nativeXrayUserCounterTotal(stats, email)
+			if latest > previous {
+				return
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("native Xray counters for %q did not increase after real traffic: before=%d after=%d", email, previous, latest)
 }
 
 func realXrayFreeTCPPort(t *testing.T) int {
@@ -345,11 +672,29 @@ func realXrayFreeTCPPort(t *testing.T) int {
 	return port
 }
 
+type realXrayProcess struct {
+	cmd      *exec.Cmd
+	logs     *realXrayLogBuffer
+	waitOnce sync.Once
+}
+
+func (p *realXrayProcess) stop() {
+	if p == nil || p.cmd == nil {
+		return
+	}
+	p.waitOnce.Do(func() {
+		if p.cmd.Process != nil {
+			_ = p.cmd.Process.Kill()
+		}
+		_ = p.cmd.Wait()
+	})
+}
+
 func realXrayStartProcess(
 	t *testing.T,
 	xrayPath string,
 	configPath string,
-) *realXrayLogBuffer {
+) *realXrayProcess {
 	t.Helper()
 
 	logs := &realXrayLogBuffer{}
@@ -371,14 +716,9 @@ func realXrayStartProcess(
 		t.Fatalf("start Xray with %s: %v", configPath, err)
 	}
 
-	t.Cleanup(func() {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		_ = cmd.Wait()
-	})
-
-	return logs
+	process := &realXrayProcess{cmd: cmd, logs: logs}
+	t.Cleanup(process.stop)
+	return process
 }
 
 func realXrayWaitForTCP(

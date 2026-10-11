@@ -2,9 +2,7 @@ package nodeagent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,61 +11,24 @@ import (
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
-// xrayStatsClient queries Xray's local stats API via xray api statsquery command
+// xrayStatsClient reuses a local gRPC connection for aggregate counter queries.
 type xrayStatsClient struct {
 	xrayPath string
 	apiPort  int
+	rpc      *xrayRPCConnection
 }
 
 func newXrayStatsClient(xrayPath string, apiPort int) *xrayStatsClient {
 	return &xrayStatsClient{
 		xrayPath: xrayPath,
 		apiPort:  apiPort,
+		rpc:      &xrayRPCConnection{port: apiPort},
 	}
 }
 
-// queryStats queries Xray stats via 'xray api statsquery' command
-// Returns structured stats parsed from JSON output
+// queryStats never resets native counters; ACKs advance separate logical baselines.
 func (c *xrayStatsClient) queryStats(ctx context.Context, pattern string, reset bool) ([]xrayStat, error) {
-	// Build command: xray api statsquery --server=127.0.0.1:apiPort [--pattern=...] [--reset]
-	args := []string{
-		"api", "statsquery",
-		fmt.Sprintf("--server=127.0.0.1:%d", c.apiPort),
-	}
-
-	if pattern != "" {
-		args = append(args, fmt.Sprintf("--pattern=%s", pattern))
-	}
-
-	if reset {
-		args = append(args, "--reset")
-	}
-
-	cmd := exec.CommandContext(ctx, c.xrayPath, args...)
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("xray api statsquery command failed: %w", err)
-	}
-
-	// Parse JSON output - reuse existing xrayStatsQueryResponse from route_stats.go
-	var response xrayStatsQueryResponse
-	if err := json.Unmarshal(output, &response); err != nil {
-		return nil, fmt.Errorf("parse xray stats JSON: %w", err)
-	}
-
-	stats := make([]xrayStat, 0, len(response.Stat))
-	for _, s := range response.Stat {
-		value, err := parseXrayStatValue(s.Value)
-		if err != nil {
-			continue
-		}
-		stats = append(stats, xrayStat{
-			Name:  s.Name,
-			Value: value,
-		})
-	}
-
-	return stats, nil
+	return c.queryStatsRPC(ctx, pattern, reset)
 }
 
 type xrayStat struct {
@@ -92,29 +53,62 @@ func (s *Server) collectXrayUserUsage(
 		return nil, err
 	}
 
-	// If there's a pending batch, return it (waiting for ACK)
-	if s.xrayUsagePending != nil {
-		return xrayUsageBatchProto(s.xrayUsagePending), nil
-	}
-
 	// Check if Xray runtime is actually running
 	s.mu.Lock()
 	xrayRunning := s.lastRuntime != nil
 	xrayPath := s.cfg.XrayPath
 	xrayAPIPort := s.cfg.XrayAPIPort
+	generation := s.xrayRuntimeGeneration
 	s.mu.Unlock()
 
 	if !xrayRunning {
-		return &nodev1.UserUsageBatch{}, nil
+		if s.xrayUsagePending != nil {
+			return xrayUsageBatchProto(s.xrayUsagePending), nil
+		}
+		if len(s.xrayAccountingCounters) == 0 {
+			return &nodev1.UserUsageBatch{}, nil
+		}
 	}
 
-	// Query Xray stats via CLI for traffic counters
-	client := newXrayStatsClient(xrayPath, xrayAPIPort)
+	// Query one aggregate snapshot without spawning the CLI.
+	client := s.cachedXrayStatsClient(xrayPath, xrayAPIPort)
 
-	stats, err := client.queryStats(ctx, "user>>>", false)
-	if err != nil {
-		s.appendLog("xray user stats query failed: " + err.Error())
-		return &nodev1.UserUsageBatch{}, nil
+	var stats []xrayStat
+	if xrayRunning {
+		var err error
+		stats, err = client.queryStats(ctx, "user>>>", false)
+		if err != nil {
+			s.appendLog("xray user stats query failed: " + err.Error())
+			if s.xrayUsagePending != nil {
+				return xrayUsageBatchProto(s.xrayUsagePending), nil
+			}
+			if len(s.xrayAccountingCounters) == 0 {
+				return &nodev1.UserUsageBatch{}, nil
+			}
+			xrayRunning = false
+		}
+	}
+	s.mu.Lock()
+	unchanged := generation == s.xrayRuntimeGeneration
+	s.mu.Unlock()
+	if !unchanged {
+		return nil, fmt.Errorf("xray runtime changed during usage collection")
+	}
+	if err := s.checkpointXrayGenerationLocked(stats, generation); err != nil {
+		return nil, err
+	}
+	if s.xrayUsagePending != nil {
+		return xrayUsageBatchProto(s.xrayUsagePending), nil
+	}
+	// A runtime restart or user removal may hide previously sampled series.
+	// Bill from the durable totals, not just keys in the current API response.
+	stats = stats[:0]
+	for key := range s.xrayAccountingCounters {
+		separator := strings.LastIndexByte(key, ':')
+		if separator < 0 {
+			return nil, fmt.Errorf("invalid persisted xray accounting key %q", key)
+		}
+		stats = append(stats, xrayStat{Name: "user>>>" + key[:separator] + ">>>traffic>>>" + key[separator+1:]})
 	}
 
 	if s.xrayUsageBaseline == nil {
@@ -164,10 +158,7 @@ func (s *Server) collectXrayUserUsage(
 		baseline, exists := s.xrayUsageBaseline[sessionKey]
 
 		// Convert to uint64 for safe arithmetic
-		currentValue := uint64(0)
-		if stat.Value >= 0 {
-			currentValue = uint64(stat.Value)
-		}
+		currentValue := s.xrayAccountingCounters[sessionKey].Total
 
 		delta := currentValue
 
@@ -215,7 +206,11 @@ func (s *Server) collectXrayUserUsage(
 
 	// Try bulk query first. Besides the online count, the bulk API is the
 	// source of truth for real client IPs used by device/IP enforcement.
-	bulkOnline, bulkErr := onlineClient.queryAllOnlineUsers(ctx)
+	var bulkOnline map[string]xrayOnlineUserState
+	var bulkErr error
+	if xrayRunning {
+		bulkOnline, bulkErr = onlineClient.queryAllOnlineUsers(ctx)
+	}
 	useBulk := bulkErr == nil && len(bulkOnline) > 0
 
 	// Track online state per email. The per-user fallback can recover the
@@ -224,7 +219,7 @@ func (s *Server) collectXrayUserUsage(
 
 	if useBulk {
 		emailOnlineState = bulkOnline
-	} else {
+	} else if xrayRunning {
 		for email := range uniqueEmails {
 			count, err := onlineClient.queryOnlineCount(ctx, email)
 			if err != nil {
@@ -293,7 +288,7 @@ func (s *Server) collectXrayUserUsage(
 	// Activity-based fallback for users where online query failed
 	// If online query didn't provide state, use delta > 0 as heuristic
 	for key, sample := range aggregated {
-		if !sample.Online && sample.Value > 0 {
+		if xrayRunning && !sample.Online && sample.Value > 0 {
 			// User has traffic delta but online query didn't confirm
 			// Use activity as fallback (degraded mode)
 			sample.Online = true
@@ -327,14 +322,25 @@ func (s *Server) collectXrayUserUsage(
 		samples = append(samples, aggregated[key])
 	}
 
+	collectedAt := time.Now().UTC()
+	intervalSeconds := 0.0
+	if !s.xrayUsageBaselineAt.IsZero() {
+		intervalSeconds = collectedAt.Sub(s.xrayUsageBaselineAt).Seconds()
+		if intervalSeconds < 0 {
+			intervalSeconds = 0
+		}
+	}
 	pending := &xrayUsagePendingBatch{
 		BatchID: fmt.Sprintf(
 			"xray-%d",
 			time.Now().UTC().UnixNano(),
 		),
-		Samples:      samples,
-		OnlineUsers:  onlineUsers,
-		NextBaseline: nextBaseline,
+		Samples:          samples,
+		OnlineUsers:      onlineUsers,
+		NextBaseline:     nextBaseline,
+		IntervalSeconds:  intervalSeconds,
+		NextBaselineAt:   collectedAt,
+		SpeedUnitVersion: 1,
 	}
 
 	s.xrayUsagePending = pending
@@ -382,15 +388,18 @@ func (s *Server) ackXrayUserUsage(
 
 	previousBaseline := s.xrayUsageBaseline
 	previousLastAcked := s.xrayUsageLastAckedBatchID
+	previousBaselineAt := s.xrayUsageBaselineAt
 
 	s.xrayUsageBaseline = pending.NextBaseline
 	s.xrayUsagePending = nil
 	s.xrayUsageLastAckedBatchID = batchID
+	s.xrayUsageBaselineAt = pending.NextBaselineAt
 
 	if err := s.persistXrayUsageStateLocked(); err != nil {
 		s.xrayUsageBaseline = previousBaseline
 		s.xrayUsagePending = pending
 		s.xrayUsageLastAckedBatchID = previousLastAcked
+		s.xrayUsageBaselineAt = previousBaselineAt
 		return nil, err
 	}
 
@@ -439,10 +448,15 @@ func xrayUsageBatchProto(
 		if sample.Upload == 0 && sample.Download == 0 {
 			continue
 		}
+		upload, download := sample.Upload, sample.Download
+		if pending.SpeedUnitVersion > 0 {
+			upload = usageBytesPerSecond(upload, pending.IntervalSeconds)
+			download = usageBytesPerSecond(download, pending.IntervalSeconds)
+		}
 		speeds = append(speeds, &nodev1.UserTrafficSpeed{
 			Uid:      "xray:" + strconv.FormatInt(sample.UserID, 10),
-			Upload:   sample.Upload,
-			Download: sample.Download,
+			Upload:   upload,
+			Download: download,
 		})
 	}
 
@@ -475,4 +489,11 @@ func xrayUsageBatchProto(
 		Speeds:    speeds,
 		OnlineIps: onlineIPs,
 	}
+}
+
+func usageBytesPerSecond(delta uint64, elapsedSeconds float64) uint64 {
+	if delta == 0 || elapsedSeconds <= 0 {
+		return 0
+	}
+	return uint64(float64(delta) / elapsedSeconds)
 }

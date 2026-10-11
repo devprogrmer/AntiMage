@@ -98,59 +98,7 @@ func (s *Server) persistOpenVPNUsageStateLocked() error {
 		)
 	}
 
-	path := s.openVPNUsageStatePath()
-	tmp := path + ".tmp"
-
-	file, err := os.OpenFile(
-		tmp,
-		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
-		0600,
-	)
-	if err != nil {
-		return fmt.Errorf(
-			"open temporary usage state: %w",
-			err,
-		)
-	}
-
-	cleanup := func() {
-		_ = file.Close()
-		_ = os.Remove(tmp)
-	}
-
-	if _, err := file.Write(raw); err != nil {
-		cleanup()
-		return fmt.Errorf(
-			"write temporary usage state: %w",
-			err,
-		)
-	}
-
-	if err := file.Sync(); err != nil {
-		cleanup()
-		return fmt.Errorf(
-			"sync temporary usage state: %w",
-			err,
-		)
-	}
-
-	if err := file.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf(
-			"close temporary usage state: %w",
-			err,
-		)
-	}
-
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf(
-			"replace openvpn usage state: %w",
-			err,
-		)
-	}
-
-	return nil
+	return writeAccountingState(s.openVPNUsageStatePath(), raw)
 }
 
 func readAllOpenVPNUsageState(

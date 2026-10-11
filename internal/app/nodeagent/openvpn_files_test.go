@@ -56,6 +56,9 @@ func TestPrepareOpenVPNInbound(t *testing.T) {
 		"server.key",
 		"auth.sh",
 		"credentials.sha256",
+		"session-helper.json",
+		"client-connect.sh",
+		"client-disconnect.sh",
 		"ipp.txt",
 	} {
 		if name == "ipp.txt" {

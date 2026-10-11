@@ -282,6 +282,11 @@ func (s *Server) applyWireGuardRuntime(
 	}
 
 	created := false
+	if exists {
+		if err := s.checkpointWireGuardOfflineGeneration(ctx, prepared.InterfaceName); err != nil {
+			return fmt.Errorf("wireguard checkpoint before syncconf: %w", err)
+		}
+	}
 	if !exists {
 		if err := runWireGuardRuntimeRequired(
 			ctx,
@@ -343,15 +348,16 @@ func (s *Server) applyWireGuardRuntime(
 		)
 	}
 
-	if err := runWireGuardRuntimeRequired(
-		ctx,
-		wgPath,
-		"syncconf",
-		prepared.InterfaceName,
-		prepared.ConfigPath,
-	); err != nil {
+	if err := s.transitionWireGuardRemovedGenerations(prepared, true); err != nil {
+		rollbackCreated()
+		return err
+	}
+	if err := runWireGuardRuntimeRequired(ctx, wgPath, "syncconf", prepared.InterfaceName, prepared.ConfigPath); err != nil {
 		rollbackCreated()
 		return fmt.Errorf("wireguard %q: sync config: %w", prepared.Tag, err)
+	}
+	if err := s.markWireGuardRemovedGenerations(prepared); err != nil {
+		return err
 	}
 
 	if err := runWireGuardRuntimeRequired(
@@ -516,6 +522,9 @@ func removeWireGuardInterface(interfaceName string) error {
 func (s *Server) removeWireGuardRuntimeInterface(
 	state wireGuardRuntimeState,
 ) (bool, error) {
+	if err := s.checkpointWireGuardOfflineGeneration(context.Background(), state.InterfaceName); err != nil {
+		return false, err
+	}
 	if wireGuardRuntimeStateUsesExplicitInterface(state) {
 		owned, err := wireGuardInterfaceHasOwnershipAlias(
 			state.Tag,
@@ -528,7 +537,14 @@ func (s *Server) removeWireGuardRuntimeInterface(
 			return false, nil
 		}
 	}
+	transition := preparedWireGuardRuntime{Tag: state.Tag, InterfaceName: state.InterfaceName}
+	if err := s.transitionWireGuardRemovedGenerations(transition, true); err != nil {
+		return false, err
+	}
 	if err := removeWireGuardInterface(state.InterfaceName); err != nil {
+		return false, err
+	}
+	if err := s.markWireGuardRemovedGenerations(preparedWireGuardRuntime{Tag: state.Tag, InterfaceName: state.InterfaceName}); err != nil {
 		return false, err
 	}
 	return true, nil

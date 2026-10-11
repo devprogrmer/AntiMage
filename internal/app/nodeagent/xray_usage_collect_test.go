@@ -273,6 +273,32 @@ func TestXrayUsageBatchProtoFormat(t *testing.T) {
 	}
 }
 
+func TestUsageBytesPerSecondUsesActualPollInterval(t *testing.T) {
+	for _, test := range []struct {
+		seconds float64
+		delta   uint64
+		want    uint64
+	}{
+		{seconds: 1, delta: 5_000, want: 5_000},
+		{seconds: 2, delta: 5_000, want: 2_500},
+		{seconds: 5, delta: 5_000, want: 1_000},
+	} {
+		if got := usageBytesPerSecond(test.delta, test.seconds); got != test.want {
+			t.Fatalf("delta=%d seconds=%v speed=%d want=%d", test.delta, test.seconds, got, test.want)
+		}
+	}
+}
+
+func TestXrayNewFirstSpeedSampleWaitsForElapsedInterval(t *testing.T) {
+	batch := xrayUsageBatchProto(&xrayUsagePendingBatch{
+		SpeedUnitVersion: 1,
+		Samples:          []xrayUsageSample{{UserID: 42, Upload: 5000, Download: 7000}},
+	})
+	if len(batch.GetSpeeds()) != 1 || batch.GetSpeeds()[0].GetUpload() != 0 || batch.GetSpeeds()[0].GetDownload() != 0 {
+		t.Fatalf("first speed sample should wait for elapsed interval: %#v", batch.GetSpeeds())
+	}
+}
+
 func TestMergeUserUsageBatches(t *testing.T) {
 	server := &Server{
 		cfg: Config{

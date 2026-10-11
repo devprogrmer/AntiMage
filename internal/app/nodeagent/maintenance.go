@@ -241,10 +241,7 @@ func (s *Server) UpdateService(ctx context.Context, req *nodev1.ServiceUpdateReq
 	if err != nil {
 		return nil, err
 	}
-	channel := strings.ToLower(strings.TrimSpace(req.GetChannel()))
-	if channel == "latest" {
-		channel = "stable"
-	}
+	channel := normalizeNodeUpdateChannel(req.GetChannel())
 	if channel != "" && channel != "stable" && channel != "dev" {
 		return nil, status.Error(codes.InvalidArgument, "invalid node update channel")
 	}
@@ -266,6 +263,17 @@ func (s *Server) UpdateService(ctx context.Context, req *nodev1.ServiceUpdateReq
 		result.OperationId = req.GetOperationId()
 	}
 	return result, err
+}
+
+func normalizeNodeUpdateChannel(channel string) string {
+	switch strings.ToLower(strings.TrimSpace(channel)) {
+	case "latest", "release", "master", "stable":
+		return "stable"
+	case "development", "dev-builds", "dev":
+		return "dev"
+	default:
+		return strings.ToLower(strings.TrimSpace(channel))
+	}
 }
 
 func (s *Server) RebootHost(ctx context.Context, req *nodev1.HostRebootRequest) (*nodev1.RuntimeActionResponse, error) {

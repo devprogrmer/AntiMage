@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -36,6 +35,7 @@ type l2TPUsageSample struct {
 }
 
 type l2TPUsagePendingBatch struct {
+	SeenUnix     int64             `json:"seen_unix,omitempty"`
 	BatchID      string            `json:"batch_id"`
 	Samples      []l2TPUsageSample `json:"samples"`
 	NextBaseline map[string]uint64 `json:"next_baseline"`
@@ -163,10 +163,6 @@ func (s *Server) collectL2TPUserUsage(
 		return nil, err
 	}
 
-	if s.l2TPUsagePending != nil {
-		return l2TPUsageBatchProto(s.l2TPUsagePending), nil
-	}
-
 	nextBaseline := make(
 		map[string]uint64,
 		len(s.l2TPUsageBaseline),
@@ -175,22 +171,45 @@ func (s *Server) collectL2TPUserUsage(
 		nextBaseline[key] = value
 	}
 
-	rawPPP, err := exec.CommandContext(
-		ctx,
-		"ip",
-		"-o",
-		"-4",
-		"addr",
-		"show",
-	).Output()
+	roots, err := offlineHelperRoots(s.cfg.DataDir, "l2tp")
 	if err != nil {
-		return nil, fmt.Errorf(
-			"query l2tp PPP interfaces: %w",
-			err,
-		)
+		return nil, err
+	}
+	var rawPPP []byte
+	if len(roots) > 0 {
+		rawPPP, err = readOfflinePPPQuery(ctx)
+	}
+	if err != nil {
+		// The final spool remains collectable when the interface command fails.
+		rawPPP = nil
 	}
 
 	pppSessions := parseL2TPPPPInterfaces(string(rawPPP))
+
+	// Seed legacy pending native snapshots: their deltas are already in the batch.
+	if pending := s.l2TPUsagePending; pending != nil {
+		legacy := true
+		for key := range pending.NextBaseline {
+			if _, _, ok := offlineAccountingOwner(key); ok {
+				legacy = false
+				break
+			}
+		}
+		if legacy {
+			values := make([]offlinePendingSample, 0, len(pending.Samples))
+			for _, sample := range pending.Samples {
+				values = append(values, offlinePendingSample{sample.UserID, sample.InboundTag, sample.Value})
+			}
+			if err := offlineSeedLegacyPending(nextBaseline, pending.BatchID, values); err != nil {
+				return nil, err
+			}
+			for key, value := range pending.NextBaseline {
+				if nextBaseline[key] < value {
+					nextBaseline[key] = value
+				}
+			}
+		}
+	}
 
 	type aggregateKey struct {
 		UserID     int64
@@ -198,13 +217,22 @@ func (s *Server) collectL2TPUserUsage(
 	}
 
 	aggregated := make(map[aggregateKey]l2TPUsageSample)
+	for key, total := range nextBaseline {
+		uid, tag, ok := offlineAccountingOwner(key)
+		if !ok {
+			continue
+		}
+		sent := nextBaseline[offlineAccountingSentKey(key)]
+		if sent > total {
+			return nil, fmt.Errorf("invalid offline accounting baseline")
+		}
+		if total > sent {
+			aggregated[aggregateKey{uid, tag}] = l2TPUsageSample{UserID: uid, InboundTag: tag, Value: total - sent}
+		}
+	}
 
-	for _, tag := range s.activeL2TPRuntimeTags() {
-		root := filepath.Join(
-			s.cfg.DataDir,
-			"l2tp",
-			l2TPRuntimeDirName(tag),
-		)
+	for _, root := range roots {
+		tag := filepath.Base(root)
 
 		rawConfig, err := os.ReadFile(
 			filepath.Join(root, "usage-helper.json"),
@@ -239,7 +267,7 @@ func (s *Server) collectL2TPUserUsage(
 				continue
 			}
 
-			rx, err := readL2TPInterfaceCounter(
+			rx, err := pppOfflineReadCounter(
 				session.Interface,
 				"rx_bytes",
 			)
@@ -251,7 +279,7 @@ func (s *Server) collectL2TPUserUsage(
 				continue
 			}
 
-			tx, err := readL2TPInterfaceCounter(
+			tx, err := pppOfflineReadCounter(
 				session.Interface,
 				"tx_bytes",
 			)
@@ -273,8 +301,29 @@ func (s *Server) collectL2TPUserUsage(
 				session.Interface,
 				session.PeerIP,
 			)
+			identity, err := pppOfflineReadIdentity(session.Interface)
+			if err != nil {
+				return nil, err
+			}
+			legacyKey := baselineKey
+			baselineKey += "\x00" + identity
+			if record, sessionErr := pppOfflineActiveSession(root, session.Interface, session.PeerIP, userID); sessionErr == nil {
+				if _, finalErr := os.Stat(filepath.Join(root, "ppp-accounting", "final", record.ID+".json")); finalErr == nil {
+					continue
+				} else if !os.IsNotExist(finalErr) {
+					return nil, finalErr
+				}
+				baselineKey = legacyKey + "\x00session:" + record.ID
+			} else if !os.IsNotExist(sessionErr) {
+				return nil, sessionErr
+			}
 			baseline, exists :=
-				s.l2TPUsageBaseline[baselineKey]
+				nextBaseline[baselineKey]
+
+			if !exists {
+				baseline, exists = nextBaseline[legacyKey]
+				delete(nextBaseline, legacyKey)
+			}
 
 			delta := l2TPUsageDelta(
 				total,
@@ -294,11 +343,65 @@ func (s *Server) collectL2TPUserUsage(
 			sample.Online = true
 			sample.IP = session.PeerIP
 
-			if ^uint64(0)-sample.Value >= delta {
-				sample.Value += delta
+			owner := offlineAccountingTotalKey(userID, cfg.InboundTag)
+			if ^uint64(0)-sample.Value < delta || ^uint64(0)-nextBaseline[owner] < delta {
+				return nil, fmt.Errorf("offline accounting overflow")
 			}
+			sample.Value += delta
+			nextBaseline[owner] += delta
 			aggregated[key] = sample
 		}
+		finals, err := pppOfflineFinalRecords(root)
+		if err != nil {
+			return nil, err
+		}
+		for _, record := range finals {
+			if record.InboundTag != cfg.InboundTag {
+				return nil, fmt.Errorf("PPP final inbound mismatch")
+			}
+			delta, err := pppOfflineAdvanceFinal(nextBaseline, record)
+			if err != nil {
+				return nil, err
+			}
+			if delta == 0 {
+				continue
+			}
+			key := aggregateKey{record.UserID, record.InboundTag}
+			sample := aggregated[key]
+			if ^uint64(0)-sample.Value < delta {
+				return nil, fmt.Errorf("PPP aggregate overflow")
+			}
+			sample.UserID = record.UserID
+			sample.InboundTag = record.InboundTag
+			sample.Value += delta
+			aggregated[key] = sample
+		}
+	}
+
+	if len(nextBaseline) > maxAccountingCounterSeries {
+		return nil, fmt.Errorf("offline accounting capacity exceeded; refusing to discard usage")
+	}
+	if preview := offlinePreview(ctx); preview != nil {
+		preview.Baseline = nextBaseline
+		if pending := s.l2TPUsagePending; pending != nil {
+			preview.PendingID = pending.BatchID
+			for _, sample := range pending.Samples {
+				preview.PendingSamples = append(preview.PendingSamples, offlinePendingSample{sample.UserID, sample.InboundTag, sample.Value})
+			}
+		}
+		return &nodev1.UserUsageBatch{}, nil
+	}
+	previousSampled := s.l2TPUsageBaseline
+	s.l2TPUsageBaseline = nextBaseline
+	if err := s.persistL2TPUsageStateLocked(); err != nil {
+		s.l2TPUsageBaseline = previousSampled
+		return nil, err
+	}
+	if s.l2TPUsagePending != nil {
+		return l2TPUsageBatchProto(s.l2TPUsagePending), nil
+	}
+	if offlineCheckpointOnly(ctx) {
+		return &nodev1.UserUsageBatch{}, nil
 	}
 
 	if len(aggregated) == 0 {
@@ -327,6 +430,7 @@ func (s *Server) collectL2TPUserUsage(
 	}
 
 	pending := &l2TPUsagePendingBatch{
+		SeenUnix: time.Now().UTC().Unix(),
 		BatchID: fmt.Sprintf(
 			"l2tp-%d",
 			time.Now().UTC().UnixNano(),
@@ -378,7 +482,15 @@ func (s *Server) ackL2TPUserUsage(
 	previousBaseline := s.l2TPUsageBaseline
 	previousLastAcked := s.l2TPUsageLastAckedBatchID
 
-	s.l2TPUsageBaseline = pending.NextBaseline
+	values := make([]offlinePendingSample, 0, len(pending.Samples))
+	for _, sample := range pending.Samples {
+		values = append(values, offlinePendingSample{sample.UserID, sample.InboundTag, sample.Value})
+	}
+	ackBaseline, err := offlineAckSnapshot(s.l2TPUsageBaseline, pending.NextBaseline, batchID, values)
+	if err != nil {
+		return nil, err
+	}
+	s.l2TPUsageBaseline = ackBaseline
 	s.l2TPUsagePending = nil
 	s.l2TPUsageLastAckedBatchID = batchID
 
@@ -412,7 +524,10 @@ func l2TPUsageBatchProto(
 		len(pending.Samples),
 	)
 
-	now := time.Now().UTC().Unix()
+	now := pending.SeenUnix
+	if now == 0 {
+		now = time.Now().UTC().Unix()
+	}
 
 	for _, sample := range pending.Samples {
 		uid := "l2tp:" +

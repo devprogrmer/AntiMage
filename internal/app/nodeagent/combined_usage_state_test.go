@@ -101,6 +101,42 @@ func TestCombinedUsageThreeSourcesAckAndRetry(t *testing.T) {
 	}
 }
 
+func TestCombinedUsageRecoversAckedChildrenAfterRestart(t *testing.T) {
+	dataDir := t.TempDir()
+	before := New(Config{DataDir: dataDir})
+	before.combinedUsageLoaded = true
+	before.combinedUsagePending = &combinedUsagePendingBatch{
+		BatchID:          "combined-before-restart",
+		CoreBatchID:      "xray-before-restart",
+		WireGuardBatchID: "wireguard-before-restart",
+	}
+	if err := before.persistCombinedUsageStateLocked(); err != nil {
+		t.Fatal(err)
+	}
+	before.xrayUsageLoaded = true
+	before.xrayUsageLastAckedBatchID = "xray-before-restart"
+	if err := before.persistXrayUsageStateLocked(); err != nil {
+		t.Fatal(err)
+	}
+	before.wireGuardUsageLoaded = true
+	before.wireGuardUsageLastAckedBatchID = "wireguard-before-restart"
+	if err := before.persistWireGuardUsageStateLocked(); err != nil {
+		t.Fatal(err)
+	}
+
+	after := New(Config{DataDir: dataDir})
+	batch, err := after.combineUserUsageBatches(
+		&nodev1.UserUsageBatch{BatchId: "xray-after-restart"},
+		&nodev1.UserUsageBatch{BatchId: "wireguard-after-restart"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if batch.GetBatchId() == "combined-before-restart" || batch.GetBatchId() == "" {
+		t.Fatalf("restart did not replace stale wrapper: %q", batch.GetBatchId())
+	}
+}
+
 func TestCombinedUsageWireGuardAwaitingReflectionUsesOuterBatchID(
 	t *testing.T,
 ) {
@@ -218,5 +254,55 @@ func TestCombinedUsageWireGuardAwaitingReflectionUsesOuterBatchID(
 			got,
 			outerBatchID,
 		)
+	}
+}
+
+func TestCombinedUsageRecoversWrapperAfterChildrenWereAcked(t *testing.T) {
+	dataDir := t.TempDir()
+	server := New(Config{DataDir: dataDir})
+	server.combinedUsageLoaded = true
+	server.combinedUsagePending = &combinedUsagePendingBatch{
+		BatchID:          "combined-stale",
+		CoreBatchID:      "xray-old",
+		WireGuardBatchID: "wireguard-old",
+	}
+	server.xrayUsageLoaded = true
+	server.xrayUsageLastAckedBatchID = "xray-old"
+	server.wireGuardUsageLoaded = true
+	server.wireGuardUsageLastAckedBatchID = "wireguard-old"
+
+	batch, err := server.combineUserUsageBatches(
+		&nodev1.UserUsageBatch{BatchId: "xray-new"},
+		&nodev1.UserUsageBatch{BatchId: "wireguard-new"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if batch.GetBatchId() == "combined-stale" || batch.GetBatchId() == "" {
+		t.Fatalf("stale wrapper was not replaced: %q", batch.GetBatchId())
+	}
+	if server.combinedUsageLastAckedBatchID != "combined-stale" {
+		t.Fatalf("stale wrapper was not finalized: %q", server.combinedUsageLastAckedBatchID)
+	}
+}
+
+func TestCombinedUsageKeepsWrapperWithoutChildAckProof(t *testing.T) {
+	server := New(Config{DataDir: t.TempDir()})
+	server.combinedUsageLoaded = true
+	server.combinedUsagePending = &combinedUsagePendingBatch{
+		BatchID:          "combined-stale",
+		CoreBatchID:      "xray-old",
+		WireGuardBatchID: "wireguard-old",
+	}
+	server.xrayUsageLoaded = true
+	server.xrayUsageLastAckedBatchID = "xray-old"
+	server.wireGuardUsageLoaded = true
+
+	_, err := server.combineUserUsageBatches(
+		&nodev1.UserUsageBatch{BatchId: "xray-new"},
+		&nodev1.UserUsageBatch{BatchId: "wireguard-new"},
+	)
+	if err == nil || !strings.Contains(err.Error(), "changed before ACK") {
+		t.Fatalf("unproven stale wrapper was dropped: %v", err)
 	}
 }

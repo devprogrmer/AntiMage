@@ -84,6 +84,13 @@ func (s *Server) wireGuardLiveUnackedUsageLocked(
 	pendingReflected := pending != nil &&
 		reflectedBatchID != "" &&
 		strings.TrimSpace(pending.BatchID) == reflectedBatchID
+	if pending != nil && !pendingReflected {
+		matched, err := s.localPendingUsageReflected("wireguard", userID, pending.BatchID, reflectedBatchID)
+		if err != nil {
+			return 0, err
+		}
+		pendingReflected = matched
+	}
 
 	// Pending samples have already been collected locally but have not
 	// received a controller ACK yet. If this exact batch is already

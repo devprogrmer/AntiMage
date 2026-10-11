@@ -1251,6 +1251,8 @@ func createUsageTables(t *testing.T, ctx context.Context, db *sql.DB) {
 	t.Helper()
 	statements := []string{
 		`CREATE TABLE admins (id INTEGER PRIMARY KEY, users_usage INTEGER NOT NULL DEFAULT 0, lifetime_usage INTEGER NOT NULL DEFAULT 0)`,
+		`CREATE TABLE node_usage_batch_tombstones (node_id INTEGER NOT NULL, batch_id TEXT NOT NULL, kind TEXT NOT NULL, pruned INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (node_id, batch_id, kind))`,
+		`CREATE TABLE node_wireguard_usage_reflection (node_id INTEGER NOT NULL, user_id INTEGER NOT NULL, batch_id TEXT NOT NULL, updated_at DATETIME NOT NULL, PRIMARY KEY (node_id, user_id))`,
 		`CREATE TABLE services (id INTEGER PRIMARY KEY, used_traffic INTEGER NOT NULL DEFAULT 0, lifetime_used_traffic INTEGER NOT NULL DEFAULT 0, users_usage INTEGER NOT NULL DEFAULT 0, updated_at DATETIME NULL)`,
 		`CREATE TABLE admins_services (admin_id INTEGER NOT NULL, service_id INTEGER NOT NULL, used_traffic INTEGER NOT NULL DEFAULT 0, lifetime_used_traffic INTEGER NOT NULL DEFAULT 0, updated_at DATETIME NULL, PRIMARY KEY (admin_id, service_id))`,
 		`CREATE TABLE users (id INTEGER PRIMARY KEY, status TEXT NOT NULL, used_traffic INTEGER NOT NULL DEFAULT 0, data_limit INTEGER NULL, expire INTEGER NULL, online_at DATETIME NULL, on_hold_expire_duration INTEGER NULL, on_hold_timeout DATETIME NULL, edit_at DATETIME NULL, created_at DATETIME NULL, last_status_change DATETIME NULL, admin_id INTEGER NULL, service_id INTEGER NULL)`,
@@ -1309,7 +1311,7 @@ func TestRepositoryFlushStoresWireGuardReflectionMarker(t *testing.T) {
 	createUsageTables(t, ctx, db)
 
 	_, err = db.ExecContext(ctx, `
-CREATE TABLE node_wireguard_usage_reflection (
+CREATE TABLE IF NOT EXISTS node_wireguard_usage_reflection (
 node_id INTEGER NOT NULL,
 user_id INTEGER NOT NULL,
 batch_id TEXT NOT NULL,
@@ -1433,7 +1435,7 @@ func TestRepositoryFlushStoresCombinedWireGuardReflectionMarker(t *testing.T) {
 	createUsageTables(t, ctx, db)
 
 	_, err = db.ExecContext(ctx, `
-CREATE TABLE node_wireguard_usage_reflection (
+CREATE TABLE IF NOT EXISTS node_wireguard_usage_reflection (
 node_id INTEGER NOT NULL,
 user_id INTEGER NOT NULL,
 batch_id TEXT NOT NULL,
@@ -1557,7 +1559,7 @@ func TestRepositoryFlushStoresLatestWireGuardReflectionMarkerByQueueOrder(t *tes
 	createUsageTables(t, ctx, db)
 
 	_, err = db.ExecContext(ctx, `
-CREATE TABLE node_wireguard_usage_reflection (
+CREATE TABLE IF NOT EXISTS node_wireguard_usage_reflection (
 node_id INTEGER NOT NULL,
 user_id INTEGER NOT NULL,
 batch_id TEXT NOT NULL,

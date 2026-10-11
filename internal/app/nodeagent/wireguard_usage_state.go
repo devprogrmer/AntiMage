@@ -21,6 +21,7 @@ type wireGuardUsageAwaitingReflectionBatch struct {
 }
 
 type wireGuardUsageDiskState struct {
+	Generations        map[string]wireGuardOfflineGeneration   `json:"generations,omitempty"`
 	Baseline           map[string]uint64                       `json:"baseline,omitempty"`
 	Pending            *wireGuardUsagePendingBatch             `json:"pending,omitempty"`
 	Carry              map[string]wireGuardUsageCarry          `json:"carry,omitempty"`
@@ -41,7 +42,7 @@ func (s *Server) ensureWireGuardUsageStateLoadedLocked() error {
 		return nil
 	}
 
-	raw, err := os.ReadFile(s.wireGuardUsageStatePath())
+	raw, err := readOfflineAccountingState(s.wireGuardUsageStatePath())
 	if err != nil {
 		if os.IsNotExist(err) {
 			if s.wireGuardUsageBaseline == nil {
@@ -84,6 +85,28 @@ func (s *Server) ensureWireGuardUsageStateLoadedLocked() error {
 }
 
 func (s *Server) persistWireGuardUsageStateLocked() error {
+	state, err := s.readWireGuardGenerationStateLocked()
+	if err != nil {
+		return err
+	}
+	return s.persistWireGuardGenerationStateLocked(state)
+}
+
+func (s *Server) persistWireGuardGenerationStateLocked(generations map[string]wireGuardOfflineGeneration) error {
+	for key, generation := range generations {
+		if value, ok := s.wireGuardUsageBaseline[key]; ok {
+			generation.Reference = value
+		}
+		if pending := s.wireGuardUsagePending; pending != nil {
+			if value, ok := pending.NextBaseline[key]; ok {
+				generation.Reference = value
+			}
+		}
+		if carry, ok := s.wireGuardUsageCarry[key]; ok {
+			generation.Reference = carry.NextBaseline
+		}
+		generations[key] = generation
+	}
 	dir := filepath.Dir(s.wireGuardUsageStatePath())
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf(
@@ -93,6 +116,7 @@ func (s *Server) persistWireGuardUsageStateLocked() error {
 	}
 
 	raw, err := json.Marshal(wireGuardUsageDiskState{
+		Generations:        generations,
 		Baseline:           s.wireGuardUsageBaseline,
 		Pending:            s.wireGuardUsagePending,
 		Carry:              s.wireGuardUsageCarry,
@@ -104,47 +128,5 @@ func (s *Server) persistWireGuardUsageStateLocked() error {
 	}
 
 	path := s.wireGuardUsageStatePath()
-	tmp := path + ".tmp"
-	file, err := os.OpenFile(
-		tmp,
-		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
-		0600,
-	)
-	if err != nil {
-		return fmt.Errorf(
-			"open temporary wireguard usage state: %w",
-			err,
-		)
-	}
-
-	cleanup := func() {
-		_ = file.Close()
-		_ = os.Remove(tmp)
-	}
-	if _, err := file.Write(raw); err != nil {
-		cleanup()
-		return fmt.Errorf(
-			"write temporary wireguard usage state: %w",
-			err,
-		)
-	}
-	if err := file.Sync(); err != nil {
-		cleanup()
-		return fmt.Errorf(
-			"sync temporary wireguard usage state: %w",
-			err,
-		)
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf(
-			"close temporary wireguard usage state: %w",
-			err,
-		)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("replace wireguard usage state: %w", err)
-	}
-	return nil
+	return wireGuardAccountingWrite(path, raw)
 }

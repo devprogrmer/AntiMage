@@ -75,7 +75,15 @@ func (c Controller) runtimeConfigRequestFromInbounds(ctx context.Context, node N
 	if err != nil {
 		return nil, fmt.Errorf("HAProxy runtime: %w", err)
 	}
+	if err := c.repo.attachNativeRuntimeUsageReflections(ctx, node.ID, &ovRuntime, &l2tpRuntime, &pptpRuntime, &wgRuntime, &awgRuntime, &ikev2Runtime, &anyConnectRuntime); err != nil {
+		return nil, err
+	}
+	xrayPolicies, err := c.repo.xrayRuntimePolicies(ctx, node, configJSON, inbounds)
+	if err != nil {
+		return nil, err
+	}
 	raw, err := json.Marshal(map[string]any{
+		"xray_policies":        xrayPolicies,
 		"generated_at":         ovRuntime.GeneratedAt,
 		"target":               ovRuntime.Target,
 		"session_callback":     ovRuntime.SessionCallback,

@@ -46,6 +46,14 @@ func TestPrepareAnyConnectInboundWritesOwnedSecretsAndUserPolicy(t *testing.T) {
 	}
 }
 
+func TestAnyConnectSessionPolicyPreservesAllEnforcementFields(t *testing.T) {
+	limit := int64(50 * 1024 * 1024)
+	expire := int64(2_000_000_000)
+	policy := anyConnectSessionPolicy(anyConnectRuntimeUser{Status: "active", UsedTraffic: 11, DataLimit: &limit, Expire: &expire, DeviceLimit: 3, IPLimit: 2, UploadSpeedLimit: 1234, DownloadSpeedLimit: 5678, UsageCoefficient: 1.5, InboundCoefficient: 2})
+	if policy.DataLimit != limit || policy.Expire != expire || policy.DeviceLimit != 3 || policy.IPLimit != 2 || policy.UploadSpeedLimit != 1234 || policy.DownloadSpeedLimit != 5678 || policy.UsageCoefficient != 1.5 || policy.InboundCoefficient != 2 {
+		t.Fatalf("AnyConnect enforcement fields were not preserved: %+v", policy)
+	}
+}
 func TestAnyConnectOcpasswdHelper(t *testing.T) {
 	if os.Getenv("GO_WANT_ANYCONNECT_OCPASSWD_HELPER") != "1" {
 		return

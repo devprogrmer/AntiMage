@@ -1,6 +1,9 @@
 package nodeagent
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseIKEv2SwanctlRaw(t *testing.T) {
 	raw := `list-sa event {antimage-ikev2-deadbeef {uniqueid=42 version=2 state=ESTABLISHED local-host=203.0.113.10 local-port=4500 local-id=vpn.example.com remote-host=198.51.100.20 remote-port=4500 remote-id=alice remote-eap-id=alice initiator=yes initiator-spi=11223344 responder-spi=aabbccdd remote-vips=[10.70.0.2] child-sas {antimage-ikev2-deadbeef-1 {name=antimage-ikev2-deadbeef uniqueid=7 reqid=1 state=INSTALLED mode=TUNNEL protocol=ESP bytes-in=1200 packets-in=10 bytes-out=3400 packets-out=20 local-ts=[0.0.0.0/0] remote-ts=[10.70.0.2/32]}}}}`
@@ -49,6 +52,17 @@ func TestParseIKEv2SwanctlRaw(t *testing.T) {
 			sa.Children[0].BytesIn,
 			sa.Children[0].BytesOut,
 		)
+	}
+}
+
+func TestIKEv2RealClientIPIsRemoteHostNotAssignedVIP(t *testing.T) {
+	sample := ikev2UsageSample{}
+	sa := ikev2RawSA{RemoteHost: "198.51.100.25", RemoteVIPs: []string{"10.70.0.2"}}
+	if remoteHost := strings.TrimSpace(sa.RemoteHost); remoteHost != "" {
+		sample.IPs = ikev2AppendUniqueIP(sample.IPs, remoteHost)
+	}
+	if len(sample.IPs) != 1 || sample.IPs[0] != "198.51.100.25" {
+		t.Fatalf("real client IPs = %#v", sample.IPs)
 	}
 }
 

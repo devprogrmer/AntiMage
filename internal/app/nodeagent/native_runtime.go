@@ -26,6 +26,7 @@ type nativeRuntimePayload struct {
 	AmneziaWGInbounds  []amneziaWGRuntimeInbound  `json:"awg_inbounds"`
 	IKEv2Inbounds      []ikev2RuntimeInbound      `json:"ikev2_inbounds"`
 	AnyConnectInbounds []anyConnectRuntimeInbound `json:"anyconnect_inbounds"`
+	XrayPolicies       []xrayLocalUserPolicy      `json:"xray_policies,omitempty"`
 
 	HAProxy json.RawMessage `json:"haproxy"`
 }
@@ -41,20 +42,22 @@ type openVPNRuntimeInbound struct {
 }
 
 type openVPNRuntimeUser struct {
-	UserID             int64   `json:"user_id"`
-	Username           string  `json:"username"`
-	VPNUsername        string  `json:"vpn_username"`
-	Password           string  `json:"password"`
-	IPv4Address        string  `json:"ipv4_address"`
-	Status             string  `json:"status"`
-	UsedTraffic        int64   `json:"used_traffic"`
-	DataLimit          *int64  `json:"data_limit,omitempty"`
-	Expire             *int64  `json:"expire,omitempty"`
-	DeviceLimit        int64   `json:"device_limit,omitempty"`
-	UploadSpeedLimit   int64   `json:"upload_speed_limit"`
-	DownloadSpeedLimit int64   `json:"download_speed_limit"`
-	UsageCoefficient   float64 `json:"usage_coefficient,omitempty"`
-	InboundCoefficient float64 `json:"inbound_coefficient,omitempty"`
+	UserID                int64   `json:"user_id"`
+	Username              string  `json:"username"`
+	VPNUsername           string  `json:"vpn_username"`
+	Password              string  `json:"password"`
+	IPv4Address           string  `json:"ipv4_address"`
+	Status                string  `json:"status"`
+	UsedTraffic           int64   `json:"used_traffic"`
+	DataLimit             *int64  `json:"data_limit,omitempty"`
+	Expire                *int64  `json:"expire,omitempty"`
+	DeviceLimit           int64   `json:"device_limit,omitempty"`
+	IPLimit               int64   `json:"ip_limit,omitempty"`
+	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
+	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
+	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
+	InboundCoefficient    float64 `json:"inbound_coefficient,omitempty"`
 }
 
 type preparedOpenVPNRuntime struct {
@@ -65,13 +68,14 @@ type preparedOpenVPNRuntime struct {
 }
 
 type preparedL2TPRuntime struct {
-	Tag          string
-	IPSecConfig  string
-	IPSecSecrets string
-	XL2TPConfig  string
-	CHAPSecrets  string
-	TProxy       openVPNTProxySpec
-	NAT          openVPNNATSpec
+	Tag           string
+	IPSecConfig   string
+	IPSecSecrets  string
+	XL2TPConfig   string
+	CHAPSecrets   string
+	SessionConfig string
+	TProxy        openVPNTProxySpec
+	NAT           openVPNNATSpec
 }
 
 type preparedPPTPRuntime struct {
@@ -323,13 +327,14 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		l2tpPrepared = append(
 			l2tpPrepared,
 			preparedL2TPRuntime{
-				Tag:          tag,
-				IPSecConfig:  files.IPSecConfig,
-				IPSecSecrets: files.IPSecSecrets,
-				XL2TPConfig:  files.XL2TPConfig,
-				CHAPSecrets:  files.CHAPSecrets,
-				TProxy:       tproxy,
-				NAT:          nat,
+				Tag:           tag,
+				IPSecConfig:   files.IPSecConfig,
+				IPSecSecrets:  files.IPSecSecrets,
+				XL2TPConfig:   files.XL2TPConfig,
+				CHAPSecrets:   files.CHAPSecrets,
+				SessionConfig: files.SessionConfig,
+				TProxy:        tproxy,
+				NAT:           nat,
 			},
 		)
 	}
@@ -505,6 +510,9 @@ func (s *Server) applyNativeRuntime(raw string) error {
 		if err := clearPPTPSystemCHAPSecrets(); err != nil {
 			s.appendLog("clear PPTP chap secrets failed: " + err.Error())
 		}
+		if err := clearPPTPSystemIPPreUpHook(); err != nil {
+			s.appendLog("clear PPTP system ip-pre-up hook failed: " + err.Error())
+		}
 	}
 
 	for _, runtime := range wgPrepared {
@@ -573,6 +581,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 			runtime.IPSecSecrets,
 			runtime.XL2TPConfig,
 			runtime.CHAPSecrets,
+			runtime.SessionConfig,
 		); err != nil {
 			_ = s.removeL2TPTProxyForTag(runtime.Tag)
 			_ = s.removeL2TPNATForTag(runtime.Tag)

@@ -28,19 +28,21 @@ type RemoteAccessRuntimeInbound struct {
 }
 
 type RemoteAccessRuntimeUser struct {
-	UserID             int64   `json:"user_id"`
-	Username           string  `json:"username"`
-	Password           string  `json:"password"`
-	IPv4Address        string  `json:"ipv4_address"`
-	Status             string  `json:"status"`
-	UsedTraffic        int64   `json:"used_traffic"`
-	DataLimit          *int64  `json:"data_limit,omitempty"`
-	Expire             *int64  `json:"expire,omitempty"`
-	DeviceLimit        int64   `json:"device_limit,omitempty"`
-	UploadSpeedLimit   int64   `json:"upload_speed_limit"`
-	DownloadSpeedLimit int64   `json:"download_speed_limit"`
-	UsageCoefficient   float64 `json:"usage_coefficient,omitempty"`
-	InboundCoefficient float64 `json:"inbound_coefficient,omitempty"`
+	UserID                int64   `json:"user_id"`
+	Username              string  `json:"username"`
+	Password              string  `json:"password"`
+	IPv4Address           string  `json:"ipv4_address"`
+	Status                string  `json:"status"`
+	UsedTraffic           int64   `json:"used_traffic"`
+	DataLimit             *int64  `json:"data_limit,omitempty"`
+	Expire                *int64  `json:"expire,omitempty"`
+	DeviceLimit           int64   `json:"device_limit,omitempty"`
+	IPLimit               int64   `json:"ip_limit,omitempty"`
+	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
+	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
+	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
+	InboundCoefficient    float64 `json:"inbound_coefficient,omitempty"`
 }
 
 func (r Repository) IKEv2Runtime(ctx context.Context, nodeID int64) (RemoteAccessRuntime, error) {
@@ -121,7 +123,7 @@ func (r Repository) remoteAccessUsers(ctx context.Context, inboundTag string, se
 	for i, id := range serviceIDs {
 		placeholders[i], args[i] = "?", id
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, username, COALESCE(credential_key, ''), status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(ip_limit, 0), COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0) FROM users WHERE status IN ('active', 'on_hold') AND service_id IN (`+strings.Join(placeholders, ",")+`) ORDER BY id`, args...)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, username, COALESCE(credential_key, ''), status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(device_limit, 0), COALESCE(ip_limit, 0), COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0) FROM users WHERE status IN ('active', 'on_hold') AND service_id IN (`+strings.Join(placeholders, ",")+`) ORDER BY id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +142,7 @@ func (r Repository) remoteAccessUsers(ctx context.Context, inboundTag string, se
 			&limit,
 			&expire,
 			&item.DeviceLimit,
+			&item.IPLimit,
 			&item.UploadSpeedLimit,
 			&item.DownloadSpeedLimit,
 		); err != nil {

@@ -3,15 +3,73 @@
 package nodeagent
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	wgctrl "github.com/Jipok/wgctrl-go"
 	"github.com/Jipok/wgctrl-go/wgtypes"
 	"github.com/vishvananda/netlink"
 )
+
+func amneziaWGPlatformInterfaceIdentity(name string) (string, error) {
+	link, err := netlink.LinkByName(name)
+	if err != nil {
+		return "", err
+	}
+	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s:%d", strings.TrimSpace(string(boot)), link.Attrs().Index), nil
+}
+
+func amneziaWGDurableWrite(path string, raw []byte) error {
+	if err := atomicWriteFile(path, raw, 0600); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
+}
+
+func amneziaWGPlatformSnapshotAll(ctx context.Context, names []string) (map[string][]wireGuardPeerCounters, error) {
+	client, err := wgctrl.New()
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	result := make(map[string][]wireGuardPeerCounters, len(names))
+	for _, name := range names {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		device, err := client.Device(name)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("AWG snapshot %s: %w", name, err)
+		}
+		peers := make([]wireGuardPeerCounters, 0, len(device.Peers))
+		for _, peer := range device.Peers {
+			endpoint := ""
+			if peer.Endpoint != nil {
+				endpoint = peer.Endpoint.String()
+			}
+			peers = append(peers, wireGuardPeerCounters{PublicKey: peer.PublicKey.String(), Endpoint: endpoint, LatestHandshake: peer.LastHandshakeTime.Unix(), ReceivedBytes: uint64(max(peer.ReceiveBytes, 0)), SentBytes: uint64(max(peer.TransmitBytes, 0))})
+		}
+		result[name] = peers
+	}
+	return result, nil
+}
 
 func amneziaWGPlatformPreflight() error {
 	if _, err := exec.LookPath("modprobe"); err != nil {

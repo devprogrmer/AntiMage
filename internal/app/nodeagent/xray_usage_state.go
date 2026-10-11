@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // xrayUsageSample represents a single user's usage sample
@@ -31,17 +32,23 @@ type xrayOnlineUserSnapshot struct {
 
 // xrayUsagePendingBatch represents a pending batch awaiting ACK.
 type xrayUsagePendingBatch struct {
-	BatchID      string
-	Samples      []xrayUsageSample
-	OnlineUsers  []xrayOnlineUserSnapshot
-	NextBaseline map[string]uint64
+	BatchID          string
+	Samples          []xrayUsageSample
+	OnlineUsers      []xrayOnlineUserSnapshot
+	NextBaseline     map[string]uint64
+	IntervalSeconds  float64
+	NextBaselineAt   time.Time
+	SpeedUnitVersion int
 }
 
 // xrayUsageDiskState is the persisted state on disk
 type xrayUsageDiskState struct {
-	Baseline         map[string]uint64      `json:"baseline,omitempty"`
-	Pending          *xrayUsagePendingBatch `json:"pending,omitempty"`
-	LastAckedBatchID string                 `json:"last_acked_batch_id,omitempty"`
+	Generation       string                       `json:"generation,omitempty"`
+	Counters         map[string]accountingCounter `json:"counters,omitempty"`
+	Baseline         map[string]uint64            `json:"baseline,omitempty"`
+	Pending          *xrayUsagePendingBatch       `json:"pending,omitempty"`
+	LastAckedBatchID string                       `json:"last_acked_batch_id,omitempty"`
+	BaselineAt       time.Time                    `json:"baseline_at,omitempty"`
 }
 
 func (s *Server) xrayUsageStatePath() string {
@@ -59,7 +66,7 @@ func (s *Server) ensureXrayUsageStateLoadedLocked() error {
 
 	path := s.xrayUsageStatePath()
 
-	raw, err := os.ReadFile(path)
+	raw, err := readOfflineAccountingState(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			if s.xrayUsageBaseline == nil {
@@ -94,10 +101,26 @@ func (s *Server) ensureXrayUsageStateLoadedLocked() error {
 			"xray usage state contains pending batch without id",
 		)
 	}
+	if len(state.Counters) > maxAccountingCounterSeries {
+		return fmt.Errorf("persisted xray accounting exceeds series capacity")
+	}
+	for key, counter := range state.Counters {
+		separator := strings.LastIndexByte(key, ':')
+		if separator < 0 || (key[separator+1:] != "uplink" && key[separator+1:] != "downlink") {
+			return fmt.Errorf("invalid persisted xray accounting key %q", key)
+		}
+		identity, err := parseXrayUserEmail(key[:separator])
+		if err != nil || identity.UserID <= 0 || counter.Native > counter.Total {
+			return fmt.Errorf("invalid persisted xray accounting counter %q", key)
+		}
+	}
 
 	s.xrayUsageBaseline = state.Baseline
+	s.xrayAccountingCounters = state.Counters
+	s.xrayAccountingGeneration = state.Generation
 	s.xrayUsagePending = state.Pending
 	s.xrayUsageLastAckedBatchID = state.LastAckedBatchID
+	s.xrayUsageBaselineAt = state.BaselineAt
 	s.xrayUsageLoaded = true
 
 	return nil
@@ -114,9 +137,12 @@ func (s *Server) persistXrayUsageStateLocked() error {
 	}
 
 	state := xrayUsageDiskState{
+		Generation:       s.xrayAccountingGeneration,
+		Counters:         s.xrayAccountingCounters,
 		Baseline:         s.xrayUsageBaseline,
 		Pending:          s.xrayUsagePending,
 		LastAckedBatchID: s.xrayUsageLastAckedBatchID,
+		BaselineAt:       s.xrayUsageBaselineAt,
 	}
 
 	raw, err := json.Marshal(state)
@@ -127,57 +153,5 @@ func (s *Server) persistXrayUsageStateLocked() error {
 		)
 	}
 
-	path := s.xrayUsageStatePath()
-	tmp := path + ".tmp"
-
-	file, err := os.OpenFile(
-		tmp,
-		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
-		0600,
-	)
-	if err != nil {
-		return fmt.Errorf(
-			"open temporary usage state: %w",
-			err,
-		)
-	}
-
-	cleanup := func() {
-		_ = file.Close()
-		_ = os.Remove(tmp)
-	}
-
-	if _, err := file.Write(raw); err != nil {
-		cleanup()
-		return fmt.Errorf(
-			"write temporary usage state: %w",
-			err,
-		)
-	}
-
-	if err := file.Sync(); err != nil {
-		cleanup()
-		return fmt.Errorf(
-			"sync temporary usage state: %w",
-			err,
-		)
-	}
-
-	if err := file.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf(
-			"close temporary usage state: %w",
-			err,
-		)
-	}
-
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf(
-			"replace xray usage state: %w",
-			err,
-		)
-	}
-
-	return nil
+	return writeAccountingState(s.xrayUsageStatePath(), raw)
 }

@@ -37,7 +37,7 @@ func (s *Server) ensureCombinedUsageStateLoadedLocked() error {
 	if s.combinedUsageLoaded {
 		return nil
 	}
-	raw, err := os.ReadFile(s.combinedUsageStatePath())
+	raw, err := readOfflineAccountingState(s.combinedUsageStatePath())
 	if err != nil {
 		if os.IsNotExist(err) {
 			s.combinedUsageLoaded = true
@@ -70,38 +70,7 @@ func (s *Server) persistCombinedUsageStateLocked() error {
 		return fmt.Errorf("marshal combined usage state: %w", err)
 	}
 
-	path := s.combinedUsageStatePath()
-	tmp := path + ".tmp"
-	file, err := os.OpenFile(
-		tmp,
-		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
-		0600,
-	)
-	if err != nil {
-		return fmt.Errorf("open temporary combined usage state: %w", err)
-	}
-
-	cleanup := func() {
-		_ = file.Close()
-		_ = os.Remove(tmp)
-	}
-	if _, err := file.Write(raw); err != nil {
-		cleanup()
-		return fmt.Errorf("write temporary combined usage state: %w", err)
-	}
-	if err := file.Sync(); err != nil {
-		cleanup()
-		return fmt.Errorf("sync temporary combined usage state: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("close temporary combined usage state: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("replace combined usage state: %w", err)
-	}
-	return nil
+	return writeAccountingState(s.combinedUsageStatePath(), raw)
 }
 
 func (s *Server) combineUserUsageBatches(
@@ -212,59 +181,89 @@ func (s *Server) combineUserUsageBatches(
 		return nil, err
 	}
 	if pending := s.combinedUsagePending; pending != nil {
-		if pending.CoreBatchID != coreID ||
-			pending.WireGuardBatchID != wgID {
-			return nil, fmt.Errorf(
-				"combined usage child batch changed before ACK",
-			)
+		changed := pending.CoreBatchID != coreID ||
+			pending.WireGuardBatchID != wgID ||
+			(pending.L2TPBatchID != "" && pending.L2TPBatchID != l2tpID) ||
+			(pending.PPTPBatchID != "" && pending.PPTPBatchID != pptpID) ||
+			(pending.AmneziaWGBatchID != "" && pending.AmneziaWGBatchID != awgID) ||
+			(pending.IKEv2BatchID != "" && pending.IKEv2BatchID != ikev2ID) ||
+			(pending.AnyConnectBatchID != "" && pending.AnyConnectBatchID != anyConnectID)
+		if changed {
+			acked, err := s.combinedChildrenAcknowledged(pending)
+			if err != nil {
+				return nil, err
+			}
+			if acked {
+				previousPending := s.combinedUsagePending
+				previousLastAcked := s.combinedUsageLastAckedBatchID
+				s.combinedUsagePending = nil
+				s.combinedUsageLastAckedBatchID = pending.BatchID
+				if err := s.persistCombinedUsageStateLocked(); err != nil {
+					s.combinedUsagePending = previousPending
+					s.combinedUsageLastAckedBatchID = previousLastAcked
+					return nil, err
+				}
+				pending = nil
+			}
 		}
+		if pending == nil {
+			// The stale wrapper is durably finalized. Continue below and wrap
+			// the current child batches as a new delivery.
+		} else {
+			if pending.CoreBatchID != coreID ||
+				pending.WireGuardBatchID != wgID {
+				return nil, fmt.Errorf(
+					"combined usage child batch changed before ACK",
+				)
+			}
 
-		// Backward compatibility with a state written before L2TP
-		// was included in the combined usage batch.
-		if pending.L2TPBatchID == "" {
-			l2tpBatch = nil
-		} else if pending.L2TPBatchID != l2tpID {
-			return nil, fmt.Errorf(
-				"combined L2TP child batch changed before ACK",
-			)
-		}
+			// Backward compatibility with a state written before L2TP
+			// was included in the combined usage batch.
+			if pending.L2TPBatchID == "" {
+				l2tpBatch = nil
+			} else if pending.L2TPBatchID != l2tpID {
+				return nil, fmt.Errorf(
+					"combined L2TP child batch changed before ACK",
+				)
+			}
 
-		if pending.PPTPBatchID == "" {
-			pptpBatch = nil
-		} else if pending.PPTPBatchID != pptpID {
-			return nil, fmt.Errorf(
-				"combined PPTP child batch changed before ACK",
-			)
-		}
-		if pending.AmneziaWGBatchID == "" {
-			awgBatch = nil
-		} else if pending.AmneziaWGBatchID != awgID {
-			return nil, fmt.Errorf("combined AmneziaWG child batch changed before ACK")
-		}
+			if pending.PPTPBatchID == "" {
+				pptpBatch = nil
+			} else if pending.PPTPBatchID != pptpID {
+				return nil, fmt.Errorf(
+					"combined PPTP child batch changed before ACK",
+				)
+			}
+			if pending.AmneziaWGBatchID == "" {
+				awgBatch = nil
+			} else if pending.AmneziaWGBatchID != awgID {
+				return nil, fmt.Errorf("combined AmneziaWG child batch changed before ACK")
+			}
 
-		if pending.IKEv2BatchID == "" {
-			ikev2Batch = nil
-		} else if pending.IKEv2BatchID != ikev2ID {
-			return nil, fmt.Errorf(
-				"combined IKEv2 child batch changed before ACK",
-			)
-		}
-		if pending.AnyConnectBatchID == "" {
-			anyConnectBatch = nil
-		} else if pending.AnyConnectBatchID != anyConnectID {
-			return nil, fmt.Errorf("combined AnyConnect child batch changed before ACK")
-		}
+			if pending.IKEv2BatchID == "" {
+				ikev2Batch = nil
+			} else if pending.IKEv2BatchID != ikev2ID {
+				return nil, fmt.Errorf(
+					"combined IKEv2 child batch changed before ACK",
+				)
+			}
+			if pending.AnyConnectBatchID == "" {
+				anyConnectBatch = nil
+			} else if pending.AnyConnectBatchID != anyConnectID {
+				return nil, fmt.Errorf("combined AnyConnect child batch changed before ACK")
+			}
 
-		return buildCombinedUsageBatch(
-			pending.BatchID,
-			coreBatch,
-			wireGuardBatch,
-			l2tpBatch,
-			pptpBatch,
-			awgBatch,
-			ikev2Batch,
-			anyConnectBatch,
-		), nil
+			return buildCombinedUsageBatch(
+				pending.BatchID,
+				coreBatch,
+				wireGuardBatch,
+				l2tpBatch,
+				pptpBatch,
+				awgBatch,
+				ikev2Batch,
+				anyConnectBatch,
+			), nil
+		}
 	}
 
 	pending := &combinedUsagePendingBatch{
@@ -296,6 +295,98 @@ func (s *Server) combineUserUsageBatches(
 		ikev2Batch,
 		anyConnectBatch,
 	), nil
+}
+
+func (s *Server) combinedChildrenAcknowledged(pending *combinedUsagePendingBatch) (bool, error) {
+	ids := []string{
+		pending.CoreBatchID,
+		pending.WireGuardBatchID,
+		pending.L2TPBatchID,
+		pending.PPTPBatchID,
+		pending.AmneziaWGBatchID,
+		pending.IKEv2BatchID,
+		pending.AnyConnectBatchID,
+	}
+	for _, id := range ids {
+		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		acked, err := s.usageChildBatchWasAcknowledged(id)
+		if err != nil || !acked {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+func (s *Server) usageChildBatchWasAcknowledged(batchID string) (bool, error) {
+	switch {
+	case strings.HasPrefix(batchID, "openvpn-"):
+		s.openVPNUsageMu.Lock()
+		defer s.openVPNUsageMu.Unlock()
+		if err := s.ensureOpenVPNUsageStateLoadedLocked(); err != nil {
+			return false, err
+		}
+		return s.openVPNUsageLastAckedBatchID == batchID, nil
+	case strings.HasPrefix(batchID, "xray-"):
+		s.xrayUsageMu.Lock()
+		defer s.xrayUsageMu.Unlock()
+		if err := s.ensureXrayUsageStateLoadedLocked(); err != nil {
+			return false, err
+		}
+		return s.xrayUsageLastAckedBatchID == batchID, nil
+	case strings.HasPrefix(batchID, "merged-"):
+		s.mergedUsageMu.Lock()
+		defer s.mergedUsageMu.Unlock()
+		if err := s.ensureMergedUsageStateLoadedLocked(); err != nil {
+			return false, err
+		}
+		return s.mergedUsageLastAckedBatchID == batchID, nil
+	case strings.HasPrefix(batchID, "wireguard-"):
+		s.wireGuardUsageMu.Lock()
+		defer s.wireGuardUsageMu.Unlock()
+		if err := s.ensureWireGuardUsageStateLoadedLocked(); err != nil {
+			return false, err
+		}
+		return s.wireGuardUsageLastAckedBatchID == batchID, nil
+	case strings.HasPrefix(batchID, "amneziawg-"):
+		s.amneziaWGUsageMu.Lock()
+		defer s.amneziaWGUsageMu.Unlock()
+		if err := s.ensureAmneziaWGUsageStateLoadedLocked(); err != nil {
+			return false, err
+		}
+		return s.amneziaWGUsageLastAckedBatchID == batchID, nil
+	case strings.HasPrefix(batchID, "l2tp-"):
+		s.l2TPUsageMu.Lock()
+		defer s.l2TPUsageMu.Unlock()
+		if err := s.ensureL2TPUsageStateLoadedLocked(); err != nil {
+			return false, err
+		}
+		return s.l2TPUsageLastAckedBatchID == batchID, nil
+	case strings.HasPrefix(batchID, "pptp-"):
+		s.pptpUsageMu.Lock()
+		defer s.pptpUsageMu.Unlock()
+		if err := s.ensurePPTPUsageStateLoadedLocked(); err != nil {
+			return false, err
+		}
+		return s.pptpUsageLastAckedBatchID == batchID, nil
+	case strings.HasPrefix(batchID, "ikev2-"):
+		s.ikev2UsageMu.Lock()
+		defer s.ikev2UsageMu.Unlock()
+		if err := s.ensureIKEv2UsageStateLoadedLocked(); err != nil {
+			return false, err
+		}
+		return s.ikev2UsageLastAckedBatchID == batchID, nil
+	case strings.HasPrefix(batchID, "anyconnect-"):
+		s.anyConnectUsageMu.Lock()
+		defer s.anyConnectUsageMu.Unlock()
+		if err := s.ensureAnyConnectUsageStateLoadedLocked(); err != nil {
+			return false, err
+		}
+		return s.anyConnectUsageLastAckedBatchID == batchID, nil
+	default:
+		return false, nil
+	}
 }
 
 func buildCombinedUsageBatch(

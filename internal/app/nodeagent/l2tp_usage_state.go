@@ -50,6 +50,13 @@ func (s *Server) ensureL2TPUsageStateLoadedLocked() error {
 	}
 
 	s.l2TPUsageBaseline = state.Baseline
+	if state.Pending != nil && state.Pending.SeenUnix == 0 {
+		info, err := os.Stat(s.l2TPUsageStatePath())
+		if err != nil {
+			return err
+		}
+		state.Pending.SeenUnix = info.ModTime().UTC().Unix()
+	}
 	s.l2TPUsagePending = state.Pending
 	s.l2TPUsageLastAckedBatchID = state.LastAckedBatchID
 	s.l2TPUsageLoaded = true
@@ -74,51 +81,5 @@ func (s *Server) persistL2TPUsageStateLocked() error {
 		return fmt.Errorf("marshal l2tp usage state: %w", err)
 	}
 
-	path := s.l2TPUsageStatePath()
-	tmp := path + ".tmp"
-	file, err := os.OpenFile(
-		tmp,
-		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
-		0600,
-	)
-	if err != nil {
-		return fmt.Errorf(
-			"open temporary l2tp usage state: %w",
-			err,
-		)
-	}
-
-	cleanup := func() {
-		_ = file.Close()
-		_ = os.Remove(tmp)
-	}
-	if _, err := file.Write(raw); err != nil {
-		cleanup()
-		return fmt.Errorf(
-			"write temporary l2tp usage state: %w",
-			err,
-		)
-	}
-	if err := file.Sync(); err != nil {
-		cleanup()
-		return fmt.Errorf(
-			"sync temporary l2tp usage state: %w",
-			err,
-		)
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf(
-			"close temporary l2tp usage state: %w",
-			err,
-		)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf(
-			"replace l2tp usage state: %w",
-			err,
-		)
-	}
-	return nil
+	return writeAccountingState(s.l2TPUsageStatePath(), raw)
 }
