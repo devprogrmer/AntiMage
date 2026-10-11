@@ -44,8 +44,10 @@ mount namespaces isolate the runtime and its sysfs ownership checks. If namespac
 are unavailable, temporary names, ports, directories and credentials still isolate
 the test on its disposable runner. Process groups and interfaces are cleaned up.
 
-Local acceptance has passed with both backends in namespaces. Final release
-acceptance also requires this gate to pass on the final pushed SHA.
+Local and dedicated CI acceptance passed with both backends on the original Phase C
+head `bac45a021412abf95c6c359ed2f1d68d6b8f4031`. Because Phase B was subsequently
+rebased, those results are historical for this stack. Re-run this gate on the rebased
+Phase C SHA before treating it as final release acceptance.
 
 ## Other acceptance gates
 
