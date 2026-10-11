@@ -129,7 +129,7 @@ func New(cfg Config) (*Server, error) {
 		adminAuth:      adminapp.NewAuthenticator(adminRepo),
 		nodeController: nodecontroller.NewController(nodeRepo),
 		nodeMutations:  nodeMutationRepo,
-		systemService:  systemapp.NewService(pool.DB, pool.Dialect, systemapp.DefaultVersion),
+		systemService:  systemapp.NewService(pool.DB, pool.Dialect, systemapp.BuildVersion),
 		maintenance:    systemapp.NewMaintenanceService(),
 		usageService:   usage.NewService(usageRepo),
 		userService:    userapp.NewServiceWithTemplates(userRepo, settingsRepo),
@@ -808,5 +808,9 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 }
 
 func writeError(w http.ResponseWriter, status int, detail string) {
-	writeJSON(w, status, map[string]any{"detail": detail})
+	payload := map[string]any{"detail": detail}
+	if requestID := w.Header().Get("X-Request-ID"); requestID != "" {
+		payload["request_id"] = requestID
+	}
+	writeJSON(w, status, payload)
 }

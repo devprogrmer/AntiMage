@@ -88,6 +88,10 @@ start_ip_limit_client() {
   PIDS+=("$ip_limit_client_pid")
   for _ in $(seq 1 120); do ip netns exec "$ns" ip link show vpn-ip-limit >/dev/null 2>&1 && break; sleep .25; done
   ip netns exec "$ns" ip link show vpn-ip-limit >/dev/null
+  for _ in $(seq 1 80); do
+    ip netns exec "$ns" ip -4 addr show dev vpn-ip-limit | grep -q '192.0.2.' && break
+    sleep .25
+  done
   ip netns exec "$ns" ip -4 addr show dev vpn-ip-limit | grep -q '192.0.2.'
 }
 start_reconnect_attempt() {
@@ -155,6 +159,10 @@ start_speed_client() {
   speed_client_pid=$!
   PIDS+=("$speed_client_pid")
   for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-speed >/dev/null 2>&1 && break; sleep .25; done
+  for _ in $(seq 1 80); do
+    ip netns exec "$NS" ip -4 addr show dev vpn-speed | grep -q '192.0.2.3/' && break
+    sleep .25
+  done
   ip netns exec "$NS" ip -4 addr show dev vpn-speed | grep -q '192.0.2.3/'
 }
 measure_speed_upload() {

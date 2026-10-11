@@ -127,7 +127,7 @@ func TestMaintenanceInfoBinaryAndDockerMock(t *testing.T) {
 		info.Panel.Update.Target == nil ||
 		*info.Panel.Update.Target != "dev-abcdef0" ||
 		info.Node != nil ||
-		info.NodeUpdate.Repo != "antimagepanel/AntiMage-node" {
+		info.NodeUpdate.Repo != "devprogrmer/AntiMage" {
 		t.Fatalf("unexpected maintenance info: %#v", info)
 	}
 

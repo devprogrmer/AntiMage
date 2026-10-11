@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	operationapp "github.com/antimage/antimage/internal/app/operations"
 	systemapp "github.com/antimage/antimage/internal/app/system"
 	"golang.org/x/net/websocket"
 )
@@ -29,6 +30,45 @@ func (s *Server) handleMaintenanceInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, info)
 }
 
+func (s *Server) handleMaintenanceVersions(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/api/maintenance/versions" {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	target := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("target")))
+	if target != "panel" && target != "node" {
+		writeError(w, http.StatusBadRequest, "target must be panel or node")
+		return
+	}
+	refresh := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("refresh")), "true") || r.URL.Query().Get("refresh") == "1"
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	catalog, err := s.maintenanceService().Versions(ctx, target, refresh)
+	if err != nil {
+		writeMaintenanceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, catalog)
+}
+
+func (s *Server) handleMaintenanceOperations(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	items, err := operationapp.List(ctx, s.db, 200)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "unable to read operation history")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"operations": items})
+}
 func (s *Server) handleMaintenanceUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/api/maintenance/update" {
 		writeError(w, http.StatusNotFound, "not found")
