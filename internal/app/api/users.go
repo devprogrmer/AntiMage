@@ -390,6 +390,17 @@ func (s *Server) handleUserDeviceRevoke(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusNotFound, "device not found")
 		return
 	}
+	if protocol == "wg" {
+		var publicKey string
+		if err := tx.QueryRowContext(ctx, `SELECT public_key FROM wireguard_devices WHERE user_id=? AND inbound_tag=? AND device_index=?`, user.ID, inbound, deviceIndex).Scan(&publicKey); err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO wireguard_device_revocations (inbound_tag,user_id,device_index,public_key,credential_fingerprint,revoked_at) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP)`, inbound, user.ID, deviceIndex, publicKey, userapp.WireGuardCredentialFingerprint(user.CredentialKey)); err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE user_id=? AND inbound_tag=? AND device_index=?`, user.ID, inbound, deviceIndex); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return

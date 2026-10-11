@@ -23,6 +23,7 @@ func testUserMutationServer(t *testing.T) (*Server, *sql.DB, string) {
 		`ALTER TABLE users ADD COLUMN edit_at DATETIME NULL`,
 		`ALTER TABLE user_usage_logs ADD COLUMN reset_at DATETIME NULL`,
 		`CREATE TABLE IF NOT EXISTS inbounds (id INTEGER PRIMARY KEY, tag TEXT UNIQUE)`,
+		`CREATE TABLE IF NOT EXISTS wireguard_device_revocations (inbound_tag TEXT NOT NULL,user_id INTEGER NOT NULL,device_index INTEGER NOT NULL,public_key TEXT NOT NULL,credential_fingerprint TEXT NOT NULL,revoked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(inbound_tag,user_id,device_index))`,
 		`INSERT INTO xray_config (id, data) VALUES (1, '{"inbounds":[{"tag":"vless-in","protocol":"vless","port":443,"settings":{"decryption":"none"},"streamSettings":{"network":"tcp","security":"none","tcpSettings":{"header":{"type":"none"}}}}]}')`,
 		`INSERT INTO services (id, name) VALUES (1, 'basic')`,
 		`INSERT INTO hosts (id, inbound_tag, remark, address, is_disabled) VALUES (1, 'vless-in', 'main', 'example.com', 0)`,
@@ -622,11 +623,68 @@ func TestDeviceRevokeRequiresRevokePermission(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO users (id, username, admin_id, status, service_id, credential_key, created_at) VALUES (92, 'device_policy_user', 2, 'active', 1, '0123456789abcdef0123456789abcdef', CURRENT_TIMESTAMP)`); err != nil {
 		t.Fatal(err)
 	}
+	for _, statement := range []string{
+		`CREATE TABLE wireguard_devices (inbound_tag TEXT NOT NULL,user_id INTEGER NOT NULL,device_index INTEGER NOT NULL,private_key TEXT NOT NULL,public_key TEXT NOT NULL,address TEXT NOT NULL,PRIMARY KEY(inbound_tag,user_id,device_index))`,
+		`DROP TABLE vpn_user_sessions`,
+		`CREATE TABLE vpn_user_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT,node_id INTEGER NOT NULL,user_id INTEGER NOT NULL,protocol TEXT NOT NULL,device_id TEXT,session_id TEXT NOT NULL,last_seen_at DATETIME NOT NULL,ended_at DATETIME NULL)`,
+		`INSERT INTO wireguard_devices (inbound_tag,user_id,device_index,private_key,public_key,address) VALUES ('wg-main',92,0,'private','policy-public-key','10.0.0.92')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("exec %q: %v", statement, err)
+		}
+	}
+	deviceID := safeDeviceID("policy-public-key")
+	if _, err := db.Exec(`INSERT INTO vpn_user_sessions (node_id,user_id,protocol,device_id,session_id,last_seen_at) VALUES (1,92,'wg',?,'policy-session',CURRENT_TIMESTAMP)`, deviceID); err != nil {
+		t.Fatal(err)
+	}
 	token := adminBearerToken(t, server, "seller", "pass123")
-	rec := adminJSONRequest(t, server, http.MethodDelete, "/api/user/device_policy_user/devices?protocol=wg&inbound_tag=wg-main&device_id=wg-0123456789abcdef", token, "")
+	rec := adminJSONRequest(t, server, http.MethodDelete, "/api/user/device_policy_user/devices?protocol=wg&inbound_tag=wg-main&device_id="+deviceID, token, "")
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("device revoke status = %d body=%s", rec.Code, rec.Body.String())
 	}
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM wireguard_devices WHERE user_id = 92 AND public_key = 'policy-public-key'`, 1)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 92 AND ended_at IS NULL`, 1)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND user_id = 92`, 0)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM wireguard_device_revocations WHERE user_id = 92`, 0)
+}
+
+func TestDeviceRevokeRequiresAssignedServiceScopeWithoutMutation(t *testing.T) {
+	server, db, _ := testUserMutationServer(t)
+	setAdminUserPermissions(t, db, 2, func(perms *adminapp.AdminPermissions) {
+		perms.Users.Revoke = true
+	})
+	enableServiceTrafficAdmin(t, db, 2)
+	if _, err := db.Exec(`INSERT INTO services (id, name) VALUES (2, 'out-of-scope')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`CREATE TABLE IF NOT EXISTS wireguard_devices (inbound_tag TEXT NOT NULL, user_id INTEGER NOT NULL, device_index INTEGER NOT NULL, private_key TEXT NOT NULL, public_key TEXT NOT NULL, address TEXT NOT NULL, PRIMARY KEY (inbound_tag, user_id, device_index))`,
+		`DROP TABLE vpn_user_sessions`,
+		`CREATE TABLE vpn_user_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, node_id INTEGER NOT NULL, user_id INTEGER NOT NULL, protocol TEXT NOT NULL, device_id TEXT, session_id TEXT NOT NULL, last_seen_at DATETIME NOT NULL, ended_at DATETIME NULL)`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO users (id, username, admin_id, status, service_id, credential_key, created_at) VALUES (95, 'device_revoke_out_of_scope', 2, 'active', 2, '0123456789abcdef0123456789abcdef', CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	deviceID := safeDeviceID("out-of-scope-public-key")
+	if _, err := db.Exec(`INSERT INTO wireguard_devices (inbound_tag, user_id, device_index, private_key, public_key, address) VALUES ('wg-main', 95, 0, 'private', 'out-of-scope-public-key', '10.0.0.95')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO vpn_user_sessions (node_id, user_id, protocol, device_id, session_id, last_seen_at) VALUES (1, 95, 'wg', ?, 'session-out-of-scope', CURRENT_TIMESTAMP)`, deviceID); err != nil {
+		t.Fatal(err)
+	}
+	token := adminBearerToken(t, server, "seller", "pass123")
+	rec := adminJSONRequest(t, server, http.MethodDelete, "/api/user/device_revoke_out_of_scope/devices?protocol=wg&inbound_tag=wg-main&device_id="+deviceID, token, "")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("out-of-scope device revoke status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM wireguard_devices WHERE user_id = 95 AND inbound_tag = 'wg-main'`, 1)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 95 AND ended_at IS NULL`, 1)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND user_id = 95`, 0)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM wireguard_device_revocations WHERE user_id = 95`, 0)
 }
 
 func TestDeviceRevokeQueuesRuntimeSyncAtomically(t *testing.T) {
@@ -652,8 +710,15 @@ func TestDeviceRevokeQueuesRuntimeSyncAtomically(t *testing.T) {
 		t.Fatalf("device revoke status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM wireguard_devices WHERE user_id = 93`, 0)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM wireguard_device_revocations WHERE user_id = 93 AND public_key = 'public-key'`, 1)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 93 AND ended_at IS NOT NULL`, 1)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND user_id = 93 AND status = 'pending'`, 1)
+	// A retry after commit is deterministic and cannot enqueue a duplicate sync.
+	rec = adminJSONRequest(t, server, http.MethodDelete, "/api/user/device_revoke_user/devices?protocol=wg&inbound_tag=wg-main&device_id="+safeDeviceID("public-key"), token, "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("repeated device revoke status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND user_id = 93`, 1)
 }
 
 func TestDeviceRevokeRollsBackWhenRuntimeSyncCannotBeQueued(t *testing.T) {
@@ -684,6 +749,7 @@ func TestDeviceRevokeRollsBackWhenRuntimeSyncCannotBeQueued(t *testing.T) {
 	}
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM wireguard_devices WHERE user_id = 94`, 1)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 94 AND ended_at IS NOT NULL`, 0)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM wireguard_device_revocations WHERE user_id = 94`, 0)
 }
 
 func TestServiceAdminLimitsEnforcedForUserServiceTransfer(t *testing.T) {

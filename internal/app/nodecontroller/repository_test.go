@@ -856,9 +856,9 @@ CREATE TABLE hosts (
 	is_disabled BOOLEAN DEFAULT 0
 );
 INSERT INTO nodes (id, name, address, port, api_port, status, xray_config_mode, usage_coefficient)
-VALUES (7, 'down-node', '127.0.0.1', 62050, 62051, 'connected', 'default', 1);
+VALUES (7, 'down-node', '127.0.0.1', 62050, 62051, 'error', 'default', 1);
 INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
-VALUES ('sync_config', NULL, NULL, '{}', 'pending', 'global-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+VALUES ('sync_config', NULL, NULL, '{"source":"device_revoke","user_id":1001}', 'pending', 'global-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 `)
 	if err != nil {
 		t.Fatal(err)
@@ -886,6 +886,17 @@ VALUES ('sync_config', NULL, NULL, '{}', 'pending', 'global-sync', CURRENT_TIMES
 	}
 	if retryCount != 1 {
 		t.Fatalf("expected one node-specific sync retry, got %d", retryCount)
+	}
+	result, err = controller.ProcessQueue(ctx, ProcessOperationsRequest{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Processed != 0 || result.Retrying != 0 || result.Done != 0 || result.Failed != 0 {
+		t.Fatalf("disconnected node sync should remain retryable without dispatch: %#v", result)
+	}
+	var retryStatus string
+	if err := db.QueryRowContext(ctx, `SELECT status FROM node_operations WHERE node_id=7 AND operation_type='sync_config'`).Scan(&retryStatus); err != nil || retryStatus != "pending" {
+		t.Fatalf("disconnected node operation status=%q err=%v, want pending", retryStatus, err)
 	}
 }
 

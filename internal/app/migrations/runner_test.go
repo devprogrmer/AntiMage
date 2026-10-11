@@ -484,6 +484,7 @@ func TestPreGooseLatestSchemaRunsPlatformMaintenanceMigrations(t *testing.T) {
 	}
 	assertTableColumns(t, ctx, db, "sqlite", "diagnostics", []string{"id", "status", "last_seen_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "operations", []string{"id", "state", "request_id", "metadata_json"})
+	assertTableColumns(t, ctx, db, "sqlite", "wireguard_device_revocations", []string{"inbound_tag", "user_id", "device_index", "public_key", "credential_fingerprint", "revoked_at"})
 }
 
 func TestPreGooseVersion45SchemaStillRunsHostFinalMaskMigration(t *testing.T) {
