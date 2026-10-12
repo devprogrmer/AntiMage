@@ -13,6 +13,7 @@ fi
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-l2tp-XXXXXX") }"
 ROOT="${ROOT% }"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+python3 "$SCRIPT_DIR/test_native_l2tp_session_state.py"
 NS="antimage-l2tp-client"
 NS_B="antimage-l2tp-client-b"
 VETH_HOST="altp-vh"
@@ -214,6 +215,20 @@ print(f'L2TP live outer IP verified from PPP session state: {expected}')
 PY
 }
 
+snapshot_l2tp_sessions() {
+  python3 "$SCRIPT_DIR/native_l2tp_session_state.py" snapshot "$ROOT/l2tp-state" >"$ROOT/active-before-$1.json"
+}
+
+wait_for_new_l2tp_real_ip() {
+  local expected="$1" snapshot="$ROOT/active-before-$2.json"
+  # A stopped PPP session's active record is retained so a retried stop hook
+  # can finish safely. Snapshot process identities before dialing so an older
+  # retained record cannot satisfy this new connection's readiness wait.
+  wait_for "new L2TP session for outer IP $expected" \
+    python3 "$SCRIPT_DIR/native_l2tp_session_state.py" has-new-session \
+      "$ROOT/l2tp-state" "$snapshot" "$expected"
+}
+
 wait_for_denial_reason() {
   local expected="$1"
   for _ in $(seq 1 300); do
@@ -385,6 +400,7 @@ client_ipsec_daemon() {
 }
 start_client() {
   local wait_active="${1:-1}"
+  snapshot_l2tp_sessions client-a
   rm -f "$ROOT/client.pid" "$ROOT/client.control"
   mkdir -p "$CLIENT_PPP_RUNDIR"
   ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
@@ -402,7 +418,7 @@ start_client() {
   if [ "$wait_active" = 1 ]; then
     wait_for 'client PPP interface' ip netns exec "$NS" ip link show ppp0
     wait_for 'server PPP interface' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
-    wait_for 'durable production session-start hook' sh -c 'find "$1" -path "*/ppp-accounting/active/ppp*.json" -print -quit | grep -q .' _ "$ROOT/l2tp-state"
+    wait_for_new_l2tp_real_ip 10.251.0.2 client-a
   fi
 }
 write_client_b_files() {
@@ -509,6 +525,7 @@ EOF
 }
 start_client_b() {
   local wait_active="${1:-1}"
+  snapshot_l2tp_sessions client-b
   rm -f "$ROOT/client-b.pid" "$ROOT/client-b.control"
   mkdir -p "$CLIENT_PPP_RUNDIR_B"
   ip netns exec "$NS_B" unshare --mount --fork --propagation private bash -c '
@@ -524,7 +541,7 @@ start_client_b() {
   printf 'c antimage\n' >"$ROOT/client-b.control"
   if [ "$wait_active" = 1 ]; then
     wait_for 'second client PPP interface' ip netns exec "$NS_B" ip link show ppp0
-    wait_for 'second durable L2TP session start record' sh -c 'find "$1" -path "*/ppp-accounting/active/ppp*.json" -print -quit | grep -q .' _ "$ROOT/l2tp-state"
+    wait_for_new_l2tp_real_ip 10.252.0.2 client-b
   fi
 }
 stop_client_b() {
@@ -580,6 +597,9 @@ set_session_limits "$session_config" 1 0
 find "$ROOT/l2tp-state" -path '*/admission-denials/*.json' -delete
 start_client_b 0
 wait_for_denial_reason 'device limit reached'
+wait_for_gone 'denied second client PPP interface' ip netns exec "$NS_B" ip link show ppp0
+python3 "$SCRIPT_DIR/native_l2tp_session_state.py" denial-has-no-session-state \
+  "$ROOT/l2tp-state" 10.252.0.2 'device limit reached'
 ip netns exec "$NS" ping -c 2 -W 2 10.67.0.1
 stop_client_b
 stop_pid "$CLIENT_DAEMON_PID"
@@ -598,6 +618,9 @@ set_session_limits "$session_config" 0 1
 find "$ROOT/l2tp-state" -path '*/admission-denials/*.json' -delete
 start_client_b 0
 wait_for_denial_reason 'IP limit reached'
+wait_for_gone 'IP-limited second client PPP interface' ip netns exec "$NS_B" ip link show ppp0
+python3 "$SCRIPT_DIR/native_l2tp_session_state.py" denial-has-no-session-state \
+  "$ROOT/l2tp-state" 10.252.0.2 'IP limit reached'
 ip netns exec "$NS" ping -c 2 -W 2 10.67.0.1
 stop_client_b
 stop_pid "$CLIENT_DAEMON_PID"
