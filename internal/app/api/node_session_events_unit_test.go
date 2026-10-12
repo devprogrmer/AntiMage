@@ -6,9 +6,37 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
+
+func TestNodeSessionAdmissionLocksSerializePerUserAndAllowDifferentUsers(t *testing.T) {
+	server := &Server{}
+	if server.sessionAdmissionLock(42) != server.sessionAdmissionLock(42) {
+		t.Fatal("same user must always use the same admission lock")
+	}
+	if server.sessionAdmissionLock(42) == server.sessionAdmissionLock(43) {
+		t.Fatal("adjacent users should not share an admission lock")
+	}
+
+	first := server.sessionAdmissionLock(42)
+	second := server.sessionAdmissionLock(43)
+	first.Lock()
+	acquired := make(chan struct{})
+	go func() {
+		second.Lock()
+		close(acquired)
+		second.Unlock()
+	}()
+	select {
+	case <-acquired:
+	case <-time.After(time.Second):
+		first.Unlock()
+		t.Fatal("admission for a different user was blocked")
+	}
+	first.Unlock()
+}
 
 func TestNodeSessionAdmissionClosesAddresslessLegacySession(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "sessions.db"))

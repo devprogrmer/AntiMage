@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/antimage/antimage/internal/app/nodecontroller"
@@ -27,6 +28,15 @@ type nodeSessionEventPayload struct {
 	ClientName string `json:"client_name,omitempty"`
 	Platform   string `json:"platform,omitempty"`
 	Event      string `json:"event"`
+}
+
+// Admission remains serialized per user across all nodes, because IP/device
+// limits are global to that user. Stripes bound memory while allowing unrelated
+// users' callbacks to enter admission concurrently.
+const sessionAdmissionLockShardCount = 256
+
+func (s *Server) sessionAdmissionLock(userID int64) *sync.Mutex {
+	return &s.admissionLocks[uint64(userID)%sessionAdmissionLockShardCount]
 }
 
 func (s *Server) handleNodeSessionEvent(w http.ResponseWriter, r *http.Request) {
@@ -127,8 +137,9 @@ func (s *Server) nodeSessionCallbackSecret(ctx context.Context) (string, error) 
 }
 
 func (s *Server) applyNodeSessionEvent(ctx context.Context, payload nodeSessionEventPayload) error {
-	s.sessionAdmissionMu.Lock()
-	defer s.sessionAdmissionMu.Unlock()
+	lock := s.sessionAdmissionLock(payload.UserID)
+	lock.Lock()
+	defer lock.Unlock()
 
 	now := time.Now().UTC()
 	tx, err := s.db.BeginTx(ctx, nil)
