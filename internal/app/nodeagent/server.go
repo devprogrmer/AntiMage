@@ -396,15 +396,28 @@ func (s *Server) stopRuntimeAction(
 }
 
 func (s *Server) AddUser(context.Context, *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
-	return s.action("", "user operation queued through full config sync"), nil
+	return nil, status.Error(codes.Unimplemented, "targeted user add is not supported by this runtime")
 }
 
 func (s *Server) UpdateUser(context.Context, *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
-	return s.action("", "user operation queued through full config sync"), nil
+	return nil, status.Error(codes.Unimplemented, "targeted user update is not supported by this runtime")
 }
 
-func (s *Server) RemoveUser(context.Context, *nodev1.RemoveInboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
-	return s.action("", "user operation queued through full config sync"), nil
+func (s *Server) RemoveUser(ctx context.Context, req *nodev1.RemoveInboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
+	if req == nil || strings.TrimSpace(req.GetInboundTag()) == "" || strings.TrimSpace(req.GetEmail()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "inbound_tag and email are required")
+	}
+	s.mu.Lock()
+	apiPort := s.cfg.XrayAPIPort
+	s.mu.Unlock()
+	if apiPort <= 0 {
+		return nil, status.Error(codes.FailedPrecondition, "Xray API is not configured")
+	}
+	client := s.cachedXrayStatsClient(s.cfg.XrayPath, apiPort)
+	if err := client.removeUserRPC(ctx, req.GetInboundTag(), req.GetEmail()); err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "remove Xray inbound user: %v", err)
+	}
+	return s.action(req.GetOperationId(), "Xray inbound user removed"), nil
 }
 
 func (s *Server) Metrics(context.Context, *nodev1.MetricsRequest) (*nodev1.MetricsResponse, error) {
