@@ -6,9 +6,70 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestStartOpenVPNInboundPreservesProcessForIdenticalConfig(t *testing.T) {
+	oldLookPath := openVPNLookPath
+	oldCommand := openVPNCommandContext
+	oldTerminate := openVPNTerminateProcess
+	oldStartupGrace := openVPNStartupGrace
+	t.Cleanup(func() {
+		openVPNLookPath = oldLookPath
+		openVPNCommandContext = oldCommand
+		openVPNTerminateProcess = oldTerminate
+		openVPNStartupGrace = oldStartupGrace
+	})
+	openVPNLookPath = func(string) (string, error) { return os.Args[0], nil }
+	openVPNStartupGrace = 100 * time.Millisecond
+	openVPNTerminateProcess = func(process *os.Process) error { return process.Kill() }
+	var starts atomic.Int32
+	openVPNCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		starts.Add(1)
+		cmd := exec.CommandContext(ctx, name, "-test.run=TestOpenVPNHelperProcess", "--")
+		cmd.Env = append(os.Environ(), "GO_WANT_OPENVPN_HELPER=1")
+		return cmd
+	}
+
+	server := New(Config{DataDir: t.TempDir()})
+	t.Cleanup(server.stopAllOpenVPNRuntimes)
+	configPath := filepath.Join(t.TempDir(), "server.conf")
+	if err := os.WriteFile(configPath, []byte("config-v1"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.startOpenVPNInbound("openvpn-idempotent", configPath); err != nil {
+		t.Fatal(err)
+	}
+	server.mu.Lock()
+	first := server.openVPNRuntimes["openvpn-idempotent"]
+	firstPID := first.cmd.Process.Pid
+	server.mu.Unlock()
+
+	if err := server.startOpenVPNInbound("openvpn-idempotent", configPath); err != nil {
+		t.Fatal(err)
+	}
+	server.mu.Lock()
+	secondPID := server.openVPNRuntimes["openvpn-idempotent"].cmd.Process.Pid
+	server.mu.Unlock()
+	if starts.Load() != 1 || secondPID != firstPID {
+		t.Fatalf("identical config restarted OpenVPN: starts=%d first_pid=%d second_pid=%d", starts.Load(), firstPID, secondPID)
+	}
+
+	if err := os.WriteFile(configPath, []byte("config-v2"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.startOpenVPNInbound("openvpn-idempotent", configPath); err != nil {
+		t.Fatal(err)
+	}
+	server.mu.Lock()
+	thirdPID := server.openVPNRuntimes["openvpn-idempotent"].cmd.Process.Pid
+	server.mu.Unlock()
+	if starts.Load() != 2 || thirdPID == firstPID {
+		t.Fatalf("changed config did not replace OpenVPN: starts=%d first_pid=%d third_pid=%d", starts.Load(), firstPID, thirdPID)
+	}
+}
 
 func TestStartOpenVPNInbound(t *testing.T) {
 	oldLookPath := openVPNLookPath
