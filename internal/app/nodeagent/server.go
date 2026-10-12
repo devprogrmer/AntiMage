@@ -289,16 +289,16 @@ func (s *Server) Connect(context.Context, *nodev1.ConnectRequest) (*nodev1.Conne
 
 func (s *Server) Health(ctx context.Context, req *nodev1.HealthRequest) (*nodev1.HealthResponse, error) {
 	s.mu.Lock()
-	var accountingFailure string
-	for protocol, failure := range s.localAccountingFailures {
-		accountingFailure = protocol + ": " + failure
-		break
-	}
+	accountingDegraded := len(s.localAccountingFailures) > 0
 	s.mu.Unlock()
-	if accountingFailure != "" {
-		return nil, status.Error(codes.FailedPrecondition, "local accounting degraded: "+accountingFailure)
-	}
 	state := s.runtimeState("healthy")
+	if accountingDegraded {
+		// Accounting and quota workers are independently recoverable services.
+		// Their degradation must remain visible without triggering node recovery,
+		// reconnect, and a destructive full runtime reconciliation.
+		state.Capabilities = append(state.Capabilities, "accounting_degraded")
+		state.Message = "healthy; local accounting degraded"
+	}
 	if req.GetCommandId() != "" {
 		if err := readNativeCommandEvidence(ctx, req, state); err != nil {
 			return nil, status.Errorf(codes.FailedPrecondition, "command evidence unavailable: %v", err)

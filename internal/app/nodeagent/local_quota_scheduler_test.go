@@ -25,6 +25,25 @@ func TestLocalQuotaInterval(t *testing.T) {
 	}
 }
 
+func TestAccountingDegradationDoesNotFailNodeHealth(t *testing.T) {
+	s := New(Config{})
+	s.localAccountingFailures = map[string]string{"wireguard": "counter read failed"}
+
+	response, err := s.Health(context.Background(), &nodev1.HealthRequest{})
+	if err != nil {
+		t.Fatalf("node health failed with recoverable accounting degradation: %v", err)
+	}
+	if response.GetRuntime().GetMessage() != "healthy; local accounting degraded" {
+		t.Fatalf("health message=%q", response.GetRuntime().GetMessage())
+	}
+	for _, capability := range response.GetRuntime().GetCapabilities() {
+		if capability == "accounting_degraded" {
+			return
+		}
+	}
+	t.Fatal("health response omitted accounting_degraded capability")
+}
+
 func offlineWireGuardFixture(t *testing.T, dir string, limit *int64) *Server {
 	t.Helper()
 	s := New(Config{DataDir: dir})
