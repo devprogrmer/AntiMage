@@ -100,6 +100,8 @@ jobs:
           context: .
           platforms: linux/amd64
           push: false
+          build-args: |
+            ANTIMAGE_BUILD_COMMIT=${{ github.sha }}
           tags: |
             devprogrmer/antimage:pr-${{ github.event.pull_request.number }}
             ghcr.io/devprogrmer/antimage:pr-${{ github.event.pull_request.number }}

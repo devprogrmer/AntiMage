@@ -30,9 +30,9 @@ func TestStartRuntimeDoesNotBindXrayProcessToRequestContext(t *testing.T) {
 	xrayPath := os.Args[0]
 	server := New(Config{DataDir: dataDir, XrayPath: xrayPath, XrayAssetsDir: dataDir})
 	requestContext, cancel := context.WithCancel(context.Background())
-	_, err := server.StartRuntime(requestContext, &nodev1.RuntimeConfigRequest{
+	_, err := server.applyConfig(requestContext, &nodev1.RuntimeConfigRequest{
 		ConfigJson: `{"inbounds":[],"outbounds":[]}`,
-	})
+	}, "started")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,10 +55,10 @@ func TestStartRuntimeRecordsAppliedRevisionAfterSuccessfulNativeRuntime(t *testi
 		XrayPath: filepath.Join(t.TempDir(), "missing-xray"),
 	})
 
-	resp, err := server.StartRuntime(context.Background(), &nodev1.RuntimeConfigRequest{
+	resp, err := server.applyConfig(context.Background(), &nodev1.RuntimeConfigRequest{
 		ConfigJson:      `{"inbounds":[],"outbounds":[]}`,
 		DesiredRevision: 17,
-	})
+	}, "started")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestStartRuntimeDoesNotRecordAppliedRevisionWhenOpenVPNFails(t *testing.T) 
 		XrayPath: filepath.Join(t.TempDir(), "missing-xray"),
 	})
 
-	_, err := server.StartRuntime(context.Background(), &nodev1.RuntimeConfigRequest{
+	_, err := server.applyConfig(context.Background(), &nodev1.RuntimeConfigRequest{
 		ConfigJson:      `{"inbounds":[],"outbounds":[]}`,
 		DesiredRevision: 23,
 		OvRuntimeJson: `{
@@ -105,7 +105,7 @@ func TestStartRuntimeDoesNotRecordAppliedRevisionWhenOpenVPNFails(t *testing.T) 
 				}]
 			}]
 		}`,
-	})
+	}, "started")
 	if err == nil || !strings.Contains(err.Error(), "executable not installed") {
 		t.Fatalf("error = %v, want missing OpenVPN executable", err)
 	}

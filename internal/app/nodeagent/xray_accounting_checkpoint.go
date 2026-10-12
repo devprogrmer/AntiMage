@@ -98,7 +98,7 @@ func (s *Server) checkpointXrayAccounting(ctx context.Context) error {
 		return err
 	}
 	s.mu.Lock()
-	running := s.lastRuntime != nil
+	running := s.lastRuntime != nil && s.xrayRuntimeGeneration != ""
 	path, port := s.cfg.XrayPath, s.cfg.XrayAPIPort
 	generation := s.xrayRuntimeGeneration
 	s.mu.Unlock()

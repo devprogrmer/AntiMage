@@ -43,6 +43,7 @@ func (r Repository) ListNodeItems(ctx context.Context, nodeID int64) ([]NodeList
 	node_capabilities,
 	message,
 	xray_version,
+	node_binary_tag,
 	COALESCE(geo_mode, 'default'),
 	COALESCE(xray_config_mode, 'default'),
 	COALESCE(uplink, 0),
@@ -68,7 +69,7 @@ WHERE LOWER(COALESCE(status, '')) <> 'deleted'`
 	for rows.Next() {
 		var item NodeListItem
 		var dataLimit, proxyPort sql.NullInt64
-		var note, proxyType, proxyHost, proxyUsername, proxyPassword, capabilities, message, xrayVersion, certificate, certificateKey sql.NullString
+		var note, proxyType, proxyHost, proxyUsername, proxyPassword, capabilities, message, xrayVersion, nodeBinaryTag, certificate, certificateKey sql.NullString
 		var proxyEnabled bool
 		if err := rows.Scan(
 			&item.ID,
@@ -93,6 +94,7 @@ WHERE LOWER(COALESCE(status, '')) <> 'deleted'`
 			&capabilities,
 			&message,
 			&xrayVersion,
+			&nodeBinaryTag,
 			&item.GeoMode,
 			&item.XrayConfigMode,
 			&item.Uplink,
@@ -112,6 +114,7 @@ WHERE LOWER(COALESCE(status, '')) <> 'deleted'`
 		item.ProxyPassword = stringPtrFromNull(proxyPassword)
 		item.Message = stringPtrFromNull(message)
 		item.XrayVersion = stringPtrFromNull(xrayVersion)
+		item.NodeBinaryTag = stringPtrFromNull(nodeBinaryTag)
 		if capabilities.Valid {
 			_ = json.Unmarshal([]byte(capabilities.String), &item.Capabilities)
 		}

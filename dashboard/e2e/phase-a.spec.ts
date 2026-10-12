@@ -119,6 +119,69 @@ async function expectNoOverflow(page: Page) {
 	expect(overflow.content, `document width ${overflow.content} exceeds viewport ${overflow.viewport}`).toBeLessThanOrEqual(overflow.viewport + 1);
 }
 
+test("manual Node rollback requires verified backup and explicit confirmation", async ({page})=>{
+ const errors=await openAs(page,"en","/operations");
+ await page.route("**/api/maintenance/operations",route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({operations:[{...operation,state:"completed",phase:"completed",metadata:{update:{running_version:"v1.2.4"}}}]})}));
+ await page.route("**/api/node/7/service/rollback/backup?*",route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({valid:true,current_running_version:"v1.2.4",identity:operation.id,version:"v1.2.3",commit:"a".repeat(40),created_at:operation.created_at})}));
+ let requests=0;
+ await page.route("**/api/node/7/service/rollback",async route=>{
+  expect(route.request().postDataJSON()).toMatchObject({source_operation_id:operation.id,confirm:true});
+  requests++;
+  await route.fulfill({status:202,contentType:"application/json",body:JSON.stringify({operation_id:"rollback-smoke",request_id:"req-rollback",target_version:"v1.2.3"})});
+ });
+ await page.reload();
+ await page.getByRole("button",{name:"Rollback to v1.2.3",exact:true}).click();
+ const dialog=page.getByRole("dialog");
+ await expect(dialog.getByText("Current running version: v1.2.4")).toBeVisible();
+ await expect(dialog.getByText("Rollback target: v1.2.3")).toBeVisible();
+ const execute=dialog.getByRole("button",{name:"Rollback to v1.2.3",exact:true});
+ await expect(execute).toBeDisabled();
+ expect(requests).toBe(0);
+ await dialog.getByRole("checkbox").focus();
+ await dialog.getByRole("checkbox").press("Space");
+ await expect(dialog.getByRole("checkbox")).toBeChecked();
+ await execute.click();
+ await expect(dialog).not.toBeVisible();
+ expect(requests).toBe(1);
+ expect(errors).toEqual([]);
+});
+
+test("unverified Node backup does not expose rollback action",async({page})=>{
+ await openAs(page,"en","/operations");
+ await page.route("**/api/maintenance/operations",route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({operations:[{...operation,state:"completed",phase:"completed"}]})}));
+ await page.route("**/api/node/7/service/rollback/backup?*",route=>route.fulfill({status:422,contentType:"application/json",body:JSON.stringify({detail:"Backup verification failed",request_id:"req-invalid-backup"})}));
+ await page.reload();
+ await expect(page.getByRole("heading",{name:"Operation history"})).toBeVisible();
+ await expect(page.getByRole("button",{name:/Rollback to/})).toHaveCount(0);
+});
+
+test("rollout review freezes target before explicit start confirmation",async({page})=>{
+ const errors=await openAs(page,"en","/updates");
+ const draft={operation:{id:"rollout-review",state:"queued",phase:"awaiting_confirmation",request_id:"req-rollout"},rollout:{id:"rollout-review",resolved_target:{version:"dev-abcdef1",commit:"abcdef1"+"0".repeat(33),sha256:"a".repeat(64),size:42,architecture:"amd64",os:"linux",artifact_name:"node-amd64"},mode:"canary",concurrency:2,canary_count:1,confirmed:false},children:[{operation_id:"child-7",node_id:7,phase:"queued"}],summary:{total:1,queued:1,running:0,completed:0,failed:0,rolled_back:0,cancelled:0},cannot_cancel:[]};
+ let starts=0;
+ await page.route("**/api/nodes/rollouts",async route=>{
+  if(route.request().method()==="POST") {
+   expect(route.request().postDataJSON()).toMatchObject({node_ids:[7],channel:"dev",policy:"latest",mode:"canary",canary_count:1,concurrency:2,confirm:false});
+   await route.fulfill({status:202,contentType:"application/json",body:JSON.stringify(draft)});
+  }else await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({rollouts:[draft.operation]})});
+ });
+ await page.route("**/api/nodes/rollouts/rollout-review",route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(draft)}));
+ await page.route("**/api/nodes/rollouts/rollout-review/start",async route=>{
+  expect(route.request().postDataJSON()).toEqual({confirm:true});starts++;
+  draft.rollout.confirmed=true;draft.operation.state="running";draft.operation.phase="canary_started";
+  await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(draft)});
+ });
+ await page.reload();
+ const node=page.getByRole("checkbox",{name:"node-smoke (connected)"});await node.focus();await node.press("Space");
+ await page.getByRole("combobox",{name:"Rollout channel"}).selectOption("dev");
+ await page.getByRole("combobox",{name:"Rollout mode"}).selectOption("canary");
+ await page.getByRole("button",{name:"Resolve and review 1 nodes"}).click();
+ await expect(page.getByText("dev-abcdef1",{exact:true})).toBeVisible();
+ const start=page.getByRole("button",{name:"Start rollout",exact:true});await expect(start).toBeDisabled();expect(starts).toBe(0);
+ const confirmation=page.getByRole("checkbox",{name:"I confirm this target and the selected nodes"});await confirmation.focus();await confirmation.press("Space");
+ await start.click();await expect(start).not.toBeVisible();expect(starts).toBe(1);expect(errors).toEqual([]);
+});
+
 test("desktop command center, diagnostics, operation history and update center render in English LTR", async ({ page }) => {
 	const pageErrors = await openAs(page, "en");
 	await expect(page.getByRole("heading", { name: "Command Center" })).toBeVisible();
@@ -136,7 +199,12 @@ test("desktop command center, diagnostics, operation history and update center r
 	const operationID = page.getByText("op-smoke-001");
 	await expect(operationID).toBeVisible();
 	await expect(operationID).toHaveAttribute("dir", "ltr");
+	const runtimeRequest = page.waitForRequest((request) => {
+		const url = new URL(request.url());
+		return url.pathname.endsWith("/nodes") && url.searchParams.get("include_metrics") === "1";
+	});
 	await page.getByRole("link", { name: "Updates" }).click();
+	await runtimeRequest;
 	await expect(page.getByRole("heading", { name: "Update Center" })).toBeVisible();
 	await expect(page.locator('[dir="ltr"]').getByText("v1.2.3+sha.abcdef12", { exact: true }).first()).toBeVisible();
 	await expect(page.getByRole("main").getByRole("link", { name: "Operation history" })).toBeEnabled();

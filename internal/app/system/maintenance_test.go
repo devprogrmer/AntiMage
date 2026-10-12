@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -63,6 +64,39 @@ func TestGitHubUpdateCheckerCachesSuccessfulStatus(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&requests); got != 2 {
 		t.Fatalf("expected one release and one manifest request, got %d", got)
+	}
+}
+
+func TestBuildAntiMageUpdateArgsSupportsExactVersionsAndDowngrades(t *testing.T) {
+	tests := []struct {
+		name, channel, version string
+		want                   []string
+		wantError              bool
+	}{
+		{name: "stable exact", channel: "stable", version: "v1.2.3", want: []string{"update", "--version", "v1.2.3"}},
+		{name: "stable downgrade", channel: "stable", version: "v1.1.0", want: []string{"update", "--version", "v1.1.0"}},
+		{name: "latest stable", channel: "stable", want: []string{"update", "--version", "latest"}},
+		{name: "dev exact", channel: "dev", version: "dev-abcdef0", want: []string{"update", "--version", "dev-abcdef0"}},
+		{name: "latest dev", channel: "dev", want: []string{"update", "--dev"}},
+		{name: "invalid exact version", channel: "stable", version: "v1; reboot", wantError: true},
+		{name: "channel mismatch", channel: "stable", version: "dev-abcdef0", wantError: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := BuildAntiMageUpdateArgs(test.channel, test.version)
+			if test.wantError {
+				if err == nil {
+					t.Fatal("expected validation error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Join(got, "\x00") != strings.Join(test.want, "\x00") {
+				t.Fatalf("args = %#v, want %#v", got, test.want)
+			}
+		})
 	}
 }
 
