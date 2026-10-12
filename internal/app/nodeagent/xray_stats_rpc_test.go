@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -114,10 +115,140 @@ func TestNodeRuntimeRemoveUserCallsXrayAndReportsSuccessOnlyAfterRPC(t *testing.
 
 func TestNodeRuntimeUserOperationsDoNotReportUnsupportedMutationsAsAccepted(t *testing.T) {
 	s := New(Config{})
-	if response, err := s.AddUser(context.Background(), &nodev1.InboundUserRequest{}); response != nil || status.Code(err) != codes.Unimplemented {
+	unsupported := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "openvpn"}}
+	if response, err := s.AddUser(context.Background(), unsupported); response != nil || status.Code(err) != codes.Unimplemented {
 		t.Fatalf("AddUser response=%v err=%v, want unimplemented", response, err)
 	}
-	if response, err := s.UpdateUser(context.Background(), &nodev1.InboundUserRequest{}); response != nil || status.Code(err) != codes.Unimplemented {
+	if response, err := s.UpdateUser(context.Background(), unsupported); response != nil || status.Code(err) != codes.Unimplemented {
 		t.Fatalf("UpdateUser response=%v err=%v, want unimplemented", response, err)
+	}
+}
+
+func TestXrayVLESSUserOperationsAreIdempotentAndRollbackFailedUpdate(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var existing *dynamicpb.Message
+	var adds, removes int
+	failNextAdd := false
+	var stateMu sync.Mutex
+	server := grpc.NewServer(grpc.UnknownServiceHandler(func(_ any, stream grpc.ServerStream) error {
+		method, _ := grpc.MethodFromServerStream(stream)
+		if strings.HasSuffix(method, "/GetInboundUsers") {
+			request := dynamicpb.NewMessage(xrayUserWireDescriptor.Messages().ByName("GetInboundUserRequest"))
+			if err := stream.RecvMsg(request); err != nil {
+				return err
+			}
+			stateMu.Lock()
+			defer stateMu.Unlock()
+			response := dynamicpb.NewMessage(xrayUserWireDescriptor.Messages().ByName("GetInboundUserResponse"))
+			if existing != nil && existing.Get(existing.Descriptor().Fields().ByNumber(2)).String() == request.Get(request.Descriptor().Fields().ByNumber(2)).String() {
+				response.Mutable(response.Descriptor().Fields().ByNumber(1)).List().Append(protoreflect.ValueOfMessage(existing))
+			}
+			return stream.SendMsg(response)
+		}
+		request := dynamicpb.NewMessage(xrayUserWireDescriptor.Messages().ByName("AlterInboundRequest"))
+		if err := stream.RecvMsg(request); err != nil {
+			return err
+		}
+		stateMu.Lock()
+		defer stateMu.Unlock()
+		typed := request.Get(request.Descriptor().Fields().ByNumber(2)).Message()
+		typeName := typed.Get(typed.Descriptor().Fields().ByNumber(1)).String()
+		raw := typed.Get(typed.Descriptor().Fields().ByNumber(2)).Bytes()
+		switch typeName {
+		case "xray.app.proxyman.command.RemoveUserOperation":
+			operation := dynamicpb.NewMessage(xrayUserWireDescriptor.Messages().ByName("RemoveUserOperation"))
+			if err := proto.Unmarshal(raw, operation); err != nil {
+				return err
+			}
+			if existing != nil && existing.Get(existing.Descriptor().Fields().ByNumber(2)).String() == operation.Get(operation.Descriptor().Fields().ByNumber(1)).String() {
+				existing = nil
+			}
+			removes++
+		case "xray.app.proxyman.command.AddUserOperation":
+			operation := dynamicpb.NewMessage(xrayUserWireDescriptor.Messages().ByName("AddUserOperation"))
+			if err := proto.Unmarshal(raw, operation); err != nil {
+				return err
+			}
+			if failNextAdd {
+				failNextAdd = false
+				return status.Error(codes.Unavailable, "simulated add failure")
+			}
+			user := operation.Get(operation.Descriptor().Fields().ByNumber(1)).Message()
+			existing = proto.Clone(user.Interface()).(*dynamicpb.Message)
+			adds++
+		default:
+			return status.Errorf(codes.InvalidArgument, "unexpected operation type %q", typeName)
+		}
+		return stream.SendMsg(dynamicpb.NewMessage(xrayUserWireDescriptor.Messages().ByName("AlterInboundResponse")))
+	}))
+	go server.Serve(listener)
+	t.Cleanup(server.Stop)
+	client := newXrayStatsClient("unused", listener.Addr().(*net.TCPAddr).Port)
+	t.Cleanup(client.rpc.close)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	user := &nodev1.InboundUser{Protocol: "vless", Email: "user@example.test", Fields: map[string]string{"id": "00000000-0000-4000-8000-000000000001", "level": "0"}}
+	message, err := xrayVLESSUserMessage(user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ensureVLESSUserRPC(ctx, "vless-main", message, false); err != nil {
+		t.Fatalf("first add: %v", err)
+	}
+	if err := client.ensureVLESSUserRPC(ctx, "vless-main", message, false); err != nil {
+		t.Fatalf("idempotent add: %v", err)
+	}
+	stateMu.Lock()
+	addCount := adds
+	stateMu.Unlock()
+	if addCount != 1 {
+		t.Fatalf("idempotent add calls=%d", addCount)
+	}
+
+	user.Fields["id"] = "00000000-0000-4000-8000-000000000002"
+	updated, err := xrayVLESSUserMessage(user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ensureVLESSUserRPC(ctx, "vless-main", updated, true); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	stateMu.Lock()
+	addCount, removeCount := adds, removes
+	stateMu.Unlock()
+	if addCount != 2 || removeCount != 1 {
+		t.Fatalf("update adds=%d removes=%d", addCount, removeCount)
+	}
+
+	user.Fields["id"] = "00000000-0000-4000-8000-000000000003"
+	failedUpdate, err := xrayVLESSUserMessage(user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateMu.Lock()
+	failNextAdd = true
+	stateMu.Unlock()
+	if err := client.ensureVLESSUserRPC(ctx, "vless-main", failedUpdate, true); status.Code(err) != codes.Unavailable {
+		t.Fatalf("failed update error=%v", err)
+	}
+	stateMu.Lock()
+	addCount = adds
+	retained := proto.Clone(existing.Interface()).(*dynamicpb.Message)
+	stateMu.Unlock()
+	if addCount != 3 {
+		t.Fatalf("failed update rollback add calls=%d", addCount)
+	}
+	account := retained.Get(retained.Descriptor().Fields().ByNumber(3)).Message()
+	accountTyped := account.Get(account.Descriptor().Fields().ByNumber(2)).Bytes()
+	decodedAccount := dynamicpb.NewMessage(xrayUserWireDescriptor.Messages().ByName("VlessAccount"))
+	if err := proto.Unmarshal(accountTyped, decodedAccount); err != nil {
+		t.Fatal(err)
+	}
+	if got := decodedAccount.Get(decodedAccount.Descriptor().Fields().ByNumber(1)).String(); got != "00000000-0000-4000-8000-000000000002" {
+		t.Fatalf("rollback retained VLESS id=%q", got)
 	}
 }

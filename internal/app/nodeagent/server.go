@@ -395,25 +395,66 @@ func (s *Server) stopRuntimeAction(
 	return response, nil
 }
 
-func (s *Server) AddUser(context.Context, *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "targeted user add is not supported by this runtime")
+func (s *Server) AddUser(ctx context.Context, req *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
+	if req == nil || strings.TrimSpace(req.GetInboundTag()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "inbound_tag and user are required")
+	}
+	user, err := xrayVLESSUserMessage(req.GetUser())
+	if err != nil {
+		if errors.Is(err, errUnsupportedXrayUserProtocol) {
+			return nil, status.Error(codes.Unimplemented, err.Error())
+		}
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	client, err := s.targetedXrayUserClient()
+	if err != nil {
+		return nil, err
+	}
+	if err := client.ensureVLESSUserRPC(ctx, req.GetInboundTag(), user, false); err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "add VLESS user: %v", err)
+	}
+	return s.action(req.GetOperationId(), "VLESS user added or already present"), nil
 }
 
-func (s *Server) UpdateUser(context.Context, *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "targeted user update is not supported by this runtime")
+func (s *Server) UpdateUser(ctx context.Context, req *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
+	if req == nil || strings.TrimSpace(req.GetInboundTag()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "inbound_tag and user are required")
+	}
+	user, err := xrayVLESSUserMessage(req.GetUser())
+	if err != nil {
+		if errors.Is(err, errUnsupportedXrayUserProtocol) {
+			return nil, status.Error(codes.Unimplemented, err.Error())
+		}
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	client, err := s.targetedXrayUserClient()
+	if err != nil {
+		return nil, err
+	}
+	if err := client.ensureVLESSUserRPC(ctx, req.GetInboundTag(), user, true); err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "update VLESS user: %v", err)
+	}
+	return s.action(req.GetOperationId(), "VLESS user updated"), nil
+}
+
+func (s *Server) targetedXrayUserClient() (*xrayStatsClient, error) {
+	s.mu.Lock()
+	apiPort, xrayPath := s.cfg.XrayAPIPort, s.cfg.XrayPath
+	s.mu.Unlock()
+	if apiPort <= 0 {
+		return nil, status.Error(codes.FailedPrecondition, "Xray API is not configured")
+	}
+	return s.cachedXrayStatsClient(xrayPath, apiPort), nil
 }
 
 func (s *Server) RemoveUser(ctx context.Context, req *nodev1.RemoveInboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
 	if req == nil || strings.TrimSpace(req.GetInboundTag()) == "" || strings.TrimSpace(req.GetEmail()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "inbound_tag and email are required")
 	}
-	s.mu.Lock()
-	apiPort := s.cfg.XrayAPIPort
-	s.mu.Unlock()
-	if apiPort <= 0 {
-		return nil, status.Error(codes.FailedPrecondition, "Xray API is not configured")
+	client, err := s.targetedXrayUserClient()
+	if err != nil {
+		return nil, err
 	}
-	client := s.cachedXrayStatsClient(s.cfg.XrayPath, apiPort)
 	if err := client.removeUserRPC(ctx, req.GetInboundTag(), req.GetEmail()); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "remove Xray inbound user: %v", err)
 	}

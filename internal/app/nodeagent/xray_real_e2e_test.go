@@ -18,6 +18,7 @@ import (
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 type realXrayLogBuffer struct {
@@ -412,11 +413,17 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 		t.Fatalf("idle connected user count=%d, want >0", idleCount)
 	}
 
+	runtimeAgent := New(Config{XrayPath: xrayPath, XrayAPIPort: apiPort})
+	t.Cleanup(runtimeAgent.closeXrayStatsClient)
 	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
-	err = statsClient.removeUserRPC(ctx, "vless-e2e", userEmail)
+	removeResponse, err := runtimeAgent.RemoveUser(ctx, &nodev1.RemoveInboundUserRequest{
+		OperationId: "native-remove-user",
+		InboundTag:  "vless-e2e",
+		Email:       userEmail,
+	})
 	cancel()
-	if err != nil {
-		t.Fatalf("remove real Xray user: %v", err)
+	if err != nil || !removeResponse.GetAccepted() {
+		t.Fatalf("remove real Xray user: response=%v err=%v", removeResponse, err)
 	}
 	// Removing authentication does not terminate an already authenticated stream.
 	continuedAfterRemoval := []byte("existing-stream-after-user-removal")
@@ -442,6 +449,96 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 		t.Fatalf("close upstream connection: %v", err)
 	}
 
+	realXrayWaitForOffline(t, onlineClient, userEmail)
+
+	// Exercise the agent's targeted AddUser and UpdateUser handlers against the
+	// pinned real Xray API, then prove the updated credential opens a usable tunnel.
+	addRequest := &nodev1.InboundUserRequest{
+		OperationId: "native-add-user",
+		InboundTag:  "vless-e2e",
+		User:        &nodev1.InboundUser{Email: userEmail, Protocol: "vless", Fields: map[string]string{"id": userID, "level": "0"}},
+	}
+	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	addResponse, err := runtimeAgent.AddUser(ctx, addRequest)
+	cancel()
+	if err != nil || !addResponse.GetAccepted() {
+		t.Fatalf("add real Xray user: response=%v err=%v", addResponse, err)
+	}
+
+	updatedUserID := "22222222-2222-4222-8222-222222222222"
+	updateRequest := &nodev1.InboundUserRequest{
+		OperationId: "native-update-user",
+		InboundTag:  "vless-e2e",
+		User:        &nodev1.InboundUser{Email: userEmail, Protocol: "vless", Fields: map[string]string{"id": updatedUserID, "level": "0"}},
+	}
+	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	updateResponse, err := runtimeAgent.UpdateUser(ctx, updateRequest)
+	cancel()
+	if err != nil || !updateResponse.GetAccepted() {
+		t.Fatalf("update real Xray user: response=%v err=%v", updateResponse, err)
+	}
+	updatedNativeUser, err := statsClient.getInboundUserRPC(context.Background(), "vless-e2e", userEmail)
+	if err != nil || updatedNativeUser == nil {
+		t.Fatalf("query updated real Xray user: user=%v err=%v", updatedNativeUser, err)
+	}
+	accountTyped := updatedNativeUser.Get(updatedNativeUser.Descriptor().Fields().ByNumber(3)).Message()
+	accountBytes := accountTyped.Get(accountTyped.Descriptor().Fields().ByNumber(2)).Bytes()
+	account := dynamicpb.NewMessage(xrayUserWireDescriptor.Messages().ByName("VlessAccount"))
+	if err := proto.Unmarshal(accountBytes, account); err != nil {
+		t.Fatalf("decode updated VLESS account: %v", err)
+	}
+	if got := account.Get(account.Descriptor().Fields().ByNumber(1)).String(); got != updatedUserID {
+		t.Fatalf("updated VLESS id=%q, want %q", got, updatedUserID)
+	}
+
+	updatedClientPort := nextPort()
+	updatedClientConfig := strings.Replace(clientConfig, fmt.Sprintf("\"port\": %d", clientPort), fmt.Sprintf("\"port\": %d", updatedClientPort), 1)
+	updatedClientConfig = strings.Replace(updatedClientConfig, userID, updatedUserID, 1)
+	updatedClientConfigPath := filepath.Join(tmp, "updated-client.json")
+	if err := os.WriteFile(updatedClientConfigPath, []byte(updatedClientConfig), 0600); err != nil {
+		t.Fatalf("write updated client config: %v", err)
+	}
+	updatedClientProcess := realXrayStartProcess(t, xrayPath, updatedClientConfigPath)
+	realXrayWaitForTCP(t, updatedClientPort, updatedClientProcess.logs)
+	updatedAccepted := make(chan net.Conn, 1)
+	updatedAcceptErr := make(chan error, 1)
+	go func() {
+		conn, acceptErr := echoListener.Accept()
+		if acceptErr != nil {
+			updatedAcceptErr <- acceptErr
+			return
+		}
+		updatedAccepted <- conn
+	}()
+	updatedClientConn := realXrayDialUntilReady(t, updatedClientPort, updatedClientProcess.logs)
+	updatedPayload := []byte("updated-vless-credential-e2e")
+	if _, err := updatedClientConn.Write(updatedPayload); err != nil {
+		t.Fatalf("write using updated VLESS credential: %v", err)
+	}
+	var updatedUpstream net.Conn
+	select {
+	case updatedUpstream = <-updatedAccepted:
+	case acceptErr := <-updatedAcceptErr:
+		t.Fatalf("updated credential echo accept: %v", acceptErr)
+	case <-time.After(5 * time.Second):
+		t.Fatalf("updated VLESS credential did not establish a tunnel\nserver:\n%s\nclient:\n%s", serverProcess.logs.String(), updatedClientProcess.logs.String())
+	}
+	if err := updatedUpstream.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	updatedGot := make([]byte, len(updatedPayload))
+	if _, err := io.ReadFull(updatedUpstream, updatedGot); err != nil || !bytes.Equal(updatedGot, updatedPayload) {
+		t.Fatalf("updated credential tunnel payload=%q err=%v", updatedGot, err)
+	}
+	_ = updatedClientConn.Close()
+	_ = updatedUpstream.Close()
+
+	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	removeUpdated, err := runtimeAgent.RemoveUser(ctx, &nodev1.RemoveInboundUserRequest{OperationId: "native-remove-updated-user", InboundTag: "vless-e2e", Email: userEmail})
+	cancel()
+	if err != nil || !removeUpdated.GetAccepted() {
+		t.Fatalf("remove updated real Xray user: response=%v err=%v", removeUpdated, err)
+	}
 	realXrayWaitForOffline(t, onlineClient, userEmail)
 }
 
