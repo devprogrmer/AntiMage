@@ -153,32 +153,36 @@ func (s *Server) quotaCheckXrayOffline(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	pendingBatchID := ""
+	if s.xrayUsagePending != nil {
+		pendingBatchID = s.xrayUsagePending.BatchID
+	}
+	reflectionQueries := make([]localUsageReflectionQuery, len(payload.XrayPolicies))
+	for index, policy := range payload.XrayPolicies {
+		reflectionQueries[index] = localUsageReflectionQuery{
+			Protocol: "xray", UserID: policy.UserID, InboundTag: policy.InboundTag,
+			PendingChildID: pendingBatchID, ReflectedRootBatchID: policy.ReflectedUsageBatchID,
+		}
+	}
+	reflectionResults, err := s.localAwaitingReflectionUsageBatch(reflectionQueries)
+	if err != nil {
+		return err
+	}
 	var enforcementErr error
-	for _, policy := range payload.XrayPolicies {
+	for policyIndex, policy := range payload.XrayPolicies {
 		raw := usageTotals[policy.Email]
-		pendingID := ""
-		if p := s.xrayUsagePending; p != nil {
-			pendingID = p.BatchID
-			reflected, err := s.localPendingUsageReflected("xray", policy.UserID, pendingID, policy.ReflectedUsageBatchID)
-			if err != nil {
-				return err
-			}
-			if reflected {
-				for _, sample := range p.Samples {
-					if sample.UserID != policy.UserID || sample.InboundTag != policy.InboundTag {
-						continue
-					}
-					if sample.Value > raw {
-						return fmt.Errorf("xray reflected pending exceeds unacked usage")
-					}
-					raw -= sample.Value
+		if pending := s.xrayUsagePending; pending != nil && reflectionResults[policyIndex].PendingReflected {
+			for _, sample := range pending.Samples {
+				if sample.UserID != policy.UserID || sample.InboundTag != policy.InboundTag {
+					continue
 				}
+				if sample.Value > raw {
+					return fmt.Errorf("xray reflected pending exceeds unacked usage")
+				}
+				raw -= sample.Value
 			}
 		}
-		awaiting, err := s.localAwaitingReflectionUsage("xray", policy.UserID, policy.InboundTag, pendingID, policy.ReflectedUsageBatchID)
-		if err != nil {
-			return err
-		}
+		awaiting := reflectionResults[policyIndex].Awaiting
 		if ^uint64(0)-raw < awaiting {
 			return fmt.Errorf("xray reflection overflow")
 		}
