@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	"os"
@@ -28,8 +29,9 @@ var (
 )
 
 type pptpProcess struct {
-	cmd  *exec.Cmd
-	done chan struct{}
+	cmd        *exec.Cmd
+	done       chan struct{}
+	configHash [32]byte
 
 	waitMu  sync.Mutex
 	waitErr error
@@ -226,6 +228,11 @@ func (s *Server) startPPTPInbound(tag, configPath, chapSecrets string) error {
 	if tag == "" {
 		return fmt.Errorf("pptp runtime tag is required")
 	}
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("pptp %q: read config: %w", tag, err)
+	}
+	configHash := sha256.Sum256(config)
 	if err := installPPTPSystemCHAPSecrets(chapSecrets); err != nil {
 		return fmt.Errorf("pptp %q: install chap secrets: %w", tag, err)
 	}
@@ -249,6 +256,14 @@ func (s *Server) startPPTPInbound(tag, configPath, chapSecrets string) error {
 	previous := s.pptpRuntimes[tag]
 	s.mu.Unlock()
 	if previous != nil {
+		select {
+		case <-previous.done:
+			// A dead process must be replaced even when its config hash matches.
+		default:
+			if previous.configHash == configHash {
+				return nil
+			}
+		}
 		if err := stopPPTPProcess(previous); err != nil {
 			return fmt.Errorf("pptp %q: stop previous runtime: %w", tag, err)
 		}
@@ -264,7 +279,7 @@ func (s *Server) startPPTPInbound(tag, configPath, chapSecrets string) error {
 		_ = clearPPTPSystemIPPreUpHook()
 		return fmt.Errorf("pptp %q: start: %w", tag, err)
 	}
-	runtime := &pptpProcess{cmd: cmd, done: make(chan struct{})}
+	runtime := &pptpProcess{cmd: cmd, done: make(chan struct{}), configHash: configHash}
 	go func() {
 		err := cmd.Wait()
 		runtime.setWaitError(err)

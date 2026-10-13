@@ -89,6 +89,108 @@ func TestStartXrayIfConfigUnchangedPreservesLiveProcess(t *testing.T) {
 	}
 }
 
+func TestStartAnyConnectPreservesLiveProcessUntilServerMaterialChanges(t *testing.T) {
+	root := t.TempDir()
+	files := anyConnectRuntimeFiles{
+		ConfigPath: filepath.Join(root, "ocserv.conf"),
+		ServerCert: filepath.Join(root, "server.crt"),
+		ServerKey:  filepath.Join(root, "server.key"),
+		CACert:     filepath.Join(root, "ca.crt"),
+	}
+	for path, data := range map[string]string{
+		files.ConfigPath: "listen-host = 127.0.0.1\n",
+		files.ServerCert: "certificate-v1",
+		files.ServerKey:  "private-key-v1",
+	} {
+		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	oldLookPath, oldCommand, oldGrace := anyConnectLookPath, anyConnectCommandContext, anyConnectStartupGrace
+	var starts int
+	anyConnectLookPath = func(string) (string, error) { return os.Args[0], nil }
+	anyConnectStartupGrace = 10 * time.Millisecond
+	anyConnectCommandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		starts++
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestRuntimeHelperProcess", "--", "ocserv")
+		cmd.Env = append(os.Environ(), "GO_WANT_RUNTIME_HELPER_PROCESS=1")
+		return cmd
+	}
+	t.Cleanup(func() {
+		anyConnectLookPath, anyConnectCommandContext, anyConnectStartupGrace = oldLookPath, oldCommand, oldGrace
+	})
+	server := New(Config{})
+	tag := "anyconnect-runtime-test"
+	if err := server.startAnyConnectInbound(preparedAnyConnectRuntime{Tag: tag, Files: files}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(server.stopAllAnyConnectRuntimes)
+	if err := server.startAnyConnectInbound(preparedAnyConnectRuntime{Tag: tag, Files: files}); err != nil {
+		t.Fatalf("identical config should preserve the live ocserv process: %v", err)
+	}
+	if starts != 1 {
+		t.Fatalf("identical config started ocserv %d times, want 1", starts)
+	}
+	if err := os.WriteFile(files.ServerCert, []byte("certificate-v2"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.startAnyConnectInbound(preparedAnyConnectRuntime{Tag: tag, Files: files}); err != nil {
+		t.Fatalf("changed certificate should replace ocserv process: %v", err)
+	}
+	if starts != 2 {
+		t.Fatalf("changed certificate started ocserv %d times, want 2", starts)
+	}
+}
+
+func TestStartPPTPPreservesLiveProcessForIdenticalConfig(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "pptpd.conf")
+	if err := os.WriteFile(configPath, []byte("option /etc/ppp/options.pptpd\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	oldSecrets, oldHook := pptpCHAPSecretsPath, pptpIPPreUpHookPath
+	oldLookPath, oldCommand, oldHelper := pptpLookPath, pptpCommandContext, pppSessionHelperExecutable
+	oldStartup, oldShutdown, oldKill := pptpStartupGrace, pptpShutdownGrace, pptpKillGrace
+	pptpCHAPSecretsPath = filepath.Join(root, "chap-secrets")
+	pptpIPPreUpHookPath = filepath.Join(root, "ip-pre-up.d", "90-antimage-pptp")
+	pptpLookPath = func(string) (string, error) { return os.Args[0], nil }
+	pppSessionHelperExecutable = func() (string, error) { return os.Args[0], nil }
+	pptpStartupGrace, pptpShutdownGrace, pptpKillGrace = 10*time.Millisecond, 100*time.Millisecond, time.Second
+	var starts int
+	pptpCommandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		starts++
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestPPTPHelperProcess", "--")
+		cmd.Env = append(os.Environ(), "GO_WANT_PPTP_HELPER=1")
+		return cmd
+	}
+	t.Cleanup(func() {
+		pptpCHAPSecretsPath, pptpIPPreUpHookPath = oldSecrets, oldHook
+		pptpLookPath, pptpCommandContext, pppSessionHelperExecutable = oldLookPath, oldCommand, oldHelper
+		pptpStartupGrace, pptpShutdownGrace, pptpKillGrace = oldStartup, oldShutdown, oldKill
+	})
+	server := New(Config{})
+	tag := "pptp-runtime-test"
+	if err := server.startPPTPInbound(tag, configPath, `"alice" * "password-v1" *`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(server.stopAllPPTPRuntimes)
+	if err := server.startPPTPInbound(tag, configPath, `"alice" * "password-v2" *`); err != nil {
+		t.Fatalf("credential refresh should preserve the live pptpd process: %v", err)
+	}
+	if starts != 1 {
+		t.Fatalf("identical config started pptpd %d times, want 1", starts)
+	}
+	if err := os.WriteFile(configPath, []byte("option /etc/ppp/options.pptpd\nlogwtmp\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.startPPTPInbound(tag, configPath, `"alice" * "password-v2" *`); err != nil {
+		t.Fatalf("changed config should replace pptpd process: %v", err)
+	}
+	if starts != 2 {
+		t.Fatalf("changed config started pptpd %d times, want 2", starts)
+	}
+}
+
 func TestStartRuntimeRecordsAppliedRevisionAfterSuccessfulNativeRuntime(t *testing.T) {
 	server := New(Config{
 		DataDir:  t.TempDir(),
