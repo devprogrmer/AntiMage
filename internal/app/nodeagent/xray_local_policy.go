@@ -24,6 +24,23 @@ type xrayQuotaRevocation struct {
 	ExistingStreams bool
 }
 
+func xrayPoliciesNeedLocalQuotaCheck(policies []xrayLocalUserPolicy) bool {
+	for _, policy := range policies {
+		switch strings.ToLower(strings.TrimSpace(policy.Status)) {
+		case "active":
+			if policy.DataLimit > 0 || policy.Expire > 0 {
+				return true
+			}
+		case "on_hold":
+			// on_hold remains usable under the shared native session policy.
+		default:
+			// Missing or non-active status is itself an enforceable condition.
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) markRestoredXrayRevocations(nativeJSON, configJSON string) error {
 	payload, err := parseNativeRuntimePayload(nativeJSON)
 	if err != nil {
@@ -74,7 +91,7 @@ func (s *Server) quotaCheckXrayOffline(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if len(payload.XrayPolicies) == 0 {
+	if !xrayPoliciesNeedLocalQuotaCheck(payload.XrayPolicies) {
 		return nil
 	}
 	client := s.cachedXrayStatsClient(path, port)
