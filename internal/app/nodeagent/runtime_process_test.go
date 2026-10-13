@@ -2,6 +2,8 @@ package nodeagent
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,6 +48,44 @@ func TestStartRuntimeDoesNotBindXrayProcessToRequestContext(t *testing.T) {
 	case <-processContext.Done():
 		t.Fatal("xray process context was cancelled with the request")
 	case <-time.After(20 * time.Millisecond):
+	}
+}
+
+func TestStartXrayIfConfigUnchangedPreservesLiveProcess(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "xray.json")
+	config := []byte(`{"inbounds":[],"outbounds":[]}`)
+	if err := os.WriteFile(configPath, config, 0600); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(config)
+
+	previousCommand := xrayCommandContext
+	t.Cleanup(func() { xrayCommandContext = previousCommand })
+	var starts int
+	xrayCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		starts++
+		return exec.CommandContext(ctx, filepath.Join(t.TempDir(), "missing-xray"), args...)
+	}
+
+	server := New(Config{XrayPath: filepath.Join(t.TempDir(), "xray")})
+	server.lastRuntime = &exec.Cmd{Process: &os.Process{Pid: 1}}
+	runtimeExited := make(chan struct{})
+	server.runtimeExited = runtimeExited
+	server.activeConfigSHA256 = fmt.Sprintf("%x", digest)
+	if err := server.startXrayIfConfigChanged(context.Background(), configPath); err != nil {
+		t.Fatalf("identical config on live runtime: %v", err)
+	}
+	if starts != 0 {
+		t.Fatalf("identical config started Xray %d times", starts)
+	}
+
+	close(runtimeExited)
+	server.lastRuntime = &exec.Cmd{}
+	if err := server.startXrayIfConfigChanged(context.Background(), configPath); err == nil {
+		t.Fatal("exited runtime was not restarted")
+	}
+	if starts != 1 {
+		t.Fatalf("exited runtime restart attempts=%d, want 1", starts)
 	}
 }
 

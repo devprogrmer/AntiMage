@@ -850,7 +850,7 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	s.mu.Unlock()
 
 	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
-		if err := s.startXray(ctx, configPath); err != nil {
+		if err := s.startXrayIfConfigChanged(ctx, configPath); err != nil {
 			return nil, status.Error(codes.Internal, "start xray: "+err.Error())
 		}
 		if err := s.markRestoredXrayRevocations(req.GetOvRuntimeJson(), configJSON); err != nil {
@@ -875,6 +875,28 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 
 	return s.action(req.GetOperationId(), message), nil
 }
+
+func (s *Server) startXrayIfConfigChanged(ctx context.Context, configPath string) error {
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256(config)
+	wantHash := fmt.Sprintf("%x", digest)
+	s.mu.Lock()
+	runtime, activeHash, exited := s.lastRuntime, s.activeConfigSHA256, s.runtimeExited
+	s.mu.Unlock()
+	if runtime != nil && runtime.Process != nil && activeHash == wantHash && exited != nil {
+		select {
+		case <-exited:
+			// The process exited after the last successful apply; restart it.
+		default:
+			return nil
+		}
+	}
+	return s.startXray(ctx, configPath)
+}
+
 func (s *Server) startXray(ctx context.Context, configPath string) error {
 	var identity [16]byte
 	if _, err := rand.Read(identity[:]); err != nil {
