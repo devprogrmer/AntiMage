@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type Server struct {
@@ -41,6 +42,10 @@ type Server struct {
 	xrayAPIPortFallback              int
 	mu                               sync.Mutex
 	maintenanceMu                    sync.Mutex
+	metricsMu                        sync.Mutex
+	metricsSystemCache               *nodev1.SystemMetrics
+	metricsSystemCacheAt             time.Time
+	metricsSystemSampler             func() *nodev1.SystemMetrics
 	startedAt                        time.Time
 	lastConfig                       string
 	lastRuntime                      *exec.Cmd
@@ -1079,6 +1084,33 @@ func torConfig(port uint32, country string, strict bool, dataDir string) string 
 }
 
 func (s *Server) metrics(includeRuntime bool) *nodev1.MetricsResponse {
+	system, sampledAt := s.cachedSystemMetrics()
+	res := &nodev1.MetricsResponse{System: system, Transfer: s.transferMetrics(), SampledAtUnix: sampledAt.Unix()}
+	if includeRuntime {
+		res.Runtime = s.runtimeState("metrics collected")
+	}
+	return res
+}
+
+const metricsSystemCacheTTL = time.Second
+
+func (s *Server) cachedSystemMetrics() (*nodev1.SystemMetrics, time.Time) {
+	s.metricsMu.Lock()
+	defer s.metricsMu.Unlock()
+	now := time.Now()
+	if s.metricsSystemCache != nil && now.Sub(s.metricsSystemCacheAt) < metricsSystemCacheTTL {
+		return proto.Clone(s.metricsSystemCache).(*nodev1.SystemMetrics), s.metricsSystemCacheAt
+	}
+	sampler := s.metricsSystemSampler
+	if sampler == nil {
+		sampler = s.sampleSystemMetrics
+	}
+	s.metricsSystemCache = proto.Clone(sampler()).(*nodev1.SystemMetrics)
+	s.metricsSystemCacheAt = now
+	return proto.Clone(s.metricsSystemCache).(*nodev1.SystemMetrics), now
+}
+
+func (s *Server) sampleSystemMetrics() *nodev1.SystemMetrics {
 	system := &nodev1.SystemMetrics{CpuCores: int32(runtime.NumCPU()), UptimeSeconds: uint64(time.Since(s.startedAt).Seconds())}
 	if infos, err := cpu.Info(); err == nil && len(infos) > 0 {
 		system.CpuFrequencyHz = infos[0].Mhz * 1000 * 1000
@@ -1094,11 +1126,7 @@ func (s *Server) metrics(includeRuntime bool) *nodev1.MetricsResponse {
 	if uptime, err := host.Uptime(); err == nil {
 		system.UptimeSeconds = uptime
 	}
-	res := &nodev1.MetricsResponse{System: system, Transfer: s.transferMetrics(), SampledAtUnix: time.Now().Unix()}
-	if includeRuntime {
-		res.Runtime = s.runtimeState("metrics collected")
-	}
-	return res
+	return system
 }
 
 func (s *Server) transferMetrics() *nodev1.TransferMetrics {
