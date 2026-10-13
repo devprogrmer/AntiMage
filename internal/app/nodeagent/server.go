@@ -57,6 +57,7 @@ type Server struct {
 	localQuotaViews                  map[localQuotaOwner]localQuotaView
 	localQuotaAggregates             map[localQuotaAggregateKey]uint64
 	runtimePolicy                    *runtimePolicySnapshot
+	xrayQuotaPolicyIndex             *xrayQuotaPolicyIndex
 	runtimeExited                    <-chan struct{}
 	activeConfigSHA256               string
 	runningCoreVersion               string

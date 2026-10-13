@@ -2,11 +2,15 @@ package nodeagent
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 )
+
+var benchmarkXrayQuotaTotal uint64
 
 func TestXrayPoliciesNeedLocalQuotaCheck(t *testing.T) {
 	for name, testCase := range map[string]struct {
@@ -71,6 +75,95 @@ func TestXrayQuotaUsageTotalsRejectsCounterRegressionAndOverflow(t *testing.T) {
 	); err == nil {
 		t.Fatal("overflowing quota total was accepted")
 	}
+}
+
+func TestXrayQuotaUsageTotalsIntoReusesIndexedScratchAndChecksOverflow(t *testing.T) {
+	index := &xrayQuotaPolicyIndex{EmailIndex: map[string]int{"alice": 0, "bob": 1}, UsageTotal: []uint64{99, 99}}
+	counters := map[string]accountingCounter{"alice:uplink": {Total: 120}, "bob:downlink": {Total: 35}}
+	if err := xrayQuotaUsageTotalsInto(counters, map[string]uint64{"alice:uplink": 100}, index); err != nil {
+		t.Fatal(err)
+	}
+	if index.UsageTotal[0] != 20 || index.UsageTotal[1] != 35 {
+		t.Fatalf("indexed totals=%v, want [20 35]", index.UsageTotal)
+	}
+	if err := xrayQuotaUsageTotalsInto(
+		map[string]accountingCounter{"alice:uplink": {Total: math.MaxUint64}, "alice:downlink": {Total: 1}},
+		map[string]uint64{}, index,
+	); err == nil {
+		t.Fatal("overflowing indexed total was accepted")
+	}
+}
+
+func TestXrayQuotaPolicyIndexRefreshesWhenRevisionChanges(t *testing.T) {
+	s := New(Config{})
+	s.runtimePolicy = &runtimePolicySnapshot{Revision: 7, Checksum: "revision-seven", NativeJSON: `{"xray_policies":[{"email":"alice","status":"active"}]}`}
+	first, err := s.xrayQuotaPolicyIndexFor(s.runtimePolicy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := s.xrayQuotaPolicyIndexFor(s.runtimePolicy)
+	if err != nil || again != first {
+		t.Fatalf("same policy revision did not reuse index: same=%v err=%v", again == first, err)
+	}
+	s.mu.Lock()
+	s.runtimePolicy = &runtimePolicySnapshot{Revision: 8, Checksum: "revision-eight", NativeJSON: `{"xray_policies":[{"email":"bob","status":"active"}]}`}
+	nextSnapshot := s.runtimePolicy
+	s.mu.Unlock()
+	next, err := s.xrayQuotaPolicyIndexFor(nextSnapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next == first || len(next.Policies) != 1 || next.Policies[0].Email != "bob" {
+		t.Fatalf("policy index was not refreshed: %+v", next)
+	}
+}
+
+func BenchmarkXrayQuotaAggregation(b *testing.B) {
+	const userCount = 512
+	policies := make([]xrayLocalUserPolicy, 0, userCount)
+	counters := make(map[string]accountingCounter, userCount*2)
+	baselines := make(map[string]uint64, userCount*2)
+	for index := 0; index < userCount; index++ {
+		email := fmt.Sprintf("user-%03d", index)
+		policies = append(policies, xrayLocalUserPolicy{Email: email})
+		for _, direction := range []string{"uplink", "downlink"} {
+			key := email + ":" + direction
+			counters[key] = accountingCounter{Total: 1000}
+			baselines[key] = 500
+		}
+	}
+	b.Run("per-policy-scan", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			var total uint64
+			for _, policy := range policies {
+				prefix := policy.Email + ":"
+				for key, counter := range counters {
+					if strings.HasPrefix(key, prefix) {
+						total += counter.Total - baselines[key]
+					}
+				}
+			}
+			benchmarkXrayQuotaTotal = total
+		}
+	})
+	index := &xrayQuotaPolicyIndex{Policies: policies, EmailIndex: make(map[string]int, userCount), UsageTotal: make([]uint64, userCount)}
+	for _, policy := range policies {
+		index.EmailIndex[policy.Email] = len(index.EmailIndex)
+	}
+	b.Run("cached-single-pass-index", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			if err := xrayQuotaUsageTotalsInto(counters, baselines, index); err != nil {
+				b.Fatal(err)
+			}
+			var total uint64
+			for _, policy := range policies {
+				total += index.UsageTotal[index.EmailIndex[policy.Email]]
+			}
+			benchmarkXrayQuotaTotal = total
+		}
+	})
 }
 
 func TestXrayQuotaWorkerSkipsStatsForUnlimitedActiveUsers(t *testing.T) {
