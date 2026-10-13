@@ -3,6 +3,8 @@ package nodeagent
 import (
 	"context"
 	"net"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -70,6 +72,46 @@ func TestXrayCachedStatsRPCAndRemovalErrors(t *testing.T) {
 	}
 	if status.Code(client.removeUserRPC(ctx, "inbound", "10.inbound")) != codes.PermissionDenied {
 		t.Fatal("native RPC removal failure was hidden")
+	}
+}
+
+func TestXrayAccountingAndQuotaTickSharesStatsSample(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var queries atomic.Int32
+	server := grpc.NewServer(grpc.UnknownServiceHandler(func(_ any, stream grpc.ServerStream) error {
+		method, _ := grpc.MethodFromServerStream(stream)
+		if strings.HasSuffix(method, "/QueryStats") {
+			request := dynamicpb.NewMessage(xrayStatsWireDescriptor.Messages().ByName("QueryStatsRequest"))
+			if err := stream.RecvMsg(request); err != nil {
+				return err
+			}
+			queries.Add(1)
+			response := dynamicpb.NewMessage(xrayStatsWireDescriptor.Messages().ByName("QueryStatsResponse"))
+			stat := dynamicpb.NewMessage(xrayStatsWireDescriptor.Messages().ByName("Stat"))
+			stat.Set(stat.Descriptor().Fields().ByNumber(1), protoreflect.ValueOfString("user>>>7.alice>>>traffic>>>uplink"))
+			stat.Set(stat.Descriptor().Fields().ByNumber(2), protoreflect.ValueOfInt64(100))
+			response.Mutable(response.Descriptor().Fields().ByNumber(1)).List().Append(protoreflect.ValueOfMessage(stat))
+			return stream.SendMsg(response)
+		}
+		return status.Error(codes.Unimplemented, "unexpected Xray RPC")
+	}))
+	go server.Serve(listener)
+	t.Cleanup(server.Stop)
+	s := New(Config{DataDir: t.TempDir(), XrayPath: "unused", XrayAPIPort: listener.Addr().(*net.TCPAddr).Port})
+	t.Cleanup(s.closeXrayStatsClient)
+	s.runtimePolicy = &runtimePolicySnapshot{Revision: 1, Checksum: "one", NativeJSON: `{"xray_policies":[{"user_id":7,"email":"7.alice","inbound_tag":"vless","protocol":"vless","status":"active","data_limit":100000}]}`}
+	s.lastRuntime = &exec.Cmd{Process: &os.Process{Pid: 1}}
+	s.xrayRuntimeGeneration = "generation-one"
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := s.xrayLocalAccountingTick(ctx, true, true); err != nil {
+		t.Fatalf("combined Xray accounting/quota tick: %v", err)
+	}
+	if got := queries.Load(); got != 1 {
+		t.Fatalf("same-deadline checkpoint+quota issued %d stats queries, want one", got)
 	}
 }
 

@@ -118,6 +118,59 @@ func (s *Server) checkpointXrayAccounting(ctx context.Context) error {
 	return s.checkpointXrayGenerationLocked(stats, generation)
 }
 
+func (s *Server) checkpointXrayAccountingSample(stats []xrayStat, generation string) error {
+	s.xrayUsageMu.Lock()
+	defer s.xrayUsageMu.Unlock()
+	if err := s.ensureXrayUsageStateLoadedLocked(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	unchanged := generation == s.xrayRuntimeGeneration
+	s.mu.Unlock()
+	if !unchanged {
+		return fmt.Errorf("xray runtime changed during accounting snapshot")
+	}
+	return s.checkpointXrayGenerationLocked(stats, generation)
+}
+
+// xrayLocalAccountingTick shares one native stats sample between checkpointing
+// and quota enforcement when both deadlines coincide.
+func (s *Server) xrayLocalAccountingTick(ctx context.Context, checkpoint, enforce bool) error {
+	s.mu.Lock()
+	snapshot := s.runtimePolicy
+	running := s.lastRuntime != nil && s.xrayRuntimeGeneration != ""
+	path, port, generation := s.cfg.XrayPath, s.cfg.XrayAPIPort, s.xrayRuntimeGeneration
+	s.mu.Unlock()
+	if !running || (!checkpoint && !enforce) {
+		return nil
+	}
+	var policyIndex *xrayQuotaPolicyIndex
+	if enforce {
+		var err error
+		policyIndex, err = s.xrayQuotaPolicyIndexFor(snapshot)
+		if err != nil {
+			return err
+		}
+		enforce = xrayPoliciesNeedLocalQuotaCheck(policyIndex.Policies)
+	}
+	if !checkpoint && !enforce {
+		return nil
+	}
+	stats, err := s.cachedXrayStatsClient(path, port).queryStats(ctx, "user>>>", false)
+	if err != nil {
+		return err
+	}
+	if checkpoint {
+		if err := s.checkpointXrayAccountingSample(stats, generation); err != nil {
+			return err
+		}
+	}
+	if enforce {
+		return s.quotaCheckXrayOfflineWithStats(ctx, snapshot, generation, policyIndex, stats)
+	}
+	return nil
+}
+
 func (s *Server) runXrayAccountingCheckpoints(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

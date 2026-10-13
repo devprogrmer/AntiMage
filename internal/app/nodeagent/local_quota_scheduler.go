@@ -112,7 +112,6 @@ func (s *Server) runLocalQuotaScheduler(ctx context.Context, quotaInterval, chec
 		quota      func(context.Context) error
 	}
 	workers := []worker{
-		{"xray", s.checkpointXrayAccounting, s.quotaCheckXrayOffline},
 		{"amneziawg", s.checkpointAmneziaWGOffline, s.quotaCheckAmneziaWGOffline},
 		{"openvpn", s.checkpointOpenVPNOffline, s.quotaCheckOpenVPNOffline},
 		{"ppp", s.checkpointPPPOffline, s.quotaCheckPPPOffline},
@@ -120,6 +119,14 @@ func (s *Server) runLocalQuotaScheduler(ctx context.Context, quotaInterval, chec
 		{"anyconnect", s.checkpointAnyConnectOffline, s.quotaCheckAnyConnectOffline},
 	}
 	var group sync.WaitGroup
+	group.Add(1)
+	go func() {
+		defer group.Done()
+		s.runLocalAccountingWorkerWithTick(ctx, "xray", quotaInterval, checkpointInterval,
+			func(sampleCtx context.Context, enforce, checkpoint bool) error {
+				return s.xrayLocalAccountingTick(sampleCtx, checkpoint, enforce)
+			})
+	}()
 	for _, w := range workers {
 		group.Add(1)
 		go func(w worker) {
@@ -136,6 +143,19 @@ func (s *Server) runLocalQuotaScheduler(ctx context.Context, quotaInterval, chec
 // One serial worker per native runtime coalesces overdue ticks: slow daemons do
 // not block other protocols and never accumulate overlapping commands.
 func (s *Server) runLocalAccountingWorker(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, checkpointFn, quotaFn func(context.Context) error) {
+	s.runLocalAccountingWorkerWithTick(ctx, name, quotaInterval, checkpointInterval, func(sampleCtx context.Context, enforce, checkpoint bool) error {
+		var err error
+		if checkpoint {
+			err = checkpointFn(sampleCtx)
+		}
+		if enforce && err == nil {
+			err = quotaFn(sampleCtx)
+		}
+		return err
+	})
+}
+
+func (s *Server) runLocalAccountingWorkerWithTick(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, tick func(context.Context, bool, bool) error) {
 	interval := checkpointInterval
 	if quotaInterval > 0 && quotaInterval < interval {
 		interval = quotaInterval
@@ -168,13 +188,7 @@ func (s *Server) runLocalAccountingWorker(ctx context.Context, name string, quot
 				timeout = 2 * time.Second
 			}
 			sampleCtx, cancel := context.WithTimeout(ctx, timeout)
-			var err error
-			if checkpoint {
-				err = checkpointFn(sampleCtx)
-			}
-			if enforce && err == nil {
-				err = quotaFn(sampleCtx)
-			}
+			err := tick(sampleCtx, enforce, checkpoint)
 			cancel()
 			if ctx.Err() == nil {
 				s.recordLocalAccountingHealth(name, err)

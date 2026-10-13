@@ -205,6 +205,17 @@ func (s *Server) quotaCheckXrayOffline(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	return s.quotaCheckXrayOfflineWithStats(ctx, snapshot, generation, policyIndex, stats)
+}
+
+func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *runtimePolicySnapshot, generation string, policyIndex *xrayQuotaPolicyIndex, stats []xrayStat) error {
+	if snapshot == nil || policyIndex == nil || !xrayPoliciesNeedLocalQuotaCheck(policyIndex.Policies) {
+		return nil
+	}
+	s.mu.Lock()
+	path, port := s.cfg.XrayPath, s.cfg.XrayAPIPort
+	s.mu.Unlock()
+	client := s.cachedXrayStatsClient(path, port)
 	s.xrayUsageMu.Lock()
 	defer s.xrayUsageMu.Unlock()
 	if err := s.ensureXrayUsageStateLoadedLocked(); err != nil {
