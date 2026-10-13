@@ -2,8 +2,6 @@ package nodeagent
 
 import (
 	"context"
-	"crypto/sha256"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,11 +51,14 @@ func TestStartRuntimeDoesNotBindXrayProcessToRequestContext(t *testing.T) {
 
 func TestStartXrayIfConfigUnchangedPreservesLiveProcess(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "xray.json")
-	config := []byte(`{"inbounds":[],"outbounds":[]}`)
+	config := []byte("{\"inbounds\":[], \"outbounds\":[]}")
 	if err := os.WriteFile(configPath, config, 0600); err != nil {
 		t.Fatal(err)
 	}
-	digest := sha256.Sum256(config)
+	digest, err := canonicalRuntimeConfigDigest([]byte("{\n  \"outbounds\": [],\n  \"inbounds\": []\n}"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	previousCommand := xrayCommandContext
 	t.Cleanup(func() { xrayCommandContext = previousCommand })
@@ -71,7 +72,7 @@ func TestStartXrayIfConfigUnchangedPreservesLiveProcess(t *testing.T) {
 	server.lastRuntime = &exec.Cmd{Process: &os.Process{Pid: 1}}
 	runtimeExited := make(chan struct{})
 	server.runtimeExited = runtimeExited
-	server.activeConfigSHA256 = fmt.Sprintf("%x", digest)
+	server.activeConfigSHA256 = digest
 	if err := server.startXrayIfConfigChanged(context.Background(), configPath); err != nil {
 		t.Fatalf("identical config on live runtime: %v", err)
 	}

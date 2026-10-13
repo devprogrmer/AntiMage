@@ -3,7 +3,6 @@ package nodeagent
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -827,6 +826,10 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	}
 	req = guarded
 	configJSON = req.GetConfigJson()
+	configDigest, err := canonicalRuntimeConfigDigest([]byte(configJSON))
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "canonicalize runtime config: "+err.Error())
+	}
 	// Persist the exact guarded policy that will be activated. Persisting the
 	// unguarded panel policy first would let a node restart offline and restore
 	// credentials that the durable quota guard had just denied.
@@ -875,8 +878,7 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	if req.GetDesiredRevision() > s.appliedRev {
 		s.appliedRev = req.GetDesiredRevision()
 	}
-	digest := sha256.Sum256([]byte(configJSON))
-	s.activeConfigSHA256 = fmt.Sprintf("%x", digest)
+	s.activeConfigSHA256 = configDigest
 	s.mu.Unlock()
 
 	return s.action(req.GetOperationId(), message), nil
@@ -887,8 +889,10 @@ func (s *Server) startXrayIfConfigChanged(ctx context.Context, configPath string
 	if err != nil {
 		return err
 	}
-	digest := sha256.Sum256(config)
-	wantHash := fmt.Sprintf("%x", digest)
+	wantHash, err := canonicalRuntimeConfigDigest(config)
+	if err != nil {
+		return fmt.Errorf("canonicalize Xray config: %w", err)
+	}
 	s.mu.Lock()
 	runtime, activeHash, exited := s.lastRuntime, s.activeConfigSHA256, s.runtimeExited
 	s.mu.Unlock()
@@ -915,7 +919,10 @@ func (s *Server) startXray(ctx context.Context, configPath string) error {
 	if err != nil {
 		return err
 	}
-	configDigest := sha256.Sum256(configBytes)
+	configDigest, err := canonicalRuntimeConfigDigest(configBytes)
+	if err != nil {
+		return fmt.Errorf("canonicalize Xray config: %w", err)
+	}
 	version := xrayVersionContext(ctx, s.cfg.XrayPath)
 	cmd := xrayCommandContext(context.Background(), s.cfg.XrayPath, "run", "-config", configPath)
 	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+s.cfg.XrayAssetsDir)
@@ -932,7 +939,7 @@ func (s *Server) startXray(ctx context.Context, configPath string) error {
 	s.runtimeExited = exited
 	s.runningCoreVersion = version
 	s.coreStartedAt = time.Now().UTC()
-	s.activeConfigSHA256 = fmt.Sprintf("%x", configDigest)
+	s.activeConfigSHA256 = configDigest
 	s.mu.Unlock()
 	s.appendLog("xray runtime started")
 	go func() {
