@@ -33,3 +33,23 @@ func TestLocalQuotaCombinesProtocolsAndDoesNotMultiplyReflectedUsage(t *testing.
 		t.Fatal("other user inherited shared quota")
 	}
 }
+
+func TestLocalQuotaAggregateUpdatesOwnerWithoutScanningStaleValue(t *testing.T) {
+	s := New(Config{DataDir: t.TempDir()})
+	policy := nativeSessionUserPolicy{Status: "active", DataLimit: 100}
+	if allowed, _ := s.localQuotaAllowed("wireguard", 10, "wg", policy, 60, time.Now()); !allowed {
+		t.Fatal("first protocol sample unexpectedly denied")
+	}
+	if allowed, _ := s.localQuotaAllowed("openvpn", 10, "ov", policy, 50, time.Now()); allowed {
+		t.Fatal("combined samples exceeded quota but were allowed")
+	}
+	if allowed, _ := s.localQuotaAllowed("wireguard", 10, "wg", policy, 20, time.Now()); !allowed {
+		t.Fatal("updating one protocol retained its stale 60 byte sample")
+	}
+	if allowed, _ := s.localQuotaAllowed("openvpn", 10, "ov", policy, 50, time.Now()); !allowed {
+		t.Fatal("updated 20+50 byte usage should be below quota")
+	}
+	if got := s.localQuotaAggregates[localQuotaAggregateKey{UserID: 10}]; got != 70 {
+		t.Fatalf("indexed aggregate=%d, want 70", got)
+	}
+}

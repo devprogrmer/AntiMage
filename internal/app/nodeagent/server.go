@@ -51,6 +51,7 @@ type Server struct {
 	localUsageLoaded                 bool
 	localUsageDeliveries             []localUsageDelivery
 	localQuotaViews                  map[localQuotaOwner]localQuotaView
+	localQuotaAggregates             map[localQuotaAggregateKey]uint64
 	runtimePolicy                    *runtimePolicySnapshot
 	runtimeExited                    <-chan struct{}
 	activeConfigSHA256               string
