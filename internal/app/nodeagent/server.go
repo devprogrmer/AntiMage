@@ -1014,7 +1014,7 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 	configHash, coreVersion, coreStartedAt := s.activeConfigSHA256, s.runningCoreVersion, s.coreStartedAt
 	torProxyCount := len(s.torProxies)
 	s.mu.Unlock()
-	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "runtime_evidence_v1"}
+	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "runtime_evidence_v1", "targeted_user_update_vless"}
 	if s.verifiedInstallerAvailable() {
 		capabilities = append(capabilities, "verified_updates_v1", "shared_fencing_v1", "command_idempotency_v1", "config_identity_v1")
 	} else if !strings.EqualFold(s.cfg.InstallMode, "binary") && nativeFencingAvailable() {

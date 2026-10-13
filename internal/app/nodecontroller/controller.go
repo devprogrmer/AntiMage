@@ -931,7 +931,7 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow, 
 					return err
 				}
 			}
-			if operation.OperationType == "update_user" && !client.Supports("targeted_user_update") {
+			if operation.OperationType == "update_user" && !client.Supports("targeted_user_update_vless") {
 				syncConfig = true
 			}
 			if !syncConfig {

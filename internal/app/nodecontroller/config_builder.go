@@ -386,12 +386,10 @@ func serviceRequiresFullUserSync(
 }
 
 func protocolRequiresFullUserSync(protocol string) bool {
-	switch strings.ToLower(strings.TrimSpace(protocol)) {
-	case xrayconfig.OVProtocol, xrayconfig.L2TPProtocol, xrayconfig.PPTPProtocol, xrayconfig.WGProtocol, xrayconfig.AWGProtocol, xrayconfig.IKEv2Protocol, xrayconfig.AnyConnectProtocol:
-		return true
-	default:
+	if strings.EqualFold(strings.TrimSpace(protocol), "vless") {
 		return false
 	}
+	return true
 }
 
 func (c Controller) loadRuntimeConfigData(ctx context.Context) (*runtimeConfigData, error) {

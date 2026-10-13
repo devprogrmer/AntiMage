@@ -124,6 +124,19 @@ func TestNodeRuntimeUserOperationsDoNotReportUnsupportedMutationsAsAccepted(t *t
 	}
 }
 
+func TestRuntimeStateAdvertisesOnlyImplementedVLESSUpdateCapability(t *testing.T) {
+	state := New(Config{}).runtimeState("test")
+	for _, capability := range state.GetCapabilities() {
+		if capability == "targeted_user_update_vless" {
+			return
+		}
+		if capability == "targeted_user_update" {
+			t.Fatal("generic targeted user update capability overstates protocol support")
+		}
+	}
+	t.Fatal("targeted_user_update_vless capability missing although VLESS update RPC is implemented")
+}
+
 func TestXrayVLESSUserOperationsAreIdempotentAndRollbackFailedUpdate(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
