@@ -109,7 +109,9 @@ func (s *Server) startAnyConnectInbound(runtime preparedAnyConnectRuntime) error
 	cmd := anyConnectCommandContext(context.Background(), path, "-f", "-c", runtime.Files.ConfigPath)
 	cmd.Stdout = logWriter{server: s}
 	cmd.Stderr = logWriter{server: s}
-	cmd.Env = os.Environ()
+	if cmd.Env == nil {
+		cmd.Env = os.Environ()
+	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("anyconnect %q: start: %w", tag, err)
 	}
