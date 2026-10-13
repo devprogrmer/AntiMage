@@ -55,6 +55,7 @@ type l2TPRuntimeFiles struct {
 	IPDownScript  string
 	SessionConfig string
 	UsageConfig   string
+	Identity      [32]byte
 }
 
 func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeRuntimeSessionCallback) (l2TPRuntimeFiles, error) {
@@ -96,13 +97,13 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 		UsageConfig:   filepath.Join(root, "usage-helper.json"),
 	}
 
-	if err := os.WriteFile(files.IPSecConfig, []byte(renderL2TPIPSecConfig()), 0600); err != nil {
+	if err := atomicWriteFile(files.IPSecConfig, []byte(renderL2TPIPSecConfig()), 0600); err != nil {
 		return l2TPRuntimeFiles{}, err
 	}
-	if err := os.WriteFile(files.IPSecSecrets, []byte(renderL2TPIPSecSecrets(l2TPStringSetting(inbound.Settings, "ipsec_psk", ""))), 0600); err != nil {
+	if err := atomicWriteFile(files.IPSecSecrets, []byte(renderL2TPIPSecSecrets(l2TPStringSetting(inbound.Settings, "ipsec_psk", ""))), 0600); err != nil {
 		return l2TPRuntimeFiles{}, err
 	}
-	if err := os.WriteFile(files.CHAPSecrets, []byte(renderL2TPCHAPSecrets(inbound.Users)), 0600); err != nil {
+	if err := atomicWriteFile(files.CHAPSecrets, []byte(renderL2TPCHAPSecrets(inbound.Users)), 0600); err != nil {
 		return l2TPRuntimeFiles{}, err
 	}
 
@@ -133,7 +134,7 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 			err,
 		)
 	}
-	if err := os.WriteFile(files.UsageConfig, rawUsageConfig, 0600); err != nil {
+	if err := atomicWriteFile(files.UsageConfig, rawUsageConfig, 0600); err != nil {
 		return l2TPRuntimeFiles{}, fmt.Errorf(
 			"l2tp %q: write usage config: %w",
 			tag,
@@ -142,6 +143,7 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 	}
 
 	needsSessionHelper := true // Accounting hooks must also run while the Panel is offline.
+	helperExecutable := ""
 
 	if !needsSessionHelper {
 		files.IPUpScript = ""
@@ -149,10 +151,10 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 		files.SessionConfig = ""
 	}
 
-	if err := os.WriteFile(files.PPPOptions, []byte(renderL2TPPPPOptions(inbound, files, localIP)), 0600); err != nil {
+	if err := atomicWriteFile(files.PPPOptions, []byte(renderL2TPPPPOptions(inbound, files, localIP)), 0600); err != nil {
 		return l2TPRuntimeFiles{}, err
 	}
-	if err := os.WriteFile(files.XL2TPConfig, []byte(renderL2TPXL2TPDConfig(files, localIP, remoteRange)), 0600); err != nil {
+	if err := atomicWriteFile(files.XL2TPConfig, []byte(renderL2TPXL2TPDConfig(files, localIP, remoteRange)), 0600); err != nil {
 		return l2TPRuntimeFiles{}, err
 	}
 
@@ -165,6 +167,7 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 		if err != nil {
 			return l2TPRuntimeFiles{}, fmt.Errorf("l2tp %q: resolve absolute node executable: %w", tag, err)
 		}
+		helperExecutable = executable
 		sessionUsers := map[string]int64{}
 		for _, user := range inbound.Users {
 			username := l2TPRuntimeUsername(user)
@@ -191,19 +194,35 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 		if err := os.MkdirAll(config.StateDir, 0700); err != nil {
 			return l2TPRuntimeFiles{}, fmt.Errorf("l2tp %q: create session state directory: %w", tag, err)
 		}
-		if err := os.WriteFile(files.SessionConfig, rawConfig, 0600); err != nil {
+		if err := atomicWriteFile(files.SessionConfig, rawConfig, 0600); err != nil {
 			return l2TPRuntimeFiles{}, fmt.Errorf("l2tp %q: write session helper config: %w", tag, err)
 		}
 		connect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " start \"${6:-}\"\n"
 		disconnect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " stop \"${6:-}\"\n"
-		if err := os.WriteFile(files.IPUpScript, []byte(connect), 0700); err != nil {
+		if err := atomicWriteFile(files.IPUpScript, []byte(connect), 0700); err != nil {
 			return l2TPRuntimeFiles{}, err
 		}
-		if err := os.WriteFile(files.IPDownScript, []byte(disconnect), 0700); err != nil {
+		if err := atomicWriteFile(files.IPDownScript, []byte(disconnect), 0700); err != nil {
 			return l2TPRuntimeFiles{}, err
 		}
 	}
 
+	identity := sha256.New()
+	for _, path := range []string{files.IPSecConfig, files.IPSecSecrets, files.XL2TPConfig, files.PPPOptions, files.CHAPSecrets, files.IPUpScript, files.IPDownScript, files.SessionConfig, files.UsageConfig} {
+		identity.Write([]byte{0})
+		if path == "" {
+			continue
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return l2TPRuntimeFiles{}, fmt.Errorf("l2tp %q: read runtime identity input: %w", tag, err)
+		}
+		identity.Write(content)
+	}
+	if helperExecutable != "" {
+		identity.Write([]byte(renderL2TPSystemIPPreUpHook(helperExecutable, files.SessionConfig)))
+	}
+	copy(files.Identity[:], identity.Sum(nil))
 	return files, nil
 }
 

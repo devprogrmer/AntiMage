@@ -1,6 +1,7 @@
 package nodeagent
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -36,7 +37,8 @@ var (
 )
 
 type l2TPProcess struct {
-	tag string
+	tag      string
+	identity [32]byte
 }
 
 func preflightL2TPRuntimes(runtimes []preparedL2TPRuntime) error {
@@ -135,7 +137,45 @@ func updateL2TPManagedBlock(
 		text += block
 	}
 
-	return os.WriteFile(path, []byte(text), 0600)
+	return atomicWriteFile(path, []byte(text), 0600)
+}
+
+type l2TPInstallChanges struct {
+	ipsec  bool
+	xl2tpd bool
+}
+
+func readL2TPConfig(path string) ([]byte, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	return raw, err
+}
+
+func l2TPManagedBlockBody(path, start, end string) ([]byte, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	text := string(raw)
+	startAt := strings.Index(text, start)
+	if startAt < 0 {
+		return nil, nil
+	}
+	endAt := strings.Index(text[startAt+len(start):], end)
+	if endAt < 0 {
+		return nil, nil
+	}
+	bodyStart := startAt + len(start)
+	if bodyStart < len(text) && text[bodyStart] == '\n' {
+		bodyStart++
+	}
+	bodyEnd := startAt + len(start) + endAt
+	return []byte(strings.TrimRight(text[bodyStart:bodyEnd], "\r\n")), nil
 }
 
 func installL2TPSystemConfig(
@@ -144,25 +184,50 @@ func installL2TPSystemConfig(
 	xl2tpConfig string,
 	chapSecrets string,
 ) error {
+	_, err := installL2TPSystemConfigChanges(ipsecConfig, ipsecSecrets, xl2tpConfig, chapSecrets)
+	return err
+}
+
+func installL2TPSystemConfigChanges(
+	ipsecConfig string,
+	ipsecSecrets string,
+	xl2tpConfig string,
+	chapSecrets string,
+) (l2TPInstallChanges, error) {
+	changes := l2TPInstallChanges{}
 	rawIPSec, err := os.ReadFile(ipsecConfig)
 	if err != nil {
-		return fmt.Errorf("read L2TP ipsec config: %w", err)
+		return changes, fmt.Errorf("read L2TP ipsec config: %w", err)
 	}
 
 	rawSecrets, err := os.ReadFile(ipsecSecrets)
 	if err != nil {
-		return fmt.Errorf("read L2TP ipsec secrets: %w", err)
+		return changes, fmt.Errorf("read L2TP ipsec secrets: %w", err)
 	}
 
 	rawXL2TP, err := os.ReadFile(xl2tpConfig)
 	if err != nil {
-		return fmt.Errorf("read L2TP xl2tpd config: %w", err)
+		return changes, fmt.Errorf("read L2TP xl2tpd config: %w", err)
 	}
 
 	rawCHAP, err := os.ReadFile(chapSecrets)
 	if err != nil {
-		return fmt.Errorf("read L2TP chap secrets: %w", err)
+		return changes, fmt.Errorf("read L2TP chap secrets: %w", err)
 	}
+	beforeIPSec, err := l2TPManagedBlockBody(l2TPIPSecConfigPath, l2TPIPSecBlockStart, l2TPIPSecBlockEnd)
+	if err != nil {
+		return changes, fmt.Errorf("read existing L2TP ipsec config: %w", err)
+	}
+	beforeSecrets, err := l2TPManagedBlockBody(l2TPIPSecSecretsPath, l2TPSecretBlockStart, l2TPSecretBlockEnd)
+	if err != nil {
+		return changes, fmt.Errorf("read existing L2TP ipsec secrets: %w", err)
+	}
+	beforeXL2TP, err := readL2TPConfig(l2TPXL2TPConfigPath)
+	if err != nil {
+		return changes, fmt.Errorf("read existing L2TP xl2tpd config: %w", err)
+	}
+	changes.ipsec = !bytes.Equal(beforeIPSec, bytes.TrimRight(rawIPSec, "\r\n")) || !bytes.Equal(beforeSecrets, bytes.TrimRight(rawSecrets, "\r\n"))
+	changes.xl2tpd = !bytes.Equal(beforeXL2TP, rawXL2TP)
 
 	if err := updateL2TPManagedBlock(
 		l2TPIPSecConfigPath,
@@ -170,7 +235,7 @@ func installL2TPSystemConfig(
 		l2TPIPSecBlockEnd,
 		string(rawIPSec),
 	); err != nil {
-		return fmt.Errorf("update %s: %w", l2TPIPSecConfigPath, err)
+		return changes, fmt.Errorf("update %s: %w", l2TPIPSecConfigPath, err)
 	}
 
 	if err := updateL2TPManagedBlock(
@@ -179,11 +244,11 @@ func installL2TPSystemConfig(
 		l2TPSecretBlockEnd,
 		string(rawSecrets),
 	); err != nil {
-		return fmt.Errorf("update %s: %w", l2TPIPSecSecretsPath, err)
+		return changes, fmt.Errorf("update %s: %w", l2TPIPSecSecretsPath, err)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(l2TPCHAPSecretsPath), 0755); err != nil {
-		return fmt.Errorf("create %s: %w", filepath.Dir(l2TPCHAPSecretsPath), err)
+		return changes, fmt.Errorf("create %s: %w", filepath.Dir(l2TPCHAPSecretsPath), err)
 	}
 
 	if err := updateL2TPManagedBlock(
@@ -192,22 +257,18 @@ func installL2TPSystemConfig(
 		l2TPCHAPBlockEnd,
 		string(rawCHAP),
 	); err != nil {
-		return fmt.Errorf("update %s: %w", l2TPCHAPSecretsPath, err)
+		return changes, fmt.Errorf("update %s: %w", l2TPCHAPSecretsPath, err)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(l2TPXL2TPConfigPath), 0755); err != nil {
-		return fmt.Errorf("create %s: %w", filepath.Dir(l2TPXL2TPConfigPath), err)
+		return changes, fmt.Errorf("create %s: %w", filepath.Dir(l2TPXL2TPConfigPath), err)
 	}
 
-	if err := os.WriteFile(
-		l2TPXL2TPConfigPath,
-		rawXL2TP,
-		0600,
-	); err != nil {
-		return fmt.Errorf("write %s: %w", l2TPXL2TPConfigPath, err)
+	if err := atomicWriteFile(l2TPXL2TPConfigPath, rawXL2TP, 0600); err != nil {
+		return changes, fmt.Errorf("write %s: %w", l2TPXL2TPConfigPath, err)
 	}
 
-	return nil
+	return changes, nil
 }
 
 func applyL2TPIPSec(
@@ -392,18 +453,20 @@ func (s *Server) startL2TPInbound(
 	xl2tpConfig string,
 	chapSecrets string,
 	sessionConfig string,
+	identity [32]byte,
 ) error {
 	tag = strings.TrimSpace(tag)
 	if tag == "" {
 		return fmt.Errorf("l2tp runtime tag is required")
 	}
 
-	if err := installL2TPSystemConfig(
+	changes, err := installL2TPSystemConfigChanges(
 		ipsecConfig,
 		ipsecSecrets,
 		xl2tpConfig,
 		chapSecrets,
-	); err != nil {
+	)
+	if err != nil {
 		return fmt.Errorf(
 			"l2tp %q: install system config: %w",
 			tag,
@@ -422,27 +485,35 @@ func (s *Server) startL2TPInbound(
 		return fmt.Errorf("l2tp %q: install system ip-pre-up hook: %w", tag, err)
 	}
 
-	if err := applyL2TPIPSec(s, tag); err != nil {
-		_ = clearL2TPSystemIPPreUpHook()
-		return err
+	s.mu.Lock()
+	previous := s.l2TPRuntimes[tag]
+	s.mu.Unlock()
+	if previous == nil || changes.ipsec {
+		if err := applyL2TPIPSec(s, tag); err != nil {
+			_ = clearL2TPSystemIPPreUpHook()
+			return err
+		}
+	}
+	if previous == nil || changes.xl2tpd {
+		if err := startL2TPSystemService(s); err != nil {
+			_ = clearL2TPSystemIPPreUpHook()
+			return fmt.Errorf("l2tp %q: %w", tag, err)
+		}
 	}
 
-	if err := startL2TPSystemService(s); err != nil {
-		_ = clearL2TPSystemIPPreUpHook()
-		return fmt.Errorf(
-			"l2tp %q: %w",
-			tag,
-			err,
-		)
-	}
-
-	runtime := &l2TPProcess{tag: tag}
+	runtime := &l2TPProcess{tag: tag, identity: identity}
 
 	s.mu.Lock()
 	s.l2TPRuntimes[tag] = runtime
 	s.mu.Unlock()
 
-	s.appendLog("l2tp runtime started: " + tag)
+	if previous != nil && previous.identity == identity && !changes.ipsec && !changes.xl2tpd {
+		s.appendLog("l2tp runtime unchanged: " + tag)
+	} else if previous != nil && !changes.ipsec && !changes.xl2tpd {
+		s.appendLog("l2tp runtime updated without disconnecting PPP sessions: " + tag)
+	} else {
+		s.appendLog("l2tp runtime started: " + tag)
+	}
 	return nil
 }
 

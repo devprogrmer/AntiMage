@@ -74,6 +74,7 @@ type preparedL2TPRuntime struct {
 	XL2TPConfig   string
 	CHAPSecrets   string
 	SessionConfig string
+	Identity      [32]byte
 	TProxy        openVPNTProxySpec
 	NAT           openVPNNATSpec
 }
@@ -333,6 +334,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 				XL2TPConfig:   files.XL2TPConfig,
 				CHAPSecrets:   files.CHAPSecrets,
 				SessionConfig: files.SessionConfig,
+				Identity:      files.Identity,
 				TProxy:        tproxy,
 				NAT:           nat,
 			},
@@ -582,6 +584,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 			runtime.XL2TPConfig,
 			runtime.CHAPSecrets,
 			runtime.SessionConfig,
+			runtime.Identity,
 		); err != nil {
 			_ = s.removeL2TPTProxyForTag(runtime.Tag)
 			_ = s.removeL2TPNATForTag(runtime.Tag)
