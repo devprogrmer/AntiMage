@@ -66,7 +66,14 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 	defer echoListener.Close()
 
 	echoPort := echoListener.Addr().(*net.TCPAddr).Port
+	otherEchoListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("start unrelated-user echo listener: %v", err)
+	}
+	defer otherEchoListener.Close()
+	otherEchoPort := otherEchoListener.Addr().(*net.TCPAddr).Port
 	usedPorts := map[int]bool{echoPort: true}
+	usedPorts[otherEchoPort] = true
 
 	nextPort := func() int {
 		for {
@@ -81,10 +88,13 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 	apiPort := nextPort()
 	serverPort := nextPort()
 	clientPort := nextPort()
+	otherClientPort := nextPort()
 
 	const (
-		userEmail = "7.rb1_bmF0aXZl.native-user"
-		userID    = "11111111-1111-4111-8111-111111111111"
+		userEmail      = "7.rb1_bmF0aXZl.native-user"
+		userID         = "11111111-1111-4111-8111-111111111111"
+		otherUserEmail = "8.rb1_bmF0aXZl.unrelated-user"
+		otherUserID    = "33333333-3333-4333-8333-333333333333"
 	)
 
 	serverConfig := fmt.Sprintf(`{
@@ -130,6 +140,11 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 "id": "%s",
 "email": "%s",
 "level": 0
+},
+{
+"id": "%s",
+"email": "%s",
+"level": 0
 }
 ],
 "decryption": "none"
@@ -159,7 +174,7 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 }
 ]
 }
-}`, apiPort, serverPort, userID, userEmail)
+	}`, apiPort, serverPort, userID, userEmail, otherUserID, otherUserEmail)
 
 	clientConfig := fmt.Sprintf(`{
 "log": {
@@ -201,15 +216,40 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 ]
 }`, clientPort, echoPort, serverPort, userID)
 
+	otherClientConfig := fmt.Sprintf(`{
+"log": {"loglevel": "warning"},
+"inbounds": [{
+"listen": "127.0.0.1",
+"port": %d,
+"protocol": "dokodemo-door",
+"settings": {"address": "127.0.0.1", "port": %d, "network": "tcp"},
+"tag": "unrelated-e2e-entry"
+}],
+"outbounds": [{
+"protocol": "vless",
+"sendThrough": "127.0.0.3",
+"settings": {"vnext": [{
+"address": "127.0.0.1",
+"port": %d,
+"users": [{"id": "%s", "encryption": "none"}]
+}]},
+"tag": "unrelated-e2e-vless"
+}]
+}`, otherClientPort, otherEchoPort, serverPort, otherUserID)
+
 	tmp := t.TempDir()
 	serverConfigPath := filepath.Join(tmp, "server.json")
 	clientConfigPath := filepath.Join(tmp, "client.json")
+	otherClientConfigPath := filepath.Join(tmp, "other-client.json")
 
 	if err := os.WriteFile(serverConfigPath, []byte(serverConfig), 0600); err != nil {
 		t.Fatalf("write server config: %v", err)
 	}
 	if err := os.WriteFile(clientConfigPath, []byte(clientConfig), 0600); err != nil {
 		t.Fatalf("write client config: %v", err)
+	}
+	if err := os.WriteFile(otherClientConfigPath, []byte(otherClientConfig), 0600); err != nil {
+		t.Fatalf("write unrelated-user client config: %v", err)
 	}
 
 	serverProcess := realXrayStartProcess(t, xrayPath, serverConfigPath)
@@ -399,6 +439,45 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 		runNativeXrayAccountingStage(t, "ack", nativeState, xrayPath, apiPort, generationB, batchB.GetBatchId())
 	}
 
+	// Keep an unrelated authenticated user's stream live while targeted mutations
+	// are applied to userEmail. This detects whole-process restarts and accidental
+	// cross-user disconnects in the real Xray HandlerService path.
+	otherClientProcess := realXrayStartProcess(t, xrayPath, otherClientConfigPath)
+	realXrayWaitForTCP(t, otherClientPort, otherClientProcess.logs)
+	otherAccepted := make(chan net.Conn, 1)
+	otherAcceptErr := make(chan error, 1)
+	go func() {
+		conn, acceptErr := otherEchoListener.Accept()
+		if acceptErr != nil {
+			otherAcceptErr <- acceptErr
+			return
+		}
+		otherAccepted <- conn
+	}()
+	otherClientConn := realXrayDialUntilReady(t, otherClientPort, otherClientProcess.logs)
+	defer otherClientConn.Close()
+	otherProbe := []byte("unrelated-user-before-mutation")
+	if _, err := otherClientConn.Write(otherProbe); err != nil {
+		t.Fatalf("write unrelated-user probe: %v", err)
+	}
+	var otherUpstream net.Conn
+	select {
+	case otherUpstream = <-otherAccepted:
+		defer otherUpstream.Close()
+	case acceptErr := <-otherAcceptErr:
+		t.Fatalf("unrelated-user echo accept: %v", acceptErr)
+	case <-time.After(5 * time.Second):
+		t.Fatalf("unrelated user did not establish a tunnel\nserver:\n%s\nclient:\n%s", serverProcess.logs.String(), otherClientProcess.logs.String())
+	}
+	if err := otherUpstream.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	otherGot := make([]byte, len(otherProbe))
+	if _, err := io.ReadFull(otherUpstream, otherGot); err != nil || !bytes.Equal(otherGot, otherProbe) {
+		t.Fatalf("unrelated-user probe round-trip=%q err=%v", otherGot, err)
+	}
+	xrayPIDBeforeMutation := serverProcess.cmd.Process.Pid
+
 	// Keep the connection open but idle. Online state must come from OnlineMap,
 	// not from a fresh traffic delta.
 	time.Sleep(750 * time.Millisecond)
@@ -538,6 +617,20 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 	cancel()
 	if err != nil || !removeUpdated.GetAccepted() {
 		t.Fatalf("remove updated real Xray user: response=%v err=%v", removeUpdated, err)
+	}
+	if got := serverProcess.cmd.Process.Pid; got != xrayPIDBeforeMutation {
+		t.Fatalf("targeted Xray user mutations restarted the daemon: pid %d -> %d", xrayPIDBeforeMutation, got)
+	}
+	otherAfterMutation := []byte("unrelated-user-after-targeted-mutations")
+	if _, err := otherClientConn.Write(otherAfterMutation); err != nil {
+		t.Fatalf("write unrelated-user stream after targeted mutations: %v", err)
+	}
+	if err := otherUpstream.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	otherGot = make([]byte, len(otherAfterMutation))
+	if _, err := io.ReadFull(otherUpstream, otherGot); err != nil || !bytes.Equal(otherGot, otherAfterMutation) {
+		t.Fatalf("unrelated-user stream after targeted mutations=%q err=%v", otherGot, err)
 	}
 	realXrayWaitForOffline(t, onlineClient, userEmail)
 }

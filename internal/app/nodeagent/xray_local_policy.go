@@ -41,6 +41,41 @@ func xrayPoliciesNeedLocalQuotaCheck(policies []xrayLocalUserPolicy) bool {
 	return false
 }
 
+// xrayQuotaUsageTotals groups counter deltas by policy email in one pass. The
+// old quota path scanned every counter once per user, making each tick
+// proportional to users multiplied by stats series.
+func xrayQuotaUsageTotals(
+	counters map[string]accountingCounter,
+	baselines map[string]uint64,
+	policies []xrayLocalUserPolicy,
+) (map[string]uint64, error) {
+	relevant := make(map[string]struct{}, len(policies))
+	totals := make(map[string]uint64, len(policies))
+	for _, policy := range policies {
+		relevant[policy.Email] = struct{}{}
+	}
+	for key, counter := range counters {
+		separator := strings.LastIndexByte(key, ':')
+		if separator <= 0 {
+			continue
+		}
+		email := key[:separator]
+		if _, ok := relevant[email]; !ok {
+			continue
+		}
+		baseline := baselines[key]
+		if counter.Total < baseline {
+			return nil, fmt.Errorf("xray quota baseline exceeds logical total")
+		}
+		delta := counter.Total - baseline
+		if ^uint64(0)-totals[email] < delta {
+			return nil, fmt.Errorf("xray quota overflow")
+		}
+		totals[email] += delta
+	}
+	return totals, nil
+}
+
 func (s *Server) markRestoredXrayRevocations(nativeJSON, configJSON string) error {
 	payload, err := parseNativeRuntimePayload(nativeJSON)
 	if err != nil {
@@ -114,23 +149,13 @@ func (s *Server) quotaCheckXrayOffline(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	usageTotals, err := xrayQuotaUsageTotals(counters, s.xrayUsageBaseline, payload.XrayPolicies)
+	if err != nil {
+		return err
+	}
 	var enforcementErr error
 	for _, policy := range payload.XrayPolicies {
-		var raw uint64
-		for key, counter := range counters {
-			if !strings.HasPrefix(key, policy.Email+":") {
-				continue
-			}
-			baseline := s.xrayUsageBaseline[key]
-			if counter.Total < baseline {
-				return fmt.Errorf("xray quota baseline exceeds logical total")
-			}
-			delta := counter.Total - baseline
-			if ^uint64(0)-raw < delta {
-				return fmt.Errorf("xray quota overflow")
-			}
-			raw += delta
-		}
+		raw := usageTotals[policy.Email]
 		pendingID := ""
 		if p := s.xrayUsagePending; p != nil {
 			pendingID = p.BatchID
