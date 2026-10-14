@@ -11,6 +11,8 @@ import (
 
 const ikev2FirewallChain = "ANTIMAGE_IKEV2_INPUT"
 
+var ikev2FirewallCommand = runIKEv2Firewall
+
 func runIKEv2Firewall(
 	ctx context.Context,
 	args ...string,
@@ -37,7 +39,7 @@ func ensureIKEv2Firewall() error {
 		)
 	defer cancel()
 
-	output, err := runIKEv2Firewall(
+	output, err := ikev2FirewallCommand(
 		ctx,
 		"-w", "5",
 		"-N",
@@ -65,27 +67,19 @@ func ensureIKEv2Firewall() error {
 		}
 	}
 
-	if _, err := runIKEv2Firewall(
-		ctx,
-		"-w", "5",
-		"-F",
-		ikev2FirewallChain,
-	); err != nil {
-		return err
-	}
-
 	for _, port := range []string{
 		"500",
 		"4500",
 	} {
-		if _, err := runIKEv2Firewall(
+		rule := []string{"-w", "5", "-p", "udp", "--dport", port, "-j", "ACCEPT"}
+		check := append([]string{"-w", "5", "-C", ikev2FirewallChain}, rule[2:]...)
+		if _, err := ikev2FirewallCommand(ctx, check...); err == nil {
+			continue
+		}
+		appendRule := append([]string{"-w", "5", "-A", ikev2FirewallChain}, rule[2:]...)
+		if _, err := ikev2FirewallCommand(
 			ctx,
-			"-w", "5",
-			"-A",
-			ikev2FirewallChain,
-			"-p", "udp",
-			"--dport", port,
-			"-j", "ACCEPT",
+			appendRule...,
 		); err != nil {
 			return fmt.Errorf(
 				"allow IKEv2 UDP/%s: %w",
@@ -95,14 +89,14 @@ func ensureIKEv2Firewall() error {
 		}
 	}
 
-	if _, err := runIKEv2Firewall(
+	if _, err := ikev2FirewallCommand(
 		ctx,
 		"-w", "5",
 		"-C", "INPUT",
 		"-j",
 		ikev2FirewallChain,
 	); err != nil {
-		if _, err := runIKEv2Firewall(
+		if _, err := ikev2FirewallCommand(
 			ctx,
 			"-w", "5",
 			"-I", "INPUT", "1",
@@ -127,7 +121,7 @@ func cleanupIKEv2Firewall() {
 		)
 	defer cancel()
 
-	_, _ = runIKEv2Firewall(
+	_, _ = ikev2FirewallCommand(
 		ctx,
 		"-w", "5",
 		"-D", "INPUT",
@@ -135,14 +129,14 @@ func cleanupIKEv2Firewall() {
 		ikev2FirewallChain,
 	)
 
-	_, _ = runIKEv2Firewall(
+	_, _ = ikev2FirewallCommand(
 		ctx,
 		"-w", "5",
 		"-F",
 		ikev2FirewallChain,
 	)
 
-	_, _ = runIKEv2Firewall(
+	_, _ = ikev2FirewallCommand(
 		ctx,
 		"-w", "5",
 		"-X",

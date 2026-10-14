@@ -137,6 +137,9 @@ func updateL2TPManagedBlock(
 		}
 		text += block
 	}
+	if bytes.Equal(existing, []byte(text)) {
+		return nil
+	}
 
 	return atomicWriteFile(path, []byte(text), 0600)
 }
