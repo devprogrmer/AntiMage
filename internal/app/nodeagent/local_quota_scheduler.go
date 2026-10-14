@@ -122,7 +122,7 @@ func (s *Server) runLocalQuotaScheduler(ctx context.Context, quotaInterval, chec
 	group.Add(1)
 	go func() {
 		defer group.Done()
-		s.runLocalAccountingWorkerWithTick(ctx, "xray", quotaInterval, checkpointInterval,
+		s.runLocalAccountingWorkerWithWakeAdaptive(ctx, "xray", quotaInterval, checkpointInterval, s.localQuotaWakeChannel("xray"), s.xrayQuotaAdaptiveInterval,
 			func(sampleCtx context.Context, enforce, checkpoint bool) error {
 				return s.xrayLocalAccountingTick(sampleCtx, checkpoint, enforce)
 			})
@@ -143,7 +143,7 @@ func (s *Server) runLocalQuotaScheduler(ctx context.Context, quotaInterval, chec
 // One serial worker per native runtime coalesces overdue ticks: slow daemons do
 // not block other protocols and never accumulate overlapping commands.
 func (s *Server) runLocalAccountingWorker(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, checkpointFn, quotaFn func(context.Context) error) {
-	s.runLocalAccountingWorkerWithTick(ctx, name, quotaInterval, checkpointInterval, func(sampleCtx context.Context, enforce, checkpoint bool) error {
+	s.runLocalAccountingWorkerWithWakeAdaptive(ctx, name, quotaInterval, checkpointInterval, s.localQuotaWakeChannel(name), nil, func(sampleCtx context.Context, enforce, checkpoint bool) error {
 		var err error
 		if checkpoint {
 			err = checkpointFn(sampleCtx)
@@ -156,35 +156,128 @@ func (s *Server) runLocalAccountingWorker(ctx context.Context, name string, quot
 }
 
 func (s *Server) runLocalAccountingWorkerWithTick(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, tick func(context.Context, bool, bool) error) {
-	interval := checkpointInterval
-	if quotaInterval > 0 && quotaInterval < interval {
-		interval = quotaInterval
+	s.runLocalAccountingWorkerWithWakeAdaptive(ctx, name, quotaInterval, checkpointInterval, nil, nil, tick)
+}
+
+func (s *Server) localQuotaWakeChannel(name string) chan struct{} {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	nextQuota, nextCheckpoint := time.Now(), time.Now()
+	s.mu.Lock()
+	if s.localQuotaWakeups == nil {
+		s.localQuotaWakeups = make(map[string]chan struct{})
+	}
+	wake := s.localQuotaWakeups[name]
+	if wake == nil {
+		wake = make(chan struct{}, 1)
+		s.localQuotaWakeups[name] = wake
+	}
+	s.mu.Unlock()
+	return wake
+}
+
+func (s *Server) wakeLocalQuota(name string) {
+	wake := s.localQuotaWakeChannel(name)
+	select {
+	case wake <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Server) wakeLocalQuotaForRuntime(rawValues ...string) {
+	var xray, wireguard, amneziaWG, openVPN, ppp, ikev2, anyconnect bool
+	for _, raw := range rawValues {
+		payload, err := parseNativeRuntimePayload(raw)
+		if err != nil {
+			continue
+		}
+		xray = xray || len(payload.XrayPolicies) > 0
+		wireguard = wireguard || len(payload.WireGuardInbounds) > 0
+		amneziaWG = amneziaWG || len(payload.AmneziaWGInbounds) > 0
+		openVPN = openVPN || len(payload.OpenVPNInbounds) > 0
+		ppp = ppp || len(payload.L2TPInbounds) > 0 || len(payload.PPTPInbounds) > 0
+		ikev2 = ikev2 || len(payload.IKEv2Inbounds) > 0
+		anyconnect = anyconnect || len(payload.AnyConnectInbounds) > 0
+	}
+	if xray {
+		s.wakeLocalQuota("xray")
+	}
+	if wireguard {
+		s.wakeLocalQuota("wireguard")
+	}
+	if amneziaWG {
+		s.wakeLocalQuota("amneziawg")
+	}
+	if openVPN {
+		s.wakeLocalQuota("openvpn")
+	}
+	if ppp {
+		s.wakeLocalQuota("ppp")
+	}
+	if ikev2 {
+		s.wakeLocalQuota("ikev2")
+	}
+	if anyconnect {
+		s.wakeLocalQuota("anyconnect")
+	}
+}
+
+func (s *Server) runLocalAccountingWorkerWithWakeAdaptive(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, wake <-chan struct{}, adaptiveInterval func() time.Duration, tick func(context.Context, bool, bool) error) {
+	now := time.Now()
+	nextQuota, nextCheckpoint := time.Time{}, time.Time{}
+	if quotaInterval > 0 {
+		nextQuota = now
+	}
+	if checkpointInterval > 0 {
+		nextCheckpoint = now
+	}
 	for {
+		next := nearestQuotaDeadline(nextQuota, nextCheckpoint)
+		var timer *time.Timer
+		var timerC <-chan time.Time
+		if !next.IsZero() {
+			wait := time.Until(next)
+			if wait < 0 {
+				wait = 0
+			}
+			timer = time.NewTimer(wait)
+			timerC = timer.C
+		}
 		select {
 		case <-ctx.Done():
+			if timer != nil {
+				timer.Stop()
+			}
 			return
-		case now := <-ticker.C:
-			enforce := quotaInterval > 0 && !now.Before(nextQuota)
-			checkpoint := !now.Before(nextCheckpoint)
+		case <-wake:
+			if timer != nil && !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			if quotaInterval > 0 {
+				now := time.Now()
+				checkpoint := checkpointInterval > 0 && !now.Before(nextCheckpoint)
+				err := s.runWokenQuotaTick(ctx, checkpointInterval, checkpoint, tick)
+				if ctx.Err() == nil {
+					s.recordLocalAccountingHealth(name, err)
+				}
+				now = time.Now()
+				nextQuota = quotaDeadlineAfter(now, nextQuotaDelay(quotaInterval, adaptiveInterval, err))
+				if checkpoint {
+					nextCheckpoint = now.Add(checkpointInterval)
+				}
+			}
+		case firedAt := <-timerC:
+			enforce := quotaInterval > 0 && !firedAt.Before(nextQuota)
+			checkpoint := checkpointInterval > 0 && !firedAt.Before(nextCheckpoint)
 			if !enforce && !checkpoint {
 				continue
 			}
-			if enforce {
-				for !nextQuota.After(now) {
-					nextQuota = nextQuota.Add(quotaInterval)
-				}
-			}
-			if checkpoint {
-				for !nextCheckpoint.After(now) {
-					nextCheckpoint = nextCheckpoint.Add(checkpointInterval)
-				}
-			}
 			timeout := checkpointInterval
-			if timeout > 2*time.Second {
+			if timeout <= 0 || timeout > 2*time.Second {
 				timeout = 2 * time.Second
 			}
 			sampleCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -193,8 +286,59 @@ func (s *Server) runLocalAccountingWorkerWithTick(ctx context.Context, name stri
 			if ctx.Err() == nil {
 				s.recordLocalAccountingHealth(name, err)
 			}
+			now = time.Now()
+			if enforce {
+				nextQuota = quotaDeadlineAfter(now, nextQuotaDelay(quotaInterval, adaptiveInterval, err))
+			}
+			if checkpoint {
+				nextCheckpoint = now.Add(checkpointInterval)
+			}
 		}
 	}
+}
+
+func (s *Server) runWokenQuotaTick(ctx context.Context, checkpointInterval time.Duration, checkpoint bool, tick func(context.Context, bool, bool) error) error {
+	timeout := checkpointInterval
+	if timeout <= 0 || timeout > 2*time.Second {
+		timeout = 2 * time.Second
+	}
+	sampleCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return tick(sampleCtx, true, checkpoint)
+}
+
+func nextQuotaDelay(minimum time.Duration, adaptiveInterval func() time.Duration, tickErr error) time.Duration {
+	if adaptiveInterval == nil {
+		return minimum
+	}
+	interval := adaptiveInterval()
+	if interval <= 0 {
+		return 0
+	}
+	if tickErr != nil {
+		return minimum
+	}
+	if interval < minimum {
+		return minimum
+	}
+	return interval
+}
+
+func quotaDeadlineAfter(now time.Time, interval time.Duration) time.Time {
+	if interval <= 0 {
+		return time.Time{}
+	}
+	return now.Add(interval)
+}
+
+func nearestQuotaDeadline(quota, checkpoint time.Time) time.Time {
+	if quota.IsZero() {
+		return checkpoint
+	}
+	if checkpoint.IsZero() || quota.Before(checkpoint) {
+		return quota
+	}
+	return checkpoint
 }
 
 func (s *Server) recordLocalAccountingHealth(protocol string, err error) {

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 var benchmarkXrayQuotaTotal uint64
@@ -33,6 +34,33 @@ func TestXrayPoliciesNeedLocalQuotaCheck(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if got := xrayPoliciesNeedLocalQuotaCheck(testCase.Policies); got != testCase.Want {
 				t.Fatalf("needs quota check=%v, want %v", got, testCase.Want)
+			}
+		})
+	}
+}
+
+func TestXrayQuotaAdaptiveSamplingTracksPolicyRisk(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	tests := []struct {
+		name     string
+		policy   nativeSessionUserPolicy
+		used     uint64
+		previous xrayQuotaUsageSample
+		hasPrev  bool
+		want     time.Duration
+	}{
+		{name: "first sample after policy change stays close", policy: nativeSessionUserPolicy{Status: "active", DataLimit: 1_000_000_000}, used: 100, want: xrayQuotaAdaptiveMin},
+		{name: "far from quota after stable sample", policy: nativeSessionUserPolicy{Status: "active", DataLimit: 1_000_000_000}, used: 100, previous: xrayQuotaUsageSample{Used: 100, At: now.Add(-time.Second)}, hasPrev: true, want: xrayQuotaAdaptiveMax},
+		{name: "near quota", policy: nativeSessionUserPolicy{Status: "active", DataLimit: 1_000_000_000}, used: 990_000_000, want: xrayQuotaAdaptiveMin},
+		{name: "approaching by observed rate", policy: nativeSessionUserPolicy{Status: "active", DataLimit: 1_000_000_000}, used: 900_000_000, previous: xrayQuotaUsageSample{Used: 800_000_000, At: now.Add(-time.Second)}, hasPrev: true, want: 250 * time.Millisecond},
+		{name: "near expiry", policy: nativeSessionUserPolicy{Status: "active", Expire: now.Add(time.Second).Unix()}, want: 250 * time.Millisecond},
+		{name: "held user irrelevant", policy: nativeSessionUserPolicy{Status: "on_hold", DataLimit: 1, Expire: now.Unix()}, used: 1, want: xrayQuotaAdaptiveMax},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := xrayQuotaPolicyAdaptiveInterval(test.policy, test.used, test.previous, test.hasPrev, now)
+			if got != test.want {
+				t.Fatalf("adaptive interval=%s, want %s", got, test.want)
 			}
 		})
 	}

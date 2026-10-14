@@ -19,11 +19,18 @@ through `2s`, and accepts `0`, `off`, `disabled`, or `false` to disable quota.
 Accounting remains enabled. `ANTIMAGE_NODE_ACCOUNTING_CHECKPOINT_INTERVAL`
 defaults to `1s`, accepts `1s` through `1m`; invalid values fail startup.
 
+The configured quota interval is a minimum cadence. Xray starts with a close
+sample after a policy change, then adapts between that minimum and `500ms` from
+observed consumption rate, remaining quota, and expiry time. Applying a runtime
+policy or a targeted VLESS user mutation wakes the affected quota worker
+immediately. When Xray has no enforceable local quota policies, its separate
+quota timer is suspended; accounting checkpoints continue to collect usage.
+
 Scans use WG all-dump, AWG aggregate snapshots, OpenVPN status/management,
 shared PPP interface counters, swanctl, occtl, and cached Xray gRPC StatsService.
-They do not spawn one accounting command per user. Coincident checkpoint/quota
-deadlines can perform two aggregate reads. Normal quota previews do not write
-disk; periodic checkpoints and lifecycle/disconnect transitions do.
+They do not spawn one accounting command per user. Xray shares a StatsService
+sample when checkpoint and quota deadlines coincide. Normal quota previews do
+not write disk; periodic checkpoints and lifecycle/disconnect transitions do.
 
 Generation keys use managed Xray starts, WG boot/interface and managed peer
 transition fences, AWG interface/peer generations, OpenVPN process/session

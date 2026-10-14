@@ -24,6 +24,23 @@ type xrayQuotaRevocation struct {
 	ExistingStreams bool
 }
 
+type xrayQuotaUsageSample struct {
+	Used uint64
+	At   time.Time
+}
+
+type xrayQuotaSampleKey struct {
+	UserID     int64
+	InboundTag string
+	Email      string
+}
+
+const (
+	xrayQuotaAdaptiveMin    = 100 * time.Millisecond
+	xrayQuotaAdaptiveMax    = 500 * time.Millisecond
+	xrayQuotaNearLimitBytes = 1 << 20
+)
+
 type xrayQuotaPolicyIndex struct {
 	Revision          uint64
 	Checksum          string
@@ -238,6 +255,15 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 	client := s.cachedXrayStatsClient(path, port)
 	s.xrayUsageMu.Lock()
 	defer s.xrayUsageMu.Unlock()
+	if s.xrayQuotaSamples == nil {
+		s.xrayQuotaSamples = make(map[xrayQuotaSampleKey]xrayQuotaUsageSample)
+	}
+	if s.xrayQuotaSampleRevision != policyIndex.Revision || s.xrayQuotaSampleChecksum != policyIndex.Checksum {
+		clear(s.xrayQuotaSamples)
+		s.xrayQuotaSampleRevision = policyIndex.Revision
+		s.xrayQuotaSampleChecksum = policyIndex.Checksum
+		s.xrayQuotaNextInterval = xrayQuotaAdaptiveMax
+	}
 	if err := s.ensureXrayUsageStateLoadedLocked(); err != nil {
 		return err
 	}
@@ -267,6 +293,8 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 	}
 	reflectionResults := policyIndex.ReflectionResults
 	var enforcementErr error
+	now := time.Now()
+	nextInterval := xrayQuotaAdaptiveMax
 	for reflectionPosition, policyPosition := range policyIndex.EnforcedPositions {
 		policy := policyIndex.Policies[policyPosition]
 		raw := policyIndex.UsageTotal[policyIndex.EmailIndex[policy.Email]]
@@ -285,7 +313,23 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 		if ^uint64(0)-raw < awaiting {
 			return fmt.Errorf("xray reflection overflow")
 		}
-		allowed, _ := s.localQuotaAllowed("xray", policy.UserID, policy.InboundTag, policy.nativeSessionUserPolicy, raw+awaiting, time.Now())
+		live := nativeSessionEffectiveLiveUsage(policy.nativeSessionUserPolicy, raw+awaiting)
+		used := int64ToUint(policy.UsedTraffic)
+		if ^uint64(0)-used < live {
+			used = ^uint64(0)
+		} else {
+			used += live
+		}
+		sampleKey := xrayQuotaSampleKey{UserID: policy.UserID, InboundTag: policy.InboundTag, Email: policy.Email}
+		previous, hasPrevious := s.xrayQuotaSamples[sampleKey]
+		interval := xrayQuotaPolicyAdaptiveInterval(policy.nativeSessionUserPolicy, used, previous, hasPrevious, now)
+		if interval < nextInterval {
+			nextInterval = interval
+		}
+		if policy.DataLimit > 0 && strings.EqualFold(strings.TrimSpace(policy.Status), "active") {
+			s.xrayQuotaSamples[sampleKey] = xrayQuotaUsageSample{Used: used, At: now}
+		}
+		allowed, _ := s.localQuotaAllowed("xray", policy.UserID, policy.InboundTag, policy.nativeSessionUserPolicy, raw+awaiting, now)
 		if allowed {
 			continue
 		}
@@ -310,5 +354,87 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 		// per-user close-all-streams API. Do not claim hard cutoff of old streams.
 		enforcementErr = errors.Join(enforcementErr, fmt.Errorf("xray %s authentication revoked; existing-stream termination unavailable", policy.Email))
 	}
+	s.xrayQuotaNextInterval = nextInterval
 	return enforcementErr
+}
+
+func (s *Server) xrayQuotaAdaptiveInterval() time.Duration {
+	s.mu.Lock()
+	policyIndex := s.xrayQuotaPolicyIndex
+	s.mu.Unlock()
+	if policyIndex != nil && len(policyIndex.EnforcedPositions) == 0 {
+		// Accounting checkpoints still collect the counters needed for billing.
+		// A separate quota timer adds no value when no policy can be enforced.
+		return 0
+	}
+	s.xrayUsageMu.Lock()
+	defer s.xrayUsageMu.Unlock()
+	if s.xrayQuotaNextInterval < xrayQuotaAdaptiveMin || s.xrayQuotaNextInterval > xrayQuotaAdaptiveMax {
+		return xrayQuotaAdaptiveMax
+	}
+	return s.xrayQuotaNextInterval
+}
+
+func xrayQuotaPolicyAdaptiveInterval(policy nativeSessionUserPolicy, used uint64, previous xrayQuotaUsageSample, hasPrevious bool, now time.Time) time.Duration {
+	interval := xrayQuotaAdaptiveMax
+	if !strings.EqualFold(strings.TrimSpace(policy.Status), "active") {
+		return interval
+	}
+	if policy.Expire > 0 {
+		untilExpiry := time.Unix(policy.Expire, 0).Sub(now)
+		interval = minDuration(interval, adaptiveDeadlineInterval(untilExpiry))
+	}
+	if policy.DataLimit > 0 {
+		limit := uint64(policy.DataLimit)
+		if used >= limit {
+			return xrayQuotaAdaptiveMin
+		}
+		remaining := limit - used
+		nearBytes := uint64(xrayQuotaNearLimitBytes)
+		if limit/100 > nearBytes {
+			nearBytes = limit / 100
+		}
+		if remaining <= nearBytes {
+			interval = minDuration(interval, xrayQuotaAdaptiveMin)
+		} else if !hasPrevious {
+			// Take an initial close sample after a policy revision before relaxing
+			// the cadence; no prior rate estimate exists yet.
+			interval = minDuration(interval, xrayQuotaAdaptiveMin)
+		} else if used > previous.Used && now.After(previous.At) {
+			bytesPerSecond := float64(used-previous.Used) / now.Sub(previous.At).Seconds()
+			if bytesPerSecond > 0 {
+				eta := time.Duration(float64(time.Second) * float64(remaining) / bytesPerSecond)
+				interval = minDuration(interval, adaptiveDeadlineInterval(eta))
+			}
+		}
+	}
+	return interval
+}
+
+func adaptiveDeadlineInterval(until time.Duration) time.Duration {
+	if until <= 0 {
+		return xrayQuotaAdaptiveMin
+	}
+	interval := until / 4
+	if interval < xrayQuotaAdaptiveMin {
+		return xrayQuotaAdaptiveMin
+	}
+	if interval > xrayQuotaAdaptiveMax {
+		return xrayQuotaAdaptiveMax
+	}
+	return interval
+}
+
+func minDuration(a, b time.Duration) time.Duration {
+	if b < a {
+		return b
+	}
+	return a
+}
+
+func int64ToUint(value int64) uint64 {
+	if value <= 0 {
+		return 0
+	}
+	return uint64(value)
 }

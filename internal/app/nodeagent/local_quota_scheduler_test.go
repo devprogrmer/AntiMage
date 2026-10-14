@@ -25,6 +25,118 @@ func TestLocalQuotaInterval(t *testing.T) {
 	}
 }
 
+func TestQuotaWorkerPolicyWakeRunsImmediately(t *testing.T) {
+	s := New(Config{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wake := make(chan struct{}, 1)
+	ticks := make(chan struct{}, 2)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.runLocalAccountingWorkerWithWakeAdaptive(ctx, "xray", time.Hour, 0, wake, nil,
+			func(context.Context, bool, bool) error {
+				ticks <- struct{}{}
+				return nil
+			})
+	}()
+	select {
+	case <-ticks: // initial policy/runtime evaluation
+	case <-time.After(time.Second):
+		t.Fatal("initial quota evaluation did not run")
+	}
+	wake <- struct{}{}
+	select {
+	case <-ticks:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("policy wake waited for the one-hour quota interval")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("quota worker did not stop after cancellation")
+	}
+}
+
+func TestQuotaWakeSignalsOnlyItsProtocolWorker(t *testing.T) {
+	s := New(Config{})
+	xray := s.localQuotaWakeChannel("xray")
+	openVPN := s.localQuotaWakeChannel("openvpn")
+	s.wakeLocalQuota("xray")
+	select {
+	case <-xray:
+	default:
+		t.Fatal("Xray worker did not receive its wake")
+	}
+	select {
+	case <-openVPN:
+		t.Fatal("Xray policy change woke unrelated OpenVPN worker")
+	default:
+	}
+}
+
+func TestRuntimePolicyRemovalStillWakesFormerProtocol(t *testing.T) {
+	s := New(Config{})
+	xray := s.localQuotaWakeChannel("xray")
+	s.wakeLocalQuotaForRuntime(`{"xray_policies":[{"email":"alice","status":"active","data_limit":1}]}`, `{}`)
+	select {
+	case <-xray:
+	default:
+		t.Fatal("removing the last Xray policy did not wake its former quota worker")
+	}
+}
+
+func TestXrayDisablesSeparateQuotaPollingWithoutEnforceablePolicies(t *testing.T) {
+	s := New(Config{})
+	s.xrayQuotaPolicyIndex = &xrayQuotaPolicyIndex{EnforcedPositions: nil}
+	if got := s.xrayQuotaAdaptiveInterval(); got != 0 {
+		t.Fatalf("quota interval without enforceable policies=%s, want disabled", got)
+	}
+	if got := quotaDeadlineAfter(time.Now(), nextQuotaDelay(100*time.Millisecond, s.xrayQuotaAdaptiveInterval, nil)); !got.IsZero() {
+		t.Fatalf("quota deadline without enforceable policies=%s, want zero", got)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wake := make(chan struct{}, 1)
+	ticks := make(chan struct{}, 2)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.runLocalAccountingWorkerWithWakeAdaptive(ctx, "xray", 50*time.Millisecond, 0, wake, s.xrayQuotaAdaptiveInterval,
+			func(context.Context, bool, bool) error {
+				ticks <- struct{}{}
+				return nil
+			})
+	}()
+	select {
+	case <-ticks:
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("initial Xray policy evaluation did not run")
+	}
+	select {
+	case <-ticks:
+		cancel()
+		t.Fatal("quota worker continued polling with no enforceable policies")
+	case <-time.After(150 * time.Millisecond):
+	}
+	wake <- struct{}{}
+	select {
+	case <-ticks:
+	case <-time.After(100 * time.Millisecond):
+		cancel()
+		t.Fatal("event wake did not run while periodic quota polling was disabled")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("quota worker did not stop after cancellation")
+	}
+}
+
 func TestAccountingDegradationDoesNotFailNodeHealth(t *testing.T) {
 	s := New(Config{})
 	s.localAccountingFailures = map[string]string{"wireguard": "counter read failed"}

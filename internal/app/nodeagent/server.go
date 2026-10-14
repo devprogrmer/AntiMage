@@ -56,8 +56,13 @@ type Server struct {
 	localUsageDeliveries             []localUsageDelivery
 	localQuotaViews                  map[localQuotaOwner]localQuotaView
 	localQuotaAggregates             map[localQuotaAggregateKey]uint64
+	localQuotaWakeups                map[string]chan struct{}
 	runtimePolicy                    *runtimePolicySnapshot
 	xrayQuotaPolicyIndex             *xrayQuotaPolicyIndex
+	xrayQuotaSamples                 map[xrayQuotaSampleKey]xrayQuotaUsageSample
+	xrayQuotaSampleRevision          uint64
+	xrayQuotaSampleChecksum          string
+	xrayQuotaNextInterval            time.Duration
 	runtimeExited                    <-chan struct{}
 	activeConfigSHA256               string
 	runningCoreVersion               string
@@ -187,6 +192,8 @@ func New(cfg Config) *Server {
 		wireGuardUsageCarry:             make(map[string]wireGuardUsageCarry),
 		amneziaWGUsageBaseline:          make(map[string]uint64),
 		xrayUsageBaseline:               make(map[string]uint64),
+		xrayQuotaSamples:                make(map[xrayQuotaSampleKey]xrayQuotaUsageSample),
+		xrayQuotaNextInterval:           100 * time.Millisecond,
 		xrayOutboundUsageBaseline:       make(map[string]uint64),
 		torProxies:                      make(map[uint32]*exec.Cmd),
 		logs:                            []string{"AntiMage-node agent initialized"},
@@ -419,6 +426,7 @@ func (s *Server) AddUser(ctx context.Context, req *nodev1.InboundUserRequest) (*
 	if err := client.ensureVLESSUserRPC(ctx, req.GetInboundTag(), user, false); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "add VLESS user: %v", err)
 	}
+	s.wakeLocalQuota("xray")
 	return s.action(req.GetOperationId(), "VLESS user added or already present"), nil
 }
 
@@ -440,6 +448,7 @@ func (s *Server) UpdateUser(ctx context.Context, req *nodev1.InboundUserRequest)
 	if err := client.ensureVLESSUserRPC(ctx, req.GetInboundTag(), user, true); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "update VLESS user: %v", err)
 	}
+	s.wakeLocalQuota("xray")
 	return s.action(req.GetOperationId(), "VLESS user updated"), nil
 }
 
@@ -464,6 +473,7 @@ func (s *Server) RemoveUser(ctx context.Context, req *nodev1.RemoveInboundUserRe
 	if err := client.removeUserRPC(ctx, req.GetInboundTag(), req.GetEmail()); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "remove Xray inbound user: %v", err)
 	}
+	s.wakeLocalQuota("xray")
 	return s.action(req.GetOperationId(), "Xray inbound user removed"), nil
 }
 
@@ -831,6 +841,12 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "canonicalize runtime config: "+err.Error())
 	}
+	s.mu.Lock()
+	previousNativeRuntime := ""
+	if s.runtimePolicy != nil {
+		previousNativeRuntime = s.runtimePolicy.NativeJSON
+	}
+	s.mu.Unlock()
 	// Persist the exact guarded policy that will be activated. Persisting the
 	// unguarded panel policy first would let a node restart offline and restore
 	// credentials that the durable quota guard had just denied.
@@ -881,6 +897,7 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	}
 	s.activeConfigSHA256 = configDigest
 	s.mu.Unlock()
+	s.wakeLocalQuotaForRuntime(previousNativeRuntime, req.GetOvRuntimeJson())
 
 	return s.action(req.GetOperationId(), message), nil
 }
