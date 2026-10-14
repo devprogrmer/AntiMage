@@ -38,17 +38,17 @@ func (s *Server) handleAdminToken(w http.ResponseWriter, r *http.Request) {
 	}
 	username := strings.TrimSpace(credentials.Username)
 	password := credentials.Password
-	limitKey := loginRateLimitKey(r, username)
+	limitKey := loginRateLimitKeyFromPeer(username, s.requestPeer(r))
 	if !s.loginLimiter.allowed(limitKey) {
 		writeLoginRateLimited(w)
 		return
 	}
 	if username == "" || password == "" {
 		s.loginLimiter.recordFailure(limitKey)
-		logging.Warnf(logging.ComponentAdmin, "login failed username=%q remote=%s reason=missing_credentials", username, requestRemote(r))
+		logging.Warnf(logging.ComponentAdmin, "login failed username=%q remote=%s reason=missing_credentials", username, s.requestPeer(r))
 		s.telegramReports.Login(r.Context(), telegramapp.LoginReport{
 			Username: username,
-			ClientIP: requestRemote(r),
+			ClientIP: s.requestPeer(r),
 			Success:  false,
 		})
 		writeAdminLoginFailed(w)
@@ -57,16 +57,16 @@ func (s *Server) handleAdminToken(w http.ResponseWriter, r *http.Request) {
 
 	dbadmin, ok, reason, err := s.validateLogin(r.Context(), username, password)
 	if err != nil {
-		logging.Errorf(logging.ComponentAdmin, "login error username=%q remote=%s error=%v", username, requestRemote(r), err)
+		logging.Errorf(logging.ComponentAdmin, "login error username=%q remote=%s error=%v", username, s.requestPeer(r), err)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if !ok {
 		s.loginLimiter.recordFailure(limitKey)
-		logging.Warnf(logging.ComponentAdmin, "login failed username=%q remote=%s reason=%s", username, requestRemote(r), reason)
+		logging.Warnf(logging.ComponentAdmin, "login failed username=%q remote=%s reason=%s", username, s.requestPeer(r), reason)
 		s.telegramReports.Login(r.Context(), telegramapp.LoginReport{
 			Username: username,
-			ClientIP: requestRemote(r),
+			ClientIP: s.requestPeer(r),
 			Success:  false,
 		})
 		writeAdminLoginFailed(w)
@@ -88,10 +88,10 @@ func (s *Server) handleAdminToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	logging.Infof(logging.ComponentAdmin, "login success username=%q role=%s remote=%s", username, dbadmin.Role, requestRemote(r))
+	logging.Infof(logging.ComponentAdmin, "login success username=%q role=%s remote=%s", username, dbadmin.Role, s.requestPeer(r))
 	s.telegramReports.Login(r.Context(), telegramapp.LoginReport{
 		Username: username,
-		ClientIP: requestRemote(r),
+		ClientIP: s.requestPeer(r),
 		Success:  true,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"access_token": token, "token_type": "bearer"})
@@ -210,28 +210,6 @@ func readAdminLoginRequest(r *http.Request) (adminLoginRequest, error) {
 func writeAdminLoginFailed(w http.ResponseWriter) {
 	w.Header().Set("WWW-Authenticate", "Bearer")
 	writeError(w, http.StatusUnauthorized, "Incorrect username or password")
-}
-
-func requestRemote(r *http.Request) string {
-	if r == nil {
-		return ""
-	}
-	for _, header := range []string{"CF-Connecting-IP", "X-Real-IP"} {
-		if value := strings.TrimSpace(r.Header.Get(header)); value != "" {
-			return value
-		}
-	}
-	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwarded != "" {
-		if first, _, ok := strings.Cut(forwarded, ","); ok {
-			return strings.TrimSpace(first)
-		}
-		return forwarded
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil && host != "" {
-		return host
-	}
-	return r.RemoteAddr
 }
 
 func requestPeer(r *http.Request) string {

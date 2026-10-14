@@ -41,7 +41,7 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	username := strings.TrimSpace(credentials.Username)
-	limitKey := loginRateLimitKey(r, username)
+	limitKey := loginRateLimitKeyFromPeer(username, s.requestPeer(r))
 	if !s.loginLimiter.allowed(limitKey) {
 		writeLoginRateLimited(w)
 		return
@@ -58,8 +58,8 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ok {
 		s.loginLimiter.recordFailure(limitKey)
-		logging.Warnf(logging.ComponentAdmin, "session login failed username=%q remote=%s reason=%s", username, requestRemote(r), reason)
-		s.telegramReports.Login(r.Context(), telegramapp.LoginReport{Username: username, ClientIP: requestRemote(r), Success: false})
+		logging.Warnf(logging.ComponentAdmin, "session login failed username=%q remote=%s reason=%s", username, s.requestPeer(r), reason)
+		s.telegramReports.Login(r.Context(), telegramapp.LoginReport{Username: username, ClientIP: s.requestPeer(r), Success: false})
 		writeAdminLoginFailed(w)
 		return
 	}
@@ -83,15 +83,15 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	session, err := s.adminRepo.CreateSession(r.Context(), adminapp.AdminSession{
 		AdminID: dbadmin.ID, State: state, CreatedAt: now, LastSeenAt: now,
-		ExpiresAt: now.Add(lifetime), IPAddress: requestRemote(r), UserAgent: strings.TrimSpace(r.UserAgent()),
+		ExpiresAt: now.Add(lifetime), IPAddress: s.requestPeer(r), UserAgent: strings.TrimSpace(r.UserAgent()),
 	}, token)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	setAdminSessionCookie(w, r, token, session.ExpiresAt)
-	logging.Infof(logging.ComponentAdmin, "session login accepted username=%q state=%s remote=%s", username, state, requestRemote(r))
-	s.telegramReports.Login(r.Context(), telegramapp.LoginReport{Username: username, ClientIP: requestRemote(r), Success: true})
+	logging.Infof(logging.ComponentAdmin, "session login accepted username=%q state=%s remote=%s", username, s.requestPeer(r), state)
+	s.telegramReports.Login(r.Context(), telegramapp.LoginReport{Username: username, ClientIP: s.requestPeer(r), Success: true})
 	writeJSON(w, http.StatusOK, authSessionResponse(dbadmin, session))
 }
 

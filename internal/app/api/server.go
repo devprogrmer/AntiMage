@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -75,11 +76,16 @@ type Server struct {
 	admissionLockMu      sync.Mutex
 	admissionLockRefs    map[int64]*sessionAdmissionLockRef
 	loginLimiter         loginRateLimiter
+	trustedProxyCIDRs    []netip.Prefix
 	operators            *operatorResolver
 	recentActionsEnabled bool
 }
 
 func New(cfg Config) (*Server, error) {
+	trustedProxyCIDRs, err := parseTrustedProxyCIDRs(cfg.TrustedProxyCIDRs)
+	if err != nil {
+		return nil, fmt.Errorf("trusted proxy CIDRs: %w", err)
+	}
 	pool, err := db.Open(cfg.Database)
 	if err != nil {
 		return nil, err
@@ -124,24 +130,25 @@ func New(cfg Config) (*Server, error) {
 	}
 	outboundSubs := outboundsubapp.NewService(pool.DB, pool.Dialect)
 	server := &Server{
-		cfg:            cfg,
-		db:             pool.DB,
-		dialect:        pool.Dialect,
-		adminRepo:      adminRepo,
-		adminAuth:      adminapp.NewAuthenticator(adminRepo),
-		nodeController: nodecontroller.NewController(nodeRepo),
-		nodeMutations:  nodeMutationRepo,
-		systemService:  systemapp.NewService(pool.DB, pool.Dialect, ""),
-		maintenance:    systemapp.NewMaintenanceServiceWithDB(pool.DB, pool.Dialect),
-		usageService:   usage.NewService(usageRepo),
-		userService:    userapp.NewServiceWithTemplates(userRepo, settingsRepo),
-		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient("")),
-		nordService:    nordvpnapp.NewService(nordRepo, nordvpnapp.NewClient("")),
-		outboundSubs:   outboundSubs,
-		operators:      newOperatorResolver(),
-		settingsRepo:   settingsRepo,
-		telegramRepo:   telegramRepo,
-		telegramSender: telegramSender,
+		cfg:               cfg,
+		db:                pool.DB,
+		dialect:           pool.Dialect,
+		adminRepo:         adminRepo,
+		adminAuth:         adminapp.NewAuthenticator(adminRepo),
+		nodeController:    nodecontroller.NewController(nodeRepo),
+		nodeMutations:     nodeMutationRepo,
+		systemService:     systemapp.NewService(pool.DB, pool.Dialect, ""),
+		maintenance:       systemapp.NewMaintenanceServiceWithDB(pool.DB, pool.Dialect),
+		usageService:      usage.NewService(usageRepo),
+		userService:       userapp.NewServiceWithTemplates(userRepo, settingsRepo),
+		warpService:       warpapp.NewService(warpRepo, warpapp.NewClient("")),
+		nordService:       nordvpnapp.NewService(nordRepo, nordvpnapp.NewClient("")),
+		outboundSubs:      outboundSubs,
+		trustedProxyCIDRs: trustedProxyCIDRs,
+		operators:         newOperatorResolver(),
+		settingsRepo:      settingsRepo,
+		telegramRepo:      telegramRepo,
+		telegramSender:    telegramSender,
 		telegramReports: telegramapp.NewReporter(
 			telegramRepo,
 			telegramSender,
