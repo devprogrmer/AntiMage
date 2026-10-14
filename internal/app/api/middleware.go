@@ -166,9 +166,6 @@ func bearerToken(r *http.Request) string {
 	if strings.HasPrefix(strings.ToLower(header), "bearer ") {
 		return strings.TrimSpace(header[7:])
 	}
-	if token := strings.TrimSpace(r.URL.Query().Get("token")); token != "" {
-		return token
-	}
 	return ""
 }
 
