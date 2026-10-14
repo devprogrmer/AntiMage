@@ -44,7 +44,7 @@ func TestRepeatedSeenEventsCoalesceSessionWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.Exec(`CREATE TABLE vpn_user_sessions(node_id INTEGER, session_id TEXT, ended_at DATETIME, last_seen_at DATETIME); INSERT INTO vpn_user_sessions(node_id,session_id,last_seen_at) VALUES(7,'wg:live','2020-01-01 00:00:00');`); err != nil {
+	if _, err := db.Exec(`CREATE TABLE vpn_user_sessions(node_id INTEGER, user_id INTEGER, session_id TEXT, ended_at DATETIME, last_seen_at DATETIME); INSERT INTO vpn_user_sessions(node_id,user_id,session_id,last_seen_at) VALUES(7,42,'wg:live','2020-01-01 00:00:00');`); err != nil {
 		t.Fatal(err)
 	}
 	server := &Server{db: db}
@@ -65,6 +65,56 @@ func TestRepeatedSeenEventsCoalesceSessionWrites(t *testing.T) {
 	}
 	if first != second {
 		t.Fatalf("repeated seen event rewrote fresh last_seen_at: first=%q second=%q", first, second)
+	}
+}
+
+func TestSeenFastPathRequiresSessionOwner(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "seen-owner.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE vpn_user_sessions(node_id INTEGER, user_id INTEGER, session_id TEXT, ended_at DATETIME, last_seen_at DATETIME); INSERT INTO vpn_user_sessions(node_id,user_id,session_id,last_seen_at) VALUES(7,43,'wg:live','2020-01-01 00:00:00');`); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{db: db}
+	active, err := server.persistSeenForExistingSession(context.Background(), nodeSessionEventPayload{NodeID: 7, UserID: 42, SessionID: "wg:live"}, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active {
+		t.Fatal("heartbeat for a session owned by another user took the active-session fast path")
+	}
+}
+
+func TestActiveSeenEventDoesNotWaitForAdmissionLock(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "seen-fast-path.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE vpn_user_sessions(node_id INTEGER, user_id INTEGER, session_id TEXT, ended_at DATETIME, last_seen_at DATETIME); INSERT INTO vpn_user_sessions(node_id,user_id,session_id,last_seen_at) VALUES(7,42,'wg:live','2020-01-01 00:00:00');`); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{db: db}
+	lock := server.sessionAdmissionLock(42)
+	lock.Lock()
+	done := make(chan error, 1)
+	go func() {
+		done <- server.applyNodeSessionEvent(context.Background(), nodeSessionEventPayload{NodeID: 7, UserID: 42, Protocol: "wg", SessionID: "wg:live", Event: "seen"})
+	}()
+	select {
+	case err := <-done:
+		lock.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		lock.Unlock()
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		t.Fatal("active session heartbeat waited for the user admission lock")
 	}
 }
 

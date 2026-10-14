@@ -142,11 +142,22 @@ func (s *Server) nodeSessionCallbackSecret(ctx context.Context) (string, error) 
 }
 
 func (s *Server) applyNodeSessionEvent(ctx context.Context, payload nodeSessionEventPayload) error {
+	now := time.Now().UTC()
+	if strings.EqualFold(strings.TrimSpace(payload.Event), "seen") {
+		active, err := s.persistSeenForExistingSession(ctx, payload, now)
+		if err != nil {
+			return err
+		}
+		if active {
+			return nil
+		}
+	}
+
 	lock := s.sessionAdmissionLock(payload.UserID)
 	lock.Lock()
 	defer lock.Unlock()
 
-	now := time.Now().UTC()
+	now = time.Now().UTC()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -155,9 +166,9 @@ func (s *Server) applyNodeSessionEvent(ctx context.Context, payload nodeSessionE
 
 	if strings.EqualFold(strings.TrimSpace(payload.Event), "seen") {
 		var active int
-		err := tx.QueryRowContext(ctx, `SELECT 1 FROM vpn_user_sessions WHERE node_id = ? AND session_id = ? AND ended_at IS NULL LIMIT 1`, payload.NodeID, strings.TrimSpace(payload.SessionID)).Scan(&active)
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM vpn_user_sessions WHERE node_id = ? AND user_id = ? AND session_id = ? AND ended_at IS NULL LIMIT 1`, payload.NodeID, payload.UserID, strings.TrimSpace(payload.SessionID)).Scan(&active)
 		if err == nil {
-			if _, err := tx.ExecContext(ctx, `UPDATE vpn_user_sessions SET last_seen_at = ? WHERE node_id = ? AND session_id = ? AND ended_at IS NULL AND last_seen_at < ?`, dbTimestamp(now), payload.NodeID, strings.TrimSpace(payload.SessionID), dbTimestamp(now.Add(-sessionSeenPersistInterval))); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE vpn_user_sessions SET last_seen_at = ? WHERE node_id = ? AND user_id = ? AND session_id = ? AND ended_at IS NULL AND last_seen_at < ?`, dbTimestamp(now), payload.NodeID, payload.UserID, strings.TrimSpace(payload.SessionID), dbTimestamp(now.Add(-sessionSeenPersistInterval))); err != nil {
 				return err
 			}
 			return tx.Commit()
@@ -212,6 +223,36 @@ WHERE node_id = ? AND user_id = ? AND protocol = 'ov' AND COALESCE(inbound_tag, 
 		}
 	}
 	return tx.Commit()
+}
+
+// Existing session heartbeats do not participate in admission: atomically
+// touch the active row before acquiring the per-user admission lock. New or
+// ended sessions still fall through to the serialized admission transaction.
+func (s *Server) persistSeenForExistingSession(ctx context.Context, payload nodeSessionEventPayload, now time.Time) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `
+UPDATE vpn_user_sessions
+SET last_seen_at = ?
+WHERE node_id = ? AND user_id = ? AND session_id = ? AND ended_at IS NULL AND last_seen_at < ?`,
+		dbTimestamp(now), payload.NodeID, payload.UserID, strings.TrimSpace(payload.SessionID), dbTimestamp(now.Add(-sessionSeenPersistInterval)))
+	if err != nil {
+		return false, err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if changed > 0 {
+		return true, nil
+	}
+	var active int
+	err = s.db.QueryRowContext(ctx, `SELECT 1 FROM vpn_user_sessions WHERE node_id = ? AND user_id = ? AND session_id = ? AND ended_at IS NULL LIMIT 1`, payload.NodeID, payload.UserID, strings.TrimSpace(payload.SessionID)).Scan(&active)
+	if err == nil {
+		return true, nil
+	}
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return false, err
 }
 
 func sessionAdmissionAllowed(ctx context.Context, tx *sql.Tx, payload nodeSessionEventPayload) (bool, error) {
