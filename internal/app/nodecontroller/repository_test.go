@@ -574,6 +574,72 @@ func TestBulkRuntimeUserOperationNodesUsesFullSyncAboveThreshold(t *testing.T) {
 	}
 }
 
+func TestRuntimeUserProtocolAndNodeCapabilityLookup(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "bulk-protocols.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, `
+CREATE TABLE users (id INTEGER PRIMARY KEY, status TEXT);
+CREATE TABLE proxies (user_id INTEGER, type TEXT);
+CREATE TABLE nodes (id INTEGER PRIMARY KEY, node_capabilities TEXT);
+INSERT INTO users VALUES (1, 'active'), (2, 'deleted');
+INSERT INTO proxies VALUES (1, 'VLESS'), (1, 'wireguard'), (2, 'openvpn');
+INSERT INTO nodes VALUES (7, '["targeted_user_update_vless"]');`); err != nil {
+		t.Fatal(err)
+	}
+	got, err := NewRepository(db, "sqlite").RuntimeProtocolsByUserIDs(ctx, []int64{1, 2, 0, 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got[1]) != 2 || got[2] != nil {
+		t.Fatalf("protocols by user=%v, want active user 1's two protocols and no deleted user", got)
+	}
+	seen := map[string]bool{}
+	for _, protocol := range got[1] {
+		seen[protocol] = true
+	}
+	if !seen["vless"] || !seen["wireguard"] {
+		t.Fatalf("protocols by user=%v, expected normalized vless and wireguard", got[1])
+	}
+	nodeCapabilities, err := NewRepository(db, "sqlite").RuntimeCapabilitiesByNodeIDs(ctx, []int64{7, 8, 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !nodeCapabilities[7]["targeted_user_update_vless"] || nodeCapabilities[8] != nil {
+		t.Fatalf("node capabilities=%v, expected stored capability for node 7 only", nodeCapabilities)
+	}
+}
+
+func TestBulkVLESSUpdatesStayTargetedWhenNodeAdvertisesSupport(t *testing.T) {
+	operations := make([]OperationRow, bulkRuntimeUserOperationThreshold+2)
+	protocols := make(map[int64][]string, len(operations))
+	capabilities := map[int64]map[string]bool{7: {"targeted_user_update_vless": true}}
+	for index := range operations {
+		userID := int64(index + 1)
+		operations[index] = OperationRow{
+			OperationType: "update_user",
+			NodeID:        sql.NullInt64{Int64: 7, Valid: true},
+			UserID:        sql.NullInt64{Int64: userID, Valid: true},
+		}
+		protocols[userID] = []string{"vless"}
+	}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); folded[7] {
+		t.Fatal("bulk VLESS-only operations must keep targeted updates instead of queuing full sync")
+	}
+	protocols[operations[0].UserID.Int64] = []string{"openvpn"}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("bulk batch with an unsupported protocol must retain conservative full-sync fallback")
+	}
+	protocols[operations[0].UserID.Int64] = []string{"vless"}
+	delete(capabilities[7], "targeted_user_update_vless")
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("bulk VLESS updates on a legacy node without the advertised capability must retain fallback")
+	}
+}
+
 func TestControllerProcessQueueRetriesUnavailableUserDeltaWithoutFullSync(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-starvation.db")+"?_pragma=busy_timeout(30000)")

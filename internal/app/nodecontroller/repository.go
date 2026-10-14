@@ -211,6 +211,75 @@ func (r Repository) RuntimeUsersByID(ctx context.Context, userID int64) ([]runti
 	return r.runtimeUsers(ctx, userID, nil)
 }
 
+func (r Repository) RuntimeProtocolsByUserIDs(ctx context.Context, userIDs []int64) (map[int64][]string, error) {
+	ids := uniquePositiveInt64(userIDs)
+	protocols := make(map[int64][]string, len(ids))
+	if len(ids) == 0 {
+		return protocols, nil
+	}
+	args := make([]any, 0, len(ids))
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+		parts = append(parts, "?")
+	}
+	rows, err := r.db.QueryContext(ctx, `
+SELECT DISTINCT p.user_id, LOWER(p.type)
+FROM proxies p
+JOIN users u ON u.id = p.user_id
+WHERE p.user_id IN (`+strings.Join(parts, ",")+`)
+  AND COALESCE(u.status, '') <> 'deleted'`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var userID int64
+		var protocol string
+		if err := rows.Scan(&userID, &protocol); err != nil {
+			return nil, err
+		}
+		protocols[userID] = append(protocols[userID], protocol)
+	}
+	return protocols, rows.Err()
+}
+
+func (r Repository) RuntimeCapabilitiesByNodeIDs(ctx context.Context, nodeIDs []int64) (map[int64]map[string]bool, error) {
+	ids := uniquePositiveInt64(nodeIDs)
+	capabilities := make(map[int64]map[string]bool, len(ids))
+	if len(ids) == 0 {
+		return capabilities, nil
+	}
+	args := make([]any, 0, len(ids))
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+		parts = append(parts, "?")
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id, COALESCE(node_capabilities, '[]') FROM nodes WHERE id IN (`+strings.Join(parts, ",")+")", args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var nodeID int64
+		var raw string
+		if err := rows.Scan(&nodeID, &raw); err != nil {
+			return nil, err
+		}
+		var values []string
+		if err := json.Unmarshal([]byte(raw), &values); err != nil {
+			values = nil
+		}
+		set := make(map[string]bool, len(values))
+		for _, value := range values {
+			set[strings.TrimSpace(value)] = true
+		}
+		capabilities[nodeID] = set
+	}
+	return capabilities, rows.Err()
+}
+
 func (r Repository) RuntimeUsersForProtocols(ctx context.Context, protocols []string) ([]runtimeUserRow, error) {
 	return r.runtimeUsers(ctx, 0, protocols)
 }

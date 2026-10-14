@@ -528,7 +528,26 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 	}
 	result := ProcessOperationsResult{}
 	blockedNodes := map[int64]bool{}
-	foldedNodes := bulkRuntimeUserOperationNodes(operations)
+	bulkCandidates := bulkRuntimeUserOperationNodes(operations)
+	bulkUserIDs := make([]int64, 0)
+	bulkNodeIDs := make([]int64, 0, len(bulkCandidates))
+	for _, operation := range operations {
+		if operation.NodeID.Valid && bulkCandidates[operation.NodeID.Int64] && operation.UserID.Valid {
+			bulkUserIDs = append(bulkUserIDs, operation.UserID.Int64)
+		}
+	}
+	for nodeID := range bulkCandidates {
+		bulkNodeIDs = append(bulkNodeIDs, nodeID)
+	}
+	userProtocols, err := c.repo.RuntimeProtocolsByUserIDs(ctx, bulkUserIDs)
+	if err != nil {
+		return result, err
+	}
+	nodeCapabilities, err := c.repo.RuntimeCapabilitiesByNodeIDs(ctx, bulkNodeIDs)
+	if err != nil {
+		return result, err
+	}
+	foldedNodes := bulkRuntimeUserOperationNodesWithProtocols(operations, userProtocols, nodeCapabilities)
 	for nodeID := range foldedNodes {
 		if err := c.repo.QueueSyncConfig(ctx, &nodeID, nil); err != nil {
 			return result, err
@@ -576,6 +595,39 @@ func bulkRuntimeUserOperationNodes(operations []OperationRow) map[int64]bool {
 	for nodeID, count := range counts {
 		if count > bulkRuntimeUserOperationThreshold {
 			result[nodeID] = true
+		}
+	}
+	return result
+}
+
+func bulkRuntimeUserOperationNodesWithProtocols(operations []OperationRow, protocolsByUser map[int64][]string, capabilitiesByNode map[int64]map[string]bool) map[int64]bool {
+	candidates := bulkRuntimeUserOperationNodes(operations)
+	result := make(map[int64]bool, len(candidates))
+	for nodeID := range candidates {
+		for _, operation := range operations {
+			if !operation.NodeID.Valid || operation.NodeID.Int64 != nodeID || !isRuntimeUserOperation(operation.OperationType) {
+				continue
+			}
+			if !operation.UserID.Valid {
+				result[nodeID] = true
+				break
+			}
+			protocols := protocolsByUser[operation.UserID.Int64]
+			if len(protocols) == 0 {
+				result[nodeID] = true
+				break
+			}
+			for _, protocol := range protocols {
+				if !strings.EqualFold(strings.TrimSpace(protocol), "vless") ||
+					operation.OperationType != "update_user" ||
+					!capabilitiesByNode[nodeID]["targeted_user_update_vless"] {
+					result[nodeID] = true
+					break
+				}
+			}
+			if result[nodeID] {
+				break
+			}
 		}
 	}
 	return result
