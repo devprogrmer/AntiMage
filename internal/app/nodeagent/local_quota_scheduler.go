@@ -226,6 +226,10 @@ func (s *Server) wakeLocalQuotaForRuntime(rawValues ...string) {
 func (s *Server) runLocalAccountingWorkerWithWakeAdaptive(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, wake <-chan struct{}, adaptiveInterval func() time.Duration, tick func(context.Context, bool, bool) error) {
 	now := time.Now()
 	nextQuota, nextCheckpoint := time.Time{}, time.Time{}
+	timer := time.NewTimer(time.Hour)
+	stopQuotaTimer(timer)
+	defer timer.Stop()
+	var timerC <-chan time.Time
 	if quotaInterval > 0 {
 		nextQuota = now
 	}
@@ -234,29 +238,22 @@ func (s *Server) runLocalAccountingWorkerWithWakeAdaptive(ctx context.Context, n
 	}
 	for {
 		next := nearestQuotaDeadline(nextQuota, nextCheckpoint)
-		var timer *time.Timer
-		var timerC <-chan time.Time
+		stopQuotaTimer(timer)
+		timerC = nil
 		if !next.IsZero() {
 			wait := time.Until(next)
 			if wait < 0 {
 				wait = 0
 			}
-			timer = time.NewTimer(wait)
+			timer.Reset(wait)
 			timerC = timer.C
 		}
 		select {
 		case <-ctx.Done():
-			if timer != nil {
-				timer.Stop()
-			}
+			stopQuotaTimer(timer)
 			return
 		case <-wake:
-			if timer != nil && !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
+			stopQuotaTimer(timer)
 			if quotaInterval > 0 {
 				now := time.Now()
 				checkpoint := checkpointInterval > 0 && !now.Before(nextCheckpoint)
@@ -271,6 +268,7 @@ func (s *Server) runLocalAccountingWorkerWithWakeAdaptive(ctx context.Context, n
 				}
 			}
 		case firedAt := <-timerC:
+			timerC = nil
 			enforce := quotaInterval > 0 && !firedAt.Before(nextQuota)
 			checkpoint := checkpointInterval > 0 && !firedAt.Before(nextCheckpoint)
 			if !enforce && !checkpoint {
@@ -293,6 +291,15 @@ func (s *Server) runLocalAccountingWorkerWithWakeAdaptive(ctx context.Context, n
 			if checkpoint {
 				nextCheckpoint = now.Add(checkpointInterval)
 			}
+		}
+	}
+}
+
+func stopQuotaTimer(timer *time.Timer) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
 		}
 	}
 }
