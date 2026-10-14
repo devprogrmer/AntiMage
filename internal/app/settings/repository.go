@@ -361,6 +361,7 @@ LIMIT 1`).Scan(
 	result.PHPMyAdminPort = normalizePort(result.PHPMyAdminPort, defaultPHPMyAdminPort)
 	result.PHPMyAdminPath = normalizeURLPath(result.PHPMyAdminPath, defaultPHPMyAdminPath)
 	result.PHPMyAdminLoginMode = normalizePHPMyAdminLoginMode(result.PHPMyAdminLoginMode)
+	result.PHPMyAdminPasswordConfigured = result.PHPMyAdminPassword != ""
 	return result, nil
 }
 

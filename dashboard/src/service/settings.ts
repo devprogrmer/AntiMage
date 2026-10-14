@@ -263,9 +263,12 @@ export interface RuntimeSettingsResponse {
 	phpmyadmin_login_mode: "antimage" | "custom";
 	phpmyadmin_username: string;
 	phpmyadmin_password: string;
+	phpmyadmin_password_configured: boolean;
 }
 
-export type RuntimeSettingsUpdatePayload = Partial<RuntimeSettingsResponse>;
+export type RuntimeSettingsUpdatePayload = Partial<
+	Omit<RuntimeSettingsResponse, "phpmyadmin_password_configured">
+>;
 
 export interface AllSettingsUpdatePayload {
 	panel?: PanelSettingsUpdatePayload;
