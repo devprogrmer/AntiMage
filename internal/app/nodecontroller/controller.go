@@ -618,9 +618,14 @@ func bulkRuntimeUserOperationNodesWithProtocols(operations []OperationRow, proto
 				break
 			}
 			for _, protocol := range protocols {
-				if !strings.EqualFold(strings.TrimSpace(protocol), "vless") ||
-					operation.OperationType != "update_user" ||
-					!capabilitiesByNode[nodeID]["targeted_user_update_vless"] {
+				capability := ""
+				switch operation.OperationType {
+				case "update_user":
+					capability = "targeted_user_update_vless"
+				case "add_user", "remove_user", "disable_user", "enable_user":
+					capability = "targeted_user_add_remove_vless"
+				}
+				if !strings.EqualFold(strings.TrimSpace(protocol), "vless") || capability == "" || !capabilitiesByNode[nodeID][capability] {
 					result[nodeID] = true
 					break
 				}
@@ -984,6 +989,9 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow, 
 				}
 			}
 			if operation.OperationType == "update_user" && !client.Supports("targeted_user_update_vless") {
+				syncConfig = true
+			}
+			if (operation.OperationType == "add_user" || operation.OperationType == "remove_user" || operation.OperationType == "disable_user" || operation.OperationType == "enable_user") && !client.Supports("targeted_user_add_remove_vless") {
 				syncConfig = true
 			}
 			if !syncConfig {

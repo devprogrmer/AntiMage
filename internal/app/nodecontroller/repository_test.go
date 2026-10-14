@@ -640,6 +640,34 @@ func TestBulkVLESSUpdatesStayTargetedWhenNodeAdvertisesSupport(t *testing.T) {
 	}
 }
 
+func TestBulkVLESSAddRemoveStayTargetedOnlyWithExplicitCapability(t *testing.T) {
+	operations := make([]OperationRow, bulkRuntimeUserOperationThreshold+2)
+	protocols := make(map[int64][]string, len(operations))
+	capabilities := map[int64]map[string]bool{7: {"targeted_user_add_remove_vless": true}}
+	for index := range operations {
+		userID := int64(index + 1)
+		operations[index] = OperationRow{
+			OperationType: "remove_user",
+			NodeID:        sql.NullInt64{Int64: 7, Valid: true},
+			UserID:        sql.NullInt64{Int64: userID, Valid: true},
+		}
+		protocols[userID] = []string{"vless"}
+	}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); folded[7] {
+		t.Fatal("bulk VLESS removals on a capable node must stay targeted")
+	}
+	delete(capabilities[7], "targeted_user_add_remove_vless")
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("bulk VLESS removals on a legacy node must retain full-sync fallback")
+	}
+	capabilities[7]["targeted_user_add_remove_vless"] = true
+	operations[0].OperationType = "add_user"
+	protocols[operations[0].UserID.Int64] = []string{"vless", "openvpn"}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("mixed-protocol add batch must retain conservative full-sync fallback")
+	}
+}
+
 func TestControllerProcessQueueRetriesUnavailableUserDeltaWithoutFullSync(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-starvation.db")+"?_pragma=busy_timeout(30000)")

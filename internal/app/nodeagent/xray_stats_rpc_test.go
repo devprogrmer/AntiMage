@@ -166,17 +166,20 @@ func TestNodeRuntimeUserOperationsDoNotReportUnsupportedMutationsAsAccepted(t *t
 	}
 }
 
-func TestRuntimeStateAdvertisesOnlyImplementedVLESSUpdateCapability(t *testing.T) {
+func TestRuntimeStateAdvertisesOnlyImplementedVLESSMutationCapabilities(t *testing.T) {
 	state := New(Config{}).runtimeState("test")
+	seen := map[string]bool{}
 	for _, capability := range state.GetCapabilities() {
-		if capability == "targeted_user_update_vless" {
-			return
-		}
 		if capability == "targeted_user_update" {
-			t.Fatal("generic targeted user update capability overstates protocol support")
+			t.Fatal("generic targeted user capability overstates protocol support")
+		}
+		seen[capability] = true
+	}
+	for _, capability := range []string{"targeted_user_update_vless", "targeted_user_add_remove_vless"} {
+		if !seen[capability] {
+			t.Fatalf("%s capability missing although its Xray VLESS RPC is implemented", capability)
 		}
 	}
-	t.Fatal("targeted_user_update_vless capability missing although VLESS update RPC is implemented")
 }
 
 func TestXrayVLESSUserOperationsAreIdempotentAndRollbackFailedUpdate(t *testing.T) {
