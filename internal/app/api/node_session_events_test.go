@@ -462,6 +462,26 @@ func TestNodeReadyQueuesFullSync(t *testing.T) {
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 7 AND operation_type = 'sync_config' AND status = 'pending'`, 1)
 }
 
+func TestNodeSessionCallbackUsesCurrentRotatedSecret(t *testing.T) {
+	server, db := testAdminServer(t)
+	if _, err := db.Exec(`INSERT INTO nodes (id, name, status, certificate) VALUES (7, 'node-7', 'connected', 'node-cert')`); err != nil {
+		t.Fatal(err)
+	}
+	oldToken := nodecontroller.NodeSessionEventToken("admin-secret", 7, "node-cert")
+	if _, err := db.Exec(`UPDATE jwt SET admin_secret_key = 'rotated-secret'`); err != nil {
+		t.Fatal(err)
+	}
+	oldRequest := requestNodeSessionEvent(t, server, oldToken, `{"node_id":7,"event":"ready"}`)
+	if oldRequest.Code != http.StatusForbidden {
+		t.Fatalf("old callback secret status = %d body=%s; want immediate rejection", oldRequest.Code, oldRequest.Body.String())
+	}
+	newToken := nodecontroller.NodeSessionEventToken("rotated-secret", 7, "node-cert")
+	newRequest := requestNodeSessionEvent(t, server, newToken, `{"node_id":7,"event":"ready"}`)
+	if newRequest.Code != http.StatusOK {
+		t.Fatalf("rotated callback secret status = %d body=%s", newRequest.Code, newRequest.Body.String())
+	}
+}
+
 func postNodeSessionEvent(t *testing.T, server *Server, token string, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := requestNodeSessionEvent(t, server, token, body)

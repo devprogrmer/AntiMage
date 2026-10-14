@@ -104,22 +104,27 @@ func (s *Server) validateNodeSessionEvent(ctx context.Context, payload nodeSessi
 	default:
 		return statusError{status: http.StatusBadRequest, detail: "unsupported event"}
 	}
-	var cert string
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(certificate, '') FROM nodes WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted' LIMIT 1`, payload.NodeID).Scan(&cert)
+	var cert, adminSecret, legacySecret sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+SELECT COALESCE(n.certificate, ''), COALESCE(j.admin_secret_key, ''), COALESCE(j.secret_key, '')
+FROM nodes n
+LEFT JOIN (SELECT admin_secret_key, secret_key FROM jwt ORDER BY id LIMIT 1) j ON 1 = 1
+WHERE n.id = ? AND LOWER(COALESCE(n.status, '')) <> 'deleted'
+LIMIT 1`, payload.NodeID).Scan(&cert, &adminSecret, &legacySecret)
 	if err == sql.ErrNoRows {
 		return statusError{status: http.StatusForbidden, detail: "node not found"}
 	}
 	if err != nil {
 		return err
 	}
-	secret, err := s.nodeSessionCallbackSecret(ctx)
-	if err != nil {
-		return err
+	secret := strings.TrimSpace(adminSecret.String)
+	if secret == "" {
+		secret = strings.TrimSpace(legacySecret.String)
 	}
 	if strings.TrimSpace(secret) == "" {
 		return statusError{status: http.StatusForbidden, detail: "node session secret is not configured"}
 	}
-	expected := nodecontroller.NodeSessionEventToken(secret, payload.NodeID, cert)
+	expected := nodecontroller.NodeSessionEventToken(secret, payload.NodeID, cert.String)
 	if expected == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(strings.TrimSpace(payload.Token))) != 1 {
 		return statusError{status: http.StatusForbidden, detail: "invalid node session token"}
 	}
