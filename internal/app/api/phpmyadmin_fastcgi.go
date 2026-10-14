@@ -22,6 +22,12 @@ import (
 const phpMyAdminDocumentRoot = "/usr/share/phpmyadmin"
 
 const (
+	phpMyAdminUploadLimitMiB     = 1024
+	phpMyAdminMemoryLimitMiB     = 512
+	phpMyAdminExecutionLimitSecs = 600
+)
+
+const (
 	fcgiVersion1    = 1
 	fcgiBegin       = 1
 	fcgiEnd         = 3
@@ -177,11 +183,11 @@ func phpMyAdminFastCGIParams(r *http.Request, scriptRel string, scriptPath strin
 
 func phpMyAdminUploadPHPDirectives() []string {
 	return []string{
-		"upload_max_filesize=1024M",
-		"post_max_size=1024M",
-		"memory_limit=4096M",
-		"max_execution_time=0",
-		"max_input_time=0",
+		"upload_max_filesize=" + strconv.Itoa(phpMyAdminUploadLimitMiB) + "M",
+		"post_max_size=" + strconv.Itoa(phpMyAdminUploadLimitMiB) + "M",
+		"memory_limit=" + strconv.Itoa(phpMyAdminMemoryLimitMiB) + "M",
+		"max_execution_time=" + strconv.Itoa(phpMyAdminExecutionLimitSecs),
+		"max_input_time=" + strconv.Itoa(phpMyAdminExecutionLimitSecs),
 	}
 }
 

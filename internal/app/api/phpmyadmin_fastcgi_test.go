@@ -81,11 +81,20 @@ func TestPHPMyAdminRecoverySessionCarriesProxyState(t *testing.T) {
 	}
 }
 
-func TestPHPMyAdminUploadPHPDirectivesUseOneGiBLimit(t *testing.T) {
+func TestPHPMyAdminPHPDirectivesBoundMemoryAndExecution(t *testing.T) {
 	directives := strings.Join(phpMyAdminUploadPHPDirectives(), "\n")
-	for _, directive := range []string{"upload_max_filesize=1024M", "post_max_size=1024M"} {
+	for _, directive := range []string{
+		"upload_max_filesize=1024M",
+		"post_max_size=1024M",
+		"memory_limit=512M",
+		"max_execution_time=600",
+		"max_input_time=600",
+	} {
 		if !strings.Contains(directives, directive) {
 			t.Fatalf("missing directive %q in %q", directive, directives)
 		}
+	}
+	if strings.Contains(directives, "memory_limit=4096M") || strings.Contains(directives, "max_execution_time=0") || strings.Contains(directives, "max_input_time=0") {
+		t.Fatalf("phpMyAdmin resource limits are still unbounded: %q", directives)
 	}
 }

@@ -416,13 +416,17 @@ func ensurePHPMyAdminRuntimeConfig(credentials phpMyAdminCredentials, theme stri
 	if strings.TrimSpace(credentials.Password) == "" {
 		allowNoPassword = "true"
 	}
+	phpDirectives := ""
+	for _, directive := range phpMyAdminUploadPHPDirectives() {
+		name, value, ok := strings.Cut(directive, "=")
+		if !ok {
+			continue
+		}
+		phpDirectives += "ini_set(" + phpString(name) + ", " + phpString(value) + ");\n"
+	}
 	config := "<?php\n" +
 		"declare(strict_types=1);\n" +
-		"ini_set('upload_max_filesize', '1024M');\n" +
-		"ini_set('post_max_size', '1024M');\n" +
-		"ini_set('memory_limit', '4096M');\n" +
-		"ini_set('max_execution_time', '0');\n" +
-		"ini_set('max_input_time', '0');\n" +
+		phpDirectives +
 		"$i = 1;\n" +
 		"$cfg['Servers'] = [];\n" +
 		"$cfg['Servers'][$i] = [];\n" +
