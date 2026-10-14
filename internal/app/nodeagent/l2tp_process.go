@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -387,6 +388,33 @@ func startL2TPSystemService(s *Server) error {
 	return nil
 }
 
+func l2TPCommandSucceeds(name string, args ...string) bool {
+	path, err := l2TPLookPath(name)
+	if err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), l2TPCommandTimeout)
+	defer cancel()
+	cmd := l2TPCommandContext(ctx, path, args...)
+	cmd.Env = os.Environ()
+	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
+	return cmd.Run() == nil
+}
+
+func l2TPSystemServiceActive() bool {
+	if _, err := l2TPLookPath("systemctl"); err == nil && l2TPCommandSucceeds("systemctl", "is-active", "--quiet", "xl2tpd") {
+		return true
+	}
+	if _, err := l2TPLookPath("service"); err == nil && l2TPCommandSucceeds("service", "xl2tpd", "status") {
+		return true
+	}
+	return false
+}
+
+func l2TPIPSecActive() bool {
+	return l2TPCommandSucceeds("ipsec", "status")
+}
+
 func renderL2TPSystemIPPreUpHook(executable, sessionConfig string) string {
 	return "#!/bin/sh\n" + l2TPIPPreUpHookMarker + "\n" +
 		"set -eu\n" +
@@ -488,13 +516,13 @@ func (s *Server) startL2TPInbound(
 	s.mu.Lock()
 	previous := s.l2TPRuntimes[tag]
 	s.mu.Unlock()
-	if previous == nil || changes.ipsec {
+	if changes.ipsec || (previous == nil && !l2TPIPSecActive()) {
 		if err := applyL2TPIPSec(s, tag); err != nil {
 			_ = clearL2TPSystemIPPreUpHook()
 			return err
 		}
 	}
-	if previous == nil || changes.xl2tpd {
+	if changes.xl2tpd || (previous == nil && !l2TPSystemServiceActive()) {
 		if err := startL2TPSystemService(s); err != nil {
 			_ = clearL2TPSystemIPPreUpHook()
 			return fmt.Errorf("l2tp %q: %w", tag, err)

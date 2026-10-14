@@ -220,6 +220,16 @@ func TestStartAndStopL2TPInboundManageSystemPreUpHook(t *testing.T) {
 	if raw, err := os.ReadFile(l2TPCHAPSecretsPath); err != nil || !strings.Contains(string(raw), "two") {
 		t.Fatalf("updated CHAP credentials were not installed atomically: %q, %v", raw, err)
 	}
+	beforeAgentRestart := len(serviceCommands)
+	restartedAgent := New(Config{DataDir: filepath.Join(root, "state")})
+	if err := restartedAgent.startL2TPInbound("test", sources[0], sources[1], sources[2], chapTwo, filepath.Join(root, "session.json"), [32]byte{2}); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range serviceCommands[beforeAgentRestart:] {
+		if strings.Contains(command, "stop xl2tpd") || strings.Contains(command, "start xl2tpd") || strings.Contains(command, "rereadsecrets") || strings.Contains(command, " reload") {
+			t.Fatalf("identical healthy L2TP config restarted/reloaded services after agent restart: %v", serviceCommands[beforeAgentRestart:])
+		}
+	}
 	if _, err := os.Stat(l2TPIPPreUpHookPath); err != nil {
 		t.Fatalf("L2TP startup did not install system pre-up hook: %v", err)
 	}
