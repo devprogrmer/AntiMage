@@ -72,7 +72,8 @@ type Server struct {
 	liveUserGlobalSpeed  liveUserSpeedTotal
 	liveInboundSpeedsMu  sync.RWMutex
 	liveInboundSpeeds    map[string]liveInboundSpeed
-	admissionLocks       [sessionAdmissionLockShardCount]sync.Mutex
+	admissionLockMu      sync.Mutex
+	admissionLockRefs    map[int64]*sessionAdmissionLockRef
 	loginLimiter         loginRateLimiter
 	operators            *operatorResolver
 	recentActionsEnabled bool

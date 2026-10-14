@@ -30,18 +30,43 @@ type nodeSessionEventPayload struct {
 	Event      string `json:"event"`
 }
 
-// Admission remains serialized per user across all nodes, because IP/device
-// limits are global to that user. Stripes bound memory while allowing unrelated
-// users' callbacks to enter admission concurrently.
-const sessionAdmissionLockShardCount = 256
+// Admission remains serialized per user across all nodes because IP/device
+// limits are global to that user. Locks are created only while a user has
+// waiters and are removed after the last callback releases its reference.
 
 // Native session helpers may emit duplicate heartbeats. Persist at most one
 // last_seen_at write per session every 30 seconds; admission still runs when a
 // seen event has no active row yet.
 const sessionSeenPersistInterval = 30 * time.Second
 
-func (s *Server) sessionAdmissionLock(userID int64) *sync.Mutex {
-	return &s.admissionLocks[uint64(userID)%sessionAdmissionLockShardCount]
+type sessionAdmissionLockRef struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func (s *Server) lockSessionAdmission(userID int64) func() {
+	s.admissionLockMu.Lock()
+	if s.admissionLockRefs == nil {
+		s.admissionLockRefs = make(map[int64]*sessionAdmissionLockRef)
+	}
+	ref := s.admissionLockRefs[userID]
+	if ref == nil {
+		ref = &sessionAdmissionLockRef{}
+		s.admissionLockRefs[userID] = ref
+	}
+	ref.refs++
+	s.admissionLockMu.Unlock()
+
+	ref.mu.Lock()
+	return func() {
+		ref.mu.Unlock()
+		s.admissionLockMu.Lock()
+		ref.refs--
+		if ref.refs == 0 && s.admissionLockRefs[userID] == ref {
+			delete(s.admissionLockRefs, userID)
+		}
+		s.admissionLockMu.Unlock()
+	}
 }
 
 func (s *Server) handleNodeSessionEvent(w http.ResponseWriter, r *http.Request) {
@@ -158,9 +183,8 @@ func (s *Server) applyNodeSessionEvent(ctx context.Context, payload nodeSessionE
 		}
 	}
 
-	lock := s.sessionAdmissionLock(payload.UserID)
-	lock.Lock()
-	defer lock.Unlock()
+	unlockAdmission := s.lockSessionAdmission(payload.UserID)
+	defer unlockAdmission()
 
 	now = time.Now().UTC()
 	tx, err := s.db.BeginTx(ctx, nil)

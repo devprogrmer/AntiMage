@@ -13,29 +13,43 @@ import (
 
 func TestNodeSessionAdmissionLocksSerializePerUserAndAllowDifferentUsers(t *testing.T) {
 	server := &Server{}
-	if server.sessionAdmissionLock(42) != server.sessionAdmissionLock(42) {
-		t.Fatal("same user must always use the same admission lock")
-	}
-	if server.sessionAdmissionLock(42) == server.sessionAdmissionLock(43) {
-		t.Fatal("adjacent users should not share an admission lock")
-	}
-
-	first := server.sessionAdmissionLock(42)
-	second := server.sessionAdmissionLock(43)
-	first.Lock()
-	acquired := make(chan struct{})
+	releaseFirst := server.lockSessionAdmission(42)
+	sameUserAcquired := make(chan struct{})
 	go func() {
-		second.Lock()
-		close(acquired)
-		second.Unlock()
+		unlock := server.lockSessionAdmission(42)
+		unlock()
+		close(sameUserAcquired)
 	}()
 	select {
-	case <-acquired:
+	case <-sameUserAcquired:
+		releaseFirst()
+		t.Fatal("same-user admission was not serialized")
+	case <-time.After(25 * time.Millisecond):
+	}
+
+	differentUserAcquired := make(chan struct{})
+	go func() {
+		unlock := server.lockSessionAdmission(43)
+		unlock()
+		close(differentUserAcquired)
+	}()
+	select {
+	case <-differentUserAcquired:
 	case <-time.After(time.Second):
-		first.Unlock()
+		releaseFirst()
 		t.Fatal("admission for a different user was blocked")
 	}
-	first.Unlock()
+	releaseFirst()
+	select {
+	case <-sameUserAcquired:
+	case <-time.After(time.Second):
+		t.Fatal("same-user admission did not proceed after prior callback released")
+	}
+	server.admissionLockMu.Lock()
+	defer server.admissionLockMu.Unlock()
+	if len(server.admissionLockRefs) != 0 {
+		t.Fatalf("idle admission locks leaked: %d", len(server.admissionLockRefs))
+	}
 }
 
 func TestRepeatedSeenEventsCoalesceSessionWrites(t *testing.T) {
@@ -97,20 +111,19 @@ func TestActiveSeenEventDoesNotWaitForAdmissionLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := &Server{db: db}
-	lock := server.sessionAdmissionLock(42)
-	lock.Lock()
+	unlockAdmission := server.lockSessionAdmission(42)
 	done := make(chan error, 1)
 	go func() {
 		done <- server.applyNodeSessionEvent(context.Background(), nodeSessionEventPayload{NodeID: 7, UserID: 42, Protocol: "wg", SessionID: "wg:live", Event: "seen"})
 	}()
 	select {
 	case err := <-done:
-		lock.Unlock()
+		unlockAdmission()
 		if err != nil {
 			t.Fatal(err)
 		}
 	case <-time.After(time.Second):
-		lock.Unlock()
+		unlockAdmission()
 		if err := <-done; err != nil {
 			t.Fatal(err)
 		}
