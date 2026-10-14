@@ -236,7 +236,7 @@ WHERE node_id = ? AND user_id = ? AND protocol = 'ov' AND COALESCE(inbound_tag, 
 				return err
 			}
 		}
-		allowed, err := sessionAdmissionAllowed(ctx, tx, payload)
+		allowed, err := sessionAdmissionAllowed(ctx, tx, payload, s.dialect)
 		if err != nil {
 			return err
 		}
@@ -284,9 +284,9 @@ WHERE node_id = ? AND user_id = ? AND session_id = ? AND ended_at IS NULL AND la
 	return false, err
 }
 
-func sessionAdmissionAllowed(ctx context.Context, tx *sql.Tx, payload nodeSessionEventPayload) (bool, error) {
+func sessionAdmissionAllowed(ctx context.Context, tx *sql.Tx, payload nodeSessionEventPayload, dialect string) (bool, error) {
 	var ipLimit, deviceLimit int64
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(ip_limit, 0), COALESCE(device_limit, 0) FROM users WHERE id = ?`, payload.UserID).Scan(&ipLimit, &deviceLimit); err != nil {
+	if err := tx.QueryRowContext(ctx, sessionAdmissionPolicyQuery(dialect), payload.UserID).Scan(&ipLimit, &deviceLimit); err != nil {
 		return false, err
 	}
 	if ipLimit <= 0 && deviceLimit <= 0 {
@@ -336,6 +336,15 @@ WHERE user_id = ? AND ended_at IS NULL`, payload.UserID)
 		}
 	}
 	return true, nil
+}
+
+func sessionAdmissionPolicyQuery(dialect string) string {
+	query := `SELECT COALESCE(ip_limit, 0), COALESCE(device_limit, 0) FROM users WHERE id = ?`
+	dialect = strings.ToLower(strings.TrimSpace(dialect))
+	if strings.Contains(dialect, "mysql") || strings.Contains(dialect, "maria") {
+		query += " FOR UPDATE"
+	}
+	return query
 }
 
 func supportsHardDeviceIdentity(protocol string) bool {

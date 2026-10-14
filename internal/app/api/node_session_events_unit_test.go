@@ -52,6 +52,18 @@ func TestNodeSessionAdmissionLocksSerializePerUserAndAllowDifferentUsers(t *test
 	}
 }
 
+func TestSessionAdmissionLocksUserRowAcrossMySQLPanelReplicas(t *testing.T) {
+	if query := sessionAdmissionPolicyQuery("mysql"); query != "SELECT COALESCE(ip_limit, 0), COALESCE(device_limit, 0) FROM users WHERE id = ? FOR UPDATE" {
+		t.Fatalf("MySQL admission policy query=%q; expected a transaction row lock", query)
+	}
+	if query := sessionAdmissionPolicyQuery("mariadb"); query != "SELECT COALESCE(ip_limit, 0), COALESCE(device_limit, 0) FROM users WHERE id = ? FOR UPDATE" {
+		t.Fatalf("MariaDB admission policy query=%q; expected a transaction row lock", query)
+	}
+	if query := sessionAdmissionPolicyQuery("sqlite"); query != "SELECT COALESCE(ip_limit, 0), COALESCE(device_limit, 0) FROM users WHERE id = ?" {
+		t.Fatalf("SQLite admission policy query=%q", query)
+	}
+}
+
 func TestRepeatedSeenEventsCoalesceSessionWrites(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "seen.db"))
 	if err != nil {
