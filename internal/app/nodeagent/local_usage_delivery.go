@@ -305,16 +305,34 @@ func (s *Server) localAwaitingReflectionUsageBatch(queries []localUsageReflectio
 	if len(queries) == 0 {
 		return nil, nil
 	}
+	var results []localUsageReflectionResult
+	if err := s.localAwaitingReflectionUsageBatchInto(queries, &results); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (s *Server) localAwaitingReflectionUsageBatchInto(queries []localUsageReflectionQuery, results *[]localUsageReflectionResult) error {
+	if len(queries) == 0 {
+		*results = (*results)[:0]
+		return nil
+	}
 	s.localUsageMu.Lock()
 	defer s.localUsageMu.Unlock()
 	if err := s.ensureLocalUsageDeliveriesLocked(); err != nil {
-		return nil, err
+		return err
 	}
 	deliveries := append([]localUsageDelivery(nil), s.localUsageDeliveries...)
 	for index := range deliveries {
 		deliveries[index].Rows = append([]localUsageDeliveryRow(nil), deliveries[index].Rows...)
 	}
-	results := make([]localUsageReflectionResult, len(queries))
+	if cap(*results) < len(queries) {
+		*results = make([]localUsageReflectionResult, len(queries))
+	} else {
+		*results = (*results)[:len(queries)]
+		clear(*results)
+	}
+	resultRows := *results
 	changed := false
 	for queryIndex, query := range queries {
 		reflectedThrough := -1
@@ -324,7 +342,7 @@ func (s *Server) localAwaitingReflectionUsageBatch(queries []localUsageReflectio
 				if query.PendingChildID != "" && query.ReflectedRootBatchID != "" {
 					for _, row := range delivery.Rows {
 						if row.UserID == query.UserID && row.Protocol == query.Protocol && row.ChildID == query.PendingChildID {
-							results[queryIndex].PendingReflected = true
+							resultRows[queryIndex].PendingReflected = true
 							break
 						}
 					}
@@ -355,10 +373,10 @@ func (s *Server) localAwaitingReflectionUsageBatch(queries []localUsageReflectio
 				if row.Protocol != query.Protocol || row.UserID != query.UserID || row.InboundTag != query.InboundTag || row.ChildID == query.PendingChildID {
 					continue
 				}
-				if ^uint64(0)-results[queryIndex].Awaiting < row.Raw {
-					return nil, fmt.Errorf("unreflected accounting usage overflow")
+				if ^uint64(0)-resultRows[queryIndex].Awaiting < row.Raw {
+					return fmt.Errorf("unreflected accounting usage overflow")
 				}
-				results[queryIndex].Awaiting += row.Raw
+				resultRows[queryIndex].Awaiting += row.Raw
 			}
 			delivery.Rows = delivery.Rows[:writeRow]
 			if len(delivery.Rows) > 0 {
@@ -373,11 +391,11 @@ func (s *Server) localAwaitingReflectionUsageBatch(queries []localUsageReflectio
 	}
 	if changed {
 		if err := s.persistLocalUsageDeliveriesLocked(deliveries); err != nil {
-			return nil, err
+			return err
 		}
 		s.localUsageDeliveries = deliveries
 	}
-	return results, nil
+	return nil
 }
 
 func (s *Server) localPendingUsageReflected(protocol string, userID int64, pendingChildID, reflectedRootBatchID string) (bool, error) {

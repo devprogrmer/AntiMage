@@ -25,11 +25,13 @@ type xrayQuotaRevocation struct {
 }
 
 type xrayQuotaPolicyIndex struct {
-	Revision   uint64
-	Checksum   string
-	Policies   []xrayLocalUserPolicy
-	EmailIndex map[string]int
-	UsageTotal []uint64
+	Revision          uint64
+	Checksum          string
+	Policies          []xrayLocalUserPolicy
+	EmailIndex        map[string]int
+	UsageTotal        []uint64
+	ReflectionQueries []localUsageReflectionQuery
+	ReflectionResults []localUsageReflectionResult
 }
 
 func (s *Server) xrayQuotaPolicyIndexFor(snapshot *runtimePolicySnapshot) (*xrayQuotaPolicyIndex, error) {
@@ -60,6 +62,13 @@ func (s *Server) xrayQuotaPolicyIndexFor(snapshot *runtimePolicySnapshot) (*xray
 		}
 	}
 	index.UsageTotal = make([]uint64, len(index.EmailIndex))
+	index.ReflectionQueries = make([]localUsageReflectionQuery, len(index.Policies))
+	for position, policy := range index.Policies {
+		index.ReflectionQueries[position] = localUsageReflectionQuery{
+			Protocol: "xray", UserID: policy.UserID, InboundTag: policy.InboundTag,
+			ReflectedRootBatchID: policy.ReflectedUsageBatchID,
+		}
+	}
 	if cacheable {
 		s.mu.Lock()
 		if current := s.runtimePolicy; current != nil && current.Revision == snapshot.Revision && current.Checksum == snapshot.Checksum {
@@ -238,17 +247,14 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 	if s.xrayUsagePending != nil {
 		pendingBatchID = s.xrayUsagePending.BatchID
 	}
-	reflectionQueries := make([]localUsageReflectionQuery, len(policyIndex.Policies))
-	for index, policy := range policyIndex.Policies {
-		reflectionQueries[index] = localUsageReflectionQuery{
-			Protocol: "xray", UserID: policy.UserID, InboundTag: policy.InboundTag,
-			PendingChildID: pendingBatchID, ReflectedRootBatchID: policy.ReflectedUsageBatchID,
-		}
+	reflectionQueries := policyIndex.ReflectionQueries
+	for index := range reflectionQueries {
+		reflectionQueries[index].PendingChildID = pendingBatchID
 	}
-	reflectionResults, err := s.localAwaitingReflectionUsageBatch(reflectionQueries)
-	if err != nil {
+	if err := s.localAwaitingReflectionUsageBatchInto(reflectionQueries, &policyIndex.ReflectionResults); err != nil {
 		return err
 	}
+	reflectionResults := policyIndex.ReflectionResults
 	var enforcementErr error
 	for policyPosition, policy := range policyIndex.Policies {
 		raw := policyIndex.UsageTotal[policyIndex.EmailIndex[policy.Email]]

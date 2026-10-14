@@ -6,6 +6,32 @@ import (
 	"testing"
 )
 
+func BenchmarkLocalUsageReflectionResultReuse(b *testing.B) {
+	queries := make([]localUsageReflectionQuery, 512)
+	for index := range queries {
+		queries[index] = localUsageReflectionQuery{Protocol: "xray", UserID: int64(index + 1), InboundTag: "vless"}
+	}
+	b.Run("allocate-results", func(b *testing.B) {
+		server := New(Config{DataDir: b.TempDir()})
+		b.ReportAllocs()
+		for range b.N {
+			if _, err := server.localAwaitingReflectionUsageBatch(queries); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("reuse-results", func(b *testing.B) {
+		server := New(Config{DataDir: b.TempDir()})
+		var results []localUsageReflectionResult
+		b.ReportAllocs()
+		for range b.N {
+			if err := server.localAwaitingReflectionUsageBatchInto(queries, &results); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
 func TestLocalDeliveryReflectionLostACKRestartAndCompaction(t *testing.T) {
 	s := &Server{cfg: Config{DataDir: t.TempDir()}}
 	deliveries := []localUsageDelivery{
