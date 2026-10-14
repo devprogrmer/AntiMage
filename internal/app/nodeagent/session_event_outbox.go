@@ -27,20 +27,44 @@ func (s *Server) sendNativeSessionEventOfflineSafe(ctx context.Context, callback
 	if callback.URL == "" {
 		return nil
 	}
+	key, shouldSend, tracked := s.reserveNativeSessionHeartbeat(callback, event)
+	if !shouldSend {
+		// A prior delivery may be durably queued while the panel was down. Keep
+		// replaying that queue even when this duplicate heartbeat is coalesced.
+		return s.flushNativeSessionOutbox(ctx, callback)
+	}
+	forgetReservation := func() {
+		if tracked {
+			s.forgetNativeSessionHeartbeat(key)
+		}
+	}
 	if err := s.flushNativeSessionOutbox(ctx, callback); err != nil {
 		if errors.Is(err, errNativeSessionDeviceLimit) || !nativeSessionCallbackRetryable(err) {
+			forgetReservation()
 			return err
 		}
-		return s.enqueueNativeSessionEvent(event)
+		if err := s.enqueueNativeSessionEvent(event); err != nil {
+			forgetReservation()
+			return err
+		}
+		return nil
 	}
 	err := s.sendNativeSessionEvent(ctx, callback, event)
 	if err == nil || errors.Is(err, errNativeSessionDeviceLimit) {
+		if errors.Is(err, errNativeSessionDeviceLimit) {
+			forgetReservation()
+		}
 		return err
 	}
 	if !nativeSessionCallbackRetryable(err) {
+		forgetReservation()
 		return err
 	}
-	return s.enqueueNativeSessionEvent(event)
+	if err := s.enqueueNativeSessionEvent(event); err != nil {
+		forgetReservation()
+		return err
+	}
+	return nil
 }
 
 func nativeSessionCallbackRetryable(err error) bool {

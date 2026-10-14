@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,6 +34,91 @@ type nativeSessionEvent struct {
 	ClientName string `json:"client_name,omitempty"`
 	Platform   string `json:"platform,omitempty"`
 	Event      string `json:"event"`
+}
+
+const (
+	nativeSessionSeenCoalesceInterval = 30 * time.Second
+	maxNativeSessionSeenKeys          = 32768
+)
+
+type nativeSessionHeartbeatKey struct {
+	nodeID     int64
+	userID     int64
+	protocol   string
+	inboundTag string
+	sessionID  string
+	callbackID [32]byte
+}
+
+type nativeSessionSeenState struct {
+	at          time.Time
+	fingerprint [32]byte
+}
+
+func nativeSessionHeartbeatIdentity(callback nativeRuntimeSessionCallback, event nativeSessionEvent) (nativeSessionHeartbeatKey, [32]byte) {
+	nodeID := event.NodeID
+	if nodeID <= 0 {
+		nodeID = callback.NodeID
+	}
+	callbackID := sha256.Sum256([]byte(strings.TrimSpace(callback.URL) + "\x00" + strings.TrimSpace(callback.Token)))
+	event.NodeID = nodeID
+	event.Event = strings.ToLower(strings.TrimSpace(event.Event))
+	eventStateRaw, _ := json.Marshal(event)
+	key := nativeSessionHeartbeatKey{
+		nodeID:     nodeID,
+		userID:     event.UserID,
+		protocol:   strings.ToLower(strings.TrimSpace(event.Protocol)),
+		inboundTag: strings.TrimSpace(event.InboundTag),
+		sessionID:  strings.TrimSpace(event.SessionID),
+		callbackID: callbackID,
+	}
+	return key, sha256.Sum256(eventStateRaw)
+}
+
+func (s *Server) reserveNativeSessionHeartbeat(callback nativeRuntimeSessionCallback, event nativeSessionEvent) (nativeSessionHeartbeatKey, bool, bool) {
+	key, fingerprint := nativeSessionHeartbeatIdentity(callback, event)
+	eventName := strings.ToLower(strings.TrimSpace(event.Event))
+	s.nativeSessionSeenMu.Lock()
+	defer s.nativeSessionSeenMu.Unlock()
+	if eventName != "seen" {
+		if eventName == "start" || eventName == "stop" {
+			delete(s.nativeSessionSeenSent, key)
+		}
+		return key, true, false
+	}
+	if key.nodeID <= 0 || key.userID <= 0 || key.sessionID == "" {
+		return key, true, false
+	}
+	if s.nativeSessionSeenSent == nil {
+		s.nativeSessionSeenSent = make(map[nativeSessionHeartbeatKey]nativeSessionSeenState)
+	}
+	now := time.Now()
+	previous, exists := s.nativeSessionSeenSent[key]
+	if exists && previous.fingerprint == fingerprint && now.Sub(previous.at) < nativeSessionSeenCoalesceInterval {
+		return key, false, false
+	}
+	if exists || len(s.nativeSessionSeenSent) < maxNativeSessionSeenKeys {
+		s.nativeSessionSeenSent[key] = nativeSessionSeenState{at: now, fingerprint: fingerprint}
+		return key, true, true
+	}
+	for staleKey, state := range s.nativeSessionSeenSent {
+		if now.Sub(state.at) >= nativeSessionSeenCoalesceInterval {
+			delete(s.nativeSessionSeenSent, staleKey)
+		}
+	}
+	if len(s.nativeSessionSeenSent) < maxNativeSessionSeenKeys {
+		s.nativeSessionSeenSent[key] = nativeSessionSeenState{at: now, fingerprint: fingerprint}
+		return key, true, true
+	}
+	// Under extreme cardinality, favor delivering the heartbeat over retaining
+	// an unbounded process-local dedupe index.
+	return key, true, false
+}
+
+func (s *Server) forgetNativeSessionHeartbeat(key nativeSessionHeartbeatKey) {
+	s.nativeSessionSeenMu.Lock()
+	delete(s.nativeSessionSeenSent, key)
+	s.nativeSessionSeenMu.Unlock()
 }
 
 func (s *Server) sendNativeSessionEvent(

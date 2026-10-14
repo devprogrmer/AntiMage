@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -90,6 +91,56 @@ func TestNativeSessionOutboxCachesEmptyDirectory(t *testing.T) {
 	}
 	if reads != 1 {
 		t.Fatalf("empty outbox was rescanned %d times, want one initial scan", reads)
+	}
+}
+
+func TestRepeatedNativeSessionSeenEventsCoalesceButLifecycleEventsPass(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	node := New(Config{DataDir: t.TempDir()})
+	callback := nativeRuntimeSessionCallback{URL: server.URL, NodeID: 7, Token: "callback-secret"}
+	base := nativeSessionEvent{UserID: 42, Protocol: "wg", InboundTag: "wg-main", SessionID: "wg:peer", AssignedIP: "10.70.0.2", ClientIP: "198.51.100.2", Event: "seen"}
+
+	for range 8 {
+		if err := node.sendNativeSessionEventOfflineSafe(context.Background(), callback, base); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("repeated seen callbacks=%d, want one", got)
+	}
+
+	changedEndpoint := base
+	changedEndpoint.ClientIP = "198.51.100.3"
+	if err := node.sendNativeSessionEventOfflineSafe(context.Background(), callback, changedEndpoint); err != nil {
+		t.Fatal(err)
+	}
+	callback.Token = "rotated-callback-secret"
+	if err := node.sendNativeSessionEventOfflineSafe(context.Background(), callback, base); err != nil {
+		t.Fatal(err)
+	}
+	start := base
+	start.Event = "start"
+	if err := node.sendNativeSessionEventOfflineSafe(context.Background(), callback, start); err != nil {
+		t.Fatal(err)
+	}
+	if err := node.sendNativeSessionEventOfflineSafe(context.Background(), callback, base); err != nil {
+		t.Fatal(err)
+	}
+	stop := base
+	stop.Event = "stop"
+	if err := node.sendNativeSessionEventOfflineSafe(context.Background(), callback, stop); err != nil {
+		t.Fatal(err)
+	}
+	if err := node.sendNativeSessionEventOfflineSafe(context.Background(), callback, base); err != nil {
+		t.Fatal(err)
+	}
+	if got := requests.Load(); got != 7 {
+		t.Fatalf("request count=%d, want changed endpoint/token plus all start/stop lifecycle events", got)
 	}
 }
 

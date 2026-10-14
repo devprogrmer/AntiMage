@@ -64,6 +64,8 @@ type Server struct {
 	nativeSessionOutboxFiles         []string
 	nativeSessionOutboxKeys          map[string]struct{}
 	nativeSessionOutboxEntryCount    int
+	nativeSessionSeenMu              sync.Mutex
+	nativeSessionSeenSent            map[nativeSessionHeartbeatKey]nativeSessionSeenState
 	runtimePolicy                    *runtimePolicySnapshot
 	xrayQuotaPolicyIndex             *xrayQuotaPolicyIndex
 	xrayQuotaSamples                 map[xrayQuotaSampleKey]xrayQuotaUsageSample
