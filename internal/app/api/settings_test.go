@@ -471,6 +471,28 @@ func TestAllSettingsRoute(t *testing.T) {
 
 }
 
+func TestAllSettingsRouteRollsBackEarlierWritesWhenLaterSectionIsInvalid(t *testing.T) {
+	server, db := testAdminServer(t)
+	createSettingsTables(t, db)
+	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+	token := adminBearerToken(t, server, "pouria", "pass123")
+
+	rec := adminJSONRequest(t, server, http.MethodPut, "/api/settings/all", token, `{
+		"panel":{"default_subscription_type":"token"},
+		"telegram":{"backup_scope":"invalid"}
+	}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid settings status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var persisted string
+	if err := db.QueryRow(`SELECT default_subscription_type FROM panel_settings ORDER BY id DESC LIMIT 1`).Scan(&persisted); err != nil {
+		t.Fatal(err)
+	}
+	if persisted != "key" {
+		t.Fatalf("panel setting persisted despite later section failure: got %q, want rolled-back default key", persisted)
+	}
+}
+
 func TestCertificateRoutesValidateRequests(t *testing.T) {
 	server, db := testAdminServer(t)
 	createSettingsTables(t, db)

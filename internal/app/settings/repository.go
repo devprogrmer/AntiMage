@@ -58,11 +58,30 @@ var templateKeys = map[string]bool{
 
 type Repository struct {
 	db      *sql.DB
+	tx      *sql.Tx
 	dialect string
+}
+
+type queryRunner interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
 func NewRepository(db *sql.DB, dialect string) Repository {
 	return Repository{db: db, dialect: dialect}
+}
+
+func (r Repository) WithTx(tx *sql.Tx) Repository {
+	r.tx = tx
+	return r
+}
+
+func (r Repository) queryRunner() queryRunner {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db
 }
 
 func (r Repository) PanelSettings(ctx context.Context) (PanelSettings, error) {
@@ -95,7 +114,7 @@ func (r Repository) UpdatePanelSettings(ctx context.Context, raw map[string]json
 		sets = append(sets, "updated_at = ?")
 		args = append(args, dbTime(time.Now().UTC()))
 		args = append(args, r.panelRecordID(ctx))
-		if _, err := r.db.ExecContext(ctx, "UPDATE panel_settings SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
+		if _, err := r.queryRunner().ExecContext(ctx, "UPDATE panel_settings SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
 			return PanelSettings{}, err
 		}
 	}
@@ -145,7 +164,7 @@ func (r Repository) UpdateRuntimeSettings(ctx context.Context, raw map[string]js
 		sets = append(sets, "updated_at = ?")
 		args = append(args, dbTime(time.Now().UTC()))
 		args = append(args, 1)
-		if _, err := r.db.ExecContext(ctx, "UPDATE settings SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
+		if _, err := r.queryRunner().ExecContext(ctx, "UPDATE settings SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
 			return RuntimeSettings{}, err
 		}
 	}
@@ -232,7 +251,7 @@ func (r Repository) UpdateSubscriptionSettings(ctx context.Context, raw map[stri
 		sets = append(sets, "updated_at = ?")
 		args = append(args, dbTime(time.Now().UTC()))
 		args = append(args, r.subscriptionRecordID(ctx))
-		if _, err := r.db.ExecContext(ctx, "UPDATE subscription_settings SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
+		if _, err := r.queryRunner().ExecContext(ctx, "UPDATE subscription_settings SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
 			return SubscriptionSettings{}, err
 		}
 	}
@@ -276,7 +295,7 @@ func (r Repository) UpdateAdminSubscriptionSettings(ctx context.Context, adminID
 	}
 	if len(sets) > 0 {
 		args = append(args, adminID)
-		if _, err := r.db.ExecContext(ctx, "UPDATE admins SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
+		if _, err := r.queryRunner().ExecContext(ctx, "UPDATE admins SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
 			return AdminSubscriptionSettings{}, err
 		}
 	}
@@ -292,7 +311,7 @@ var ErrUnsupportedTemplateKey = errors.New("unsupported template key")
 
 func (r Repository) panelSettings(ctx context.Context) (PanelSettings, error) {
 	var defaultType sql.NullString
-	err := r.db.QueryRowContext(ctx, `SELECT COALESCE(default_subscription_type, 'key') FROM panel_settings ORDER BY id DESC LIMIT 1`).Scan(&defaultType)
+	err := r.queryRunner().QueryRowContext(ctx, `SELECT COALESCE(default_subscription_type, 'key') FROM panel_settings ORDER BY id DESC LIMIT 1`).Scan(&defaultType)
 	if err != nil {
 		return PanelSettings{}, err
 	}
@@ -305,7 +324,7 @@ func (r Repository) panelSettings(ctx context.Context) (PanelSettings, error) {
 
 func (r Repository) runtimeSettings(ctx context.Context) (RuntimeSettings, error) {
 	var result RuntimeSettings
-	err := r.db.QueryRowContext(ctx, `
+	err := r.queryRunner().QueryRowContext(ctx, `
 SELECT
 	COALESCE(dashboard_path, '/dashboard/'),
 	COALESCE(record_node_usage, 1),
@@ -347,13 +366,13 @@ LIMIT 1`).Scan(
 
 func (r Repository) ensureRuntimeSettingsRecord(ctx context.Context) error {
 	var count int
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE id = 1`).Scan(&count); err != nil {
+	if err := r.queryRunner().QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE id = 1`).Scan(&count); err != nil {
 		return err
 	}
 	if count > 0 {
 		return nil
 	}
-	_, err := r.db.ExecContext(ctx, `
+	_, err := r.queryRunner().ExecContext(ctx, `
 INSERT INTO settings (
 	id,
 	dashboard_path,
@@ -392,13 +411,13 @@ INSERT INTO settings (
 
 func (r Repository) ensurePanelRecord(ctx context.Context) error {
 	var count int
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM panel_settings`).Scan(&count); err != nil {
+	if err := r.queryRunner().QueryRowContext(ctx, `SELECT COUNT(*) FROM panel_settings`).Scan(&count); err != nil {
 		return err
 	}
 	if count > 0 {
 		return nil
 	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO panel_settings (default_subscription_type, created_at, updated_at) VALUES (?, ?, ?)`, defaultSubscriptionType, dbTime(time.Now().UTC()), dbTime(time.Now().UTC()))
+	_, err := r.queryRunner().ExecContext(ctx, `INSERT INTO panel_settings (default_subscription_type, created_at, updated_at) VALUES (?, ?, ?)`, defaultSubscriptionType, dbTime(time.Now().UTC()), dbTime(time.Now().UTC()))
 	return err
 }
 
@@ -407,25 +426,25 @@ func (r Repository) ensurePanelDefaultSubscriptionTypeColumn(ctx context.Context
 		return nil
 	}
 	var probe any
-	err := r.db.QueryRowContext(ctx, `SELECT default_subscription_type FROM panel_settings LIMIT 1`).Scan(&probe)
+	err := r.queryRunner().QueryRowContext(ctx, `SELECT default_subscription_type FROM panel_settings LIMIT 1`).Scan(&probe)
 	if err == nil || errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "default_subscription_type") {
 		return nil
 	}
-	_, alterErr := r.db.ExecContext(ctx, `ALTER TABLE panel_settings ADD COLUMN default_subscription_type VARCHAR(32) NOT NULL DEFAULT 'key'`)
+	_, alterErr := r.queryRunner().ExecContext(ctx, `ALTER TABLE panel_settings ADD COLUMN default_subscription_type VARCHAR(32) NOT NULL DEFAULT 'key'`)
 	return alterErr
 }
 
 func (r Repository) panelRecordID(ctx context.Context) int64 {
 	var id int64
-	_ = r.db.QueryRowContext(ctx, `SELECT id FROM panel_settings ORDER BY id DESC LIMIT 1`).Scan(&id)
+	_ = r.queryRunner().QueryRowContext(ctx, `SELECT id FROM panel_settings ORDER BY id DESC LIMIT 1`).Scan(&id)
 	return id
 }
 
 func (r Repository) subscriptionSettings(ctx context.Context) (SubscriptionSettings, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT
+	row := r.queryRunner().QueryRowContext(ctx, `SELECT
 subscription_url_prefix,
 subscription_profile_title,
 subscription_support_url,
@@ -505,14 +524,14 @@ FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 
 func (r Repository) ensureSubscriptionRecord(ctx context.Context) error {
 	var count int
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM subscription_settings`).Scan(&count); err != nil {
+	if err := r.queryRunner().QueryRowContext(ctx, `SELECT COUNT(*) FROM subscription_settings`).Scan(&count); err != nil {
 		return err
 	}
 	if count > 0 {
 		return nil
 	}
 	now := dbTime(time.Now().UTC())
-	_, err := r.db.ExecContext(ctx, `INSERT INTO subscription_settings (
+	_, err := r.queryRunner().ExecContext(ctx, `INSERT INTO subscription_settings (
 subscription_url_prefix,
 subscription_profile_title,
 subscription_support_url,
@@ -574,12 +593,12 @@ updated_at
 
 func (r Repository) subscriptionRecordID(ctx context.Context) int64 {
 	var id int64
-	_ = r.db.QueryRowContext(ctx, `SELECT id FROM subscription_settings ORDER BY id DESC LIMIT 1`).Scan(&id)
+	_ = r.queryRunner().QueryRowContext(ctx, `SELECT id FROM subscription_settings ORDER BY id DESC LIMIT 1`).Scan(&id)
 	return id
 }
 
 func (r Repository) adminSubscriptionSettings(ctx context.Context) ([]AdminSubscriptionSettings, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, username, subscription_domain, subscription_settings FROM admins WHERE COALESCE(status, '') != 'deleted' ORDER BY username ASC`)
+	rows, err := r.queryRunner().QueryContext(ctx, `SELECT id, username, subscription_domain, subscription_settings FROM admins WHERE COALESCE(status, '') != 'deleted' ORDER BY username ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -596,13 +615,13 @@ func (r Repository) adminSubscriptionSettings(ctx context.Context) ([]AdminSubsc
 }
 
 func (r Repository) adminSubscriptionSetting(ctx context.Context, adminID int64) (AdminSubscriptionSettings, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, username, subscription_domain, subscription_settings FROM admins WHERE id = ? LIMIT 1`, adminID)
+	row := r.queryRunner().QueryRowContext(ctx, `SELECT id, username, subscription_domain, subscription_settings FROM admins WHERE id = ? LIMIT 1`, adminID)
 	return scanAdminSubscription(row)
 }
 
 func (r Repository) adminExists(ctx context.Context, adminID int64) (bool, error) {
 	var id int64
-	err := r.db.QueryRowContext(ctx, `SELECT id FROM admins WHERE id = ? LIMIT 1`, adminID).Scan(&id)
+	err := r.queryRunner().QueryRowContext(ctx, `SELECT id FROM admins WHERE id = ? LIMIT 1`, adminID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -634,7 +653,7 @@ func scanAdminSubscription(row scanner) (AdminSubscriptionSettings, error) {
 }
 
 func (r Repository) subscriptionCertificates(ctx context.Context) ([]SubscriptionCertificate, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, domain, admin_id, email, provider, alt_names, last_issued_at, last_renewed_at FROM subscription_domains ORDER BY domain ASC`)
+	rows, err := r.queryRunner().QueryContext(ctx, `SELECT id, domain, admin_id, email, provider, alt_names, last_issued_at, last_renewed_at FROM subscription_domains ORDER BY domain ASC`)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "no such table") {
 			return []SubscriptionCertificate{}, nil
