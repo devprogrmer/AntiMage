@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -145,30 +146,40 @@ func (s *Server) xrayLocalAccountingTick(ctx context.Context, checkpoint, enforc
 		return nil
 	}
 	var policyIndex *xrayQuotaPolicyIndex
+	var tickErrors []error
 	if enforce {
 		var err error
 		policyIndex, err = s.xrayQuotaPolicyIndexFor(snapshot)
 		if err != nil {
-			return err
+			tickErrors = append(tickErrors, localHealthError("policy", err))
+			enforce = false
+		} else {
+			enforce = xrayPoliciesNeedLocalQuotaCheck(policyIndex.Policies)
 		}
-		enforce = xrayPoliciesNeedLocalQuotaCheck(policyIndex.Policies)
 	}
 	if !checkpoint && !enforce {
-		return nil
+		return errors.Join(tickErrors...)
 	}
 	stats, err := s.cachedXrayStatsClient(path, port).queryStats(ctx, "user>>>", false)
 	if err != nil {
-		return err
+		tickErrors = append(tickErrors, localHealthError("runtime", err))
+		return errors.Join(tickErrors...)
 	}
 	if checkpoint {
 		if err := s.checkpointXrayAccountingSample(stats, generation); err != nil {
-			return err
+			tickErrors = append(tickErrors, localHealthError("accounting", err))
+		} else {
+			s.recordLocalDomainHealth("accounting", "xray", nil)
 		}
 	}
 	if enforce {
-		return s.quotaCheckXrayOfflineWithStats(ctx, snapshot, generation, policyIndex, stats)
+		if err := s.quotaCheckXrayOfflineWithStats(ctx, snapshot, generation, policyIndex, stats); err != nil {
+			tickErrors = append(tickErrors, localHealthError("policy", err))
+		} else {
+			s.recordLocalDomainHealth("policy", "xray", nil)
+		}
 	}
-	return nil
+	return errors.Join(tickErrors...)
 }
 
 func (s *Server) runXrayAccountingCheckpoints(ctx context.Context, interval time.Duration) {
@@ -183,7 +194,7 @@ func (s *Server) runXrayAccountingCheckpoints(ctx context.Context, interval time
 			err := s.checkpointXrayAccounting(sampleCtx)
 			cancel()
 			if ctx.Err() == nil {
-				s.recordLocalAccountingHealth("xray", err)
+				s.recordLocalDomainHealth("accounting", "xray", err)
 			}
 		}
 	}

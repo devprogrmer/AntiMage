@@ -51,6 +51,8 @@ type Server struct {
 	xrayRuntimeGeneration            string
 	xrayStatsClient                  *xrayStatsClient
 	localAccountingFailures          map[string]string
+	localPolicyFailures              map[string]string
+	localRuntimeFailures             map[string]string
 	localUsageMu                     sync.Mutex
 	localUsageLoaded                 bool
 	localUsageDeliveries             []localUsageDelivery
@@ -312,14 +314,27 @@ func (s *Server) Connect(context.Context, *nodev1.ConnectRequest) (*nodev1.Conne
 func (s *Server) Health(ctx context.Context, req *nodev1.HealthRequest) (*nodev1.HealthResponse, error) {
 	s.mu.Lock()
 	accountingDegraded := len(s.localAccountingFailures) > 0
+	policyDegraded := len(s.localPolicyFailures) > 0
+	runtimeDegraded := len(s.localRuntimeFailures) > 0
 	s.mu.Unlock()
 	state := s.runtimeState("healthy")
+	var degraded []string
 	if accountingDegraded {
-		// Accounting and quota workers are independently recoverable services.
-		// Their degradation must remain visible without triggering node recovery,
-		// reconnect, and a destructive full runtime reconciliation.
 		state.Capabilities = append(state.Capabilities, "accounting_degraded")
-		state.Message = "healthy; local accounting degraded"
+		degraded = append(degraded, "accounting")
+	}
+	if policyDegraded {
+		state.Capabilities = append(state.Capabilities, "policy_degraded")
+		degraded = append(degraded, "policy enforcement")
+	}
+	if runtimeDegraded {
+		state.Capabilities = append(state.Capabilities, "vpn_runtime_degraded")
+		degraded = append(degraded, "VPN runtime")
+	}
+	if len(degraded) > 0 {
+		// These are worker-domain conditions, not control-plane connection
+		// failures. They remain observable without reconnect/full-sync recovery.
+		state.Message = "healthy; " + strings.Join(degraded, "; ") + " degraded"
 	}
 	if req.GetCommandId() != "" {
 		if err := readNativeCommandEvidence(ctx, req, state); err != nil {
@@ -841,7 +856,7 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	}
 	guarded, err := s.guardOfflineRuntimePolicy(req)
 	if err != nil {
-		s.recordLocalAccountingHealth("policy", err)
+		s.recordLocalDomainHealth("policy", "config", err)
 		return nil, status.Error(codes.FailedPrecondition, "evaluate durable offline quota: "+err.Error())
 	}
 	req = guarded
@@ -860,10 +875,10 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	// unguarded panel policy first would let a node restart offline and restore
 	// credentials that the durable quota guard had just denied.
 	if err := s.persistRuntimePolicy(req); err != nil {
-		s.recordLocalAccountingHealth("policy", err)
+		s.recordLocalDomainHealth("policy", "config", err)
 		return nil, status.Error(codes.FailedPrecondition, "persist offline policy: "+err.Error())
 	}
-	s.recordLocalAccountingHealth("policy", nil)
+	s.recordLocalDomainHealth("policy", "config", nil)
 
 	if err := os.MkdirAll(s.cfg.DataDir, 0755); err != nil {
 		return nil, err

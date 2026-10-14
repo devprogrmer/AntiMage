@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -144,14 +145,22 @@ func (s *Server) runLocalQuotaScheduler(ctx context.Context, quotaInterval, chec
 // not block other protocols and never accumulate overlapping commands.
 func (s *Server) runLocalAccountingWorker(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, checkpointFn, quotaFn func(context.Context) error) {
 	s.runLocalAccountingWorkerWithWakeAdaptive(ctx, name, quotaInterval, checkpointInterval, s.localQuotaWakeChannel(name), nil, func(sampleCtx context.Context, enforce, checkpoint bool) error {
-		var err error
+		var errs []error
 		if checkpoint {
-			err = checkpointFn(sampleCtx)
+			if err := checkpointFn(sampleCtx); err != nil {
+				errs = append(errs, localHealthError("accounting", err))
+			} else {
+				s.recordLocalDomainHealth("accounting", name, nil)
+			}
 		}
-		if enforce && err == nil {
-			err = quotaFn(sampleCtx)
+		if enforce {
+			if err := quotaFn(sampleCtx); err != nil {
+				errs = append(errs, localHealthError("policy", err))
+			} else {
+				s.recordLocalDomainHealth("policy", name, nil)
+			}
 		}
-		return err
+		return errors.Join(errs...)
 	})
 }
 
@@ -259,7 +268,7 @@ func (s *Server) runLocalAccountingWorkerWithWakeAdaptive(ctx context.Context, n
 				checkpoint := checkpointInterval > 0 && !now.Before(nextCheckpoint)
 				err := s.runWokenQuotaTick(ctx, checkpointInterval, checkpoint, tick)
 				if ctx.Err() == nil {
-					s.recordLocalAccountingHealth(name, err)
+					s.recordLocalWorkerHealth(name, err)
 				}
 				now = time.Now()
 				nextQuota = quotaDeadlineAfter(now, nextQuotaDelay(quotaInterval, adaptiveInterval, err))
@@ -282,7 +291,7 @@ func (s *Server) runLocalAccountingWorkerWithWakeAdaptive(ctx context.Context, n
 			err := tick(sampleCtx, enforce, checkpoint)
 			cancel()
 			if ctx.Err() == nil {
-				s.recordLocalAccountingHealth(name, err)
+				s.recordLocalWorkerHealth(name, err)
 			}
 			now = time.Now()
 			if enforce {
@@ -349,20 +358,81 @@ func nearestQuotaDeadline(quota, checkpoint time.Time) time.Time {
 }
 
 func (s *Server) recordLocalAccountingHealth(protocol string, err error) {
-	s.mu.Lock()
-	if s.localAccountingFailures == nil {
-		s.localAccountingFailures = make(map[string]string)
+	s.recordLocalDomainHealth("accounting", protocol, err)
+}
+
+type localHealthErrorValue struct {
+	domain string
+	err    error
+}
+
+func (e localHealthErrorValue) Error() string { return e.err.Error() }
+func (e localHealthErrorValue) Unwrap() error { return e.err }
+
+func localHealthError(domain string, err error) error {
+	if err == nil {
+		return nil
 	}
-	previous := s.localAccountingFailures[protocol]
+	return localHealthErrorValue{domain: domain, err: err}
+}
+
+func (s *Server) recordLocalWorkerHealth(protocol string, err error) {
+	var visit func(error)
+	visit = func(current error) {
+		if current == nil {
+			return
+		}
+		if joined, ok := current.(interface{ Unwrap() []error }); ok {
+			for _, child := range joined.Unwrap() {
+				visit(child)
+			}
+			return
+		}
+		if domainErr, ok := current.(localHealthErrorValue); ok {
+			s.recordLocalDomainHealth(domainErr.domain, protocol, domainErr.err)
+			return
+		}
+		s.recordLocalAccountingHealth(protocol, current)
+	}
+	visit(err)
+	if err == nil {
+		s.recordLocalDomainHealth("accounting", protocol, nil)
+		s.recordLocalDomainHealth("policy", protocol, nil)
+		s.recordLocalDomainHealth("runtime", protocol, nil)
+	}
+}
+
+func (s *Server) recordLocalDomainHealth(domain, protocol string, err error) {
+	protocol = domain + ":" + protocol
+	s.mu.Lock()
+	var failures map[string]string
+	switch domain {
+	case "policy":
+		if s.localPolicyFailures == nil {
+			s.localPolicyFailures = make(map[string]string)
+		}
+		failures = s.localPolicyFailures
+	case "runtime":
+		if s.localRuntimeFailures == nil {
+			s.localRuntimeFailures = make(map[string]string)
+		}
+		failures = s.localRuntimeFailures
+	default:
+		if s.localAccountingFailures == nil {
+			s.localAccountingFailures = make(map[string]string)
+		}
+		failures = s.localAccountingFailures
+	}
+	previous := failures[protocol]
 	message := ""
 	if err != nil {
 		message = err.Error()
-		s.localAccountingFailures[protocol] = message
+		failures[protocol] = message
 	} else {
-		delete(s.localAccountingFailures, protocol)
+		delete(failures, protocol)
 	}
 	s.mu.Unlock()
 	if message != "" && message != previous {
-		s.appendLog("local " + protocol + " accounting/quota degraded: " + message)
+		s.appendLog("local " + protocol + " degraded: " + message)
 	}
 }

@@ -20,7 +20,7 @@ func (s *Server) enforceWireGuardPoliciesLocked(
 	now time.Time,
 ) []wireGuardPeerCounters {
 	var enforcementErr error
-	defer func() { s.recordLocalAccountingHealth("wireguard-policy", enforcementErr) }()
+	defer func() { s.recordLocalDomainHealth("policy", "wireguard-policy", enforcementErr) }()
 	if len(cfg.Policies) == 0 {
 		return peers
 	}

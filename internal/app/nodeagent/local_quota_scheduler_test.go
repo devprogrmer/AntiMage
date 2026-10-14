@@ -145,7 +145,7 @@ func TestAccountingDegradationDoesNotFailNodeHealth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("node health failed with recoverable accounting degradation: %v", err)
 	}
-	if response.GetRuntime().GetMessage() != "healthy; local accounting degraded" {
+	if response.GetRuntime().GetMessage() != "healthy; accounting degraded" {
 		t.Fatalf("health message=%q", response.GetRuntime().GetMessage())
 	}
 	for _, capability := range response.GetRuntime().GetCapabilities() {
@@ -154,6 +154,61 @@ func TestAccountingDegradationDoesNotFailNodeHealth(t *testing.T) {
 		}
 	}
 	t.Fatal("health response omitted accounting_degraded capability")
+}
+
+func TestLocalWorkerSeparatesAccountingAndPolicyHealthAndKeepsEnforcementRunning(t *testing.T) {
+	s := New(Config{})
+	ctx, cancel := context.WithCancel(context.Background())
+	checkpointDone := make(chan struct{}, 1)
+	quotaDone := make(chan struct{}, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.runLocalAccountingWorker(ctx, "xray", time.Hour, time.Hour,
+			func(context.Context) error {
+				checkpointDone <- struct{}{}
+				return fmt.Errorf("durable checkpoint unavailable")
+			},
+			func(context.Context) error {
+				quotaDone <- struct{}{}
+				return fmt.Errorf("quota enforcement unavailable")
+			})
+	}()
+	select {
+	case <-checkpointDone:
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("initial accounting checkpoint did not run")
+	}
+	select {
+	case <-quotaDone:
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("policy enforcement was skipped after checkpoint failure")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not stop")
+	}
+	if got := s.localAccountingFailures["accounting:xray"]; got == "" {
+		t.Fatalf("accounting degradation was not recorded: %v", s.localAccountingFailures)
+	}
+	if got := s.localPolicyFailures["policy:xray"]; got == "" {
+		t.Fatalf("policy degradation was not recorded: %v", s.localPolicyFailures)
+	}
+	response, err := s.Health(context.Background(), &nodev1.HealthRequest{})
+	if err != nil {
+		t.Fatalf("health failed: %v", err)
+	}
+	capabilities := map[string]bool{}
+	for _, capability := range response.GetRuntime().GetCapabilities() {
+		capabilities[capability] = true
+	}
+	if !capabilities["accounting_degraded"] || !capabilities["policy_degraded"] {
+		t.Fatalf("health capabilities=%v", capabilities)
+	}
 }
 
 func offlineWireGuardFixture(t *testing.T, dir string, limit *int64) *Server {

@@ -45,7 +45,7 @@ func (s *Server) localQuotaAllowed(protocol string, uid int64, tag string, polic
 			s.localQuotaAggregates = nil
 			s.localUsageMu.Unlock()
 			err := fmt.Errorf("local quota aggregate is inconsistent")
-			s.recordLocalAccountingHealth("quota", err)
+			s.recordLocalDomainHealth("policy", protocol, err)
 			return false, err.Error()
 		}
 	}
@@ -53,7 +53,7 @@ func (s *Server) localQuotaAllowed(protocol string, uid int64, tag string, polic
 	if _, exists := s.localQuotaViews[owner]; !exists && len(s.localQuotaViews) >= maxAccountingCounterSeries {
 		s.localUsageMu.Unlock()
 		err := fmt.Errorf("local quota observation capacity exceeded")
-		s.recordLocalAccountingHealth("quota", err)
+		s.recordLocalDomainHealth("policy", protocol, err)
 		return false, err.Error()
 	}
 	newView := localQuotaView{nativeSessionEffectiveLiveUsage(policy, raw), policy.UsedTraffic, policy.ReflectedUsageBatchID}
@@ -67,7 +67,7 @@ func (s *Server) localQuotaAllowed(protocol string, uid int64, tag string, polic
 		if oldAggregate < previous.Effective {
 			s.localUsageMu.Unlock()
 			err := fmt.Errorf("local quota aggregate is inconsistent")
-			s.recordLocalAccountingHealth("quota", err)
+			s.recordLocalDomainHealth("policy", protocol, err)
 			return false, err.Error()
 		}
 		oldAggregate -= previous.Effective
@@ -78,7 +78,7 @@ func (s *Server) localQuotaAllowed(protocol string, uid int64, tag string, polic
 	if ^uint64(0)-newAggregate < newView.Effective {
 		s.localUsageMu.Unlock()
 		err := fmt.Errorf("local quota overflow")
-		s.recordLocalAccountingHealth("quota", err)
+		s.recordLocalDomainHealth("policy", protocol, err)
 		return false, err.Error()
 	}
 	newAggregate += newView.Effective
@@ -92,6 +92,7 @@ func (s *Server) localQuotaAllowed(protocol string, uid int64, tag string, polic
 	s.localQuotaAggregates[newKey] = newAggregate
 	s.localQuotaViews[owner] = newView
 	s.localUsageMu.Unlock()
+	s.recordLocalDomainHealth("policy", protocol, nil)
 	effective := newAggregate
 	allowed, reason := nativeSessionUserPolicyAllowed(policy, now)
 	if !allowed {

@@ -583,8 +583,10 @@ func (r Repository) SetConnected(ctx context.Context, nodeID int64, version stri
 	if len(message) > 1024 {
 		message = message[:1024]
 	}
-	_, err := r.updateStatus(ctx, nodeID, "connected", message, version)
-	return err
+	if _, err := r.updateStatus(ctx, nodeID, "connected", message, version); err != nil {
+		return err
+	}
+	return r.setAgentStatus(ctx, nodeID, "connected")
 }
 
 func (r Repository) SetError(ctx context.Context, nodeID int64, message string) error {
