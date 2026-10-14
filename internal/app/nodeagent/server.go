@@ -57,6 +57,13 @@ type Server struct {
 	localQuotaViews                  map[localQuotaOwner]localQuotaView
 	localQuotaAggregates             map[localQuotaAggregateKey]uint64
 	localQuotaWakeups                map[string]chan struct{}
+	nativeSessionOutboxMu            sync.Mutex
+	nativeSessionOutboxFlushMu       sync.Mutex
+	nativeSessionOutboxLoadedDir     string
+	nativeSessionOutboxLoaded        bool
+	nativeSessionOutboxFiles         []string
+	nativeSessionOutboxKeys          map[string]struct{}
+	nativeSessionOutboxEntryCount    int
 	runtimePolicy                    *runtimePolicySnapshot
 	xrayQuotaPolicyIndex             *xrayQuotaPolicyIndex
 	xrayQuotaSamples                 map[xrayQuotaSampleKey]xrayQuotaUsageSample

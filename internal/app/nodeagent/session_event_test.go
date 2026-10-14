@@ -72,6 +72,27 @@ func TestSendNativeSessionEvent(t *testing.T) {
 	}
 }
 
+func TestNativeSessionOutboxCachesEmptyDirectory(t *testing.T) {
+	previousReadDir := readNativeSessionOutboxDir
+	reads := 0
+	readNativeSessionOutboxDir = func(path string) ([]os.DirEntry, error) {
+		reads++
+		return os.ReadDir(path)
+	}
+	t.Cleanup(func() { readNativeSessionOutboxDir = previousReadDir })
+
+	node := New(Config{DataDir: t.TempDir()})
+	callback := nativeRuntimeSessionCallback{URL: "https://panel.example/session"}
+	for range 3 {
+		if err := node.flushNativeSessionOutbox(context.Background(), callback); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if reads != 1 {
+		t.Fatalf("empty outbox was rescanned %d times, want one initial scan", reads)
+	}
+}
+
 func TestDispatchNativeSessionEventsUsesIndependentTimeouts(t *testing.T) {
 	previousClient := nativeSessionHTTPClient
 	nativeSessionHTTPClient = &http.Client{Timeout: 40 * time.Millisecond}
