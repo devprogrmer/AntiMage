@@ -2271,18 +2271,22 @@ export const IntegrationSettingsPage = () => {
 											<FormLabel fontSize="sm">
 												{t("phpmyadmin.password")}
 											</FormLabel>
-							<Input
-								type="password"
-								value={runtimeSettingsForm.phpmyadmin_password}
-								placeholder={t("phpmyadmin.passwordPlaceholder")}
-								onChange={(event) => {
-									setPhpMyAdminPasswordDirty(true);
-									setRuntimeSettingsForm((prev) => ({
-										...prev,
-										phpmyadmin_password: event.target.value,
-									}));
-								}}
-							/>
+											<Input
+												type="password"
+												value={runtimeSettingsForm.phpmyadmin_password}
+												placeholder={
+													runtimeSettings?.phpmyadmin_password_configured
+														? t("admins.passwordOptionalHint")
+														: t("phpmyadmin.passwordPlaceholder")
+												}
+												onChange={(event) => {
+													setPhpMyAdminPasswordDirty(true);
+													setRuntimeSettingsForm((prev) => ({
+														...prev,
+														phpmyadmin_password: event.target.value,
+													}));
+												}}
+											/>
 										</FormControl>
 									</SimpleGrid>
 								</Box>
