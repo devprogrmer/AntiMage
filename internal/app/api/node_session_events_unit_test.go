@@ -38,6 +38,36 @@ func TestNodeSessionAdmissionLocksSerializePerUserAndAllowDifferentUsers(t *test
 	first.Unlock()
 }
 
+func TestRepeatedSeenEventsCoalesceSessionWrites(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "seen.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE vpn_user_sessions(node_id INTEGER, session_id TEXT, ended_at DATETIME, last_seen_at DATETIME); INSERT INTO vpn_user_sessions(node_id,session_id,last_seen_at) VALUES(7,'wg:live','2020-01-01 00:00:00');`); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{db: db}
+	event := nodeSessionEventPayload{NodeID: 7, UserID: 42, Protocol: "wg", SessionID: "wg:live", Event: "seen"}
+	if err := server.applyNodeSessionEvent(context.Background(), event); err != nil {
+		t.Fatal(err)
+	}
+	var first string
+	if err := db.QueryRow(`SELECT last_seen_at FROM vpn_user_sessions WHERE session_id='wg:live'`).Scan(&first); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.applyNodeSessionEvent(context.Background(), event); err != nil {
+		t.Fatal(err)
+	}
+	var second string
+	if err := db.QueryRow(`SELECT last_seen_at FROM vpn_user_sessions WHERE session_id='wg:live'`).Scan(&second); err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("repeated seen event rewrote fresh last_seen_at: first=%q second=%q", first, second)
+	}
+}
+
 func TestNodeSessionAdmissionClosesAddresslessLegacySession(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "sessions.db"))
 	if err != nil {

@@ -35,6 +35,11 @@ type nodeSessionEventPayload struct {
 // users' callbacks to enter admission concurrently.
 const sessionAdmissionLockShardCount = 256
 
+// Native session helpers may emit duplicate heartbeats. Persist at most one
+// last_seen_at write per session every 30 seconds; admission still runs when a
+// seen event has no active row yet.
+const sessionSeenPersistInterval = 30 * time.Second
+
 func (s *Server) sessionAdmissionLock(userID int64) *sync.Mutex {
 	return &s.admissionLocks[uint64(userID)%sessionAdmissionLockShardCount]
 }
@@ -147,6 +152,20 @@ func (s *Server) applyNodeSessionEvent(ctx context.Context, payload nodeSessionE
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	if strings.EqualFold(strings.TrimSpace(payload.Event), "seen") {
+		var active int
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM vpn_user_sessions WHERE node_id = ? AND session_id = ? AND ended_at IS NULL LIMIT 1`, payload.NodeID, strings.TrimSpace(payload.SessionID)).Scan(&active)
+		if err == nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE vpn_user_sessions SET last_seen_at = ? WHERE node_id = ? AND session_id = ? AND ended_at IS NULL AND last_seen_at < ?`, dbTimestamp(now), payload.NodeID, strings.TrimSpace(payload.SessionID), dbTimestamp(now.Add(-sessionSeenPersistInterval))); err != nil {
+				return err
+			}
+			return tx.Commit()
+		}
+		if err != sql.ErrNoRows {
+			return err
+		}
+	}
 
 	switch strings.ToLower(strings.TrimSpace(payload.Event)) {
 	case "start", "seen":
