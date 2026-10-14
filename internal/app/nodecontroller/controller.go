@@ -328,11 +328,6 @@ func (c Controller) Health(ctx context.Context, req Request) (RuntimeResult, err
 	if err := c.repo.SetConnected(ctx, node.ID, result.XrayVersion, result.Message); err != nil {
 		return RuntimeResult{}, err
 	}
-	if result.AgentStatus == "degraded" {
-		if err := c.repo.SetDegraded(ctx, node.ID, result.Message); err != nil {
-			return RuntimeResult{}, err
-		}
-	}
 	if err := c.reconcileRuntimeState(ctx, client, node.ID, res.GetRuntime(), &result); err != nil {
 		return RuntimeResult{}, err
 	}
@@ -356,11 +351,6 @@ func (c Controller) Metrics(ctx context.Context, req Request) (RuntimeResult, er
 	result := runtimeResult(node, res.GetRuntime(), res)
 	if err := c.repo.SetConnected(ctx, node.ID, result.XrayVersion, result.Message); err != nil {
 		return RuntimeResult{}, err
-	}
-	if result.AgentStatus == "degraded" {
-		if err := c.repo.SetDegraded(ctx, node.ID, result.Message); err != nil {
-			return RuntimeResult{}, err
-		}
 	}
 	if err := c.reconcileRuntimeState(ctx, client, node.ID, res.GetRuntime(), &result); err != nil {
 		return RuntimeResult{}, err

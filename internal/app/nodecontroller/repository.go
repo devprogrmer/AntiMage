@@ -167,9 +167,16 @@ func (r Repository) SetRuntimeState(ctx context.Context, nodeID int64, state *no
 	if state.GetStarted() {
 		xrayStatus = "running"
 	}
+	agentStatus := "connected"
+	for _, capability := range state.GetCapabilities() {
+		switch capability {
+		case "accounting_degraded", "policy_degraded", "vpn_runtime_degraded":
+			agentStatus = "degraded"
+		}
+	}
 	_, err = operationapp.ExecFencedTarget(ctx, r.db, "node", fmt.Sprint(nodeID), `UPDATE nodes SET
-agent_status = 'connected', xray_status = ?, applied_revision = ?, node_capabilities = ?, last_seen_at = ?
-WHERE id = ?`, xrayStatus, state.GetAppliedRevision(), string(capabilities), r.timeArg(time.Now().UTC()), nodeID)
+agent_status = ?, xray_status = ?, applied_revision = ?, node_capabilities = ?, last_seen_at = ?
+WHERE id = ?`, agentStatus, xrayStatus, state.GetAppliedRevision(), string(capabilities), r.timeArg(time.Now().UTC()), nodeID)
 	return err
 }
 
