@@ -118,6 +118,22 @@ func TestXrayQuotaPolicyIndexRefreshesWhenRevisionChanges(t *testing.T) {
 	}
 }
 
+func TestXrayQuotaPolicyIndexExcludesUnlimitedAndOnHoldUsers(t *testing.T) {
+	s := New(Config{})
+	snapshot := &runtimePolicySnapshot{Revision: 9, Checksum: "revision-nine", NativeJSON: `{"xray_policies":[{"user_id":1,"email":"alice","status":"active"},{"user_id":2,"email":"bob","status":"active","data_limit":100},{"user_id":3,"email":"carol","status":"on_hold","data_limit":100}]}`}
+	s.runtimePolicy = snapshot
+	index, err := s.xrayQuotaPolicyIndexFor(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(index.Policies) != 3 || len(index.EnforcedPositions) != 1 || index.EnforcedPositions[0] != 1 {
+		t.Fatalf("enforcement index includes non-enforced policies: positions=%v policies=%d", index.EnforcedPositions, len(index.Policies))
+	}
+	if len(index.EmailIndex) != 1 || len(index.ReflectionQueries) != 1 || index.ReflectionQueries[0].UserID != 2 {
+		t.Fatalf("polling index includes unlimited/on_hold users: emails=%v queries=%+v", index.EmailIndex, index.ReflectionQueries)
+	}
+}
+
 func BenchmarkXrayQuotaAggregation(b *testing.B) {
 	const userCount = 512
 	policies := make([]xrayLocalUserPolicy, 0, userCount)

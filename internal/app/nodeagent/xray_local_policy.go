@@ -32,6 +32,7 @@ type xrayQuotaPolicyIndex struct {
 	UsageTotal        []uint64
 	ReflectionQueries []localUsageReflectionQuery
 	ReflectionResults []localUsageReflectionResult
+	EnforcedPositions []int
 }
 
 func (s *Server) xrayQuotaPolicyIndexFor(snapshot *runtimePolicySnapshot) (*xrayQuotaPolicyIndex, error) {
@@ -56,15 +57,20 @@ func (s *Server) xrayQuotaPolicyIndexFor(snapshot *runtimePolicySnapshot) (*xray
 		Revision: snapshot.Revision, Checksum: snapshot.Checksum,
 		Policies: payload.XrayPolicies, EmailIndex: make(map[string]int, len(payload.XrayPolicies)),
 	}
-	for _, policy := range index.Policies {
+	for position, policy := range index.Policies {
+		if !xrayPolicyNeedsLocalQuotaCheck(policy) {
+			continue
+		}
 		if _, exists := index.EmailIndex[policy.Email]; !exists {
 			index.EmailIndex[policy.Email] = len(index.EmailIndex)
 		}
+		index.EnforcedPositions = append(index.EnforcedPositions, position)
 	}
 	index.UsageTotal = make([]uint64, len(index.EmailIndex))
-	index.ReflectionQueries = make([]localUsageReflectionQuery, len(index.Policies))
-	for position, policy := range index.Policies {
-		index.ReflectionQueries[position] = localUsageReflectionQuery{
+	index.ReflectionQueries = make([]localUsageReflectionQuery, len(index.EnforcedPositions))
+	for queryPosition, policyPosition := range index.EnforcedPositions {
+		policy := index.Policies[policyPosition]
+		index.ReflectionQueries[queryPosition] = localUsageReflectionQuery{
 			Protocol: "xray", UserID: policy.UserID, InboundTag: policy.InboundTag,
 			ReflectedRootBatchID: policy.ReflectedUsageBatchID,
 		}
@@ -107,19 +113,24 @@ func xrayQuotaUsageTotalsInto(counters map[string]accountingCounter, baselines m
 
 func xrayPoliciesNeedLocalQuotaCheck(policies []xrayLocalUserPolicy) bool {
 	for _, policy := range policies {
-		switch strings.ToLower(strings.TrimSpace(policy.Status)) {
-		case "active":
-			if policy.DataLimit > 0 || policy.Expire > 0 {
-				return true
-			}
-		case "on_hold":
-			// on_hold remains usable under the shared native session policy.
-		default:
-			// Missing or non-active status is itself an enforceable condition.
+		if xrayPolicyNeedsLocalQuotaCheck(policy) {
 			return true
 		}
 	}
 	return false
+}
+
+func xrayPolicyNeedsLocalQuotaCheck(policy xrayLocalUserPolicy) bool {
+	switch strings.ToLower(strings.TrimSpace(policy.Status)) {
+	case "active":
+		return policy.DataLimit > 0 || policy.Expire > 0
+	case "on_hold":
+		// on_hold remains usable under the shared native session policy.
+		return false
+	default:
+		// Missing or non-active status is itself an enforceable condition.
+		return true
+	}
 }
 
 // xrayQuotaUsageTotals groups counter deltas by policy email in one pass. The
@@ -256,9 +267,10 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 	}
 	reflectionResults := policyIndex.ReflectionResults
 	var enforcementErr error
-	for policyPosition, policy := range policyIndex.Policies {
+	for reflectionPosition, policyPosition := range policyIndex.EnforcedPositions {
+		policy := policyIndex.Policies[policyPosition]
 		raw := policyIndex.UsageTotal[policyIndex.EmailIndex[policy.Email]]
-		if pending := s.xrayUsagePending; pending != nil && reflectionResults[policyPosition].PendingReflected {
+		if pending := s.xrayUsagePending; pending != nil && reflectionResults[reflectionPosition].PendingReflected {
 			for _, sample := range pending.Samples {
 				if sample.UserID != policy.UserID || sample.InboundTag != policy.InboundTag {
 					continue
@@ -269,7 +281,7 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 				raw -= sample.Value
 			}
 		}
-		awaiting := reflectionResults[policyPosition].Awaiting
+		awaiting := reflectionResults[reflectionPosition].Awaiting
 		if ^uint64(0)-raw < awaiting {
 			return fmt.Errorf("xray reflection overflow")
 		}
