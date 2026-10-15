@@ -388,12 +388,13 @@ CREATE TABLE operation_events(operation_id TEXT,sequence INTEGER,state TEXT,phas
 `+operationapp.ExecutorLeaseDDL+`;
 `+operationapp.ResourceFenceDDL+`;
 INSERT INTO tls VALUES (1,?,?);
+INSERT INTO xray_config VALUES (1,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
 INSERT INTO nodes VALUES (7,'native-node','127.0.0.1',0,0,'connected','','',?,?,'custom',?,CURRENT_TIMESTAMP,1,?,100,100,'connected','running',CURRENT_TIMESTAMP);
 INSERT INTO users VALUES (7,'alice','0123456789abcdef0123456789abcdef',10,'active',0,0,0,0,0,0,0);
 INSERT INTO proxies VALUES (7,'openvpn');
 INSERT INTO hosts VALUES (1,'ov-in',0);
 INSERT INTO service_hosts VALUES (10,1);
-INSERT INTO inbounds VALUES ('ov-in',0,0,1);`, string(cert), string(key), string(cert), string(key), nativeOpenVPNControllerNodeConfig(caPath, certPath, keyPath), string(nativeOpenVPNTestCapabilities))
+INSERT INTO inbounds VALUES ('ov-in',0,0,1);`, string(cert), string(key), nativeOpenVPNControllerNodeConfig(caPath, certPath, keyPath), string(cert), string(key), nativeOpenVPNControllerNodeConfig(caPath, certPath, keyPath), string(nativeOpenVPNTestCapabilities))
 	if err != nil {
 		_ = db.Close()
 		t.Fatal(err)
