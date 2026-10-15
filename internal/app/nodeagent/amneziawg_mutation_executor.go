@@ -6,16 +6,264 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
+
+	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
 // AWG peer edits use wgctrl's single-peer configuration API. AWG-specific
 // obfuscation and interface settings are intentionally outside this boundary.
 var (
-	amneziaWGPeerSnapshot = amneziaWGPlatformPeerSnapshot
-	amneziaWGPeerApply    = amneziaWGPlatformPeerApply
+	amneziaWGPeerSnapshot         = amneziaWGPlatformPeerSnapshot
+	amneziaWGPeerApply            = amneziaWGPlatformPeerApply
+	amneziaWGMutationWrite        = atomicWriteFile
+	amneziaWGMutationDurableWrite = amneziaWGDurableWrite
 )
+
+const (
+	amneziaWGMutationUserIDField = "amneziawg_user_id"
+	amneziaWGMutationPeersField  = "amneziawg_peers_json"
+	amneziaWGMutationOpField     = "amneziawg_operation"
+	amneziaWGRemoveUserPrefix    = "amneziawg-user:"
+)
+
+func decodeAmneziaWGMutationUser(user *nodev1.InboundUser) (int64, string, []amneziaWGRuntimePeer, error) {
+	if user == nil || !strings.EqualFold(strings.TrimSpace(user.GetProtocol()), "amneziawg") {
+		return 0, "", nil, fmt.Errorf("AmneziaWG mutation user is required")
+	}
+	fields := user.GetFields()
+	userID, err := strconv.ParseInt(strings.TrimSpace(fields[amneziaWGMutationUserIDField]), 10, 64)
+	if err != nil || userID <= 0 {
+		return 0, "", nil, fmt.Errorf("AmneziaWG mutation user id is invalid")
+	}
+	operation := strings.ToLower(strings.TrimSpace(fields[amneziaWGMutationOpField]))
+	if operation != "add" && operation != "update" && operation != "remove" {
+		return 0, "", nil, fmt.Errorf("AmneziaWG mutation operation is invalid")
+	}
+	var peers []amneziaWGRuntimePeer
+	raw := strings.TrimSpace(fields[amneziaWGMutationPeersField])
+	if raw != "" && raw != "null" {
+		if err := json.Unmarshal([]byte(raw), &peers); err != nil {
+			return 0, "", nil, fmt.Errorf("decode AmneziaWG desired peers: %w", err)
+		}
+	}
+	for _, peer := range peers {
+		if peer.UserID != userID {
+			return 0, "", nil, fmt.Errorf("AmneziaWG desired peer belongs to another user")
+		}
+	}
+	if operation == "remove" && len(peers) != 0 {
+		return 0, "", nil, fmt.Errorf("AmneziaWG remove must not include desired peers")
+	}
+	return userID, operation, peers, nil
+}
+
+// applyAmneziaWGUserMutation is called only while the stable inbound lifecycle
+// gate is held. It checkpoints accounting, mutates target peers via wgctrl,
+// commits audit/helper/native policy in order, and reverses the target plan on
+// every persistence failure.
+func (s *Server) applyAmneziaWGUserMutation(ctx context.Context, inboundTag string, user *nodev1.InboundUser, operation string) error {
+	userID, envelopeOperation, desired, err := decodeAmneziaWGMutationUser(user)
+	if err != nil {
+		return err
+	}
+	operation = strings.ToLower(strings.TrimSpace(operation))
+	if envelopeOperation != operation {
+		return fmt.Errorf("AmneziaWG operation envelope mismatch")
+	}
+	inboundTag = strings.TrimSpace(inboundTag)
+	policy, err := s.currentRuntimePolicy()
+	if err != nil || policy == nil {
+		if err == nil {
+			err = fmt.Errorf("no committed runtime policy is available")
+		}
+		return fmt.Errorf("load AmneziaWG runtime policy: %w", err)
+	}
+	updatedNative, _, err := planAmneziaWGNativePolicyMutation(policy.NativeJSON, inboundTag, userID, operation, desired)
+	if err != nil {
+		return err
+	}
+	oldPayload, err := parseNativeRuntimePayload(policy.NativeJSON)
+	if err != nil {
+		return err
+	}
+	newPayload, err := parseNativeRuntimePayload(updatedNative)
+	if err != nil {
+		return err
+	}
+	oldInbound, oldOK := findAmneziaWGInbound(oldPayload.AmneziaWGInbounds, inboundTag)
+	newInbound, newOK := findAmneziaWGInbound(newPayload.AmneziaWGInbounds, inboundTag)
+	if !oldOK || !newOK {
+		return fmt.Errorf("AmneziaWG inbound %q disappeared from committed policy", inboundTag)
+	}
+	oldLive := filterAmneziaWGRuntimeInboundByPolicy(oldInbound, time.Now().UTC())
+	newLive := filterAmneziaWGRuntimeInboundByPolicy(newInbound, time.Now().UTC())
+	s.mu.Lock()
+	state, ok := s.amneziaWGRuntimes[inboundTag]
+	s.mu.Unlock()
+	if !ok {
+		states, loadErr := s.loadAmneziaWGRuntimeStates()
+		if loadErr != nil {
+			return loadErr
+		}
+		state, ok = states[inboundTag]
+	}
+	if !ok || state.Tag != inboundTag {
+		return fmt.Errorf("AmneziaWG inbound %q has no managed runtime", inboundTag)
+	}
+	expectedName, err := amneziaWGGeneratedInterfaceName(inboundTag)
+	if err != nil {
+		return err
+	}
+	if state.InterfaceName != expectedName || filepath.Clean(state.ConfigPath) != filepath.Clean(amneziaWGInboundConfigPath(s.cfg.DataDir, inboundTag)) {
+		return fmt.Errorf("AmneziaWG runtime identity does not match managed inbound")
+	}
+	s.amneziaWGUsageMu.Lock()
+	defer s.amneziaWGUsageMu.Unlock()
+	helperPath := filepath.Join(filepath.Dir(state.ConfigPath), "usage-helper.json")
+	oldHelperRaw, err := os.ReadFile(helperPath)
+	if err != nil {
+		return fmt.Errorf("read AmneziaWG usage policy: %w", err)
+	}
+	var oldHelper amneziaWGUsageRuntimeConfig
+	if err := json.Unmarshal(oldHelperRaw, &oldHelper); err != nil {
+		return fmt.Errorf("decode AmneziaWG usage policy: %w", err)
+	}
+	if oldHelper.InboundTag != inboundTag || oldHelper.InterfaceName != state.InterfaceName || oldHelper.Transitioning || oldHelper.Stopped {
+		return fmt.Errorf("AmneziaWG usage policy identity or lifecycle state is invalid")
+	}
+	oldConfigRaw, err := os.ReadFile(state.ConfigPath)
+	if err != nil {
+		return fmt.Errorf("read AmneziaWG runtime config for rollback: %w", err)
+	}
+
+	operationCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if _, err := s.amneziaWGOfflineLocked(operationCtx, false, true); err != nil {
+		return fmt.Errorf("checkpoint AmneziaWG usage before peer mutation: %w", err)
+	}
+	snapshot, err := amneziaWGPeerSnapshot(state.InterfaceName)
+	if err != nil {
+		return fmt.Errorf("capture AmneziaWG peer snapshot: %w", err)
+	}
+	if err := wireGuardPeerSnapshotMatchesAmneziaPolicy(snapshot, oldLive.Peers); err != nil {
+		return fmt.Errorf("refuse stale AmneziaWG runtime snapshot: %w", err)
+	}
+	interfaceIdentity, err := amneziaWGInterfaceIdentity(state.InterfaceName)
+	if err != nil {
+		return fmt.Errorf("read AmneziaWG interface identity: %w", err)
+	}
+	targetDesired := make([]amneziaWGRuntimePeer, 0, len(desired))
+	for _, peer := range newLive.Peers {
+		if peer.UserID == userID {
+			targetDesired = append(targetDesired, peer)
+		}
+	}
+	delta, err := planAmneziaWGUserPeerDelta(oldLive.Peers, userID, operation, targetDesired)
+	if err != nil {
+		return err
+	}
+	kernelPlan, err := amneziaWGKernelPlan(delta, snapshot, userID)
+	if err != nil {
+		return err
+	}
+	if len(kernelPlan.Forward) == 0 && updatedNative == policy.NativeJSON {
+		return nil
+	}
+	finalLive := oldLive
+	finalLive.Peers = amneziaWGPeersFromWireGuard(delta.Peers)
+	prepared, err := s.prepareAmneziaWGMutation(finalLive)
+	if err != nil {
+		return fmt.Errorf("validate updated AmneziaWG runtime config: %w", err)
+	}
+	prepared.ConfigPath = state.ConfigPath
+	prepared.InterfaceName = state.InterfaceName
+	targetPeers := make([]amneziaWGRuntimePeer, 0, len(finalLive.Peers))
+	for _, peer := range finalLive.Peers {
+		if peer.UserID == userID {
+			targetPeers = append(targetPeers, peer)
+		}
+	}
+	newHelper, err := amneziaWGMutationUsageConfig(oldHelper, userID, targetPeers)
+	if err != nil {
+		return err
+	}
+	transition := oldHelper
+	transition.Transitioning = true
+	transitionRaw, err := json.Marshal(transition)
+	if err != nil {
+		return err
+	}
+	if err := amneziaWGMutationDurableWrite(helperPath, transitionRaw); err != nil {
+		return fmt.Errorf("persist AmneziaWG mutation fence: %w", err)
+	}
+	restoreOldHelper := func(cause error) error {
+		return errors.Join(cause, amneziaWGMutationDurableWrite(helperPath, oldHelperRaw))
+	}
+	if err := executeAmneziaWGPeerMutationPlan(operationCtx, state.InterfaceName, kernelPlan); err != nil {
+		return restoreOldHelper(err)
+	}
+	identityAfter, identityErr := amneziaWGInterfaceIdentity(state.InterfaceName)
+	if identityErr != nil || identityAfter != interfaceIdentity {
+		if identityErr == nil {
+			identityErr = fmt.Errorf("interface identity changed during peer mutation")
+		}
+		return s.rollbackAmneziaWGMutation(kernelPlan, state, oldConfigRaw, helperPath, oldHelperRaw, false, fmt.Errorf("AmneziaWG interface preservation check failed: %w", identityErr))
+	}
+	if err := amneziaWGMutationWrite(state.ConfigPath, []byte(prepared.ConfigText), 0600); err != nil {
+		return s.rollbackAmneziaWGMutation(kernelPlan, state, oldConfigRaw, helperPath, oldHelperRaw, false, fmt.Errorf("persist AmneziaWG runtime config: %w", err))
+	}
+	newHelperRaw, err := json.Marshal(newHelper)
+	if err != nil {
+		return s.rollbackAmneziaWGMutation(kernelPlan, state, oldConfigRaw, helperPath, oldHelperRaw, true, err)
+	}
+	if err := amneziaWGMutationDurableWrite(helperPath, newHelperRaw); err != nil {
+		return s.rollbackAmneziaWGMutation(kernelPlan, state, oldConfigRaw, helperPath, oldHelperRaw, true, fmt.Errorf("persist AmneziaWG usage policy: %w", err))
+	}
+	if err := s.persistRuntimePolicy(&nodev1.RuntimeConfigRequest{ConfigJson: policy.ConfigJSON, OvRuntimeJson: updatedNative, DesiredRevision: policy.Revision}); err != nil {
+		return s.rollbackAmneziaWGMutation(kernelPlan, state, oldConfigRaw, helperPath, oldHelperRaw, true, fmt.Errorf("persist AmneziaWG native policy: %w", err))
+	}
+	if len(delta.Remove) > 0 {
+		events := make([]nativeSessionEvent, 0, len(delta.Remove))
+		for _, peer := range delta.Remove {
+			kernelPeer := snapshot[strings.TrimSpace(peer.PublicKey)]
+			events = append(events, amneziaWGSessionEvent(oldHelper, wireGuardPeerCounters{PublicKey: kernelPeer.PublicKey, Endpoint: kernelPeer.Endpoint}, userID, "stop"))
+		}
+		s.dispatchNativeSessionEvents(oldHelper.Callback, events, nil)
+	}
+	return nil
+}
+
+func (s *Server) rollbackAmneziaWGMutation(plan wireGuardPeerMutationPlan, state amneziaWGRuntimeState, oldConfigRaw []byte, helperPath string, oldHelperRaw []byte, configChanged bool, cause error) error {
+	var restoreErr error
+	if configChanged {
+		restoreErr = errors.Join(restoreErr, amneziaWGMutationWrite(state.ConfigPath, oldConfigRaw, 0600))
+	}
+	restoreErr = errors.Join(restoreErr, amneziaWGMutationDurableWrite(helperPath, oldHelperRaw))
+	inverse := wireGuardPeerMutationPlan{Forward: plan.Rollback, Rollback: plan.Forward}
+	rollbackCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return errors.Join(cause, restoreErr, executeAmneziaWGPeerMutationPlan(rollbackCtx, state.InterfaceName, inverse))
+}
+
+func findAmneziaWGInbound(inbounds []amneziaWGRuntimeInbound, tag string) (amneziaWGRuntimeInbound, bool) {
+	var result amneziaWGRuntimeInbound
+	found := false
+	for _, inbound := range inbounds {
+		if strings.TrimSpace(inbound.Tag) != strings.TrimSpace(tag) {
+			continue
+		}
+		if found {
+			return amneziaWGRuntimeInbound{}, false
+		}
+		result, found = inbound, true
+	}
+	return result, found
+}
 
 func executeAmneziaWGPeerMutationPlan(ctx context.Context, interfaceName string, plan wireGuardPeerMutationPlan) error {
 	rollbackAttempted := func(attempted int) error {
