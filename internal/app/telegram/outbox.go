@@ -120,6 +120,58 @@ WHERE id = ? AND status = 'processing'`, dbTime(time.Now().UTC()), dbTime(time.N
 	return err
 }
 
+// PruneOutbox removes a bounded number of old terminal messages while keeping
+// pending and processing delivery records intact.
+func (r Repository) PruneOutbox(ctx context.Context, before time.Time, limit int) (int, error) {
+	if r.db == nil {
+		return 0, nil
+	}
+	if limit <= 0 || limit > 1000 {
+		limit = 500
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id FROM telegram_message_outbox
+WHERE status IN ('sent', 'failed') AND updated_at < ?
+ORDER BY id LIMIT ?`, dbTime(before.UTC()), limit)
+	if err != nil {
+		return 0, err
+	}
+	ids := make([]int64, 0, limit)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, err
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	args := make([]any, 0, len(ids))
+	marks := make([]string, 0, len(ids))
+	for _, id := range ids {
+		marks = append(marks, "?")
+		args = append(args, id)
+	}
+	result, err := r.db.ExecContext(ctx, `DELETE FROM telegram_message_outbox
+WHERE status IN ('sent', 'failed') AND id IN (`+strings.Join(marks, ",")+")", args...)
+	if err != nil {
+		return 0, err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return len(ids), nil
+	}
+	return int(count), nil
+}
+
 func (r Repository) rescheduleOutbox(ctx context.Context, item queuedMessage, sendErr error, now time.Time) error {
 	attempts := item.attempts + 1
 	status := "pending"

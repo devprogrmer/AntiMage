@@ -69,3 +69,49 @@ func TestOutboxFailureIsPersistedAndRescheduled(t *testing.T) {
 		t.Fatalf("failed delivery state status=%q attempts=%d error=%q", status, attempts, lastError)
 	}
 }
+
+func TestPruneOutboxRemovesOnlyBoundedOldTerminalRows(t *testing.T) {
+	ctx := context.Background()
+	db, repo := testTelegramRepo(t)
+	for _, event := range []string{"sent-old", "failed-old", "pending-old", "sent-new"} {
+		if err := repo.EnqueueReport(ctx, event, "message"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := dbTime(time.Now().Add(-60 * 24 * time.Hour))
+	newer := dbTime(time.Now().Add(-time.Hour))
+	if _, err := db.Exec(`UPDATE telegram_message_outbox SET status='sent',updated_at=? WHERE event='sent-old'`, old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE telegram_message_outbox SET status='failed',updated_at=? WHERE event='failed-old'`, old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE telegram_message_outbox SET status='pending',updated_at=? WHERE event='pending-old'`, old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE telegram_message_outbox SET status='sent',updated_at=? WHERE event='sent-new'`, newer); err != nil {
+		t.Fatal(err)
+	}
+
+	deleted, err := repo.PruneOutbox(ctx, time.Now().Add(-30*24*time.Hour), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted=%d, want bounded single row", deleted)
+	}
+	var remaining int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM telegram_message_outbox`).Scan(&remaining); err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 3 {
+		t.Fatalf("remaining rows=%d, want 3", remaining)
+	}
+	var pending int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM telegram_message_outbox WHERE event='pending-old' AND status='pending'`).Scan(&pending); err != nil {
+		t.Fatal(err)
+	}
+	if pending != 1 {
+		t.Fatal("pruning removed a pending delivery")
+	}
+}

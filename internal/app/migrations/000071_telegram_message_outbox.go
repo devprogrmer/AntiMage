@@ -39,7 +39,8 @@ CREATE TABLE telegram_message_outbox (
 	created_at DATETIME(6) NOT NULL,
 	updated_at DATETIME(6) NOT NULL,
 	KEY ix_telegram_message_outbox_due (status, send_at, id),
-	KEY ix_telegram_message_outbox_claimed (status, claimed_at, id)
+	KEY ix_telegram_message_outbox_claimed (status, claimed_at, id),
+	KEY ix_telegram_message_outbox_retention (status, updated_at, id)
 )
 `); err != nil {
 		return err
@@ -50,5 +51,8 @@ CREATE TABLE telegram_message_outbox (
 	if err := createIndex(ctx, tx, dialect, "telegram_message_outbox", "ix_telegram_message_outbox_due", []string{"status", "send_at", "id"}, false); err != nil {
 		return err
 	}
-	return createIndex(ctx, tx, dialect, "telegram_message_outbox", "ix_telegram_message_outbox_claimed", []string{"status", "claimed_at", "id"}, false)
+	if err := createIndex(ctx, tx, dialect, "telegram_message_outbox", "ix_telegram_message_outbox_claimed", []string{"status", "claimed_at", "id"}, false); err != nil {
+		return err
+	}
+	return createIndex(ctx, tx, dialect, "telegram_message_outbox", "ix_telegram_message_outbox_retention", []string{"status", "updated_at", "id"}, false)
 }
