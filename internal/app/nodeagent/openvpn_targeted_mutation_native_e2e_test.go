@@ -133,11 +133,21 @@ func TestOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	if err := server.startOpenVPNInbound(inbound.Tag, configPath); err != nil {
 		t.Fatal(err)
 	}
+	tunName := openVPNTunName(inbound.Tag)
 	if err := waitForOpenVPNMutationNative(func() bool {
-		_, tunErr := net.InterfaceByName(openVPNTunName(inbound.Tag))
-		return tunErr == nil && openVPNManagementReady(inbound.Tag, dataDir)
+		_, tunErr := net.InterfaceByName(tunName)
+		return tunErr == nil
 	}); err != nil {
-		t.Fatalf("wait for native OpenVPN server: %v; NodeAgent runtime logs:\n%s", err, strings.Join(server.snapshotLogs(), "\n"))
+		interfaces, _ := net.Interfaces()
+		t.Fatalf("wait for native OpenVPN TUN %q: %v; interfaces=%+v; NodeAgent runtime logs:\n%s", tunName, err, interfaces, strings.Join(server.snapshotLogs(), "\n"))
+	}
+	managementPath := filepath.Join(dataDir, "openvpn", openVPNRuntimeDirName(inbound.Tag), "management.sock")
+	var managementErr error
+	if err := waitForOpenVPNMutationNative(func() bool {
+		_, managementErr = openVPNMutationManagementStatus("unix", managementPath)
+		return managementErr == nil
+	}); err != nil {
+		t.Fatalf("wait for native OpenVPN management status at %q: %v; last status error: %v; NodeAgent runtime logs:\n%s", managementPath, err, managementErr, strings.Join(server.snapshotLogs(), "\n"))
 	}
 	server.mu.Lock()
 	runtimeBefore := server.openVPNRuntimes[inbound.Tag]
@@ -147,13 +157,6 @@ func TestOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	}
 	pidBefore := runtimeBefore.cmd.Process.Pid
 	server.mu.Unlock()
-	tunName := openVPNTunName(inbound.Tag)
-	if err := waitForOpenVPNMutationNative(func() bool {
-		iface, e := net.InterfaceByName(tunName)
-		return e == nil && iface.Index > 0
-	}); err != nil {
-		t.Fatalf("wait for native OpenVPN TUN: %v", err)
-	}
 	t.Cleanup(func() {
 		server.stopAllOpenVPNRuntimes()
 		_ = exec.Command("ip", "link", "delete", "dev", tunName).Run()
