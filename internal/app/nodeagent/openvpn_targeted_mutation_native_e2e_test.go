@@ -357,7 +357,7 @@ func startOpenVPNMutationClient(t *testing.T, root, ns, openvpnPath, caPath stri
 	}
 	// Use a short, valid, unique Linux interface name for the real client.
 	dev := "t" + fmt.Sprintf("%x", sha256.Sum256([]byte(name)))[:10]
-	contents := fmt.Sprintf("client\nremote 10.250.0.1 %d\nproto udp\ndev %s\nnobind\nresolv-retry infinite\npersist-key\npersist-tun\nca %s\nremote-cert-tls server\nverb 3\nauth-user-pass %s\nauth-nocache\n", port, dev, caPath, credentials)
+	contents := fmt.Sprintf("client\nremote 10.250.0.1 %d\nproto udp\ndev %s\ndev-type tun\nnobind\nresolv-retry infinite\npersist-key\npersist-tun\nca %s\nremote-cert-tls server\nverb 3\nauth-user-pass %s\nauth-nocache\n", port, dev, caPath, credentials)
 	if err := os.WriteFile(config, []byte(contents), 0600); err != nil {
 		t.Fatal(err)
 	}
