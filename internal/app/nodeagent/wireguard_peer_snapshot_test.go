@@ -75,3 +75,26 @@ func TestWireGuardPeerInventoryDetectsPartialOrUnexpectedSnapshot(t *testing.T) 
 		t.Fatal("duplicate peer inventory key was accepted")
 	}
 }
+
+func TestWireGuardPeerSnapshotMatchesCommittedConfigButIgnoresTransientState(t *testing.T) {
+	key := strings.Repeat("A", 43) + "="
+	psk := strings.Repeat("B", 43) + "="
+	raw := "private\tpublic\t51820\toff\n" + key + "\t" + psk + "\t198.51.100.4:51820\t10.69.0.7/32\t1700000000\t123\t456\t25\n"
+	snapshot, err := parseWireGuardPeerSnapshot(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := []wireGuardRuntimePeer{{UserID: 7, PublicKey: key, PresharedKey: psk, Address: "10.69.0.7"}}
+	if err := wireGuardPeerSnapshotMatchesPolicy(snapshot, policy, ""); err != nil {
+		t.Fatalf("valid snapshot with runtime endpoint/counters rejected: %v", err)
+	}
+	policy[0].PresharedKey = strings.Repeat("C", 43) + "="
+	if err := wireGuardPeerSnapshotMatchesPolicy(snapshot, policy, ""); err == nil {
+		t.Fatal("accepted stale preshared-key snapshot")
+	}
+	policy[0].PresharedKey = psk
+	policy[0].Address = "10.69.0.8"
+	if err := wireGuardPeerSnapshotMatchesPolicy(snapshot, policy, ""); err == nil {
+		t.Fatal("accepted stale AllowedIPs snapshot")
+	}
+}

@@ -68,6 +68,9 @@ func TestPlanWireGuardUserRemoveAndIdenticalUpdate(t *testing.T) {
 }
 
 func TestPlanWireGuardUserMutationRejectsCrossUserOrDuplicatePeers(t *testing.T) {
+	if _, err := planWireGuardUserPeerDelta([]wireGuardRuntimePeer{{UserID: 1, PublicKey: "existing", Address: "10.69.0.2"}}, 1, "add", nil); err == nil {
+		t.Fatal("empty add must not be interpreted as removing every target peer")
+	}
 	if _, err := planWireGuardUserPeerDelta(nil, 1, "add", []wireGuardRuntimePeer{{UserID: 2, PublicKey: "key"}}); err == nil {
 		t.Fatal("expected cross-user peer to be rejected")
 	}

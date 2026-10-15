@@ -127,3 +127,32 @@ func wireGuardPeerInventoriesMatch(snapshot map[string]wireGuardKernelPeer, list
 	}
 	return true
 }
+
+// wireGuardPeerSnapshotMatchesPolicy refuses to mutate an interface whose
+// peer configuration has drifted from the last committed policy. Handshake,
+// endpoint, counters and keepalive are runtime state and are intentionally
+// excluded from this policy comparison.
+func wireGuardPeerSnapshotMatchesPolicy(snapshot map[string]wireGuardKernelPeer, peers []wireGuardRuntimePeer, globalPSK string) error {
+	if len(snapshot) != len(peers) {
+		return fmt.Errorf("WireGuard kernel peer count differs from committed policy")
+	}
+	for _, policyPeer := range peers {
+		key := strings.TrimSpace(policyPeer.PublicKey)
+		kernelPeer, ok := snapshot[key]
+		if !ok {
+			return fmt.Errorf("WireGuard kernel peer %q is missing from committed policy snapshot", key)
+		}
+		wantPSK := strings.TrimSpace(policyPeer.PresharedKey)
+		if wantPSK == "" {
+			wantPSK = strings.TrimSpace(globalPSK)
+		}
+		address, err := netip.ParseAddr(strings.TrimSpace(policyPeer.Address))
+		if err != nil || !address.Is4() {
+			return fmt.Errorf("committed WireGuard peer %q has invalid IPv4 address", key)
+		}
+		if kernelPeer.PresharedKey != wantPSK || len(kernelPeer.AllowedIPs) != 1 || kernelPeer.AllowedIPs[0] != address.String()+"/32" {
+			return fmt.Errorf("WireGuard kernel peer %q configuration differs from committed policy", key)
+		}
+	}
+	return nil
+}

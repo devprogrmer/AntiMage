@@ -38,6 +38,9 @@ func planWireGuardUserPeerDelta(current []wireGuardRuntimePeer, userID int64, op
 	if operation == "remove" && len(desired) != 0 {
 		return wireGuardPeerDelta{}, fmt.Errorf("remove operation must not include desired peers")
 	}
+	if operation == "add" && len(desired) == 0 {
+		return wireGuardPeerDelta{}, fmt.Errorf("add operation requires at least one desired peer")
+	}
 	if operation == "update" && len(desired) == 0 {
 		return wireGuardPeerDelta{}, fmt.Errorf("update operation requires at least one desired peer")
 	}
