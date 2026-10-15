@@ -219,6 +219,17 @@ func (r Repository) RuntimeUsersByID(ctx context.Context, userID int64) ([]runti
 }
 
 func (r Repository) RuntimeProtocolsByUserIDs(ctx context.Context, userIDs []int64) (map[int64][]string, error) {
+	return r.runtimeProtocolsByUserIDs(ctx, userIDs, true)
+}
+
+// RuntimeMutationProtocolsByUserIDs retains protocol identity for deleted users
+// whose proxy rows still exist, so removal operations can use a safe targeted
+// runtime RPC instead of losing the protocol and forcing a full sync.
+func (r Repository) RuntimeMutationProtocolsByUserIDs(ctx context.Context, userIDs []int64) (map[int64][]string, error) {
+	return r.runtimeProtocolsByUserIDs(ctx, userIDs, false)
+}
+
+func (r Repository) runtimeProtocolsByUserIDs(ctx context.Context, userIDs []int64, activeOnly bool) (map[int64][]string, error) {
 	ids := uniquePositiveInt64(userIDs)
 	protocols := make(map[int64][]string, len(ids))
 	if len(ids) == 0 {
@@ -230,12 +241,16 @@ func (r Repository) RuntimeProtocolsByUserIDs(ctx context.Context, userIDs []int
 		args = append(args, id)
 		parts = append(parts, "?")
 	}
-	rows, err := r.db.QueryContext(ctx, `
+	query := `
 SELECT DISTINCT p.user_id, LOWER(p.type)
 FROM proxies p
 JOIN users u ON u.id = p.user_id
-WHERE p.user_id IN (`+strings.Join(parts, ",")+`)
-  AND COALESCE(u.status, '') <> 'deleted'`, args...)
+
+WHERE p.user_id IN (` + strings.Join(parts, ",") + `)`
+	if activeOnly {
+		query += ` AND COALESCE(u.status, '') <> 'deleted'`
+	}
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

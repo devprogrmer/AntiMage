@@ -539,7 +539,7 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 	for nodeID := range bulkCandidates {
 		bulkNodeIDs = append(bulkNodeIDs, nodeID)
 	}
-	userProtocols, err := c.repo.RuntimeProtocolsByUserIDs(ctx, bulkUserIDs)
+	userProtocols, err := c.repo.RuntimeMutationProtocolsByUserIDs(ctx, bulkUserIDs)
 	if err != nil {
 		return result, err
 	}
@@ -618,14 +618,8 @@ func bulkRuntimeUserOperationNodesWithProtocols(operations []OperationRow, proto
 				break
 			}
 			for _, protocol := range protocols {
-				capability := ""
-				switch operation.OperationType {
-				case "update_user":
-					capability = "targeted_user_update_vless"
-				case "add_user", "remove_user", "disable_user", "enable_user":
-					capability = "targeted_user_add_remove_vless"
-				}
-				if !strings.EqualFold(strings.TrimSpace(protocol), "vless") || capability == "" || !capabilitiesByNode[nodeID][capability] {
+				capability := targetedUserCapability(protocol, operation.OperationType)
+				if capability == "" || !capabilitiesByNode[nodeID][capability] {
 					result[nodeID] = true
 					break
 				}
@@ -636,6 +630,51 @@ func bulkRuntimeUserOperationNodesWithProtocols(operations []OperationRow, proto
 		}
 	}
 	return result
+}
+
+func targetedUserCapability(protocol, operation string) string {
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	operation = strings.ToLower(strings.TrimSpace(operation))
+	switch protocol {
+	case "vless":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_vless"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_vless"
+		}
+	case "wireguard":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_wireguard"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_wireguard"
+		}
+	}
+	return ""
+}
+
+func (c Controller) runtimeUserOperationTargeted(ctx context.Context, nodeID int64, operation OperationRow) (bool, error) {
+	if !operation.UserID.Valid || operation.UserID.Int64 <= 0 {
+		return false, nil
+	}
+	protocols, err := c.repo.RuntimeMutationProtocolsByUserIDs(ctx, []int64{operation.UserID.Int64})
+	if err != nil {
+		return false, err
+	}
+	userProtocols := protocols[operation.UserID.Int64]
+	if len(userProtocols) != 1 {
+		return false, nil
+	}
+	capability := targetedUserCapability(userProtocols[0], operation.OperationType)
+	if capability == "" {
+		return false, nil
+	}
+	capabilities, err := c.repo.RuntimeCapabilitiesByNodeIDs(ctx, []int64{nodeID})
+	if err != nil {
+		return false, err
+	}
+	return capabilities[nodeID][capability], nil
 }
 
 func (c Controller) ProcessRuntimeUserOperations(ctx context.Context, req ProcessUserOperationsRequest) (ProcessOperationsResult, error) {
@@ -988,11 +1027,23 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow, 
 					return err
 				}
 			}
-			if operation.OperationType == "update_user" && !client.Supports("targeted_user_update_vless") {
-				syncConfig = true
+			targeted, targetErr := c.runtimeUserOperationTargeted(ctx, node.ID, operation)
+			if targetErr != nil {
+				return targetErr
 			}
-			if (operation.OperationType == "add_user" || operation.OperationType == "remove_user" || operation.OperationType == "disable_user" || operation.OperationType == "enable_user") && !client.Supports("targeted_user_add_remove_vless") {
+			protocols, protocolErr := c.repo.RuntimeMutationProtocolsByUserIDs(ctx, []int64{operation.UserID.Int64})
+			if protocolErr != nil {
+				return protocolErr
+			}
+			userProtocols := protocols[operation.UserID.Int64]
+			capability := ""
+			if len(userProtocols) == 1 {
+				capability = targetedUserCapability(userProtocols[0], operation.OperationType)
+			}
+			if capability == "" || !targeted || !client.Supports(capability) {
 				syncConfig = true
+			} else {
+				syncConfig = false
 			}
 			if !syncConfig {
 				return c.grpcApplyUserOperation(ctx, client, node, operation, prepared)

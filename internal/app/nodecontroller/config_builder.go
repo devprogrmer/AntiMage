@@ -96,6 +96,15 @@ func (c Controller) prepareRuntimeConfigOperation(ctx context.Context, operation
 		if err != nil {
 			return nil, err
 		}
+		if required {
+			targeted, targetErr := c.runtimeUserOperationTargeted(ctx, node.ID, operation)
+			if targetErr != nil {
+				return nil, targetErr
+			}
+			if targeted {
+				required = false
+			}
+		}
 		inbounds = loadedInbounds
 		if !required && (operation.OperationType == "remove_user" || operation.OperationType == "disable_user") {
 			_, err = c.legacyOperationEmail(ctx, operation)

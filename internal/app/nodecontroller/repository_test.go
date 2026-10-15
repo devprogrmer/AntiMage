@@ -597,6 +597,13 @@ INSERT INTO nodes VALUES (7, '["targeted_user_update_vless"]');`); err != nil {
 	if len(got[1]) != 2 || got[2] != nil {
 		t.Fatalf("protocols by user=%v, want active user 1's two protocols and no deleted user", got)
 	}
+	mutationProtocols, err := NewRepository(db, "sqlite").RuntimeMutationProtocolsByUserIDs(ctx, []int64{2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mutationProtocols[2]) != 1 || mutationProtocols[2][0] != "openvpn" {
+		t.Fatalf("mutation protocols by deleted user=%v, want retained protocol for targeted removal", mutationProtocols)
+	}
 	seen := map[string]bool{}
 	for _, protocol := range got[1] {
 		seen[protocol] = true
@@ -665,6 +672,57 @@ func TestBulkVLESSAddRemoveStayTargetedOnlyWithExplicitCapability(t *testing.T) 
 	protocols[operations[0].UserID.Int64] = []string{"vless", "openvpn"}
 	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
 		t.Fatal("mixed-protocol add batch must retain conservative full-sync fallback")
+	}
+}
+
+func TestBulkWireGuardMutationsStayTargetedOnlyWithExplicitCapability(t *testing.T) {
+	operations := make([]OperationRow, bulkRuntimeUserOperationThreshold+2)
+	protocols := make(map[int64][]string, len(operations))
+	capabilities := map[int64]map[string]bool{7: {"targeted_user_update_wireguard": true}}
+	for index := range operations {
+		userID := int64(index + 1)
+		operations[index] = OperationRow{
+			OperationType: "update_user",
+			NodeID:        sql.NullInt64{Int64: 7, Valid: true},
+			UserID:        sql.NullInt64{Int64: userID, Valid: true},
+		}
+		protocols[userID] = []string{"wireguard"}
+	}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); folded[7] {
+		t.Fatal("bulk WireGuard updates on a capable node must stay targeted")
+	}
+	delete(capabilities[7], "targeted_user_update_wireguard")
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("legacy node without WireGuard update capability must retain full-sync fallback")
+	}
+	capabilities[7]["targeted_user_add_remove_wireguard"] = true
+	for index := range operations {
+		operations[index].OperationType = "remove_user"
+	}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); folded[7] {
+		t.Fatal("bulk WireGuard removals on a capable node must stay targeted")
+	}
+	protocols[operations[0].UserID.Int64] = []string{"wireguard", "vless"}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("mixed protocol batch must retain conservative full-sync fallback")
+	}
+}
+
+func TestTargetedUserCapabilityIsProtocolAndOperationSpecific(t *testing.T) {
+	cases := []struct {
+		protocol, operation, want string
+	}{
+		{"wireguard", "update_user", "targeted_user_update_wireguard"},
+		{"wireguard", "add_user", "targeted_user_add_remove_wireguard"},
+		{"wireguard", "remove_user", "targeted_user_add_remove_wireguard"},
+		{"vless", "update_user", "targeted_user_update_vless"},
+		{"openvpn", "update_user", ""},
+		{"wireguard", "sync_config", ""},
+	}
+	for _, test := range cases {
+		if got := targetedUserCapability(test.protocol, test.operation); got != test.want {
+			t.Errorf("targetedUserCapability(%q,%q)=%q, want %q", test.protocol, test.operation, got, test.want)
+		}
 	}
 }
 
