@@ -325,7 +325,7 @@ run_openvpn() {
       ANTIMAGE_OPENVPN_MUTATION_CA="$ca_cert" \
       ANTIMAGE_OPENVPN_MUTATION_CERT="$server_cert" \
       ANTIMAGE_OPENVPN_MUTATION_KEY="$server_key" \
-      "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNTargetedMutationNativeE2E$' -count=1 -v
+      "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNTargetedMutationNativeE2E$' -test.count=1 -test.v
   fi
   cat >"$ROOT/openvpn-connect.sh" <<EOF
 #!/bin/sh

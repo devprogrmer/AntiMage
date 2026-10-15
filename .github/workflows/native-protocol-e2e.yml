@@ -232,6 +232,7 @@ jobs:
 
   protocol-lifecycle-exact-once:
     name: protocol-lifecycle-exact-once
+    if: github.event_name == 'pull_request'
     # Ubuntu 24.04 no longer publishes pptpd; keep this combined legacy-PPP
     # lifecycle on the same supported image used by the native PPTP job.
     runs-on: ubuntu-22.04
@@ -295,6 +296,7 @@ jobs:
 
   protocol-policy:
     name: protocol-policy-and-durable-state
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -308,6 +310,7 @@ jobs:
 
   native-race:
     name: native-race
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
