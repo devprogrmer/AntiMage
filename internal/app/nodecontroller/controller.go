@@ -650,8 +650,23 @@ func targetedUserCapability(protocol, operation string) string {
 		case "add_user", "remove_user", "disable_user", "enable_user":
 			return "targeted_user_add_remove_wireguard"
 		}
+	case "openvpn":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_openvpn"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_openvpn"
+		}
 	}
 	return ""
+}
+
+func supportsTargetedUserMutation(client *nodeclient.Client, protocols []string, operation string, assignedToNode bool) bool {
+	if client == nil || !assignedToNode || len(protocols) != 1 {
+		return false
+	}
+	capability := targetedUserCapability(protocols[0], operation)
+	return capability != "" && client.Supports(capability)
 }
 
 func (c Controller) runtimeUserOperationTargeted(ctx context.Context, nodeID int64, operation OperationRow) (bool, error) {
@@ -1036,13 +1051,9 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow, 
 				return protocolErr
 			}
 			userProtocols := protocols[operation.UserID.Int64]
-			capability := ""
-			if len(userProtocols) == 1 {
-				capability = targetedUserCapability(userProtocols[0], operation.OperationType)
-			}
-			// Protocols without a tested live mutation path, including OpenVPN,
-			// must go through SyncConfig. Do not send them to legacy per-user RPCs.
-			if capability == "" || !targeted || !client.Supports(capability) {
+			// Require an explicit node capability and a single protocol before
+			// using any targeted path; mixed or legacy nodes stay on SyncConfig.
+			if !supportsTargetedUserMutation(client, userProtocols, operation.OperationType, targeted) {
 				syncConfig = true
 			} else {
 				syncConfig = false

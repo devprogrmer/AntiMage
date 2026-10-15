@@ -166,17 +166,20 @@ func TestOnlyImplementedVLESSUserMutationsAvoidFullSync(t *testing.T) {
 	}
 }
 
-func TestOpenVPNAddUpdateRemoveStayOnConservativeFullSyncPath(t *testing.T) {
+func TestOpenVPNTargetedMutationCapabilitiesAreOperationSpecific(t *testing.T) {
 	operations := []string{"add_user", "update_user", "remove_user", "enable_user", "disable_user"}
 	for _, operation := range operations {
-		if capability := targetedUserCapability("openvpn", operation); capability != "" {
-			t.Fatalf("OpenVPN %s unexpectedly has targeted capability %q", operation, capability)
+		if capability := targetedUserCapability("openvpn", operation); capability == "" {
+			t.Fatalf("OpenVPN %s lacks an operation-specific capability", operation)
 		}
 	}
-	inbounds := []map[string]any{{"tag": "vpn-in", "protocol": "openvpn", "targets": []any{"node:7"}}}
-	serviceTags := map[int64]map[string]bool{10: {"vpn-in": true}}
-	if !serviceRequiresFullUserSync(10, serviceTags, inbounds, "node:7") {
-		t.Fatal("OpenVPN user mutations must resolve through conservative full SyncConfig")
+	if got := targetedUserCapability("openvpn", "update_user"); got != "targeted_user_update_openvpn" {
+		t.Fatalf("OpenVPN update capability=%q", got)
+	}
+	for _, operation := range []string{"add_user", "remove_user", "enable_user", "disable_user"} {
+		if got := targetedUserCapability("openvpn", operation); got != "targeted_user_add_remove_openvpn" {
+			t.Fatalf("OpenVPN %s capability=%q", operation, got)
+		}
 	}
 }
 

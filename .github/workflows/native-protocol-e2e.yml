@@ -320,3 +320,18 @@ jobs:
           go-version-file: go.mod
       - name: Run Linux race verification
         run: go test -race -timeout 30m ./internal/... -count=1
+
+  controller-openvpn-targeted:
+    name: controller-openvpn-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run OpenVPN controller capability, RPC, and fallback tests
+        run: go test ./internal/app/nodecontroller -run 'Test(OpenVPN|ControllerOpenVPN|ControllerLegacyOpenVPN|TargetedUserCapability|BulkOpenVPN)' -count=1
+      - name: Race test OpenVPN controller capability, RPC, and fallback paths
+        run: go test -race ./internal/app/nodecontroller -run 'Test(OpenVPN|ControllerOpenVPN|ControllerLegacyOpenVPN|TargetedUserCapability|BulkOpenVPN)' -count=1

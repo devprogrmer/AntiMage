@@ -55,6 +55,12 @@ func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclie
 				return c.grpcApplyWireGuardUserOperation(ctx, client, node, operation)
 			}
 		}
+		if len(userProtocols) == 1 && strings.EqualFold(strings.TrimSpace(userProtocols[0]), "openvpn") {
+			capability := targetedUserCapability("openvpn", operation.OperationType)
+			if capability != "" && client.Supports(capability) {
+				return c.grpcApplyOpenVPNUserOperation(ctx, client, node, operation)
+			}
+		}
 	}
 	switch operation.OperationType {
 	case "remove_user", "disable_user":

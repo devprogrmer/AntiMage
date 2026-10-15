@@ -708,6 +708,35 @@ func TestBulkWireGuardMutationsStayTargetedOnlyWithExplicitCapability(t *testing
 	}
 }
 
+func TestBulkOpenVPNMutationsStayTargetedOnlyWithExplicitCapability(t *testing.T) {
+	operations := make([]OperationRow, bulkRuntimeUserOperationThreshold+2)
+	protocols := make(map[int64][]string, len(operations))
+	capabilities := map[int64]map[string]bool{7: {"targeted_user_update_openvpn": true, "targeted_user_add_remove_openvpn": true}}
+	for index := range operations {
+		userID := int64(index + 1)
+		operations[index] = OperationRow{OperationType: "update_user", NodeID: sql.NullInt64{Int64: 7, Valid: true}, UserID: sql.NullInt64{Int64: userID, Valid: true}}
+		protocols[userID] = []string{"openvpn"}
+	}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); folded[7] {
+		t.Fatal("bulk OpenVPN updates on a capable node must remain targeted")
+	}
+	delete(capabilities[7], "targeted_user_update_openvpn")
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("legacy OpenVPN update must retain full-sync fallback")
+	}
+	capabilities[7]["targeted_user_update_openvpn"] = true
+	for index := range operations {
+		operations[index].OperationType = "remove_user"
+	}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); folded[7] {
+		t.Fatal("bulk OpenVPN removals on a capable node must remain targeted")
+	}
+	protocols[operations[0].UserID.Int64] = []string{"openvpn", "vless"}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("mixed-protocol batch must retain conservative full-sync fallback")
+	}
+}
+
 func TestTargetedUserCapabilityIsProtocolAndOperationSpecific(t *testing.T) {
 	cases := []struct {
 		protocol, operation, want string
@@ -715,9 +744,12 @@ func TestTargetedUserCapabilityIsProtocolAndOperationSpecific(t *testing.T) {
 		{"wireguard", "update_user", "targeted_user_update_wireguard"},
 		{"wireguard", "add_user", "targeted_user_add_remove_wireguard"},
 		{"wireguard", "remove_user", "targeted_user_add_remove_wireguard"},
+		{"openvpn", "update_user", "targeted_user_update_openvpn"},
+		{"openvpn", "add_user", "targeted_user_add_remove_openvpn"},
+		{"openvpn", "remove_user", "targeted_user_add_remove_openvpn"},
 		{"vless", "update_user", "targeted_user_update_vless"},
-		{"openvpn", "update_user", ""},
 		{"wireguard", "sync_config", ""},
+		{"openvpn", "sync_config", ""},
 	}
 	for _, test := range cases {
 		if got := targetedUserCapability(test.protocol, test.operation); got != test.want {
