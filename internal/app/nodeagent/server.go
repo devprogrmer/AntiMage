@@ -473,6 +473,9 @@ func (s *Server) AddUser(ctx context.Context, req *nodev1.InboundUserRequest) (*
 	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "wireguard") {
 		return s.applyWireGuardUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
 	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "amneziawg") {
+		return s.applyAmneziaWGUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
+	}
 	user, err := xrayVLESSUserMessage(req.GetUser())
 	if err != nil {
 		if errors.Is(err, errUnsupportedXrayUserProtocol) {
@@ -503,6 +506,9 @@ func (s *Server) UpdateUser(ctx context.Context, req *nodev1.InboundUserRequest)
 	}
 	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "wireguard") {
 		return s.applyWireGuardUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "amneziawg") {
+		return s.applyAmneziaWGUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
 	}
 	user, err := xrayVLESSUserMessage(req.GetUser())
 	if err != nil {
@@ -552,6 +558,30 @@ func (s *Server) applyWireGuardUserRPC(ctx context.Context, operationID, inbound
 	return s.action(operationID, "WireGuard user "+operation+" completed"), nil
 }
 
+func (s *Server) applyAmneziaWGUserRPC(ctx context.Context, operationID, inboundTag string, user *nodev1.InboundUser, operation string) (*nodev1.RuntimeActionResponse, error) {
+	_, encodedOperation, _, err := decodeAmneziaWGMutationUser(user)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if encodedOperation != operation {
+		return nil, status.Error(codes.InvalidArgument, "AmneziaWG operation envelope mismatch")
+	}
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, inboundTag, func() error {
+		return s.applyAmneziaWGUserMutation(ctx, inboundTag, user, operation)
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		if errors.Is(err, errRuntimeStopping) || errors.Is(err, errRuntimeStopped) || status.Code(err) != codes.Unknown {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "%s AmneziaWG user: %v", operation, err)
+	}
+	s.wakeLocalQuota("amneziawg")
+	return s.action(operationID, "AmneziaWG user "+operation+" completed"), nil
+}
+
 func (s *Server) targetedXrayUserClient() (*xrayStatsClient, error) {
 	s.mu.Lock()
 	apiPort, xrayPath := s.cfg.XrayAPIPort, s.cfg.XrayPath
@@ -577,6 +607,18 @@ func (s *Server) RemoveUser(ctx context.Context, req *nodev1.RemoveInboundUserRe
 			wireGuardMutationPeersField:  "[]",
 		}}
 		return s.applyWireGuardUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
+	}
+	if strings.HasPrefix(strings.TrimSpace(req.GetEmail()), amneziaWGRemoveUserPrefix) {
+		userID, ok := amneziaWGRemoveUserID(req.GetEmail())
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "AmneziaWG remove user id is invalid")
+		}
+		user := &nodev1.InboundUser{Protocol: "amneziawg", Fields: map[string]string{
+			amneziaWGMutationUserIDField: fmt.Sprint(userID),
+			amneziaWGMutationOpField:     "remove",
+			amneziaWGMutationPeersField:  "[]",
+		}}
+		return s.applyAmneziaWGUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
 	}
 	err := s.runtimeLifecycleCoordinator().runMutation(ctx, req.GetInboundTag(), func() error {
 		client, clientErr := s.targetedXrayUserClient()
@@ -1169,6 +1211,9 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "runtime_evidence_v1", "targeted_user_update_vless", "targeted_user_add_remove_vless"}
 	if runtime.GOOS == "linux" {
 		capabilities = append(capabilities, "targeted_user_update_wireguard", "targeted_user_add_remove_wireguard")
+		if amneziaWGTargetedMutationAvailable() {
+			capabilities = append(capabilities, "targeted_user_update_amneziawg", "targeted_user_add_remove_amneziawg")
+		}
 	}
 	if s.verifiedInstallerAvailable() {
 		capabilities = append(capabilities, "verified_updates_v1", "shared_fencing_v1", "command_idempotency_v1", "config_identity_v1")

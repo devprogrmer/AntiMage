@@ -31,6 +31,15 @@ const (
 	amneziaWGRemoveUserPrefix    = "amneziawg-user:"
 )
 
+func amneziaWGRemoveUserID(email string) (int64, bool) {
+	value := strings.TrimSpace(email)
+	if !strings.HasPrefix(value, amneziaWGRemoveUserPrefix) {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(strings.TrimPrefix(value, amneziaWGRemoveUserPrefix), 10, 64)
+	return id, err == nil && id > 0
+}
+
 func decodeAmneziaWGMutationUser(user *nodev1.InboundUser) (int64, string, []amneziaWGRuntimePeer, error) {
 	if user == nil || !strings.EqualFold(strings.TrimSpace(user.GetProtocol()), "amneziawg") {
 		return 0, "", nil, fmt.Errorf("AmneziaWG mutation user is required")

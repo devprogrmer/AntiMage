@@ -21,6 +21,8 @@ func amneziaWGPlatformPreflight() error {
 	return fmt.Errorf("amneziawg native runtime is supported only on linux")
 }
 
+func amneziaWGTargetedMutationAvailable() bool { return false }
+
 func amneziaWGPlatformApply(prepared preparedAmneziaWGRuntime) error {
 	return fmt.Errorf("amneziawg native runtime is supported only on linux")
 }

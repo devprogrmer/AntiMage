@@ -79,6 +79,8 @@ func amneziaWGPlatformPreflight() error {
 	return nil
 }
 
+func amneziaWGTargetedMutationAvailable() bool { return true }
+
 func amneziaWGPlatformApply(prepared preparedAmneziaWGRuntime) error {
 	if err := ensureAmneziaWGProvisioned(); err != nil {
 		return err
