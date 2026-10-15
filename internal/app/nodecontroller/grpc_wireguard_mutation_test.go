@@ -3,6 +3,7 @@ package nodecontroller
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"encoding/json"
 	"net"
@@ -57,6 +58,12 @@ INSERT INTO service_hosts VALUES (10, 1);`); err != nil {
 	tlsFixture := httptest.NewTLSServer(nil)
 	certificate := tlsFixture.TLS.Certificates[0]
 	tlsFixture.Close()
+	rootCert, err := x509.ParseCertificate(certificate.Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootPool := x509.NewCertPool()
+	rootPool.AddCert(rootCert)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +78,7 @@ INSERT INTO service_hosts VALUES (10, 1);`); err != nil {
 
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	client, err := nodeclient.Dial(callCtx, listener.Addr().String(), &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}, grpc.WithBlock()) // test server uses an ephemeral certificate
+	client, err := nodeclient.Dial(callCtx, listener.Addr().String(), &tls.Config{RootCAs: rootPool, MinVersion: tls.VersionTLS12}, grpc.WithBlock())
 	if err != nil {
 		t.Fatal(err)
 	}
