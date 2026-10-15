@@ -137,7 +137,7 @@ func TestOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 		_, tunErr := net.InterfaceByName(openVPNTunName(inbound.Tag))
 		return tunErr == nil && openVPNManagementReady(inbound.Tag, dataDir)
 	}); err != nil {
-		t.Fatalf("wait for native OpenVPN server: %v", err)
+		t.Fatalf("wait for native OpenVPN server: %v; NodeAgent runtime logs:\n%s", err, strings.Join(server.snapshotLogs(), "\n"))
 	}
 	server.mu.Lock()
 	runtimeBefore := server.openVPNRuntimes[inbound.Tag]
