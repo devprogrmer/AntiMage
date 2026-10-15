@@ -220,8 +220,10 @@ func TestOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	lifecycleGate := server.runtimeLifecycleCoordinator().gate(inbound.Tag)
 	waitCtx, cancel := context.WithCancel(context.Background())
 	rpcDone := make(chan error, 1)
+	cancelRequest := openVPNMutationRequest("native-add-cancel", "add", 11, bobV1)
+	cancelRequest.InboundTag = inbound.Tag
 	go func() {
-		_, callErr := rpc.AddUser(waitCtx, openVPNMutationRequest("native-add-cancel", "add", 11, bobV1))
+		_, callErr := rpc.AddUser(waitCtx, cancelRequest)
 		rpcDone <- callErr
 	}()
 	select {
