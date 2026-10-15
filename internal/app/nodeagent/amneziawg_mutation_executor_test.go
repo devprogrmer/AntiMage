@@ -182,3 +182,35 @@ func TestPlanAmneziaWGNativePolicyMutationIsTargetUserScoped(t *testing.T) {
 		t.Fatalf("invalid mutation changed policy: err=%v", err)
 	}
 }
+
+func TestAmneziaWGMutationUsageConfigPreservesUnrelatedAndStablePeerGenerations(t *testing.T) {
+	targetKey, otherKey := strings.Repeat("A", 43)+"=", strings.Repeat("B", 43)+"="
+	old := amneziaWGUsageRuntimeConfig{
+		Generation: "inbound-generation", InboundTag: "awg-main", InterfaceName: "awg-test",
+		PeerGenerations: map[string]string{targetKey: "target-generation", otherKey: "other-generation"},
+		Peers:           map[string]int64{targetKey: 7, otherKey: 8},
+		PeerAddresses:   map[string]string{targetKey: "10.72.0.7", otherKey: "10.72.0.8"},
+		Policies:        map[string]nativeSessionUserPolicy{targetKey: {Status: "active"}, otherKey: {Status: "active", UsedTraffic: 123}},
+	}
+	desired := []amneziaWGRuntimePeer{{UserID: 7, PublicKey: targetKey, Address: "10.72.0.9", Status: "active", DeviceLimit: 2}}
+	updated, err := amneziaWGMutationUsageConfig(old, 7, desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.PeerGenerations[targetKey] != "target-generation" || updated.PeerGenerations[otherKey] != "other-generation" {
+		t.Fatalf("peer generations changed: %+v", updated.PeerGenerations)
+	}
+	if updated.Peers[otherKey] != 8 || updated.PeerAddresses[otherKey] != "10.72.0.8" || updated.Policies[otherKey].UsedTraffic != 123 {
+		t.Fatalf("unrelated usage identity changed: %+v", updated)
+	}
+	if updated.PeerAddresses[targetKey] != "10.72.0.9" || updated.Policies[targetKey].DeviceLimit != 2 {
+		t.Fatalf("target usage policy not updated: %+v", updated)
+	}
+	removed, err := amneziaWGMutationUsageConfig(updated, 7, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := removed.Peers[targetKey]; ok || removed.Peers[otherKey] != 8 {
+		t.Fatalf("remove affected wrong usage peers: %+v", removed.Peers)
+	}
+}

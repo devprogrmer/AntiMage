@@ -215,20 +215,24 @@ func amneziaWGPeerAddressMap(peers []amneziaWGRuntimePeer) map[string]string {
 func amneziaWGPeerPolicies(peers []amneziaWGRuntimePeer) map[string]nativeSessionUserPolicy {
 	out := map[string]nativeSessionUserPolicy{}
 	for _, peer := range peers {
-		policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic, ReflectedUsageBatchID: peer.ReflectedUsageBatchID}
-		if peer.DataLimit != nil {
-			policy.DataLimit = *peer.DataLimit
-		}
-		if peer.Expire != nil {
-			policy.Expire = *peer.Expire
-		}
-		policy.UsageCoefficient = peer.UsageCoefficient
-		policy.InboundCoefficient = peer.InboundCoefficient
-		policy.DeviceLimit, policy.IPLimit = peer.DeviceLimit, peer.IPLimit
-		policy.UploadSpeedLimit, policy.DownloadSpeedLimit = peer.UploadSpeedLimit, peer.DownloadSpeedLimit
-		out[peer.PublicKey] = policy
+		out[peer.PublicKey] = amneziaWGPeerPolicy(peer)
 	}
 	return out
+}
+
+func amneziaWGPeerPolicy(peer amneziaWGRuntimePeer) nativeSessionUserPolicy {
+	policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic, ReflectedUsageBatchID: peer.ReflectedUsageBatchID}
+	if peer.DataLimit != nil {
+		policy.DataLimit = *peer.DataLimit
+	}
+	if peer.Expire != nil {
+		policy.Expire = *peer.Expire
+	}
+	policy.UsageCoefficient = peer.UsageCoefficient
+	policy.InboundCoefficient = peer.InboundCoefficient
+	policy.DeviceLimit, policy.IPLimit = peer.DeviceLimit, peer.IPLimit
+	policy.UploadSpeedLimit, policy.DownloadSpeedLimit = peer.UploadSpeedLimit, peer.DownloadSpeedLimit
+	return policy
 }
 
 func amneziaWGRuntimeAddressing(settings map[string]any) (netip.Prefix, string, error) {

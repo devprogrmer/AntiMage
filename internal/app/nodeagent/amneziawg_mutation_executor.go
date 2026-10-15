@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -95,6 +96,71 @@ func planAmneziaWGNativePolicyMutation(raw, inboundTag string, userID int64, ope
 		return raw, wireGuardPeerDelta{}, fmt.Errorf("encode updated AmneziaWG policy: %w", err)
 	}
 	return string(updated), delta, nil
+}
+
+func amneziaWGMutationUsageConfig(old amneziaWGUsageRuntimeConfig, userID int64, desired []amneziaWGRuntimePeer) (amneziaWGUsageRuntimeConfig, error) {
+	if userID <= 0 {
+		return amneziaWGUsageRuntimeConfig{}, fmt.Errorf("AmneziaWG mutation user id must be positive")
+	}
+	updated := old
+	updated.PeerGenerations = cloneAmneziaWGMap(old.PeerGenerations)
+	updated.Peers = cloneAmneziaWGMap(old.Peers)
+	updated.PeerAddresses = cloneAmneziaWGMap(old.PeerAddresses)
+	updated.Policies = cloneAmneziaWGMap(old.Policies)
+	if updated.PeerGenerations == nil {
+		updated.PeerGenerations = map[string]string{}
+	}
+	if updated.Peers == nil {
+		updated.Peers = map[string]int64{}
+	}
+	if updated.PeerAddresses == nil {
+		updated.PeerAddresses = map[string]string{}
+	}
+	if updated.Policies == nil {
+		updated.Policies = map[string]nativeSessionUserPolicy{}
+	}
+	previousOwners := cloneAmneziaWGMap(updated.Peers)
+	previousGenerations := cloneAmneziaWGMap(updated.PeerGenerations)
+	for key, owner := range updated.Peers {
+		if owner != userID {
+			continue
+		}
+		delete(updated.Peers, key)
+		delete(updated.PeerAddresses, key)
+		delete(updated.Policies, key)
+		delete(updated.PeerGenerations, key)
+	}
+	for _, peer := range desired {
+		key := strings.TrimSpace(peer.PublicKey)
+		if peer.UserID != userID || key == "" {
+			return amneziaWGUsageRuntimeConfig{}, fmt.Errorf("AmneziaWG desired peer identity mismatch")
+		}
+		generation := ""
+		if previousOwners[key] == userID {
+			generation = strings.TrimSpace(previousGenerations[key])
+		}
+		if generation == "" {
+			var err error
+			generation, err = amneziaWGMutationGeneration()
+			if err != nil {
+				return amneziaWGUsageRuntimeConfig{}, err
+			}
+		}
+		updated.Peers[key] = userID
+		updated.PeerAddresses[key] = strings.TrimSpace(peer.Address)
+		updated.Policies[key] = amneziaWGPeerPolicy(peer)
+		updated.PeerGenerations[key] = generation
+	}
+	updated.Transitioning = false
+	return updated, nil
+}
+
+func amneziaWGMutationGeneration() (string, error) {
+	var token [16]byte
+	if _, err := rand.Read(token[:]); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", token[:]), nil
 }
 
 func amneziaWGPeersFromWireGuard(peers []wireGuardRuntimePeer) []amneziaWGRuntimePeer {
