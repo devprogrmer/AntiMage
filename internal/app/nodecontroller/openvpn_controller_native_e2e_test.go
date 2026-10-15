@@ -23,6 +23,7 @@ import (
 
 	"github.com/antimage/antimage/internal/app/nodeagent"
 	"github.com/antimage/antimage/internal/app/nodeclient"
+	operationapp "github.com/antimage/antimage/internal/app/operations"
 	userapp "github.com/antimage/antimage/internal/app/user"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	"google.golang.org/grpc"
@@ -99,12 +100,9 @@ func TestControllerOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	}
 	defer client.Close()
 	client.SetHandshake("native-test", []string{"targeted_user_add_remove_openvpn", "targeted_user_update_openvpn"})
-	initialResponse, err := client.Runtime().SyncConfig(ctx, &nodev1.RuntimeConfigRequest{
-		OperationId: "native-openvpn-initial-100", ConfigJson: runtimeConfig,
-		OvRuntimeJson: initialNative, DesiredRevision: 100,
-	})
-	if err != nil || initialResponse == nil || !initialResponse.GetAccepted() {
-		t.Fatalf("install initial native OpenVPN runtime: response=%v err=%v", initialResponse, err)
+	initialResult, err := controller.Connect(ctx, Request{NodeID: 7, ConfigJSON: runtimeConfig})
+	if err != nil || !initialResult.Connected {
+		t.Fatalf("Controller initial native OpenVPN sync: result=%+v err=%v", initialResult, err)
 	}
 	serverConfig := filepath.Join(dataDir, "openvpn", openVPNNativeDirName("ov-in"), "server.conf")
 	if err := waitOpenVPNNativeController(func() bool { return openVPNNativeControllerPID(serverConfig) > 0 }); err != nil {
@@ -384,6 +382,11 @@ CREATE TABLE service_hosts (service_id INTEGER,host_id INTEGER);
 CREATE TABLE xray_config (id INTEGER PRIMARY KEY,data TEXT,created_at DATETIME,updated_at DATETIME);
 CREATE TABLE inbounds (tag TEXT PRIMARY KEY,uplink INTEGER DEFAULT 0,downlink INTEGER DEFAULT 0,usage_coefficient REAL DEFAULT 1);
 CREATE TABLE wireguard_peer_addresses (inbound_tag TEXT,user_id INTEGER,pool TEXT,server_address TEXT,address TEXT,PRIMARY KEY(inbound_tag,user_id),UNIQUE(inbound_tag,address));
+CREATE TABLE operations (id TEXT PRIMARY KEY,operation_type TEXT,target_type TEXT,target_id TEXT,requested_by TEXT,request_id TEXT,state TEXT,phase TEXT,progress INTEGER,created_at BIGINT,started_at BIGINT,updated_at BIGINT,completed_at BIGINT,error TEXT,metadata_json TEXT);
+CREATE TABLE operation_locks (target_type TEXT,target_id TEXT,operation_id TEXT UNIQUE,PRIMARY KEY(target_type,target_id));
+CREATE TABLE operation_events(operation_id TEXT,sequence INTEGER,state TEXT,phase TEXT,observed_at BIGINT,requested_by TEXT,request_id TEXT,event_type TEXT NOT NULL DEFAULT 'operation.transition',payload_json TEXT,PRIMARY KEY(operation_id,sequence));
+`+operationapp.ExecutorLeaseDDL+`;
+`+operationapp.ResourceFenceDDL+`;
 INSERT INTO tls VALUES (1,?,?);
 INSERT INTO nodes VALUES (7,'native-node','127.0.0.1',0,0,'connected','','',?,?,'custom',?,CURRENT_TIMESTAMP,1,?,100,100,'connected','running',CURRENT_TIMESTAMP);
 INSERT INTO users VALUES (7,'alice','0123456789abcdef0123456789abcdef',10,'active',0,0,0,0,0,0,0);
