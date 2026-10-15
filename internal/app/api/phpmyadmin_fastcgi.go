@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const phpMyAdminDocumentRoot = "/usr/share/phpmyadmin"
@@ -25,6 +27,8 @@ const (
 	phpMyAdminUploadLimitMiB     = 1024
 	phpMyAdminMemoryLimitMiB     = 512
 	phpMyAdminExecutionLimitSecs = 600
+	phpMyAdminFastCGIResponseMax = int64(128 << 20)
+	phpMyAdminFastCGIConnectWait = 5 * time.Second
 )
 
 const (
@@ -92,7 +96,9 @@ func (s *Server) servePHPMyAdminPHP(w http.ResponseWriter, r *http.Request, stat
 		return err
 	}
 	params := phpMyAdminFastCGIParams(r, scriptRel, scriptPath)
-	stdout, stderr, err := fastCGIRequest(network, address, params, r.Body)
+	bodyLimit := int64(phpMyAdminUploadLimitMiB+1) << 20
+	limitedBody := http.MaxBytesReader(w, r.Body, bodyLimit)
+	stdout, stderr, err := fastCGIRequestContextLimited(r.Context(), network, address, params, limitedBody, phpMyAdminFastCGIResponseMax)
 	if err != nil {
 		return err
 	}
@@ -204,11 +210,22 @@ func fastCGIRequest(network string, address string, params map[string]string, bo
 }
 
 func fastCGIRequestLimited(network string, address string, params map[string]string, body io.Reader, maxOutput int64) ([]byte, []byte, error) {
-	conn, err := net.Dial(network, address)
+	return fastCGIRequestContextLimited(context.Background(), network, address, params, body, maxOutput)
+}
+
+func fastCGIRequestContextLimited(ctx context.Context, network string, address string, params map[string]string, body io.Reader, maxOutput int64) ([]byte, []byte, error) {
+	dialer := net.Dialer{Timeout: phpMyAdminFastCGIConnectWait}
+	conn, err := dialer.DialContext(ctx, network, address)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer conn.Close()
+	deadline := time.Now().Add(phpMyAdminExecutionLimitSecs * time.Second)
+	if err := conn.SetDeadline(deadline); err != nil {
+		return nil, nil, err
+	}
+	stopClose := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stopClose()
 	beginBody := make([]byte, 8)
 	binary.BigEndian.PutUint16(beginBody[0:2], fcgiResponder)
 	if err := writeFastCGIRecord(conn, fcgiBegin, beginBody); err != nil {
@@ -225,6 +242,9 @@ func fastCGIRequestLimited(network string, address string, params map[string]str
 	for {
 		recordType, content, err := readFastCGIRecord(conn)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, nil, ctxErr
+			}
 			return nil, nil, err
 		}
 		switch recordType {

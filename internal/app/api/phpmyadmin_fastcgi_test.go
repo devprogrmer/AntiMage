@@ -1,6 +1,10 @@
 package api
 
 import (
+	"context"
+	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +13,72 @@ import (
 	"testing"
 	"time"
 )
+
+func TestFastCGIRequestStopsWhenRequestContextIsCanceled(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = io.Copy(io.Discard, conn)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, _, err = fastCGIRequestContextLimited(ctx, "tcp", listener.Addr().String(), nil, nil, 128)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("request error = %v, want context deadline", err)
+	}
+	<-serverDone
+}
+
+func TestFastCGIRequestRejectsOutputAboveConfiguredLimit(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	serverDone := make(chan error, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		defer conn.Close()
+		for {
+			typeID, body, err := readFastCGIRecord(conn)
+			if err != nil {
+				serverDone <- err
+				return
+			}
+			if typeID == fcgiStdin && len(body) == 0 {
+				break
+			}
+		}
+		if err := writeFastCGIRecord(conn, fcgiStdout, []byte("12345")); err != nil {
+			serverDone <- err
+			return
+		}
+		serverDone <- writeFastCGIRecord(conn, fcgiEnd, nil)
+	}()
+
+	_, _, err = fastCGIRequestContextLimited(context.Background(), "tcp", listener.Addr().String(), nil, nil, 4)
+	if err == nil || !strings.Contains(err.Error(), "configured limit") {
+		t.Fatalf("request error = %v, want output limit error", err)
+	}
+	if err := <-serverDone; err != nil {
+		t.Fatalf("fake FastCGI server: %v", err)
+	}
+}
 
 func TestRewritePHPMyAdminBodyRemovesFrameProtection(t *testing.T) {
 	body := []byte(`<!doctype html>

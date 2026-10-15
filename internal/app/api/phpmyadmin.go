@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
@@ -220,6 +221,11 @@ func (s *Server) handlePHPMyAdminProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.servePHPMyAdminLocal(w, r, status); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "phpMyAdmin request body exceeds the configured upload limit")
+			return
+		}
 		writeError(w, http.StatusBadGateway, "phpMyAdmin proxy failed: "+err.Error())
 	}
 }
