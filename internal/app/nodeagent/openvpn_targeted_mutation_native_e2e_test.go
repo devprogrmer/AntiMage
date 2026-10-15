@@ -191,7 +191,9 @@ func TestOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 		}
 		return oldAtomicWrite(path, data)
 	}
-	_, mutationErr := rpc.AddUser(context.Background(), openVPNMutationRequest("native-add-rollback", "add", 11, bobV1))
+	rollbackRequest := openVPNMutationRequest("native-add-rollback", "add", 11, bobV1)
+	rollbackRequest.InboundTag = inbound.Tag
+	_, mutationErr := rpc.AddUser(context.Background(), rollbackRequest)
 	runtimePolicyAtomicWrite = oldAtomicWrite
 	if mutationErr == nil || !strings.Contains(mutationErr.Error(), "persist OpenVPN user policy") {
 		t.Fatalf("persistence failure was not surfaced: %v", mutationErr)
@@ -262,6 +264,7 @@ func TestOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	assertOpenVPNMutationRollback(t, server, inbound.Tag, 10, dataDir, "bob")
 
 	add := openVPNMutationRequest("native-add-bob-11", "add", 11, bobV1)
+	add.InboundTag = inbound.Tag
 	if response, err := rpc.AddUser(context.Background(), add); err != nil || !response.GetAccepted() {
 		t.Fatalf("native AddUser response=%v err=%v", response, err)
 	}
@@ -271,6 +274,7 @@ func TestOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	}
 	conflicting := openVPNMutationRequest("native-add-bob-11", "add", 11,
 		openVPNRuntimeUser{UserID: 3, Username: "mallory", VPNUsername: "mallory", Password: "wrong", Status: "active"})
+	conflicting.InboundTag = inbound.Tag
 	if _, err := rpc.AddUser(context.Background(), conflicting); err == nil {
 		t.Fatal("reused operation id with a different mutation was accepted")
 	}
@@ -283,6 +287,7 @@ func TestOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	bobV2 := bobV1
 	bobV2.Password = "bob-native-v2"
 	update := openVPNMutationRequest("native-update-bob-12", "update", 12, bobV2)
+	update.InboundTag = inbound.Tag
 	if response, err := rpc.UpdateUser(context.Background(), update); err != nil || !response.GetAccepted() {
 		t.Fatalf("native UpdateUser response=%v err=%v", response, err)
 	}
