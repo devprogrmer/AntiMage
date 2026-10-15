@@ -1,0 +1,123 @@
+package nodeagent
+
+import (
+	"fmt"
+	"net/netip"
+	"strconv"
+	"strings"
+)
+
+type wireGuardKernelPeer struct {
+	PublicKey           string
+	PresharedKey        string
+	Endpoint            string
+	AllowedIPs          []string
+	PersistentKeepalive uint16
+}
+
+// parseWireGuardPeerSnapshot requires a complete single-interface wg dump.
+// It retains configurable peer state; handshake and transfer counters are
+// parsed for integrity but are intentionally not rollback state.
+func parseWireGuardPeerSnapshot(raw string) (map[string]wireGuardKernelPeer, error) {
+	peers := make(map[string]wireGuardKernelPeer)
+	interfaceRows := 0
+	for _, line := range strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) == 4 {
+			interfaceRows++
+			continue
+		}
+		if len(parts) != 8 {
+			return nil, fmt.Errorf("wireguard dump row has %d fields, want 8", len(parts))
+		}
+		key := strings.TrimSpace(parts[0])
+		if err := validateWireGuardKey(key, "snapshot peer public key", false); err != nil {
+			return nil, err
+		}
+		if _, exists := peers[key]; exists {
+			return nil, fmt.Errorf("wireguard dump contains duplicate peer public key")
+		}
+		psk := normalizeWireGuardDumpValue(parts[1])
+		if psk != "" {
+			if err := validateWireGuardKey(psk, "snapshot peer preshared key", false); err != nil {
+				return nil, err
+			}
+		}
+		allowedIPs := []string{}
+		if rawAllowedIPs := strings.TrimSpace(parts[3]); rawAllowedIPs != "" {
+			for _, rawPrefix := range strings.Split(rawAllowedIPs, ",") {
+				prefix, err := netip.ParsePrefix(strings.TrimSpace(rawPrefix))
+				if err != nil {
+					return nil, fmt.Errorf("wireguard peer %q has invalid allowed IP %q", key, rawPrefix)
+				}
+				allowedIPs = append(allowedIPs, prefix.String())
+			}
+		}
+		if _, err := strconv.ParseInt(strings.TrimSpace(parts[4]), 10, 64); err != nil {
+			return nil, fmt.Errorf("wireguard peer %q has invalid handshake timestamp", key)
+		}
+		if _, err := strconv.ParseUint(strings.TrimSpace(parts[5]), 10, 64); err != nil {
+			return nil, fmt.Errorf("wireguard peer %q has invalid received-byte counter", key)
+		}
+		if _, err := strconv.ParseUint(strings.TrimSpace(parts[6]), 10, 64); err != nil {
+			return nil, fmt.Errorf("wireguard peer %q has invalid sent-byte counter", key)
+		}
+		keepalive, err := strconv.ParseUint(strings.TrimSpace(parts[7]), 10, 16)
+		if err != nil {
+			return nil, fmt.Errorf("wireguard peer %q has invalid keepalive", key)
+		}
+		peers[key] = wireGuardKernelPeer{
+			PublicKey:           key,
+			PresharedKey:        psk,
+			Endpoint:            normalizeWireGuardDumpValue(parts[2]),
+			AllowedIPs:          allowedIPs,
+			PersistentKeepalive: uint16(keepalive),
+		}
+	}
+	if interfaceRows != 1 {
+		return nil, fmt.Errorf("wireguard dump contains %d interface rows, want exactly 1", interfaceRows)
+	}
+	return peers, nil
+}
+
+func normalizeWireGuardDumpValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "(none)" {
+		return ""
+	}
+	return value
+}
+
+func parseWireGuardPeerList(raw string) (map[string]struct{}, error) {
+	peers := make(map[string]struct{})
+	for _, line := range strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n") {
+		key := strings.TrimSpace(line)
+		if key == "" {
+			continue
+		}
+		if err := validateWireGuardKey(key, "peer inventory public key", false); err != nil {
+			return nil, err
+		}
+		if _, exists := peers[key]; exists {
+			return nil, fmt.Errorf("wireguard peer inventory contains duplicate key")
+		}
+		peers[key] = struct{}{}
+	}
+	return peers, nil
+}
+
+func wireGuardPeerInventoriesMatch(snapshot map[string]wireGuardKernelPeer, listed map[string]struct{}) bool {
+	if len(snapshot) != len(listed) {
+		return false
+	}
+	for key := range snapshot {
+		if _, exists := listed[key]; !exists {
+			return false
+		}
+	}
+	return true
+}

@@ -38,11 +38,12 @@ func (s *Server) runtimePolicyPath() string {
 
 func (s *Server) currentRuntimePolicy() (*runtimePolicySnapshot, error) {
 	s.mu.Lock()
-	snapshot := s.runtimePolicy
-	s.mu.Unlock()
-	if snapshot != nil {
-		return snapshot, nil
+	if s.runtimePolicy != nil {
+		snapshot := *s.runtimePolicy
+		s.mu.Unlock()
+		return &snapshot, nil
 	}
+	s.mu.Unlock()
 	return s.loadRuntimePolicy()
 }
 
@@ -99,7 +100,11 @@ func (s *Server) loadRuntimePolicy() (*runtimePolicySnapshot, error) {
 		return nil, err
 	}
 	s.mu.Lock()
-	s.runtimePolicy = &snapshot
+	if s.runtimePolicy == nil {
+		s.runtimePolicy = &snapshot
+	} else {
+		snapshot = *s.runtimePolicy
+	}
 	s.mu.Unlock()
 	return &snapshot, nil
 }

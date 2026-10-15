@@ -66,3 +66,21 @@ func TestRuntimePolicyWriteFailureDoesNotReplaceLastValid(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCurrentRuntimePolicyReturnsIsolatedSnapshot(t *testing.T) {
+	s := &Server{cfg: Config{DataDir: t.TempDir()}}
+	want := &nodev1.RuntimeConfigRequest{ConfigJson: `{}`, OvRuntimeJson: `{"xray_policies":[{"email":"alice"}]}`, DesiredRevision: 7}
+	if err := s.persistRuntimePolicy(want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.currentRuntimePolicy()
+	if err != nil || got == nil {
+		t.Fatalf("current runtime policy: snapshot=%v err=%v", got, err)
+	}
+	got.NativeJSON = `{}`
+	got.Revision = 99
+	current, err := s.currentRuntimePolicy()
+	if err != nil || current.NativeJSON != want.OvRuntimeJson || current.Revision != 7 {
+		t.Fatalf("caller mutation escaped snapshot copy: snapshot=%+v err=%v", current, err)
+	}
+}
