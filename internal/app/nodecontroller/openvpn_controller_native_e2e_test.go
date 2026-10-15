@@ -1,6 +1,7 @@
 package nodecontroller
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -631,14 +632,12 @@ func openVPNNativeControllerStatus(dataDir string) (string, error) {
 }
 func ioReadUntilEnd(conn net.Conn) (string, error) {
 	var b strings.Builder
-	buf := make([]byte, 4096)
+	reader := bufio.NewReader(conn)
 	for {
-		n, err := conn.Read(buf)
-		if n > 0 {
-			b.Write(buf[:n])
-			if strings.Contains(b.String(), "\nEND\n") {
-				return b.String(), nil
-			}
+		line, err := reader.ReadString('\n')
+		_, _ = b.WriteString(line)
+		if strings.TrimSpace(line) == "END" {
+			return b.String(), nil
 		}
 		if err != nil {
 			return b.String(), err
