@@ -2,9 +2,11 @@ package nodeagent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 // AWG peer edits use wgctrl's single-peer configuration API. AWG-specific
@@ -52,7 +54,63 @@ func planAmneziaWGUserPeerDelta(current []amneziaWGRuntimePeer, userID int64, op
 		}
 		return result
 	}
-	return planWireGuardUserPeerDelta(toWireGuard(current), userID, operation, toWireGuard(desired))
+	delta, err := planWireGuardUserPeerDelta(toWireGuard(current), userID, operation, toWireGuard(desired))
+	if err != nil {
+		return wireGuardPeerDelta{}, err
+	}
+	return delta, nil
+}
+
+func planAmneziaWGNativePolicyMutation(raw, inboundTag string, userID int64, operation string, desired []amneziaWGRuntimePeer) (string, wireGuardPeerDelta, error) {
+	payload, err := parseNativeRuntimePayload(raw)
+	if err != nil {
+		return raw, wireGuardPeerDelta{}, fmt.Errorf("read committed AmneziaWG policy: %w", err)
+	}
+	inboundTag = strings.TrimSpace(inboundTag)
+	if inboundTag == "" {
+		return raw, wireGuardPeerDelta{}, fmt.Errorf("AmneziaWG inbound tag is required")
+	}
+	matched := -1
+	for i := range payload.AmneziaWGInbounds {
+		if strings.TrimSpace(payload.AmneziaWGInbounds[i].Tag) != inboundTag {
+			continue
+		}
+		if matched >= 0 {
+			return raw, wireGuardPeerDelta{}, fmt.Errorf("AmneziaWG inbound tag %q is ambiguous", inboundTag)
+		}
+		matched = i
+	}
+	if matched < 0 {
+		return raw, wireGuardPeerDelta{}, fmt.Errorf("AmneziaWG inbound %q is not in committed policy", inboundTag)
+	}
+	inbound := payload.AmneziaWGInbounds[matched]
+	delta, err := planAmneziaWGUserPeerDelta(inbound.Peers, userID, operation, desired)
+	if err != nil {
+		return raw, wireGuardPeerDelta{}, err
+	}
+	inbound.Peers = amneziaWGPeersFromWireGuard(delta.Peers)
+	payload.AmneziaWGInbounds[matched] = inbound
+	updated, err := json.Marshal(payload)
+	if err != nil {
+		return raw, wireGuardPeerDelta{}, fmt.Errorf("encode updated AmneziaWG policy: %w", err)
+	}
+	return string(updated), delta, nil
+}
+
+func amneziaWGPeersFromWireGuard(peers []wireGuardRuntimePeer) []amneziaWGRuntimePeer {
+	result := make([]amneziaWGRuntimePeer, 0, len(peers))
+	for _, peer := range peers {
+		result = append(result, amneziaWGRuntimePeer{
+			ReflectedUsageBatchID: peer.ReflectedUsageBatchID, UserID: peer.UserID,
+			Username: peer.Username, DeviceIndex: peer.DeviceIndex, PublicKey: peer.PublicKey,
+			PresharedKey: peer.PresharedKey, Address: peer.Address, Status: peer.Status,
+			UsedTraffic: peer.UsedTraffic, DataLimit: peer.DataLimit, Expire: peer.Expire,
+			DeviceLimit: peer.DeviceLimit, IPLimit: peer.IPLimit,
+			UploadSpeedLimit: peer.UploadSpeedLimit, DownloadSpeedLimit: peer.DownloadSpeedLimit,
+			UsageCoefficient: peer.UsageCoefficient, InboundCoefficient: peer.InboundCoefficient,
+		})
+	}
+	return result
 }
 
 func wireGuardPeerSnapshotMatchesAmneziaPolicy(snapshot map[string]wireGuardKernelPeer, peers []amneziaWGRuntimePeer) error {

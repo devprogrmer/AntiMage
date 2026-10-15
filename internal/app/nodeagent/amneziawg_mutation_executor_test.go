@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/netip"
 	"strings"
@@ -140,5 +141,44 @@ func TestAmneziaWGPeerMutationCancellationRollsBackEarlierTargetSteps(t *testing
 	}
 	if got := state[keyB].AllowedIPs[0]; got != "10.72.0.8/32" {
 		t.Fatalf("second peer after canceled transaction=%q", got)
+	}
+}
+
+func TestPlanAmneziaWGNativePolicyMutationIsTargetUserScoped(t *testing.T) {
+	otherKey, targetKey := strings.Repeat("B", 43)+"=", strings.Repeat("A", 43)+"="
+	other := amneziaWGRuntimePeer{UserID: 8, PublicKey: otherKey, Address: "10.72.0.8", Status: "active"}
+	current := amneziaWGRuntimePeer{UserID: 7, PublicKey: targetKey, Address: "10.72.0.7", Status: "active"}
+	rawBytes, err := json.Marshal(nativeRuntimePayload{AmneziaWGInbounds: []amneziaWGRuntimeInbound{{Tag: "awg-main", Peers: []amneziaWGRuntimePeer{other, current}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedPeer := current
+	updatedPeer.Address = "10.72.0.9"
+	updated, delta, err := planAmneziaWGNativePolicyMutation(string(rawBytes), "awg-main", 7, "update", []amneziaWGRuntimePeer{updatedPeer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(delta.Set) != 1 || delta.Set[0].PublicKey != targetKey || delta.Set[0].Address != "10.72.0.9" {
+		t.Fatalf("target delta=%+v", delta)
+	}
+	payload, err := parseNativeRuntimePayload(updated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peers := payload.AmneziaWGInbounds[0].Peers
+	byUser := map[int64]amneziaWGRuntimePeer{}
+	for _, peer := range peers {
+		byUser[peer.UserID] = peer
+	}
+	if len(peers) != 2 || byUser[8].PublicKey != otherKey || byUser[7].Address != "10.72.0.9" {
+		t.Fatalf("merged AmneziaWG peers=%+v", peers)
+	}
+	unchanged, _, err := planAmneziaWGNativePolicyMutation(updated, "awg-main", 7, "update", []amneziaWGRuntimePeer{updatedPeer})
+	if err != nil || unchanged != updated {
+		t.Fatalf("identical mutation changed policy: err=%v", err)
+	}
+	invalid, _, err := planAmneziaWGNativePolicyMutation(updated, "awg-main", 8, "update", []amneziaWGRuntimePeer{{UserID: 8, PublicKey: otherKey, Address: "10.72.0.9", Status: "active"}})
+	if err == nil || invalid != updated {
+		t.Fatalf("invalid mutation changed policy: err=%v", err)
 	}
 }
