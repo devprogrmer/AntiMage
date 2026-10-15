@@ -93,10 +93,10 @@ func TestApplyIKEv2RuntimesDoesNotReloadHealthyIdenticalConfig(t *testing.T) {
 
 	oldLookPath, oldCommand, oldFirewall := l2TPLookPath, l2TPCommandContext, ikev2FirewallCommand
 	var commands [][]string
-	l2TPLookPath = func(string) (string, error) { return "/bin/true", nil }
+	l2TPLookPath = func(string) (string, error) { return os.Args[0], nil }
 	l2TPCommandContext = func(ctx context.Context, _ string, args ...string) *exec.Cmd {
 		commands = append(commands, append([]string(nil), args...))
-		return exec.CommandContext(ctx, "/bin/true")
+		return ikev2SuccessCommand(ctx, args...)
 	}
 	ikev2FirewallCommand = func(context.Context, ...string) ([]byte, error) { return nil, nil }
 	t.Cleanup(func() {
@@ -138,6 +138,131 @@ func TestApplyIKEv2RuntimesDoesNotReloadHealthyIdenticalConfig(t *testing.T) {
 	}
 	if hasCommand(commands, "rereadsecrets") || hasCommand(commands, "reload") || hasCommand(commands, "start") {
 		t.Fatalf("identical healthy config restarted/reloaded strongSwan: %v", commands)
+	}
+}
+
+func TestIKEv2UserAddUpdateRemoveSyncReloadsSecretsAndKeepsOtherConnections(t *testing.T) {
+	root := t.TempDir()
+	oldDirs := [5]string{ikev2CACertDir, ikev2ServerCertDir, ikev2ServerKeyDir, l2TPIPSecConfigPath, l2TPIPSecSecretsPath}
+	ikev2CACertDir = filepath.Join(root, "system", "cacerts")
+	ikev2ServerCertDir = filepath.Join(root, "system", "certs")
+	ikev2ServerKeyDir = filepath.Join(root, "system", "private")
+	l2TPIPSecConfigPath = filepath.Join(root, "system", "ipsec.conf")
+	l2TPIPSecSecretsPath = filepath.Join(root, "system", "ipsec.secrets")
+	t.Cleanup(func() {
+		ikev2CACertDir, ikev2ServerCertDir, ikev2ServerKeyDir = oldDirs[0], oldDirs[1], oldDirs[2]
+		l2TPIPSecConfigPath, l2TPIPSecSecretsPath = oldDirs[3], oldDirs[4]
+	})
+
+	oldLookPath, oldCommand, oldFirewall := l2TPLookPath, l2TPCommandContext, ikev2FirewallCommand
+	l2TPLookPath = func(string) (string, error) { return os.Args[0], nil }
+	l2TPCommandContext = func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+		return ikev2SuccessCommand(ctx, args...)
+	}
+	ikev2FirewallCommand = func(context.Context, ...string) ([]byte, error) { return nil, nil }
+	t.Cleanup(func() {
+		l2TPLookPath, l2TPCommandContext, ikev2FirewallCommand = oldLookPath, oldCommand, oldFirewall
+	})
+
+	generated := filepath.Join(root, "generated")
+	if err := os.MkdirAll(generated, 0700); err != nil {
+		t.Fatal(err)
+	}
+	makeRuntime := func(tag, connection, secrets string) preparedIKEv2Runtime {
+		t.Helper()
+		files := ikev2RuntimeFiles{
+			IPSecConfig: filepath.Join(generated, tag+".conf"),
+			IPSecSecret: filepath.Join(generated, tag+".secrets"),
+			CACert:      filepath.Join(generated, tag+".ca"),
+			ServerCert:  filepath.Join(generated, tag+".crt"),
+			ServerKey:   filepath.Join(generated, tag+".key"),
+			CAName:      tag + "-ca.pem", CertName: tag + "-server.pem", KeyName: tag + "-server.key",
+		}
+		for path, content := range map[string]string{
+			files.IPSecConfig: connection, files.IPSecSecret: secrets,
+			files.CACert: "ca", files.ServerCert: "cert", files.ServerKey: "key",
+		} {
+			if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return preparedIKEv2Runtime{Tag: tag, Inbound: ikev2RuntimeInbound{Tag: tag}, Files: files}
+	}
+	primary := makeRuntime("ikev2-primary", "conn antimage-primary\n", ": RSA primary.key\n\"alice\" : EAP \"a1\"\n")
+	other := makeRuntime("ikev2-other", "conn antimage-other\n", ": RSA other.key\n\"carol\" : EAP \"c1\"\n")
+	runtimes := []preparedIKEv2Runtime{primary, other}
+	server := New(Config{DataDir: filepath.Join(root, "data")})
+
+	apply := func(t *testing.T, wantPresent, wantAbsent []string) {
+		t.Helper()
+		if err := server.applyIKEv2Runtimes(runtimes); err != nil {
+			t.Fatal(err)
+		}
+		installedSecrets, err := os.ReadFile(l2TPIPSecSecretsPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		installedConfig, err := os.ReadFile(l2TPIPSecConfigPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, value := range wantPresent {
+			if !strings.Contains(string(installedSecrets), value) && !strings.Contains(string(installedConfig), value) {
+				t.Fatalf("installed IKEv2 files missing %q", value)
+			}
+		}
+		for _, value := range wantAbsent {
+			if value == "" {
+				continue
+			}
+			if strings.Contains(string(installedSecrets), value) {
+				t.Fatalf("installed IKEv2 secrets still contain %q: %s", value, installedSecrets)
+			}
+		}
+	}
+
+	apply(t, []string{"alice", "carol", "antimage-primary", "antimage-other"}, nil)
+	writeSecrets := func(value string) {
+		t.Helper()
+		if err := os.WriteFile(primary.Files.IPSecSecret, []byte(value), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, mutation := range []struct {
+		name, secrets, present, absent string
+	}{
+		{name: "add", secrets: ": RSA primary.key\n\"alice\" : EAP \"a1\"\n\"bob\" : EAP \"b1\"\n", present: "bob", absent: ""},
+		{name: "update", secrets: ": RSA primary.key\n\"alice\" : EAP \"a2\"\n\"bob\" : EAP \"b1\"\n", present: `"alice" : EAP "a2"`, absent: `"alice" : EAP "a1"`},
+		{name: "remove", secrets: ": RSA primary.key\n\"alice\" : EAP \"a2\"\n", present: "carol", absent: "bob"},
+	} {
+		t.Run(mutation.name, func(t *testing.T) {
+			writeSecrets(mutation.secrets)
+			commands := [][]string{}
+			l2TPCommandContext = func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+				commands = append(commands, append([]string(nil), args...))
+				return ikev2SuccessCommand(ctx, args...)
+			}
+			apply(t, []string{mutation.present, "carol", "antimage-primary", "antimage-other"}, []string{mutation.absent})
+			if !hasCommand(commands, "rereadsecrets") || !hasCommand(commands, "reload") {
+				t.Fatalf("user-only secrets change did not reload credentials/config: %v", commands)
+			}
+			if hasCommand(commands, "start") || hasCommand(commands, "stop") {
+				t.Fatalf("user-only sync restarted strongSwan: %v", commands)
+			}
+		})
+	}
+}
+
+func ikev2SuccessCommand(ctx context.Context, args ...string) *exec.Cmd {
+	allArgs := append([]string{"-test.run=TestIKEv2CommandHelper", "--"}, args...)
+	cmd := exec.CommandContext(ctx, os.Args[0], allArgs...)
+	cmd.Env = append(os.Environ(), "GO_WANT_IKEV2_COMMAND_HELPER=1")
+	return cmd
+}
+
+func TestIKEv2CommandHelper(t *testing.T) {
+	if os.Getenv("GO_WANT_IKEV2_COMMAND_HELPER") == "1" {
+		os.Exit(0)
 	}
 }
 
