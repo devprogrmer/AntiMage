@@ -163,16 +163,26 @@ func (s *Server) checkpointWireGuardGenerationLocked(cfg wireGuardUsageRuntimeCo
 }
 
 func (s *Server) checkpointWireGuardOfflineGeneration(ctx context.Context, interfaces ...string) error {
-	return s.checkWireGuardOfflineGeneration(ctx, false, interfaces...)
+	s.wireGuardUsageMu.Lock()
+	defer s.wireGuardUsageMu.Unlock()
+	return s.checkWireGuardOfflineGenerationLocked(ctx, false, interfaces...)
 }
 
 func (s *Server) quotaCheckWireGuardOfflineGeneration(ctx context.Context) error {
-	return s.checkWireGuardOfflineGeneration(ctx, true)
+	s.wireGuardUsageMu.Lock()
+	defer s.wireGuardUsageMu.Unlock()
+	return s.checkWireGuardOfflineGenerationLocked(ctx, true)
 }
 
 func (s *Server) checkWireGuardOfflineGeneration(ctx context.Context, enforce bool, interfaces ...string) error {
 	s.wireGuardUsageMu.Lock()
 	defer s.wireGuardUsageMu.Unlock()
+	return s.checkWireGuardOfflineGenerationLocked(ctx, enforce, interfaces...)
+}
+
+// Caller holds wireGuardUsageMu so a targeted mutation can checkpoint and
+// change peers without a quota worker removing one between those steps.
+func (s *Server) checkWireGuardOfflineGenerationLocked(ctx context.Context, enforce bool, interfaces ...string) error {
 	if err := s.ensureWireGuardUsageStateLoadedLocked(); err != nil {
 		return err
 	}

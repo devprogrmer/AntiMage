@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,6 +65,31 @@ func TestRuntimePolicyWriteFailureDoesNotReplaceLastValid(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Dir(s.runtimePolicyPath())); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRuntimePolicyAtomicWriteHookPreservesPublishedSnapshotOnFailure(t *testing.T) {
+	s := &Server{cfg: Config{DataDir: t.TempDir()}}
+	first := &nodev1.RuntimeConfigRequest{ConfigJson: `{}`, DesiredRevision: 1}
+	if err := s.persistRuntimePolicy(first); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(s.runtimePolicyPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := runtimePolicyAtomicWrite
+	runtimePolicyAtomicWrite = func(string, []byte) error { return errors.New("injected atomic policy write failure") }
+	t.Cleanup(func() { runtimePolicyAtomicWrite = previous })
+	if err := s.persistRuntimePolicy(&nodev1.RuntimeConfigRequest{ConfigJson: `{}`, DesiredRevision: 2}); err == nil {
+		t.Fatal("injected policy write failure was ignored")
+	}
+	after, err := os.ReadFile(s.runtimePolicyPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) || s.runtimePolicy.Revision != 1 {
+		t.Fatalf("failed write changed policy: memory=%+v diskChanged=%v", s.runtimePolicy, string(after) != string(before))
 	}
 }
 

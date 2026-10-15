@@ -22,6 +22,8 @@ type runtimePolicySnapshot struct {
 	Stopped    bool   `json:"stopped,omitempty"`
 }
 
+var runtimePolicyAtomicWrite = writeAccountingState
+
 func runtimePolicyChecksum(snapshot runtimePolicySnapshot) (string, error) {
 	snapshot.Checksum = ""
 	raw, err := json.Marshal(snapshot)
@@ -71,7 +73,7 @@ func (s *Server) persistRuntimePolicy(req *nodev1.RuntimeConfigRequest) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	if err := writeAccountingState(path, raw); err != nil {
+	if err := runtimePolicyAtomicWrite(path, raw); err != nil {
 		return err
 	}
 	s.mu.Lock()

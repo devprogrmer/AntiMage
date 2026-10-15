@@ -24,6 +24,7 @@ type wireGuardRuntimeInbound struct {
 
 type wireGuardRuntimePeer struct {
 	UserID                int64   `json:"user_id"`
+	DeviceIndex           int     `json:"device_index,omitempty"`
 	Username              string  `json:"username"`
 	PublicKey             string  `json:"public_key"`
 	PresharedKey          string  `json:"preshared_key,omitempty"`
