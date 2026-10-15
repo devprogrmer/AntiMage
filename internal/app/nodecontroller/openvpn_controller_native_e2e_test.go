@@ -435,7 +435,7 @@ CREATE TABLE operation_events(operation_id TEXT,sequence INTEGER,state TEXT,phas
 		_ = db.Close()
 		t.Fatalf("load native OpenVPN user: users=%+v err=%v", raw, err)
 	}
-	settings := map[string]any{"ca": readNativeOpenVPNText(t, caPath), "server_certificate": readNativeOpenVPNText(t, certPath), "server_key": readNativeOpenVPNText(t, keyPath), "ipv4_pool_cidr": "10.211.0.0/24", "redirect_gateway": false, "accounting_enabled": false}
+	settings := map[string]any{"ca": readNativeOpenVPNText(t, caPath), "server_certificate": readNativeOpenVPNText(t, certPath), "server_key": readNativeOpenVPNText(t, keyPath), "ipv4_pool_cidr": "10.211.0.0/24", "redirect_gateway": false, "accounting_enabled": false, "tproxy_enabled": false}
 	native, err := json.Marshal(map[string]any{"inbounds": []any{map[string]any{"tag": "ov-in", "tunnel_tag": "__antimage_ov_tunnel__ov-in", "port": openVPNNativeControllerPort(t), "transport": "udp", "settings": settings, "users": raw}}})
 	if err != nil {
 		_ = db.Close()
@@ -445,7 +445,7 @@ CREATE TABLE operation_events(operation_id TEXT,sequence INTEGER,state TEXT,phas
 }
 
 func nativeOpenVPNControllerNodeConfig(ca, cert, key string) string {
-	raw, _ := json.Marshal(map[string]any{"inbounds": []any{map[string]any{"tag": "ov-in", "protocol": "openvpn", "port": openVPNNativeControllerPortValue(), "targets": []any{"node:7"}, "settings": map[string]any{"ipv4_pool_cidr": "10.211.0.0/24", "ca": ca, "server_certificate": cert, "server_key": key, "redirect_gateway": false, "accounting_enabled": false}}}})
+	raw, _ := json.Marshal(map[string]any{"inbounds": []any{map[string]any{"tag": "ov-in", "protocol": "openvpn", "port": openVPNNativeControllerPortValue(), "targets": []any{"node:7"}, "settings": map[string]any{"ipv4_pool_cidr": "10.211.0.0/24", "ca": ca, "server_certificate": cert, "server_key": key, "redirect_gateway": false, "accounting_enabled": false, "tproxy_enabled": false}}}})
 	return string(raw)
 }
 
