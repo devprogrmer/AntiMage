@@ -37,21 +37,8 @@ import (
 const nativeOpenVPNTestCapabilities = "[\"targeted_user_add_remove_openvpn\",\"targeted_user_update_openvpn\"]"
 const nativeOpenVPNTestNodeCapabilities = "[\"shared_fencing_v1\",\"command_idempotency_v1\",\"config_revision\",\"targeted_user_add_remove_openvpn\",\"targeted_user_update_openvpn\"]"
 
-type openVPNNativeControllerAgent struct{ *nodeagent.Server }
-
-func (s openVPNNativeControllerAgent) Hello(ctx context.Context, req *nodev1.HelloRequest) (*nodev1.HelloResponse, error) {
-	response, err := s.Server.Hello(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	response.Runtime.Capabilities = append(response.Runtime.Capabilities,
-		"targeted_user_add_remove_openvpn", "targeted_user_update_openvpn")
-	return response, nil
-}
-
-// This privileged integration test advertises the candidate capability only
-// from its test server wrapper. Production advertisement remains separately
-// gated until this real Controller -> gRPC -> NodeAgent -> OpenVPN path passes.
+// This privileged integration test exercises the production NodeAgent
+// capabilities over gRPC and never injects them through a test-only shim.
 func TestControllerOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	if os.Getenv("ANTIMAGE_OPENVPN_MUTATION_E2E") != "1" {
 		t.Skip("requires the authorized privileged OpenVPN native E2E driver")
@@ -85,6 +72,15 @@ func TestControllerOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	defer db.Close()
 	dataDir := filepath.Join(root, "node-agent")
 	agent := nodeagent.New(nodeagent.Config{DataDir: dataDir})
+	hello, err := agent.Hello(ctx, &nodev1.HelloRequest{MasterId: "antimage-master"})
+	if err != nil {
+		t.Fatalf("read production NodeAgent capabilities: %v", err)
+	}
+	for _, capability := range []string{"targeted_user_add_remove_openvpn", "targeted_user_update_openvpn"} {
+		if !openVPNNativeControllerHasCapability(hello.GetRuntime().GetCapabilities(), capability) {
+			t.Fatalf("production NodeAgent did not advertise gated OpenVPN capability %q", capability)
+		}
+	}
 	listener, grpcServer, address := startOpenVPNNativeControllerAgent(t, agent, serverTLS, true)
 	defer func() {
 		grpcServer.Stop()
@@ -102,7 +98,6 @@ func TestControllerOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 		t.Fatalf("dial native NodeAgent: %v", err)
 	}
 	defer client.Close()
-	client.SetHandshake("native-test", []string{"targeted_user_add_remove_openvpn", "targeted_user_update_openvpn"})
 	initialRequest := &nodev1.RuntimeConfigRequest{
 		OperationId: "native-openvpn-initial-100", ConfigJson: runtimeConfig,
 		OvRuntimeJson: initialNative, DesiredRevision: 100,
@@ -174,7 +169,6 @@ func TestControllerOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 		t.Fatalf("dial re-registered native NodeAgent: %v", err)
 	}
 	defer client.Close()
-	client.SetHandshake("native-test", []string{"targeted_user_add_remove_openvpn", "targeted_user_update_openvpn"})
 	controller = NewController(repo)
 
 	// AddUser is committed by the real NodeAgent, but the controller loses the
@@ -494,11 +488,19 @@ func startOpenVPNNativeControllerAgentWithInterceptor(t *testing.T, agent *nodea
 		options = append(options, grpc.UnaryInterceptor(interceptor))
 	}
 	server := grpc.NewServer(options...)
-	service := openVPNNativeControllerAgent{Server: agent}
-	nodev1.RegisterNodeControlServiceServer(server, service)
-	nodev1.RegisterNodeRuntimeServiceServer(server, service)
+	nodev1.RegisterNodeControlServiceServer(server, agent)
+	nodev1.RegisterNodeRuntimeServiceServer(server, agent)
 	go func() { _ = server.Serve(listener) }()
 	return listener, server, listener.Addr()
+}
+
+func openVPNNativeControllerHasCapability(capabilities []string, want string) bool {
+	for _, capability := range capabilities {
+		if capability == want {
+			return true
+		}
+	}
+	return false
 }
 
 func queueOpenVPNNativeControllerOperation(ctx context.Context, db *sql.DB, id int64, kind string, userID int64) error {

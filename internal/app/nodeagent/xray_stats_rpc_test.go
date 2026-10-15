@@ -185,7 +185,10 @@ func TestRuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities(t *te
 			t.Fatalf("%s capability missing although its Xray VLESS RPC is implemented", capability)
 		}
 	}
-	for _, capability := range []string{"targeted_user_update_wireguard", "targeted_user_add_remove_wireguard"} {
+	for _, capability := range []string{
+		"targeted_user_update_wireguard", "targeted_user_add_remove_wireguard",
+		"targeted_user_update_openvpn", "targeted_user_add_remove_openvpn",
+	} {
 		if got, want := seen[capability], runtime.GOOS == "linux"; got != want {
 			t.Fatalf("%s advertised=%v, want %v for platform %s", capability, got, want, runtime.GOOS)
 		}

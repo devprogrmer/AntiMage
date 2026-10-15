@@ -1229,7 +1229,10 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 	s.mu.Unlock()
 	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "runtime_evidence_v1", "targeted_user_update_vless", "targeted_user_add_remove_vless"}
 	if runtime.GOOS == "linux" {
-		capabilities = append(capabilities, "targeted_user_update_wireguard", "targeted_user_add_remove_wireguard")
+		capabilities = append(capabilities,
+			"targeted_user_update_wireguard", "targeted_user_add_remove_wireguard",
+			"targeted_user_update_openvpn", "targeted_user_add_remove_openvpn",
+		)
 	}
 	if s.verifiedInstallerAvailable() {
 		capabilities = append(capabilities, "verified_updates_v1", "shared_fencing_v1", "command_idempotency_v1", "config_identity_v1")
