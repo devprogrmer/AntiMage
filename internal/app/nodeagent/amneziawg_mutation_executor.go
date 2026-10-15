@@ -15,20 +15,23 @@ var (
 )
 
 func executeAmneziaWGPeerMutationPlan(ctx context.Context, interfaceName string, plan wireGuardPeerMutationPlan) error {
+	rollbackAttempted := func(attempted int) error {
+		var rollbackErr error
+		for _, rollback := range plan.RollbackForAttempted(attempted) {
+			if err := amneziaWGPeerApply(interfaceName, rollback); err != nil {
+				rollbackErr = errors.Join(rollbackErr, fmt.Errorf("rollback AmneziaWG peer %q: %w", rollback.Peer.PublicKey, err))
+			}
+		}
+		return rollbackErr
+	}
 	attempted := 0
 	for _, step := range plan.Forward {
 		if err := ctx.Err(); err != nil {
-			return err
+			return errors.Join(err, rollbackAttempted(attempted))
 		}
 		attempted++
 		if err := amneziaWGPeerApply(interfaceName, step); err != nil {
-			var rollbackErr error
-			for _, rollback := range plan.RollbackForAttempted(attempted) {
-				if err := amneziaWGPeerApply(interfaceName, rollback); err != nil {
-					rollbackErr = errors.Join(rollbackErr, fmt.Errorf("rollback AmneziaWG peer %q: %w", rollback.Peer.PublicKey, err))
-				}
-			}
-			return errors.Join(fmt.Errorf("apply AmneziaWG peer %q: %w", step.Peer.PublicKey, err), rollbackErr)
+			return errors.Join(fmt.Errorf("apply AmneziaWG peer %q: %w", step.Peer.PublicKey, err), rollbackAttempted(attempted))
 		}
 	}
 	return ctx.Err()

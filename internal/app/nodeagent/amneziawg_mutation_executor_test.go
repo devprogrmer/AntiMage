@@ -92,3 +92,53 @@ func TestAmneziaWGPeerMutationFailureRollsBackExactTargetConfig(t *testing.T) {
 		t.Fatalf("rollback state=%+v, want prior configurable peer state %+v", got, before)
 	}
 }
+
+func TestAmneziaWGPeerMutationCancellationRollsBackEarlierTargetSteps(t *testing.T) {
+	keyA, keyB := strings.Repeat("A", 43)+"=", strings.Repeat("B", 43)+"="
+	current := []amneziaWGRuntimePeer{
+		{UserID: 7, PublicKey: keyA, Address: "10.72.0.7", Status: "active"},
+		{UserID: 7, PublicKey: keyB, Address: "10.72.0.8", Status: "active"},
+	}
+	desired := []amneziaWGRuntimePeer{
+		{UserID: 7, PublicKey: keyA, Address: "10.72.0.9", Status: "active"},
+		{UserID: 7, PublicKey: keyB, Address: "10.72.0.10", Status: "active"},
+	}
+	delta, err := planAmneziaWGUserPeerDelta(current, 7, "update", desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := map[string]wireGuardKernelPeer{
+		keyA: {PublicKey: keyA, AllowedIPs: []string{"10.72.0.7/32"}},
+		keyB: {PublicKey: keyB, AllowedIPs: []string{"10.72.0.8/32"}},
+	}
+	plan, err := amneziaWGKernelPlan(delta, snapshot, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := map[string]wireGuardKernelPeer{keyA: snapshot[keyA], keyB: snapshot[keyB]}
+	ctx, cancel := context.WithCancel(context.Background())
+	oldApply := amneziaWGPeerApply
+	var calls int
+	amneziaWGPeerApply = func(_ string, step wireGuardPeerMutationStep) error {
+		calls++
+		prefix, parseErr := netip.ParsePrefix(step.Peer.AllowedIPs[0])
+		if parseErr != nil {
+			return parseErr
+		}
+		state[step.Peer.PublicKey] = wireGuardKernelPeer{PublicKey: step.Peer.PublicKey, AllowedIPs: []string{prefix.String()}}
+		if calls == 1 {
+			cancel()
+		}
+		return nil
+	}
+	t.Cleanup(func() { amneziaWGPeerApply = oldApply; cancel() })
+	if err := executeAmneziaWGPeerMutationPlan(ctx, "awg-test", plan); err == nil {
+		t.Fatal("expected cancellation")
+	}
+	if got := state[keyA].AllowedIPs[0]; got != "10.72.0.7/32" {
+		t.Fatalf("first peer after canceled transaction=%q", got)
+	}
+	if got := state[keyB].AllowedIPs[0]; got != "10.72.0.8/32" {
+		t.Fatalf("second peer after canceled transaction=%q", got)
+	}
+}
