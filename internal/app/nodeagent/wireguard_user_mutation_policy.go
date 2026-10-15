@@ -13,7 +13,17 @@ const (
 	wireGuardMutationUserIDField = "wireguard_user_id"
 	wireGuardMutationPeersField  = "wireguard_peers_json"
 	wireGuardMutationOpField     = "wireguard_operation"
+	wireGuardRemoveUserPrefix    = "wireguard-user:"
 )
+
+func wireGuardRemoveUserID(email string) (int64, bool) {
+	value := strings.TrimSpace(email)
+	if !strings.HasPrefix(value, wireGuardRemoveUserPrefix) {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(strings.TrimPrefix(value, wireGuardRemoveUserPrefix), 10, 64)
+	return id, err == nil && id > 0
+}
 
 func decodeWireGuardMutationUser(user *nodev1.InboundUser) (int64, string, []wireGuardRuntimePeer, error) {
 	if user == nil || !strings.EqualFold(strings.TrimSpace(user.GetProtocol()), "wireguard") {

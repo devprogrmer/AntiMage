@@ -166,7 +166,7 @@ func TestNodeRuntimeUserOperationsDoNotReportUnsupportedMutationsAsAccepted(t *t
 	}
 }
 
-func TestRuntimeStateAdvertisesOnlyImplementedVLESSMutationCapabilities(t *testing.T) {
+func TestRuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities(t *testing.T) {
 	state := New(Config{}).runtimeState("test")
 	seen := map[string]bool{}
 	for _, capability := range state.GetCapabilities() {
@@ -175,7 +175,10 @@ func TestRuntimeStateAdvertisesOnlyImplementedVLESSMutationCapabilities(t *testi
 		}
 		seen[capability] = true
 	}
-	for _, capability := range []string{"targeted_user_update_vless", "targeted_user_add_remove_vless"} {
+	for _, capability := range []string{
+		"targeted_user_update_vless", "targeted_user_add_remove_vless",
+		"targeted_user_update_wireguard", "targeted_user_add_remove_wireguard",
+	} {
 		if !seen[capability] {
 			t.Fatalf("%s capability missing although its Xray VLESS RPC is implemented", capability)
 		}

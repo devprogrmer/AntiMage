@@ -470,6 +470,9 @@ func (s *Server) AddUser(ctx context.Context, req *nodev1.InboundUserRequest) (*
 	if req == nil || strings.TrimSpace(req.GetInboundTag()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "inbound_tag and user are required")
 	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "wireguard") {
+		return s.applyWireGuardUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
+	}
 	user, err := xrayVLESSUserMessage(req.GetUser())
 	if err != nil {
 		if errors.Is(err, errUnsupportedXrayUserProtocol) {
@@ -498,6 +501,9 @@ func (s *Server) UpdateUser(ctx context.Context, req *nodev1.InboundUserRequest)
 	if req == nil || strings.TrimSpace(req.GetInboundTag()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "inbound_tag and user are required")
 	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "wireguard") {
+		return s.applyWireGuardUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
+	}
 	user, err := xrayVLESSUserMessage(req.GetUser())
 	if err != nil {
 		if errors.Is(err, errUnsupportedXrayUserProtocol) {
@@ -522,6 +528,30 @@ func (s *Server) UpdateUser(ctx context.Context, req *nodev1.InboundUserRequest)
 	return s.action(req.GetOperationId(), "VLESS user updated"), nil
 }
 
+func (s *Server) applyWireGuardUserRPC(ctx context.Context, operationID, inboundTag string, user *nodev1.InboundUser, operation string) (*nodev1.RuntimeActionResponse, error) {
+	_, encodedOperation, _, err := decodeWireGuardMutationUser(user)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if encodedOperation != operation {
+		return nil, status.Error(codes.InvalidArgument, "WireGuard operation envelope mismatch")
+	}
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, inboundTag, func() error {
+		return s.applyWireGuardUserMutation(ctx, inboundTag, user, operation)
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		if errors.Is(err, errRuntimeStopping) || errors.Is(err, errRuntimeStopped) || status.Code(err) != codes.Unknown {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "%s WireGuard user: %v", operation, err)
+	}
+	s.wakeLocalQuota("wireguard")
+	return s.action(operationID, "WireGuard user "+operation+" completed"), nil
+}
+
 func (s *Server) targetedXrayUserClient() (*xrayStatsClient, error) {
 	s.mu.Lock()
 	apiPort, xrayPath := s.cfg.XrayAPIPort, s.cfg.XrayPath
@@ -535,6 +565,18 @@ func (s *Server) targetedXrayUserClient() (*xrayStatsClient, error) {
 func (s *Server) RemoveUser(ctx context.Context, req *nodev1.RemoveInboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
 	if req == nil || strings.TrimSpace(req.GetInboundTag()) == "" || strings.TrimSpace(req.GetEmail()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "inbound_tag and email are required")
+	}
+	if strings.HasPrefix(strings.TrimSpace(req.GetEmail()), wireGuardRemoveUserPrefix) {
+		userID, ok := wireGuardRemoveUserID(req.GetEmail())
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "WireGuard remove user id is invalid")
+		}
+		user := &nodev1.InboundUser{Protocol: "wireguard", Fields: map[string]string{
+			wireGuardMutationUserIDField: fmt.Sprint(userID),
+			wireGuardMutationOpField:     "remove",
+			wireGuardMutationPeersField:  "[]",
+		}}
+		return s.applyWireGuardUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
 	}
 	err := s.runtimeLifecycleCoordinator().runMutation(ctx, req.GetInboundTag(), func() error {
 		client, clientErr := s.targetedXrayUserClient()
@@ -1124,7 +1166,7 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 	configHash, coreVersion, coreStartedAt := s.activeConfigSHA256, s.runningCoreVersion, s.coreStartedAt
 	torProxyCount := len(s.torProxies)
 	s.mu.Unlock()
-	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "runtime_evidence_v1", "targeted_user_update_vless", "targeted_user_add_remove_vless"}
+	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "runtime_evidence_v1", "targeted_user_update_vless", "targeted_user_add_remove_vless", "targeted_user_update_wireguard", "targeted_user_add_remove_wireguard"}
 	if s.verifiedInstallerAvailable() {
 		capabilities = append(capabilities, "verified_updates_v1", "shared_fencing_v1", "command_idempotency_v1", "config_identity_v1")
 	} else if !strings.EqualFold(s.cfg.InstallMode, "binary") && nativeFencingAvailable() {

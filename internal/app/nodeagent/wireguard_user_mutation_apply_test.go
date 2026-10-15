@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type mutationTestPeer struct {
@@ -343,5 +345,102 @@ func TestApplyWireGuardUserMutationCheckpointFailureDoesNotTouchKernel(t *testin
 		if len(args) > 1 && args[0] == "/fake/wg" && args[1] == "set" {
 			t.Fatalf("kernel mutation ran before checkpoint: %v", args)
 		}
+	}
+}
+
+func TestApplyWireGuardUserMutationIdenticalUpdateIsKernelNoop(t *testing.T) {
+	otherKey := strings.Repeat("B", 43) + "="
+	targetKey := strings.Repeat("A", 43) + "="
+	other := wireGuardRuntimePeer{UserID: 8, PublicKey: otherKey, Address: "10.69.0.8", Status: "active"}
+	target := wireGuardRuntimePeer{UserID: 7, PublicKey: targetKey, Address: "10.69.0.7", Status: "active"}
+	h := newWireGuardMutationHarness(t, []wireGuardRuntimePeer{other, target})
+	user := h.user(7, "update", []wireGuardRuntimePeer{target})
+	if err := h.server.applyWireGuardUserMutation(context.Background(), "wg-main", user, "update"); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range h.commands {
+		if len(args) >= 2 && args[0] == "/fake/wg" && args[1] == "set" {
+			t.Fatalf("identical update issued kernel mutation: %v", args)
+		}
+	}
+	if h.linkMutations() != 0 {
+		t.Fatal("identical update recreated WireGuard interface")
+	}
+}
+
+func TestApplyWireGuardUserMutationConfigPersistenceFailureRollsBackPeer(t *testing.T) {
+	otherKey := strings.Repeat("B", 43) + "="
+	targetKey := strings.Repeat("A", 43) + "="
+	other := wireGuardRuntimePeer{UserID: 8, PublicKey: otherKey, Address: "10.69.0.8", Status: "active"}
+	h := newWireGuardMutationHarness(t, []wireGuardRuntimePeer{other})
+	oldWriter := wireGuardMutationConfigWrite
+	calls := 0
+	wireGuardMutationConfigWrite = func(path string, raw []byte, mode os.FileMode) error {
+		calls++
+		if calls == 1 {
+			return errors.New("injected config persistence failure")
+		}
+		return atomicWriteFile(path, raw, mode)
+	}
+	t.Cleanup(func() { wireGuardMutationConfigWrite = oldWriter })
+	user := h.user(7, "add", []wireGuardRuntimePeer{{UserID: 7, PublicKey: targetKey, Address: "10.69.0.7", Status: "active"}})
+	if err := h.server.applyWireGuardUserMutation(context.Background(), "wg-main", user, "add"); err == nil {
+		t.Fatal("expected config persistence failure")
+	}
+	if _, ok := h.peers[targetKey]; ok {
+		t.Fatal("target peer remained after config persistence rollback")
+	}
+	if got, ok := h.peers[otherKey]; !ok || got.allowed != "10.69.0.8/32" {
+		t.Fatalf("unrelated peer changed during rollback: %+v", got)
+	}
+	if h.linkMutations() != 0 {
+		t.Fatal("rollback recreated WireGuard interface")
+	}
+}
+
+func TestWireGuardMutationRPCAddUpdateRemovePreservesInterfaceAndUnrelatedPeer(t *testing.T) {
+	otherKey := strings.Repeat("B", 43) + "="
+	targetKey := strings.Repeat("A", 43) + "="
+	other := wireGuardRuntimePeer{UserID: 8, PublicKey: otherKey, Address: "10.69.0.8", Status: "active"}
+	h := newWireGuardMutationHarness(t, []wireGuardRuntimePeer{other})
+	added := wireGuardRuntimePeer{UserID: 7, PublicKey: targetKey, Address: "10.69.0.7", Status: "active"}
+	add, err := h.server.AddUser(context.Background(), &nodev1.InboundUserRequest{
+		OperationId: "wg-add-7", InboundTag: "wg-main", User: h.user(7, "add", []wireGuardRuntimePeer{added}),
+	})
+	if err != nil || !add.GetAccepted() || add.GetOperationId() != "wg-add-7" {
+		t.Fatalf("AddUser response=%v err=%v", add, err)
+	}
+	updated := wireGuardRuntimePeer{UserID: 7, PublicKey: targetKey, Address: "10.69.0.9", Status: "active"}
+	update, err := h.server.UpdateUser(context.Background(), &nodev1.InboundUserRequest{
+		OperationId: "wg-update-7", InboundTag: "wg-main", User: h.user(7, "update", []wireGuardRuntimePeer{updated}),
+	})
+	if err != nil || !update.GetAccepted() || h.peers[targetKey].allowed != "10.69.0.9/32" {
+		t.Fatalf("UpdateUser response=%v peer=%+v err=%v", update, h.peers[targetKey], err)
+	}
+	remove, err := h.server.RemoveUser(context.Background(), &nodev1.RemoveInboundUserRequest{
+		OperationId: "wg-remove-7", InboundTag: "wg-main", Email: wireGuardRemoveUserPrefix + "7",
+	})
+	if err != nil || !remove.GetAccepted() || remove.GetOperationId() != "wg-remove-7" {
+		t.Fatalf("RemoveUser response=%v err=%v", remove, err)
+	}
+	if _, ok := h.peers[targetKey]; ok {
+		t.Fatal("RemoveUser left target peer in the kernel")
+	}
+	if got, ok := h.peers[otherKey]; !ok || got.allowed != "10.69.0.8/32" {
+		t.Fatalf("unrelated peer changed: %+v", got)
+	}
+	if h.linkMutations() != 0 {
+		t.Fatal("targeted RPC recreated WireGuard interface")
+	}
+}
+
+func TestWireGuardMutationRPCRejectsOperationEnvelopeMismatch(t *testing.T) {
+	h := newWireGuardMutationHarness(t, nil)
+	user := h.user(7, "update", []wireGuardRuntimePeer{{UserID: 7, PublicKey: strings.Repeat("A", 43) + "=", Address: "10.69.0.7", Status: "active"}})
+	if response, err := h.server.AddUser(context.Background(), &nodev1.InboundUserRequest{InboundTag: "wg-main", User: user}); response != nil || status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("AddUser response=%v err=%v, want invalid argument", response, err)
+	}
+	if len(h.commands) != 0 {
+		t.Fatalf("invalid operation envelope reached runtime: %v", h.commands)
 	}
 }
