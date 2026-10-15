@@ -122,11 +122,14 @@ jobs:
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           sudo env ANTIMAGE_NATIVE_RUN_WIREGUARD=0 ANTIMAGE_NATIVE_RUN_PANEL=0 \
             ANTIMAGE_OPENVPN_MUTATION_E2E=1 \
             RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_OPENVPN_CONTROLLER_TEST_BINARY="$nodecontroller_test" \
             bash scripts/ci/native-vpn-drivers.sh
 
       - name: Run native AmneziaWG lifecycle
@@ -332,6 +335,6 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Run OpenVPN controller capability, RPC, and fallback tests
-        run: go test ./internal/app/nodecontroller -run 'Test(OpenVPN|ControllerOpenVPN|ControllerLegacyOpenVPN|TargetedUserCapability|BulkOpenVPN)' -count=1
+        run: go test ./internal/app/nodecontroller -run 'Test(OpenVPNMutationRequest|ControllerOpenVPNSendsTargeted|ControllerLegacyOpenVPN|OpenVPNTargetedMutationCapabilitiesAreOperationSpecific|OpenVPNTargetedCapabilityRequiresAdvertisedAssignedSingleProtocol|TargetedUserCapability|BulkOpenVPN|ControllerRejectsMissingNegativeAndMismatchedOpenVPNAcknowledgements|OpenVPNNativeControllerFixtureAllowsGatedTargetedPreparation)' -count=1
       - name: Race test OpenVPN controller capability, RPC, and fallback paths
-        run: go test -race ./internal/app/nodecontroller -run 'Test(OpenVPN|ControllerOpenVPN|ControllerLegacyOpenVPN|TargetedUserCapability|BulkOpenVPN)' -count=1
+        run: go test -race ./internal/app/nodecontroller -run 'Test(OpenVPNMutationRequest|ControllerOpenVPNSendsTargeted|ControllerLegacyOpenVPN|OpenVPNTargetedMutationCapabilitiesAreOperationSpecific|OpenVPNTargetedCapabilityRequiresAdvertisedAssignedSingleProtocol|TargetedUserCapability|BulkOpenVPN|ControllerRejectsMissingNegativeAndMismatchedOpenVPNAcknowledgements|OpenVPNNativeControllerFixtureAllowsGatedTargetedPreparation)' -count=1

@@ -106,8 +106,9 @@ func (c Controller) grpcApplyOpenVPNUserOperation(ctx context.Context, client *n
 	revision := uint64(operation.ID)
 	for _, inbound := range targets {
 		operationID := fmt.Sprintf("%s-%d-%s", operation.OperationType, operation.ID, inbound.tag)
+		var response *nodev1.RuntimeActionResponse
 		if mutation == "remove" {
-			_, err = client.Runtime().RemoveUser(ctx, &nodev1.RemoveInboundUserRequest{
+			response, err = client.Runtime().RemoveUser(ctx, &nodev1.RemoveInboundUserRequest{
 				OperationId: operationID,
 				InboundTag:  inbound.tag,
 				Email:       fmt.Sprintf("%s%d:%d", grpcOpenVPNRemoveUserEmail, operation.UserID.Int64, revision),
@@ -138,14 +139,21 @@ func (c Controller) grpcApplyOpenVPNUserOperation(ctx context.Context, client *n
 			}
 			request := &nodev1.InboundUserRequest{OperationId: operationID, InboundTag: inbound.tag, User: user}
 			if mutation == "add" {
-				_, err = client.Runtime().AddUser(ctx, request)
+				response, err = client.Runtime().AddUser(ctx, request)
 			} else {
-				_, err = client.Runtime().UpdateUser(ctx, request)
+				response, err = client.Runtime().UpdateUser(ctx, request)
 			}
 		}
 		if err != nil {
 			return fmt.Errorf("apply OpenVPN %s for inbound %s: %w", mutation, inbound.tag, err)
 		}
+		if !validOpenVPNMutationAcknowledgement(response, operationID) {
+			return fmt.Errorf("apply OpenVPN %s for inbound %s: runtime returned an invalid acknowledgement", mutation, inbound.tag)
+		}
 	}
 	return nil
+}
+
+func validOpenVPNMutationAcknowledgement(response *nodev1.RuntimeActionResponse, operationID string) bool {
+	return response != nil && response.GetAccepted() && strings.TrimSpace(operationID) != "" && response.GetOperationId() == operationID
 }

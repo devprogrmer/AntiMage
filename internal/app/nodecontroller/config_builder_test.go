@@ -155,14 +155,27 @@ func TestApplyRuntimeAPIEnablesOnlineUserStats(t *testing.T) {
 	}
 }
 
-func TestOnlyImplementedVLESSUserMutationsAvoidFullSync(t *testing.T) {
-	for _, protocol := range []string{"openvpn", "l2tp", "pptp", "wireguard", "amneziawg", "ikev2", "anyconnect", "vmess", "trojan", "shadowsocks", "hysteria", "unknown"} {
+func TestImplementedProtocolUserMutationsAvoidFullSyncPreparation(t *testing.T) {
+	for _, protocol := range []string{"l2tp", "pptp", "wireguard", "amneziawg", "ikev2", "anyconnect", "vmess", "trojan", "shadowsocks", "hysteria", "unknown"} {
 		if !protocolRequiresFullUserSync(protocol) {
 			t.Fatalf("%s user mutation lacks a targeted implementation and must use full sync", protocol)
 		}
 	}
 	if protocolRequiresFullUserSync("vless") {
 		t.Fatal("Xray-native users should keep using hot user updates")
+	}
+}
+
+func TestOpenVPNUserMutationCanAvoidSyncPreparationWhenCapabilityIsGated(t *testing.T) {
+	if protocolRequiresFullUserSync("openvpn") {
+		t.Fatal("OpenVPN must allow capability-gated targeted mutation without prebuilding full sync")
+	}
+	for _, protocol := range []string{"l2tp", "pptp", "ikev2", "anyconnect", "vless"} {
+		got := protocolRequiresFullUserSync(protocol)
+		want := protocol != "vless"
+		if got != want {
+			t.Fatalf("protocolRequiresFullUserSync(%q)=%v want %v", protocol, got, want)
+		}
 	}
 }
 

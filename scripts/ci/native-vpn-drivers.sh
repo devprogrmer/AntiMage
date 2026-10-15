@@ -327,6 +327,17 @@ run_openvpn() {
       ANTIMAGE_OPENVPN_MUTATION_KEY="$server_key" \
       "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNTargetedMutationNativeE2E$' -test.count=1 -test.v
   fi
+  if [ -n "${ANTIMAGE_OPENVPN_CONTROLLER_TEST_BINARY:-}" ]; then
+    echo '=== Controller to NodeAgent to real OpenVPN targeted mutation E2E ==='
+    env ANTIMAGE_OPENVPN_MUTATION_E2E=1 \
+      ANTIMAGE_OPENVPN_CONTROLLER_ROOT="$ROOT/openvpn-controller-e2e" \
+      ANTIMAGE_OPENVPN_MUTATION_NS="$NS" \
+      ANTIMAGE_OPENVPN_MUTATION_PORT=11942 \
+      ANTIMAGE_OPENVPN_MUTATION_CA="$ca_cert" \
+      ANTIMAGE_OPENVPN_MUTATION_CERT="$server_cert" \
+      ANTIMAGE_OPENVPN_MUTATION_KEY="$server_key" \
+      "$ANTIMAGE_OPENVPN_CONTROLLER_TEST_BINARY" -test.run='^TestControllerOpenVPNTargetedMutationNativeE2E$' -test.count=1 -test.v
+  fi
   cat >"$ROOT/openvpn-connect.sh" <<EOF
 #!/bin/sh
 exec env ANTIMAGE_OPENVPN_ACTION=admission ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" ANTIMAGE_OPENVPN_NATIVE_PID="\${daemon_pid}" "${ANTIMAGE_OPENVPN_TEST_BINARY:-/bin/true}" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v

@@ -22,21 +22,30 @@ import (
 type openVPNMutationRPCRecorder struct {
 	nodev1.UnimplementedNodeRuntimeServiceServer
 	requests chan any
+	ack      *nodev1.RuntimeActionResponse
+	ackSet   bool
 }
 
 func (r *openVPNMutationRPCRecorder) AddUser(_ context.Context, req *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
 	r.requests <- req
-	return &nodev1.RuntimeActionResponse{Accepted: true}, nil
+	return openVPNMutationAck(r.ack, r.ackSet, req.GetOperationId()), nil
 }
 
 func (r *openVPNMutationRPCRecorder) UpdateUser(_ context.Context, req *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
 	r.requests <- req
-	return &nodev1.RuntimeActionResponse{Accepted: true}, nil
+	return openVPNMutationAck(r.ack, r.ackSet, req.GetOperationId()), nil
 }
 
 func (r *openVPNMutationRPCRecorder) RemoveUser(_ context.Context, req *nodev1.RemoveInboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
 	r.requests <- req
-	return &nodev1.RuntimeActionResponse{Accepted: true}, nil
+	return openVPNMutationAck(r.ack, r.ackSet, req.GetOperationId()), nil
+}
+
+func openVPNMutationAck(override *nodev1.RuntimeActionResponse, set bool, operationID string) *nodev1.RuntimeActionResponse {
+	if set {
+		return override
+	}
+	return &nodev1.RuntimeActionResponse{Accepted: true, OperationId: operationID}
 }
 
 func openVPNControllerFixture(t *testing.T) (context.Context, *Controller, *nodeclient.Client, *openVPNMutationRPCRecorder, NodeRow) {
@@ -175,6 +184,30 @@ func TestOpenVPNTargetedCapabilityRequiresAdvertisedAssignedSingleProtocol(t *te
 		t.Run(test.name, func(t *testing.T) {
 			if got := supportsTargetedUserMutation(client, test.protocols, test.operation, test.assigned); got != test.want {
 				t.Fatalf("targeted=%v want=%v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestControllerRejectsMissingNegativeAndMismatchedOpenVPNAcknowledgements(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		ack  *nodev1.RuntimeActionResponse
+	}{
+		{name: "missing"},
+		{name: "not accepted", ack: &nodev1.RuntimeActionResponse{OperationId: "add_user-91-ov-in"}},
+		{name: "mismatched operation", ack: &nodev1.RuntimeActionResponse{Accepted: true, OperationId: "other-operation"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, controller, client, recorder, node := openVPNControllerFixture(t)
+			client.SetHandshake("test", []string{"targeted_user_add_remove_openvpn"})
+			recorder.ackSet = true
+			recorder.ack = test.ack
+			err := controller.grpcApplyUserOperation(ctx, client, node, OperationRow{
+				ID: 91, OperationType: "add_user", UserID: sql.NullInt64{Int64: 7, Valid: true},
+			}, nil)
+			if err == nil {
+				t.Fatal("invalid OpenVPN acknowledgement was accepted")
 			}
 		})
 	}

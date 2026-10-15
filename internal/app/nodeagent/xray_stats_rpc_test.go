@@ -158,12 +158,16 @@ func TestNodeRuntimeRemoveUserCallsXrayAndReportsSuccessOnlyAfterRPC(t *testing.
 
 func TestNodeRuntimeUserOperationsDoNotReportUnsupportedMutationsAsAccepted(t *testing.T) {
 	s := New(Config{})
-	unsupported := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "openvpn"}}
+	unsupported := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "pptp"}}
 	if response, err := s.AddUser(context.Background(), unsupported); response != nil || status.Code(err) != codes.Unimplemented {
 		t.Fatalf("AddUser response=%v err=%v, want unimplemented", response, err)
 	}
 	if response, err := s.UpdateUser(context.Background(), unsupported); response != nil || status.Code(err) != codes.Unimplemented {
 		t.Fatalf("UpdateUser response=%v err=%v, want unimplemented", response, err)
+	}
+	malformedOpenVPN := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "openvpn"}}
+	if response, err := s.AddUser(context.Background(), malformedOpenVPN); response != nil || status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("malformed OpenVPN AddUser response=%v err=%v, want invalid argument", response, err)
 	}
 }
 

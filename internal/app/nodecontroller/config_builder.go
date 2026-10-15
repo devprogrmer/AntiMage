@@ -395,7 +395,8 @@ func serviceRequiresFullUserSync(
 }
 
 func protocolRequiresFullUserSync(protocol string) bool {
-	if strings.EqualFold(strings.TrimSpace(protocol), "vless") {
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "vless", "openvpn":
 		return false
 	}
 	return true
