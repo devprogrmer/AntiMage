@@ -59,6 +59,7 @@ type Server struct {
 	localUsageDeliveries             []localUsageDelivery
 	localQuotaViews                  map[localQuotaOwner]localQuotaView
 	localQuotaAggregates             map[localQuotaAggregateKey]uint64
+	nativeQuotaPolicySchedules       map[string]nativeQuotaPolicySchedule
 	localQuotaWakeups                map[string]chan struct{}
 	nativeSessionOutboxMu            sync.Mutex
 	nativeSessionOutboxFlushMu       sync.Mutex

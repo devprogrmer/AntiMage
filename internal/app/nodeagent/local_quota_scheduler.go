@@ -12,6 +12,11 @@ import (
 	"time"
 )
 
+type nativeQuotaPolicySchedule struct {
+	checksum    string
+	enforceable bool
+}
+
 func localQuotaInterval(value string) (time.Duration, error) {
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch value {
@@ -132,11 +137,14 @@ func (s *Server) runLocalQuotaScheduler(ctx context.Context, quotaInterval, chec
 		group.Add(1)
 		go func(w worker) {
 			defer group.Done()
-			s.runLocalAccountingWorker(ctx, w.name, quotaInterval, checkpointInterval, w.checkpoint, w.quota)
+			s.runLocalAccountingWorkerWithAdaptive(ctx, w.name, quotaInterval, checkpointInterval,
+				func() time.Duration { return s.nativeQuotaAdaptiveInterval(w.name, quotaInterval) },
+				w.checkpoint, w.quota)
 		}(w)
 	}
 	defer group.Wait()
-	s.runLocalAccountingWorker(ctx, "wireguard", quotaInterval, checkpointInterval,
+	s.runLocalAccountingWorkerWithAdaptive(ctx, "wireguard", quotaInterval, checkpointInterval,
+		func() time.Duration { return s.nativeQuotaAdaptiveInterval("wireguard", quotaInterval) },
 		func(ctx context.Context) error { return s.wireGuardOfflineTick(ctx, false, true) },
 		func(ctx context.Context) error { return s.wireGuardOfflineTick(ctx, true, false) })
 }
@@ -144,7 +152,11 @@ func (s *Server) runLocalQuotaScheduler(ctx context.Context, quotaInterval, chec
 // One serial worker per native runtime coalesces overdue ticks: slow daemons do
 // not block other protocols and never accumulate overlapping commands.
 func (s *Server) runLocalAccountingWorker(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, checkpointFn, quotaFn func(context.Context) error) {
-	s.runLocalAccountingWorkerWithWakeAdaptive(ctx, name, quotaInterval, checkpointInterval, s.localQuotaWakeChannel(name), nil, func(sampleCtx context.Context, enforce, checkpoint bool) error {
+	s.runLocalAccountingWorkerWithAdaptive(ctx, name, quotaInterval, checkpointInterval, nil, checkpointFn, quotaFn)
+}
+
+func (s *Server) runLocalAccountingWorkerWithAdaptive(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, adaptiveInterval func() time.Duration, checkpointFn, quotaFn func(context.Context) error) {
+	s.runLocalAccountingWorkerWithWakeAdaptive(ctx, name, quotaInterval, checkpointInterval, s.localQuotaWakeChannel(name), adaptiveInterval, func(sampleCtx context.Context, enforce, checkpoint bool) error {
 		var errs []error
 		if checkpoint {
 			if err := checkpointFn(sampleCtx); err != nil {
@@ -162,6 +174,121 @@ func (s *Server) runLocalAccountingWorker(ctx context.Context, name string, quot
 		}
 		return errors.Join(errs...)
 	})
+}
+
+// nativeQuotaAdaptiveInterval disables periodic policy scans when the cached
+// runtime snapshot has no user whose status, quota, expiry, IP, or device
+// policy can terminate an existing session. Runtime/config changes still wake
+// the worker, and accounting checkpoints keep their independent cadence.
+func (s *Server) nativeQuotaAdaptiveInterval(protocol string, minimum time.Duration) time.Duration {
+	snapshot, err := s.currentRuntimePolicy()
+	if err != nil || snapshot == nil {
+		return minimum
+	}
+	checksum := snapshot.Checksum
+	if checksum == "" {
+		checksum, err = runtimePolicyChecksum(*snapshot)
+		if err != nil {
+			return minimum
+		}
+	}
+	s.mu.Lock()
+	if cached, ok := s.nativeQuotaPolicySchedules[protocol]; ok && cached.checksum == checksum {
+		s.mu.Unlock()
+		if cached.enforceable {
+			return minimum
+		}
+		return 0
+	}
+	s.mu.Unlock()
+	payload, err := parseNativeRuntimePayload(snapshot.NativeJSON)
+	if err != nil {
+		return minimum
+	}
+	enforceable := nativeQuotaPayloadHasEnforceableUser(payload, protocol)
+	s.mu.Lock()
+	if current := s.runtimePolicy; current == nil || (current.Revision == snapshot.Revision && current.Checksum == snapshot.Checksum && current.NativeJSON == snapshot.NativeJSON) {
+		if s.nativeQuotaPolicySchedules == nil {
+			s.nativeQuotaPolicySchedules = make(map[string]nativeQuotaPolicySchedule)
+		}
+		s.nativeQuotaPolicySchedules[protocol] = nativeQuotaPolicySchedule{checksum: checksum, enforceable: enforceable}
+	}
+	s.mu.Unlock()
+	if enforceable {
+		return minimum
+	}
+	return 0
+}
+
+func nativeQuotaPayloadHasEnforceableUser(payload nativeRuntimePayload, protocol string) bool {
+	needsPolling := func(status string, dataLimit, expiry *int64, ipLimit, deviceLimit int64) bool {
+		status = strings.ToLower(strings.TrimSpace(status))
+		if status == "" || (status != "active" && status != "on_hold") {
+			return true
+		}
+		return (status == "active" && ((dataLimit != nil && *dataLimit > 0) || (expiry != nil && *expiry > 0))) || ipLimit > 0 || deviceLimit > 0
+	}
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "openvpn":
+		for _, inbound := range payload.OpenVPNInbounds {
+			for _, user := range inbound.Users {
+				if needsPolling(user.Status, user.DataLimit, user.Expire, user.IPLimit, user.DeviceLimit) {
+					return true
+				}
+			}
+		}
+	case "ppp":
+		for _, inbound := range payload.L2TPInbounds {
+			for _, user := range inbound.Users {
+				if needsPolling(user.Status, user.DataLimit, user.Expire, user.IPLimit, user.DeviceLimit) {
+					return true
+				}
+			}
+		}
+		for _, inbound := range payload.PPTPInbounds {
+			for _, user := range inbound.Users {
+				if needsPolling(user.Status, user.DataLimit, user.Expire, user.IPLimit, user.DeviceLimit) {
+					return true
+				}
+			}
+		}
+	case "amneziawg":
+		for _, inbound := range payload.AmneziaWGInbounds {
+			for _, peer := range inbound.Peers {
+				if needsPolling(peer.Status, peer.DataLimit, peer.Expire, peer.IPLimit, peer.DeviceLimit) {
+					return true
+				}
+			}
+		}
+	case "wireguard":
+		for _, inbound := range payload.WireGuardInbounds {
+			for _, peer := range inbound.Peers {
+				if needsPolling(peer.Status, peer.DataLimit, peer.Expire, peer.IPLimit, peer.DeviceLimit) {
+					return true
+				}
+			}
+		}
+	case "ikev2":
+		for _, inbound := range payload.IKEv2Inbounds {
+			for _, user := range inbound.Users {
+				if needsPolling(user.Status, user.DataLimit, user.Expire, user.IPLimit, user.DeviceLimit) {
+					return true
+				}
+			}
+		}
+	case "anyconnect":
+		for _, inbound := range payload.AnyConnectInbounds {
+			for _, user := range inbound.Users {
+				if needsPolling(user.Status, user.DataLimit, user.Expire, user.IPLimit, user.DeviceLimit) {
+					return true
+				}
+			}
+		}
+	default:
+		// Unknown workers remain fail-safe and keep their configured cadence.
+		return true
+	}
+	return false
 }
 
 func (s *Server) runLocalAccountingWorkerWithTick(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, tick func(context.Context, bool, bool) error) {
@@ -241,6 +368,9 @@ func (s *Server) runLocalAccountingWorkerWithWakeAdaptive(ctx context.Context, n
 	var timerC <-chan time.Time
 	if quotaInterval > 0 {
 		nextQuota = now
+		if adaptiveInterval != nil && adaptiveInterval() <= 0 {
+			nextQuota = time.Time{}
+		}
 	}
 	if checkpointInterval > 0 {
 		nextCheckpoint = now

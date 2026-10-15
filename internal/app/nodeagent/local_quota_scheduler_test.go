@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -59,6 +60,125 @@ func TestQuotaWorkerPolicyWakeRunsImmediately(t *testing.T) {
 	}
 }
 
+func TestNativeQuotaWorkerSleepsWithoutEnforceablePoliciesAndWakesOnChange(t *testing.T) {
+	s := New(Config{})
+	policyJSON, err := json.Marshal(nativeRuntimePayload{OpenVPNInbounds: []openVPNRuntimeInbound{{Users: []openVPNRuntimeUser{{Status: "active"}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.runtimePolicy = &runtimePolicySnapshot{Revision: 1, Checksum: "unlimited", NativeJSON: string(policyJSON)}
+	minimum := 40 * time.Millisecond
+	adaptive := func() time.Duration { return s.nativeQuotaAdaptiveInterval("openvpn", minimum) }
+	if got := adaptive(); got != 0 {
+		t.Fatalf("unlimited user schedule=%s, want disabled periodic policy polling", got)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wake := make(chan struct{}, 1)
+	ticks := make(chan struct{}, 4)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.runLocalAccountingWorkerWithWakeAdaptive(ctx, "openvpn", minimum, 0, wake, adaptive,
+			func(context.Context, bool, bool) error { ticks <- struct{}{}; return nil })
+	}()
+	select {
+	case <-ticks:
+		t.Fatal("worker ran a quota check with no enforceable user")
+	case <-time.After(120 * time.Millisecond):
+	}
+
+	dataLimit := int64(1000)
+	changedJSON, err := json.Marshal(nativeRuntimePayload{OpenVPNInbounds: []openVPNRuntimeInbound{{Users: []openVPNRuntimeUser{{Status: "active", DataLimit: &dataLimit}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.runtimePolicy = &runtimePolicySnapshot{Revision: 2, Checksum: "limited", NativeJSON: string(changedJSON)}
+	s.mu.Unlock()
+	wake <- struct{}{}
+	select {
+	case <-ticks:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("new enforceable policy did not wake immediately")
+	}
+	select {
+	case <-ticks:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("worker did not restore periodic checks for the newly enforceable policy")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("quota worker did not stop after cancellation")
+	}
+}
+
+func TestNativeQuotaPolicyScheduleCachesByRuntimeChecksumAndFailsSafe(t *testing.T) {
+	s := New(Config{})
+	minimum := 50 * time.Millisecond
+	unlimited, err := json.Marshal(nativeRuntimePayload{WireGuardInbounds: []wireGuardRuntimeInbound{{Peers: []wireGuardRuntimePeer{{Status: "active"}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.runtimePolicy = &runtimePolicySnapshot{Revision: 1, Checksum: "wg-unlimited", NativeJSON: string(unlimited)}
+	if got := s.nativeQuotaAdaptiveInterval("wireguard", minimum); got != 0 {
+		t.Fatalf("unlimited WireGuard schedule=%s", got)
+	}
+
+	deviceLimited, err := json.Marshal(nativeRuntimePayload{WireGuardInbounds: []wireGuardRuntimeInbound{{Peers: []wireGuardRuntimePeer{{Status: "active", DeviceLimit: 1}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.runtimePolicy = &runtimePolicySnapshot{Revision: 2, Checksum: "wg-device-limit", NativeJSON: string(deviceLimited)}
+	s.mu.Unlock()
+	if got := s.nativeQuotaAdaptiveInterval("wireguard", minimum); got != minimum {
+		t.Fatalf("device-limited WireGuard schedule=%s, want configured minimum %s", got, minimum)
+	}
+
+	s.mu.Lock()
+	s.runtimePolicy = &runtimePolicySnapshot{Revision: 3, Checksum: "malformed", NativeJSON: "{"}
+	s.mu.Unlock()
+	if got := s.nativeQuotaAdaptiveInterval("wireguard", minimum); got != minimum {
+		t.Fatalf("malformed policy schedule=%s, want fail-safe configured minimum %s", got, minimum)
+	}
+}
+
+func TestNativeQuotaPolicyIndexRecognizesAllWorkersAndLeavesUnlimitedUsersIdle(t *testing.T) {
+	limit := int64(100)
+	unlimited := nativeRuntimePayload{
+		OpenVPNInbounds:    []openVPNRuntimeInbound{{Users: []openVPNRuntimeUser{{Status: "active"}}}},
+		L2TPInbounds:       []l2TPRuntimeInbound{{Users: []l2TPRuntimeUser{{Status: "active"}}}},
+		PPTPInbounds:       []pptpRuntimeInbound{{Users: []pptpRuntimeUser{{Status: "active"}}}},
+		AmneziaWGInbounds:  []amneziaWGRuntimeInbound{{Peers: []amneziaWGRuntimePeer{{Status: "active"}}}},
+		WireGuardInbounds:  []wireGuardRuntimeInbound{{Peers: []wireGuardRuntimePeer{{Status: "active"}}}},
+		IKEv2Inbounds:      []ikev2RuntimeInbound{{Users: []ikev2RuntimeUser{{Status: "active"}}}},
+		AnyConnectInbounds: []anyConnectRuntimeInbound{{Users: []anyConnectRuntimeUser{{Status: "active"}}}},
+	}
+	for _, protocol := range []string{"openvpn", "ppp", "amneziawg", "wireguard", "ikev2", "anyconnect"} {
+		if nativeQuotaPayloadHasEnforceableUser(unlimited, protocol) {
+			t.Errorf("unlimited %s user triggered periodic quota polling", protocol)
+		}
+	}
+	limited := nativeRuntimePayload{
+		OpenVPNInbounds:    []openVPNRuntimeInbound{{Users: []openVPNRuntimeUser{{Status: "active", DataLimit: &limit}}}},
+		L2TPInbounds:       []l2TPRuntimeInbound{{Users: []l2TPRuntimeUser{{Status: "disabled"}}}},
+		PPTPInbounds:       []pptpRuntimeInbound{{Users: []pptpRuntimeUser{{Status: "active", Expire: &limit}}}},
+		AmneziaWGInbounds:  []amneziaWGRuntimeInbound{{Peers: []amneziaWGRuntimePeer{{Status: "active", IPLimit: 1}}}},
+		WireGuardInbounds:  []wireGuardRuntimeInbound{{Peers: []wireGuardRuntimePeer{{Status: "active", DeviceLimit: 1}}}},
+		IKEv2Inbounds:      []ikev2RuntimeInbound{{Users: []ikev2RuntimeUser{{Status: "active", DataLimit: &limit}}}},
+		AnyConnectInbounds: []anyConnectRuntimeInbound{{Users: []anyConnectRuntimeUser{{Status: "active", Expire: &limit}}}},
+	}
+	for _, protocol := range []string{"openvpn", "ppp", "amneziawg", "wireguard", "ikev2", "anyconnect"} {
+		if !nativeQuotaPayloadHasEnforceableUser(limited, protocol) {
+			t.Errorf("enforceable %s user was omitted from periodic quota checks", protocol)
+		}
+	}
+}
+
 func TestQuotaWakeSignalsOnlyItsProtocolWorker(t *testing.T) {
 	s := New(Config{})
 	xray := s.localQuotaWakeChannel("xray")
@@ -112,14 +232,8 @@ func TestXrayDisablesSeparateQuotaPollingWithoutEnforceablePolicies(t *testing.T
 	}()
 	select {
 	case <-ticks:
-	case <-time.After(time.Second):
 		cancel()
-		t.Fatal("initial Xray policy evaluation did not run")
-	}
-	select {
-	case <-ticks:
-		cancel()
-		t.Fatal("quota worker continued polling with no enforceable policies")
+		t.Fatal("quota worker ran with no enforceable Xray policy")
 	case <-time.After(150 * time.Millisecond):
 	}
 	wake <- struct{}{}
