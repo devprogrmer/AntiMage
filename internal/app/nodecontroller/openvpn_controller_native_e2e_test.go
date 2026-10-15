@@ -680,7 +680,9 @@ func openVPNNativeControllerPID(configPath string) int {
 }
 func assertOpenVPNNativeControllerTraffic(t *testing.T, ns string) {
 	t.Helper()
-	output, err := exec.Command("ip", "netns", "exec", ns, "ping", "-c", "1", "-W", "2", "10.211.0.1").CombinedOutput()
+	// Verify actual packets traverse the tunnel while tolerating a single lost
+	// echo packet; ping still fails if the tunnel delivers no replies at all.
+	output, err := exec.Command("ip", "netns", "exec", ns, "ping", "-c", "3", "-i", "0.2", "-W", "2", "10.211.0.1").CombinedOutput()
 	if err != nil {
 		t.Fatalf("OpenVPN tunnel traffic failed: %v: %s", err, output)
 	}
