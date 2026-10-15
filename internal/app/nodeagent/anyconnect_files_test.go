@@ -1,6 +1,8 @@
 package nodeagent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"os"
 	"os/exec"
@@ -58,7 +60,7 @@ func TestAnyConnectOcpasswdHelper(t *testing.T) {
 	if os.Getenv("GO_WANT_ANYCONNECT_OCPASSWD_HELPER") != "1" {
 		return
 	}
-	_, _ = io.ReadAll(os.Stdin)
+	passwordInput, _ := io.ReadAll(os.Stdin)
 	args := os.Args
 	separator := 0
 	for i, arg := range args {
@@ -76,7 +78,8 @@ func TestAnyConnectOcpasswdHelper(t *testing.T) {
 	if err != nil {
 		os.Exit(3)
 	}
-	_, _ = file.WriteString(args[4] + ":antimage:hashed\n")
+	digest := sha256.Sum256(passwordInput)
+	_, _ = file.WriteString(args[4] + ":antimage:" + hex.EncodeToString(digest[:]) + "\n")
 	_ = file.Close()
 	os.Exit(0)
 }

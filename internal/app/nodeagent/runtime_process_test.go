@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -140,6 +139,93 @@ func TestStartAnyConnectPreservesLiveProcessUntilServerMaterialChanges(t *testin
 	}
 	if starts != 2 {
 		t.Fatalf("changed certificate started ocserv %d times, want 2", starts)
+	}
+}
+
+func TestApplyAnyConnectUserSyncPreservesProcessAndPublishesDesiredUsers(t *testing.T) {
+	oldCommand, oldCommandContext, oldLookPath, oldGrace := anyConnectCommand, anyConnectCommandContext, anyConnectLookPath, anyConnectStartupGrace
+	anyConnectCommand = func(_ string, args ...string) *exec.Cmd {
+		cmd := exec.Command(os.Args[0], append([]string{"-test.run=TestAnyConnectOcpasswdHelper", "--"}, args...)...)
+		cmd.Env = append(os.Environ(), "GO_WANT_ANYCONNECT_OCPASSWD_HELPER=1")
+		return cmd
+	}
+	anyConnectLookPath = func(string) (string, error) { return os.Args[0], nil }
+	anyConnectStartupGrace = 10 * time.Millisecond
+	var starts int
+	anyConnectCommandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		starts++
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestRuntimeHelperProcess", "--", "ocserv")
+		cmd.Env = append(os.Environ(), "GO_WANT_RUNTIME_HELPER_PROCESS=1")
+		return cmd
+	}
+	t.Cleanup(func() {
+		anyConnectCommand, anyConnectCommandContext, anyConnectLookPath, anyConnectStartupGrace = oldCommand, oldCommandContext, oldLookPath, oldGrace
+	})
+	server := New(Config{DataDir: t.TempDir()})
+	t.Cleanup(server.stopAllAnyConnectRuntimes)
+	inbound := anyConnectRuntimeInbound{
+		Tag: "anyconnect-user-sync", Port: 443,
+		Settings: map[string]any{"ipv4_pool_cidr": "10.73.0.0/24", "server_certificate": "CERT", "server_key": "KEY"},
+		Users:    []anyConnectRuntimeUser{{UserID: 1, Username: "alice", Password: "a1", Status: "active"}},
+	}
+	prepareAndStart := func() preparedAnyConnectRuntime {
+		t.Helper()
+		prepared, err := server.prepareAnyConnectInbound(inbound, nativeRuntimeSessionCallback{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := server.startAnyConnectInbound(prepared); err != nil {
+			t.Fatal(err)
+		}
+		return prepared
+	}
+	first := prepareAndStart()
+	server.mu.Lock()
+	firstPID := server.anyConnectRuntimes[inbound.Tag].cmd.Process.Pid
+	server.mu.Unlock()
+	assertUsers := func(prepared preparedAnyConnectRuntime, present, absent []string) {
+		t.Helper()
+		passwords, err := os.ReadFile(prepared.Files.PasswordFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, value := range present {
+			if !strings.Contains(string(passwords), value) {
+				t.Fatalf("AnyConnect password file missing %q: %s", value, passwords)
+			}
+		}
+		for _, value := range absent {
+			if strings.Contains(string(passwords), value) {
+				t.Fatalf("AnyConnect password file contains removed %q: %s", value, passwords)
+			}
+		}
+	}
+	assertUsers(first, []string{"alice"}, []string{"bob"})
+	inbound.Users = append(inbound.Users, anyConnectRuntimeUser{UserID: 2, Username: "bob", Password: "b1", Status: "active"})
+	added := prepareAndStart()
+	assertUsers(added, []string{"alice", "bob"}, nil)
+	addedPasswordFile, err := os.ReadFile(added.Files.PasswordFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inbound.Users[0].Password = "a2"
+	updated := prepareAndStart()
+	assertUsers(updated, []string{"alice", "bob"}, nil)
+	updatedPasswordFile, err := os.ReadFile(updated.Files.PasswordFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(updatedPasswordFile) == string(addedPasswordFile) {
+		t.Fatal("updated AnyConnect password did not change the published password file")
+	}
+	inbound.Users = inbound.Users[:1]
+	removed := prepareAndStart()
+	assertUsers(removed, []string{"alice"}, []string{"bob"})
+	server.mu.Lock()
+	lastPID := server.anyConnectRuntimes[inbound.Tag].cmd.Process.Pid
+	server.mu.Unlock()
+	if starts != 1 || lastPID != firstPID {
+		t.Fatalf("AnyConnect user-only sync restarted ocserv: starts=%d first_pid=%d last_pid=%d", starts, firstPID, lastPID)
 	}
 }
 
@@ -301,8 +387,7 @@ func TestRuntimeHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_RUNTIME_HELPER_PROCESS") != "1" {
 		return
 	}
-	if runtime.GOOS == "windows" {
-		select {}
+	for {
+		time.Sleep(time.Hour)
 	}
-	select {}
 }
