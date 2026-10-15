@@ -279,33 +279,52 @@ func TestL2TPRuntimeIdentityIncludesAdmissionAndCredentials(t *testing.T) {
 		Settings: map[string]any{"ipsec_psk": "psk-a", "ipv4_pool_cidr": "10.67.0.0/24"},
 		Users:    []l2TPRuntimeUser{{UserID: 11, Username: "alice", VPNUsername: "alice-vpn", Password: "password-a", IPv4Address: "10.67.0.11", Status: "active", DeviceLimit: limit, IPLimit: 2}},
 	}
-	prepare := func(inbound l2TPRuntimeInbound) [32]byte {
+	prepare := func(inbound l2TPRuntimeInbound, callback nativeRuntimeSessionCallback) [32]byte {
 		t.Helper()
-		files, err := server.prepareL2TPInbound(inbound, nativeRuntimeSessionCallback{URL: "https://panel.example/session"})
+		files, err := server.prepareL2TPInbound(inbound, callback)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return files.Identity
 	}
-	identity := prepare(base)
-	if got := prepare(base); got != identity {
+	callback := nativeRuntimeSessionCallback{URL: "https://panel.example/session", Token: "token-a", NodeID: 9}
+	identity := prepare(base, callback)
+	if got := prepare(base, callback); got != identity {
 		t.Fatal("identical L2TP runtime inputs produced different identity")
 	}
 	changedPassword := base
 	changedPassword.Users = append([]l2TPRuntimeUser(nil), base.Users...)
 	changedPassword.Users[0].Password = "password-b"
-	if prepare(changedPassword) == identity {
+	if prepare(changedPassword, callback) == identity {
 		t.Fatal("runtime identity ignored CHAP credentials")
 	}
 	changedAdmission := base
 	changedAdmission.Users = append([]l2TPRuntimeUser(nil), base.Users...)
 	changedAdmission.Users[0].DeviceLimit++
-	if prepare(changedAdmission) == identity {
-		t.Fatal("runtime identity ignored session admission policy")
+	if prepare(changedAdmission, callback) == identity {
+		t.Fatal("runtime identity ignored device admission policy")
+	}
+	changedIPAdmission := base
+	changedIPAdmission.Users = append([]l2TPRuntimeUser(nil), base.Users...)
+	changedIPAdmission.Users[0].IPLimit++
+	if prepare(changedIPAdmission, callback) == identity {
+		t.Fatal("runtime identity ignored IP admission policy")
+	}
+	changedSessionPolicy := base
+	changedSessionPolicy.Users = append([]l2TPRuntimeUser(nil), base.Users...)
+	dataLimit := int64(100)
+	changedSessionPolicy.Users[0].DataLimit = &dataLimit
+	if prepare(changedSessionPolicy, callback) == identity {
+		t.Fatal("runtime identity ignored session quota policy")
+	}
+	changedCallback := callback
+	changedCallback.Token = "token-b"
+	if prepare(base, changedCallback) == identity {
+		t.Fatal("runtime identity ignored session callback credentials")
 	}
 	changedPSK := base
 	changedPSK.Settings = map[string]any{"ipsec_psk": "psk-b", "ipv4_pool_cidr": "10.67.0.0/24"}
-	if prepare(changedPSK) == identity {
+	if prepare(changedPSK, callback) == identity {
 		t.Fatal("runtime identity ignored the IPsec credential")
 	}
 }
