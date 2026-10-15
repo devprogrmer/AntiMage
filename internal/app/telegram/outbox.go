@@ -12,6 +12,7 @@ const (
 	defaultOutboxBatchSize = 32
 	defaultOutboxMaxTries  = 8
 	defaultOutboxRetry     = 15 * time.Second
+	maxOutboxRetry         = time.Hour
 	defaultOutboxLease     = time.Minute
 )
 
@@ -175,7 +176,7 @@ WHERE status IN ('sent', 'failed') AND id IN (`+strings.Join(marks, ",")+")", ar
 func (r Repository) rescheduleOutbox(ctx context.Context, item queuedMessage, sendErr error, now time.Time) error {
 	attempts := item.attempts + 1
 	status := "pending"
-	var sendAt any = dbTime(now.Add(defaultOutboxRetry).UTC())
+	var sendAt any = dbTime(now.Add(outboxRetryDelay(attempts)).UTC())
 	if attempts >= defaultOutboxMaxTries {
 		status = "failed"
 		sendAt = dbTime(now.UTC())
@@ -188,6 +189,22 @@ func (r Repository) rescheduleOutbox(ctx context.Context, item queuedMessage, se
 SET status = ?, attempts = ?, send_at = ?, claimed_at = NULL, last_error = ?, updated_at = ?
 WHERE id = ? AND status = 'processing'`, status, attempts, sendAt, message, dbTime(now.UTC()), item.id)
 	return err
+}
+
+// outboxRetryDelay exponentially backs off repeated delivery failures while
+// placing a finite bound on how long a pending message can be delayed.
+func outboxRetryDelay(attempts int) time.Duration {
+	delay := defaultOutboxRetry
+	for i := 1; i < attempts && delay < maxOutboxRetry; i++ {
+		if delay > maxOutboxRetry/2 {
+			return maxOutboxRetry
+		}
+		delay *= 2
+	}
+	if delay > maxOutboxRetry {
+		return maxOutboxRetry
+	}
+	return delay
 }
 
 // OutboxDispatcher performs network delivery away from API request paths.

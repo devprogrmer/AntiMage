@@ -8,6 +8,18 @@ import (
 	"time"
 )
 
+func TestOutboxRetryDelayGrowsAndCaps(t *testing.T) {
+	want := []time.Duration{15 * time.Second, 30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 16 * time.Minute, 32 * time.Minute, time.Hour, time.Hour}
+	for attempts, delay := range want {
+		if got := outboxRetryDelay(attempts + 1); got != delay {
+			t.Errorf("retry delay for attempt %d = %s, want %s", attempts+1, got, delay)
+		}
+	}
+	if got := outboxRetryDelay(0); got != defaultOutboxRetry {
+		t.Fatalf("retry delay for nonpositive attempt = %s, want initial delay %s", got, defaultOutboxRetry)
+	}
+}
+
 func TestOutboxRetriesAndRecoversExpiredLease(t *testing.T) {
 	ctx := context.Background()
 	db, repo := testTelegramRepo(t)
@@ -62,11 +74,21 @@ func TestOutboxFailureIsPersistedAndRescheduled(t *testing.T) {
 	var status string
 	var attempts int
 	var lastError string
-	if err := db.QueryRow(`SELECT status, attempts, last_error FROM telegram_message_outbox`).Scan(&status, &attempts, &lastError); err != nil {
+	var sendAt string
+	if err := db.QueryRow(`SELECT status, attempts, last_error, send_at FROM telegram_message_outbox`).Scan(&status, &attempts, &lastError, &sendAt); err != nil {
 		t.Fatal(err)
 	}
 	if status != "pending" || attempts != 1 || lastError == "" {
 		t.Fatalf("failed delivery state status=%q attempts=%d error=%q", status, attempts, lastError)
+	}
+	var scheduled time.Time
+	if parsed, err := time.Parse(time.RFC3339, sendAt); err != nil {
+		t.Fatalf("parse retry send_at %q: %v", sendAt, err)
+	} else {
+		scheduled = parsed
+	}
+	if delay := time.Until(scheduled); delay < 14*time.Second || delay > 16*time.Second {
+		t.Fatalf("first retry delay=%s, want about %s", delay, defaultOutboxRetry)
 	}
 }
 
