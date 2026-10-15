@@ -40,6 +40,7 @@ type Server struct {
 	cfg                              Config
 	xrayAPIPortFallback              int
 	mu                               sync.Mutex
+	runtimeLifecycle                 *runtimeLifecycle
 	maintenanceMu                    sync.Mutex
 	metricsMu                        sync.Mutex
 	metricsSystemCache               *nodev1.SystemMetrics
@@ -368,6 +369,26 @@ func (s *Server) restartRuntime(
 	ctx context.Context,
 	req *nodev1.RuntimeConfigRequest,
 ) (*nodev1.RuntimeActionResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "runtime config is required")
+	}
+	tags, err := s.lifecycleTagsForConfig(req.GetConfigJson(), req.GetOvRuntimeJson())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "runtime config tags: "+err.Error())
+	}
+	var response *nodev1.RuntimeActionResponse
+	err = s.runtimeLifecycleCoordinator().runApply(ctx, tags, func() error {
+		var innerErr error
+		response, innerErr = s.restartRuntimeInner(ctx, req)
+		return innerErr
+	})
+	return response, err
+}
+
+func (s *Server) restartRuntimeInner(
+	ctx context.Context,
+	req *nodev1.RuntimeConfigRequest,
+) (*nodev1.RuntimeActionResponse, error) {
 	if err := s.checkpointBeforeRuntimeTransition(ctx); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
@@ -389,10 +410,23 @@ func (s *Server) restartRuntime(
 	s.clearNativeSpeedLimitsLogged()
 	_ = s.stopRuntime()
 
-	return s.applyConfig(ctx, req, "restarted")
+	return s.applyConfigInner(ctx, req, "restarted")
 }
 
 func (s *Server) stopRuntimeAction(
+	ctx context.Context,
+	req *nodev1.StopRuntimeRequest,
+) (*nodev1.RuntimeActionResponse, error) {
+	var response *nodev1.RuntimeActionResponse
+	err := s.runtimeLifecycleCoordinator().runStop(ctx, func() error {
+		var innerErr error
+		response, innerErr = s.stopRuntimeActionInner(ctx, req)
+		return innerErr
+	})
+	return response, err
+}
+
+func (s *Server) stopRuntimeActionInner(
 	ctx context.Context,
 	_ *nodev1.StopRuntimeRequest,
 ) (*nodev1.RuntimeActionResponse, error) {
@@ -443,11 +477,17 @@ func (s *Server) AddUser(ctx context.Context, req *nodev1.InboundUserRequest) (*
 		}
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	client, err := s.targetedXrayUserClient()
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, req.GetInboundTag(), func() error {
+		client, clientErr := s.targetedXrayUserClient()
+		if clientErr != nil {
+			return clientErr
+		}
+		return client.ensureVLESSUserRPC(ctx, req.GetInboundTag(), user, false)
+	})
 	if err != nil {
-		return nil, err
-	}
-	if err := client.ensureVLESSUserRPC(ctx, req.GetInboundTag(), user, false); err != nil {
+		if status.Code(err) != codes.Unknown {
+			return nil, err
+		}
 		return nil, status.Errorf(codes.FailedPrecondition, "add VLESS user: %v", err)
 	}
 	s.wakeLocalQuota("xray")
@@ -465,11 +505,17 @@ func (s *Server) UpdateUser(ctx context.Context, req *nodev1.InboundUserRequest)
 		}
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	client, err := s.targetedXrayUserClient()
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, req.GetInboundTag(), func() error {
+		client, clientErr := s.targetedXrayUserClient()
+		if clientErr != nil {
+			return clientErr
+		}
+		return client.ensureVLESSUserRPC(ctx, req.GetInboundTag(), user, true)
+	})
 	if err != nil {
-		return nil, err
-	}
-	if err := client.ensureVLESSUserRPC(ctx, req.GetInboundTag(), user, true); err != nil {
+		if status.Code(err) != codes.Unknown {
+			return nil, err
+		}
 		return nil, status.Errorf(codes.FailedPrecondition, "update VLESS user: %v", err)
 	}
 	s.wakeLocalQuota("xray")
@@ -490,11 +536,17 @@ func (s *Server) RemoveUser(ctx context.Context, req *nodev1.RemoveInboundUserRe
 	if req == nil || strings.TrimSpace(req.GetInboundTag()) == "" || strings.TrimSpace(req.GetEmail()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "inbound_tag and email are required")
 	}
-	client, err := s.targetedXrayUserClient()
+	err := s.runtimeLifecycleCoordinator().runMutation(ctx, req.GetInboundTag(), func() error {
+		client, clientErr := s.targetedXrayUserClient()
+		if clientErr != nil {
+			return clientErr
+		}
+		return client.removeUserRPC(ctx, req.GetInboundTag(), req.GetEmail())
+	})
 	if err != nil {
-		return nil, err
-	}
-	if err := client.removeUserRPC(ctx, req.GetInboundTag(), req.GetEmail()); err != nil {
+		if status.Code(err) != codes.Unknown {
+			return nil, err
+		}
 		return nil, status.Errorf(codes.FailedPrecondition, "remove Xray inbound user: %v", err)
 	}
 	s.wakeLocalQuota("xray")
@@ -835,6 +887,23 @@ func (s *Server) StreamLogs(req *nodev1.StreamLogsRequest, stream grpc.ServerStr
 }
 
 func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigRequest, message string) (*nodev1.RuntimeActionResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "runtime config is required")
+	}
+	tags, err := s.lifecycleTagsForConfig(req.GetConfigJson(), req.GetOvRuntimeJson())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "runtime config tags: "+err.Error())
+	}
+	var response *nodev1.RuntimeActionResponse
+	err = s.runtimeLifecycleCoordinator().runApply(ctx, tags, func() error {
+		var innerErr error
+		response, innerErr = s.applyConfigInner(ctx, req, message)
+		return innerErr
+	})
+	return response, err
+}
+
+func (s *Server) applyConfigInner(ctx context.Context, req *nodev1.RuntimeConfigRequest, message string) (*nodev1.RuntimeActionResponse, error) {
 	configJSON := req.GetConfigJson()
 	if strings.TrimSpace(configJSON) == "" {
 		return nil, status.Error(codes.InvalidArgument, "config_json is required")
