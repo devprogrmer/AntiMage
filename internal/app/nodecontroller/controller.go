@@ -1040,6 +1040,8 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow, 
 			if len(userProtocols) == 1 {
 				capability = targetedUserCapability(userProtocols[0], operation.OperationType)
 			}
+			// Protocols without a tested live mutation path, including OpenVPN,
+			// must go through SyncConfig. Do not send them to legacy per-user RPCs.
 			if capability == "" || !targeted || !client.Supports(capability) {
 				syncConfig = true
 			} else {
