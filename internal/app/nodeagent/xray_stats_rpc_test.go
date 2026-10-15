@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -175,12 +176,14 @@ func TestRuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities(t *te
 		}
 		seen[capability] = true
 	}
-	for _, capability := range []string{
-		"targeted_user_update_vless", "targeted_user_add_remove_vless",
-		"targeted_user_update_wireguard", "targeted_user_add_remove_wireguard",
-	} {
+	for _, capability := range []string{"targeted_user_update_vless", "targeted_user_add_remove_vless"} {
 		if !seen[capability] {
 			t.Fatalf("%s capability missing although its Xray VLESS RPC is implemented", capability)
+		}
+	}
+	for _, capability := range []string{"targeted_user_update_wireguard", "targeted_user_add_remove_wireguard"} {
+		if got, want := seen[capability], runtime.GOOS == "linux"; got != want {
+			t.Fatalf("%s advertised=%v, want %v for platform %s", capability, got, want, runtime.GOOS)
 		}
 	}
 }
