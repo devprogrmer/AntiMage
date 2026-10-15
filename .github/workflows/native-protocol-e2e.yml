@@ -1,6 +1,8 @@
 name: Native Protocol E2E
 
 on:
+  push:
+    branches: [codex/production-runtime-hardening]
   pull_request:
     branches: ['**']
     paths:
@@ -24,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        protocol: [xray, wireguard, amneziawg, openvpn, l2tp, pptp, anyconnect, ikev2]
+        protocol: ${{ github.event_name == 'push' && fromJSON('["openvpn"]') || fromJSON('["xray","wireguard","amneziawg","openvpn","l2tp","pptp","anyconnect","ikev2"]') }}
     env:
       CGO_ENABLED: '1'
     steps:
@@ -122,6 +124,7 @@ jobs:
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
           sudo env ANTIMAGE_NATIVE_RUN_WIREGUARD=0 ANTIMAGE_NATIVE_RUN_PANEL=0 \
+            ANTIMAGE_OPENVPN_MUTATION_E2E=1 \
             RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
             bash scripts/ci/native-vpn-drivers.sh

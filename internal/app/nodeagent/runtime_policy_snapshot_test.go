@@ -11,6 +11,17 @@ import (
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
+func TestValidateRuntimePolicyRevisionRejectsStaleSyncAndAllowsCurrentOrLegacy(t *testing.T) {
+	if err := validateRuntimePolicyRevision(42, 41); err == nil {
+		t.Fatal("stale runtime revision was accepted")
+	}
+	for _, revision := range []uint64{0, 42, 43} {
+		if err := validateRuntimePolicyRevision(42, revision); err != nil {
+			t.Errorf("revision %d rejected: %v", revision, err)
+		}
+	}
+}
+
 func TestRuntimePolicySnapshotRestartAndIntegrity(t *testing.T) {
 	s := &Server{cfg: Config{DataDir: t.TempDir()}}
 	req := &nodev1.RuntimeConfigRequest{ConfigJson: `{"inbounds":[]}`, OvRuntimeJson: `{"xray_policies":[{"user_id":10,"email":"10.a","inbound_tag":"a","status":"active","used_traffic":300,"data_limit":500,"usage_coefficient":2,"inbound_coefficient":1.5,"device_limit":2,"ip_limit":1,"upload_speed_limit":123,"download_speed_limit":456}]}`, DesiredRevision: 42}

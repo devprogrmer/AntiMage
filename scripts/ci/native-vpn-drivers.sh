@@ -297,6 +297,7 @@ run_wireguard() {
 
 run_openvpn() {
   echo '=== OpenVPN native tun/traffic/restart ==='
+  : "${ANTIMAGE_OPENVPN_TEST_BINARY:?missing compiled nodeagent test binary}"
   local quota_bytes="${ANTIMAGE_OPENVPN_QUOTA_BYTES:-$((50 * 1024 * 1024))}"
   local ca_key="$ROOT/ca.key" ca_cert="$ROOT/ca.crt"
   local server_key="$ROOT/server.key" server_csr="$ROOT/server.csr" server_cert="$ROOT/server.crt"
@@ -315,6 +316,17 @@ run_openvpn() {
   openssl x509 -req -days 1 -in "$client_csr" -CA "$ca_cert" -CAkey "$ca_key" \
     -CAcreateserial -extfile <(printf 'keyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=clientAuth\n') \
     -out "$client_cert" >/dev/null 2>&1
+  if [ "${ANTIMAGE_OPENVPN_MUTATION_E2E:-0}" = 1 ]; then
+    echo '=== OpenVPN targeted user mutation against managed native daemon ==='
+    env ANTIMAGE_OPENVPN_MUTATION_E2E=1 \
+      ANTIMAGE_OPENVPN_MUTATION_ROOT="$ROOT/openvpn-mutation-e2e" \
+      ANTIMAGE_OPENVPN_MUTATION_NS="$NS" \
+      ANTIMAGE_OPENVPN_MUTATION_PORT=11942 \
+      ANTIMAGE_OPENVPN_MUTATION_CA="$ca_cert" \
+      ANTIMAGE_OPENVPN_MUTATION_CERT="$server_cert" \
+      ANTIMAGE_OPENVPN_MUTATION_KEY="$server_key" \
+      "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNTargetedMutationNativeE2E$' -count=1 -v
+  fi
   cat >"$ROOT/openvpn-connect.sh" <<EOF
 #!/bin/sh
 exec env ANTIMAGE_OPENVPN_ACTION=admission ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" ANTIMAGE_OPENVPN_NATIVE_PID="\${daemon_pid}" "${ANTIMAGE_OPENVPN_TEST_BINARY:-/bin/true}" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v
