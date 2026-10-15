@@ -12,6 +12,8 @@ type wireGuardKernelPeer struct {
 	PresharedKey        string
 	Endpoint            string
 	AllowedIPs          []string
+	ReceivedBytes       uint64
+	SentBytes           uint64
 	PersistentKeepalive uint16
 }
 
@@ -60,10 +62,12 @@ func parseWireGuardPeerSnapshot(raw string) (map[string]wireGuardKernelPeer, err
 		if _, err := strconv.ParseInt(strings.TrimSpace(parts[4]), 10, 64); err != nil {
 			return nil, fmt.Errorf("wireguard peer %q has invalid handshake timestamp", key)
 		}
-		if _, err := strconv.ParseUint(strings.TrimSpace(parts[5]), 10, 64); err != nil {
+		received, err := strconv.ParseUint(strings.TrimSpace(parts[5]), 10, 64)
+		if err != nil {
 			return nil, fmt.Errorf("wireguard peer %q has invalid received-byte counter", key)
 		}
-		if _, err := strconv.ParseUint(strings.TrimSpace(parts[6]), 10, 64); err != nil {
+		sent, err := strconv.ParseUint(strings.TrimSpace(parts[6]), 10, 64)
+		if err != nil {
 			return nil, fmt.Errorf("wireguard peer %q has invalid sent-byte counter", key)
 		}
 		keepalive, err := strconv.ParseUint(strings.TrimSpace(parts[7]), 10, 16)
@@ -75,6 +79,8 @@ func parseWireGuardPeerSnapshot(raw string) (map[string]wireGuardKernelPeer, err
 			PresharedKey:        psk,
 			Endpoint:            normalizeWireGuardDumpValue(parts[2]),
 			AllowedIPs:          allowedIPs,
+			ReceivedBytes:       received,
+			SentBytes:           sent,
 			PersistentKeepalive: uint16(keepalive),
 		}
 	}

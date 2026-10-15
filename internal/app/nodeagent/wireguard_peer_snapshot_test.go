@@ -21,6 +21,9 @@ func TestParseWireGuardPeerSnapshotCapturesConfigurableState(t *testing.T) {
 	if peer.PresharedKey != psk || peer.Endpoint != "198.51.100.8:51820" || peer.PersistentKeepalive != 25 {
 		t.Fatalf("peer configurable state = %+v", peer)
 	}
+	if peer.ReceivedBytes != 12 || peer.SentBytes != 34 {
+		t.Fatalf("peer accounting counters = rx:%d tx:%d", peer.ReceivedBytes, peer.SentBytes)
+	}
 	if strings.Join(peer.AllowedIPs, ",") != "10.69.0.2/32,10.69.1.0/24" {
 		t.Fatalf("allowed IPs = %v", peer.AllowedIPs)
 	}
