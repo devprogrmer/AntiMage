@@ -3,6 +3,8 @@ package nodeagent
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -65,6 +67,62 @@ func TestOpenVPNManagementClientKillTCP(t *testing.T) {
 
 	case <-time.After(2 * time.Second):
 		t.Fatal("management command not received")
+	}
+}
+
+func TestOpenVPNManagementStatusReadsENDBeforeClosing(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	serverErr := make(chan error, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			serverErr <- acceptErr
+			return
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
+		reader := bufio.NewReader(conn)
+		command, readErr := reader.ReadString('\n')
+		if readErr != nil {
+			serverErr <- readErr
+			return
+		}
+		if strings.TrimSpace(command) != "status 3" {
+			serverErr <- fmt.Errorf("first management command = %q, want status 3", strings.TrimSpace(command))
+			return
+		}
+		if _, writeErr := io.WriteString(conn, "TITLE\tOpenVPN 2.6\nHEADER\tCLIENT_LIST\tCommon Name\tReal Address\tBytes Received\tBytes Sent\tConnected Since (time_t)\tUsername\tClient ID\tPeer ID\nEND\n"); writeErr != nil {
+			serverErr <- writeErr
+			return
+		}
+		if extra, extraErr := reader.ReadString('\n'); extraErr == nil {
+			serverErr <- fmt.Errorf("unexpected management command after status: %q", strings.TrimSpace(extra))
+			return
+		} else if !errors.Is(extraErr, io.EOF) {
+			serverErr <- extraErr
+			return
+		}
+		serverErr <- nil
+	}()
+
+	clients, err := openVPNManagementStatus("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clients) != 0 {
+		t.Fatalf("empty native status returned clients: %+v", clients)
+	}
+	select {
+	case err := <-serverErr:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("management test server did not observe client close")
 	}
 }
 

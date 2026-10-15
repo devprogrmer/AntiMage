@@ -1,6 +1,7 @@
 package nodeagent
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -578,17 +579,25 @@ func openVPNManagementStatus(network, address string) ([]openVPNStatusClient, er
 	if err := conn.SetDeadline(time.Now().Add(openVPNManagementTimeout)); err != nil {
 		return nil, err
 	}
-	if _, err := io.WriteString(conn, "status 3\nquit\n"); err != nil {
+	if _, err := io.WriteString(conn, "status 3\n"); err != nil {
 		return nil, err
 	}
-	raw, err := io.ReadAll(io.LimitReader(conn, 256*1024))
-	if err != nil {
-		return nil, fmt.Errorf("read OpenVPN management status: %w", err)
+	reader := bufio.NewReader(io.LimitReader(conn, 256*1024))
+	var raw strings.Builder
+	for {
+		line, readErr := reader.ReadString('\n')
+		_, _ = raw.WriteString(line)
+		if strings.TrimSpace(line) == "END" {
+			break
+		}
+		if readErr != nil {
+			if !errors.Is(readErr, io.EOF) {
+				return nil, fmt.Errorf("read OpenVPN management status: %w", readErr)
+			}
+			return nil, fmt.Errorf("OpenVPN management status response is incomplete")
+		}
 	}
-	if !strings.Contains(string(raw), "END\n") && !strings.HasSuffix(string(raw), "END") {
-		return nil, fmt.Errorf("OpenVPN management status response is incomplete")
-	}
-	clients, err := parseOpenVPNStatusV3(string(raw))
+	clients, err := parseOpenVPNStatusV3(raw.String())
 	if err != nil {
 		return nil, fmt.Errorf("parse OpenVPN management status: %w", err)
 	}
