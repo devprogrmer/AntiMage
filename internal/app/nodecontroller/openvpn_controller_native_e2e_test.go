@@ -395,17 +395,34 @@ CREATE TABLE operation_locks (target_type TEXT,target_id TEXT,operation_id TEXT 
 CREATE TABLE operation_events(operation_id TEXT,sequence INTEGER,state TEXT,phase TEXT,observed_at BIGINT,requested_by TEXT,request_id TEXT,event_type TEXT NOT NULL DEFAULT 'operation.transition',payload_json TEXT,PRIMARY KEY(operation_id,sequence));
 `+operationapp.ExecutorLeaseDDL+`;
 `+operationapp.ResourceFenceDDL+`;
-INSERT INTO tls VALUES (1,?,?);
-INSERT INTO xray_config VALUES (1,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
-INSERT INTO nodes VALUES (7,'native-node','127.0.0.1',0,0,'connected','','',?,?,'custom',?,CURRENT_TIMESTAMP,1,?,100,100,'connected','running',CURRENT_TIMESTAMP);
-INSERT INTO users VALUES (7,'alice','0123456789abcdef0123456789abcdef',10,'active',0,0,0,0,0,0,0);
-INSERT INTO proxies VALUES (7,'openvpn');
-INSERT INTO hosts VALUES (1,'ov-in',0);
-INSERT INTO service_hosts VALUES (10,1);
-INSERT INTO inbounds VALUES ('ov-in',0,0,1);`, string(cert), string(key), nativeOpenVPNControllerNodeConfig(caPath, certPath, keyPath), string(cert), string(key), nativeOpenVPNControllerNodeConfig(caPath, certPath, keyPath), string(nativeOpenVPNTestNodeCapabilities))
+`)
 	if err != nil {
 		_ = db.Close()
 		t.Fatal(err)
+	}
+	config := nativeOpenVPNControllerNodeConfig(caPath, certPath, keyPath)
+	for _, seed := range []struct {
+		query string
+		args  []any
+	}{
+		{`INSERT INTO tls VALUES (1,?,?)`, []any{string(cert), string(key)}},
+		{`INSERT INTO xray_config VALUES (1,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`, []any{config}},
+		{`INSERT INTO nodes VALUES (7,'native-node','127.0.0.1',0,0,'connected','','',?,?,'custom',?,CURRENT_TIMESTAMP,1,?,100,100,'connected','running',CURRENT_TIMESTAMP)`, []any{string(cert), string(key), config, string(nativeOpenVPNTestNodeCapabilities)}},
+		{`INSERT INTO users VALUES (7,'alice','0123456789abcdef0123456789abcdef',10,'active',0,0,0,0,0,0,0)`, nil},
+		{`INSERT INTO proxies VALUES (7,'openvpn')`, nil},
+		{`INSERT INTO hosts VALUES (1,'ov-in',0)`, nil},
+		{`INSERT INTO service_hosts VALUES (10,1)`, nil},
+		{`INSERT INTO inbounds VALUES ('ov-in',0,0,1)`, nil},
+	} {
+		if _, err := db.ExecContext(ctx, seed.query, seed.args...); err != nil {
+			_ = db.Close()
+			t.Fatalf("seed OpenVPN Controller E2E database: %v", err)
+		}
+	}
+	var storedCapabilities string
+	if err := db.QueryRowContext(ctx, `SELECT node_capabilities FROM nodes WHERE id=7`).Scan(&storedCapabilities); err != nil || storedCapabilities != nativeOpenVPNTestNodeCapabilities || !json.Valid([]byte(storedCapabilities)) {
+		_ = db.Close()
+		t.Fatalf("seeded node capabilities=%q err=%v", storedCapabilities, err)
 	}
 	repo := NewRepository(db, "sqlite")
 	node, err := repo.Node(ctx, 7)
