@@ -186,11 +186,6 @@ func TestRuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities(t *te
 			t.Fatalf("%s advertised=%v, want %v for platform %s", capability, got, want, runtime.GOOS)
 		}
 	}
-	for _, capability := range []string{"targeted_user_update_amneziawg", "targeted_user_add_remove_amneziawg"} {
-		if got, want := seen[capability], amneziaWGTargetedMutationAvailable(); got != want {
-			t.Fatalf("%s advertised=%v, want %v", capability, got, want)
-		}
-	}
 }
 
 func TestXrayVLESSUserOperationsAreIdempotentAndRollbackFailedUpdate(t *testing.T) {

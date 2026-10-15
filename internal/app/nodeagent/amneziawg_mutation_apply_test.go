@@ -10,8 +10,6 @@ import (
 	"testing"
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type amneziaWGMutationHarness struct {
@@ -219,49 +217,5 @@ func TestApplyAmneziaWGIdenticalUpdateIsKernelNoop(t *testing.T) {
 	}
 	if h.commands != 0 {
 		t.Fatalf("identical update issued %d kernel commands", h.commands)
-	}
-}
-
-func TestAmneziaWGMutationRPCAddUpdateRemoveUsesLifecycleAndPreservesOtherPeer(t *testing.T) {
-	otherKey, targetKey := awgTestKey('o'), awgTestKey('p')
-	other := amneziaWGRuntimePeer{UserID: 8, PublicKey: otherKey, Address: "10.72.0.8", Status: "active"}
-	h := newAmneziaWGMutationHarness(t, []amneziaWGRuntimePeer{other})
-	added := amneziaWGRuntimePeer{UserID: 7, PublicKey: targetKey, Address: "10.72.0.7", Status: "active"}
-	add, err := h.server.AddUser(context.Background(), &nodev1.InboundUserRequest{
-		OperationId: "awg-add-7", InboundTag: "awg-mutation", User: h.user(7, "add", []amneziaWGRuntimePeer{added}),
-	})
-	if err != nil || !add.GetAccepted() || add.GetOperationId() != "awg-add-7" {
-		t.Fatalf("AWG AddUser response=%v err=%v", add, err)
-	}
-	updated := added
-	updated.Address = "10.72.0.9"
-	update, err := h.server.UpdateUser(context.Background(), &nodev1.InboundUserRequest{
-		OperationId: "awg-update-7", InboundTag: "awg-mutation", User: h.user(7, "update", []amneziaWGRuntimePeer{updated}),
-	})
-	if err != nil || !update.GetAccepted() || h.peers[targetKey].AllowedIPs[0] != "10.72.0.9/32" {
-		t.Fatalf("AWG UpdateUser response=%v peer=%+v err=%v", update, h.peers[targetKey], err)
-	}
-	remove, err := h.server.RemoveUser(context.Background(), &nodev1.RemoveInboundUserRequest{
-		OperationId: "awg-remove-7", InboundTag: "awg-mutation", Email: amneziaWGRemoveUserPrefix + "7",
-	})
-	if err != nil || !remove.GetAccepted() || remove.GetOperationId() != "awg-remove-7" {
-		t.Fatalf("AWG RemoveUser response=%v err=%v", remove, err)
-	}
-	if _, ok := h.peers[targetKey]; ok {
-		t.Fatal("AWG RemoveUser left target peer in runtime")
-	}
-	if got, ok := h.peers[otherKey]; !ok || got.AllowedIPs[0] != "10.72.0.8/32" {
-		t.Fatalf("unrelated AWG peer changed: %+v", got)
-	}
-}
-
-func TestAmneziaWGMutationRPCRejectsOperationMismatchBeforeRuntime(t *testing.T) {
-	h := newAmneziaWGMutationHarness(t, nil)
-	user := h.user(7, "update", []amneziaWGRuntimePeer{{UserID: 7, PublicKey: awgTestKey('p'), Address: "10.72.0.7", Status: "active"}})
-	if response, err := h.server.AddUser(context.Background(), &nodev1.InboundUserRequest{InboundTag: "awg-mutation", User: user}); response != nil || status.Code(err) != codes.InvalidArgument {
-		t.Fatalf("AddUser response=%v err=%v, want invalid argument", response, err)
-	}
-	if h.commands != 0 {
-		t.Fatalf("invalid operation envelope issued %d kernel commands", h.commands)
 	}
 }

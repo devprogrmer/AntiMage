@@ -55,12 +55,6 @@ func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclie
 				return c.grpcApplyWireGuardUserOperation(ctx, client, node, operation)
 			}
 		}
-		if len(userProtocols) == 1 && strings.EqualFold(strings.TrimSpace(userProtocols[0]), "amneziawg") {
-			capability := targetedUserCapability("amneziawg", operation.OperationType)
-			if capability != "" && client.Supports(capability) {
-				return c.grpcApplyAmneziaWGUserOperation(ctx, client, node, operation)
-			}
-		}
 	}
 	switch operation.OperationType {
 	case "remove_user", "disable_user":
@@ -72,92 +66,6 @@ func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclie
 	default:
 		return fmt.Errorf("unsupported runtime user operation: %s", operation.OperationType)
 	}
-}
-
-func (c Controller) grpcApplyAmneziaWGUserOperation(ctx context.Context, client *nodeclient.Client, node NodeRow, operation OperationRow) error {
-	if !operation.UserID.Valid || operation.UserID.Int64 <= 0 {
-		return fmt.Errorf("AmneziaWG user operation requires a valid user id")
-	}
-	var serviceID sql.NullInt64
-	if err := c.repo.db.QueryRowContext(ctx, `SELECT service_id FROM users WHERE id = ?`, operation.UserID.Int64).Scan(&serviceID); err != nil {
-		return err
-	}
-	if !serviceID.Valid || serviceID.Int64 <= 0 {
-		return fmt.Errorf("AmneziaWG user %d has no service", operation.UserID.Int64)
-	}
-	raw, err := c.repo.NodeRawConfig(ctx, node)
-	if err != nil {
-		return err
-	}
-	serviceTags, err := c.repo.ServiceAllowedTags(ctx)
-	if err != nil {
-		return err
-	}
-	tags := make([]string, 0)
-	for _, inbound := range listOfMaps(raw["inbounds"]) {
-		if !strings.EqualFold(strings.TrimSpace(stringValue(inbound["protocol"])), "amneziawg") {
-			continue
-		}
-		tag := strings.TrimSpace(stringValue(inbound["tag"]))
-		if tag == "" || !serviceTags[serviceID.Int64][tag] || !OVInboundMatchesTarget(inbound, xrayconfig.NodeTargetID(node.ID)) {
-			continue
-		}
-		tags = append(tags, tag)
-	}
-	if len(tags) == 0 {
-		return fmt.Errorf("no AmneziaWG inbound is assigned to user %d on node %d", operation.UserID.Int64, node.ID)
-	}
-	mutation := ""
-	switch operation.OperationType {
-	case "add_user", "enable_user":
-		mutation = "add"
-	case "update_user":
-		mutation = "update"
-	case "remove_user", "disable_user":
-		mutation = "remove"
-	default:
-		return fmt.Errorf("unsupported AmneziaWG user operation %q", operation.OperationType)
-	}
-	desiredByTag := map[string][]AWGRuntimePeer{}
-	if mutation != "remove" {
-		runtimeConfig, runtimeErr := c.repo.AWGRuntime(ctx, node.ID)
-		if runtimeErr != nil {
-			return runtimeErr
-		}
-		for _, inbound := range runtimeConfig.Inbounds {
-			for _, peer := range inbound.Peers {
-				if peer.UserID == operation.UserID.Int64 {
-					desiredByTag[inbound.Tag] = append(desiredByTag[inbound.Tag], peer)
-				}
-			}
-		}
-	}
-	for _, tag := range tags {
-		if mutation == "remove" {
-			_, err = client.Runtime().RemoveUser(ctx, &nodev1.RemoveInboundUserRequest{
-				OperationId: fmt.Sprintf("%s-%d-%s", operation.OperationType, operation.ID, tag),
-				InboundTag:  tag, Email: fmt.Sprintf("amneziawg-user:%d", operation.UserID.Int64),
-			})
-		} else {
-			user, userErr := grpcAmneziaWGMutationUser(operation.UserID.Int64, mutation, desiredByTag[tag])
-			if userErr != nil {
-				return userErr
-			}
-			request := &nodev1.InboundUserRequest{
-				OperationId: fmt.Sprintf("%s-%d-%s", operation.OperationType, operation.ID, tag),
-				InboundTag:  tag, User: user,
-			}
-			if mutation == "add" {
-				_, err = client.Runtime().AddUser(ctx, request)
-			} else {
-				_, err = client.Runtime().UpdateUser(ctx, request)
-			}
-		}
-		if err != nil {
-			return fmt.Errorf("apply AmneziaWG %s for inbound %s: %w", mutation, tag, err)
-		}
-	}
-	return nil
 }
 
 func (c Controller) grpcApplyWireGuardUserOperation(ctx context.Context, client *nodeclient.Client, node NodeRow, operation OperationRow) error {

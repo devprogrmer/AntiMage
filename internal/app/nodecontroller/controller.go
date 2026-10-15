@@ -650,13 +650,6 @@ func targetedUserCapability(protocol, operation string) string {
 		case "add_user", "remove_user", "disable_user", "enable_user":
 			return "targeted_user_add_remove_wireguard"
 		}
-	case "amneziawg":
-		switch operation {
-		case "update_user":
-			return "targeted_user_update_amneziawg"
-		case "add_user", "remove_user", "disable_user", "enable_user":
-			return "targeted_user_add_remove_amneziawg"
-		}
 	}
 	return ""
 }
