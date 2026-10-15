@@ -284,3 +284,150 @@ func TestRuntimeLifecycleTimeoutAndSortedApplyAvoidDeadlock(t *testing.T) {
 		}
 	}
 }
+
+func TestLifecycleGateFIFOWithCanceledMiddleWaiter(t *testing.T) {
+	gate := &lifecycleGate{}
+	ownerRelease, err := gate.acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ownerRelease()
+
+	ctxA, cancelA := context.WithCancel(context.Background())
+	defer cancelA()
+	ctxB, cancelB := context.WithCancel(context.Background())
+	ctxC, cancelC := context.WithCancel(context.Background())
+	defer cancelC()
+	contexts := []context.Context{ctxA, ctxB, ctxC}
+	cancels := []context.CancelFunc{cancelA, cancelB, cancelC}
+	entered := make(chan int, len(contexts))
+	finish := make([]chan struct{}, len(contexts))
+	results := make(chan struct {
+		index int
+		err   error
+	}, len(contexts))
+	for i, ctx := range contexts {
+		finish[i] = make(chan struct{})
+		go func(index int, ctx context.Context) {
+			release, acquireErr := gate.acquire(ctx)
+			if acquireErr == nil {
+				entered <- index
+				<-finish[index]
+				release()
+			}
+			results <- struct {
+				index int
+				err   error
+			}{index: index, err: acquireErr}
+		}(i, ctx)
+		waitLifecycleState(t, func() bool { gate.mu.Lock(); defer gate.mu.Unlock(); return len(gate.waiters) == i+1 })
+	}
+
+	cancels[1]()
+	select {
+	case result := <-results:
+		if result.index != 1 || !errors.Is(result.err, context.Canceled) {
+			t.Fatalf("canceled middle waiter result = %+v", result)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("canceled middle waiter did not leave the queue")
+	}
+	gate.mu.Lock()
+	queued := len(gate.waiters)
+	gate.mu.Unlock()
+	if queued != 2 {
+		t.Fatalf("queued waiter count after cancellation = %d, want 2", queued)
+	}
+
+	ownerRelease()
+	for _, want := range []int{0, 2} {
+		select {
+		case got := <-entered:
+			if got != want {
+				t.Fatalf("FIFO waiter entered as %d, want %d", got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("waiter %d was not handed the lock", want)
+		}
+		close(finish[want])
+		select {
+		case result := <-results:
+			if result.index != want || result.err != nil {
+				t.Fatalf("waiter result = %+v, want index %d success", result, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("waiter %d did not release", want)
+		}
+	}
+	gate.mu.Lock()
+	defer gate.mu.Unlock()
+	if gate.held || len(gate.waiters) != 0 {
+		t.Fatalf("gate leaked ownership/waiters: held=%v waiters=%d", gate.held, len(gate.waiters))
+	}
+}
+
+func TestLifecycleGateCancelRacingHandoffDoesNotLeakOrDoubleUnlock(t *testing.T) {
+	for iteration := 0; iteration < 64; iteration++ {
+		gate := &lifecycleGate{}
+		ownerRelease, err := gate.acquire(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		canceled := make(chan error, 1)
+		go func() {
+			release, acquireErr := gate.acquire(ctx)
+			if acquireErr == nil {
+				release()
+			}
+			canceled <- acquireErr
+		}()
+		waitLifecycleState(t, func() bool { gate.mu.Lock(); defer gate.mu.Unlock(); return len(gate.waiters) == 1 })
+		tailAcquired := make(chan func(), 1)
+		go func() {
+			release, acquireErr := gate.acquire(context.Background())
+			if acquireErr != nil {
+				tailAcquired <- nil
+				return
+			}
+			tailAcquired <- release
+		}()
+		waitLifecycleState(t, func() bool { gate.mu.Lock(); defer gate.mu.Unlock(); return len(gate.waiters) == 2 })
+
+		// Make cancellation and owner release contend for the same gate mutex.
+		gate.mu.Lock()
+		cancel()
+		released := make(chan struct{})
+		go func() { ownerRelease(); close(released) }()
+		gate.mu.Unlock()
+		select {
+		case err := <-canceled:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("iteration %d canceled waiter error = %v", iteration, err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("iteration %d canceled waiter stranded", iteration)
+		}
+		select {
+		case <-released:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("iteration %d owner release stranded", iteration)
+		}
+		select {
+		case release := <-tailAcquired:
+			if release == nil {
+				t.Fatalf("iteration %d tail waiter failed to acquire", iteration)
+			}
+			release()
+			release()
+		case <-time.After(2 * time.Second):
+			t.Fatalf("iteration %d tail waiter stranded", iteration)
+		}
+		gate.mu.Lock()
+		leaked := gate.held || len(gate.waiters) != 0
+		gate.mu.Unlock()
+		if leaked {
+			t.Fatalf("iteration %d left gate locked or queued", iteration)
+		}
+	}
+}
