@@ -171,16 +171,56 @@ func TestStartPPTPPreservesLiveProcessForIdenticalConfig(t *testing.T) {
 	})
 	server := New(Config{})
 	tag := "pptp-runtime-test"
-	if err := server.startPPTPInbound(tag, configPath, `"alice" * "password-v1" *`); err != nil {
+	chapPath := filepath.Join(root, "chap-secrets")
+	chapV1 := `"alice" * "password-v1" *`
+	if err := server.startPPTPInbound(tag, configPath, chapV1); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(server.stopAllPPTPRuntimes)
+	server.mu.Lock()
+	firstPID := server.pptpRuntimes[tag].cmd.Process.Pid
+	server.mu.Unlock()
+	assertCHAP := func(present, absent []string) {
+		t.Helper()
+		raw, err := os.ReadFile(chapPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range present {
+			if !strings.Contains(string(raw), item) {
+				t.Fatalf("PPTP CHAP file missing %q: %s", item, raw)
+			}
+		}
+		for _, item := range absent {
+			if strings.Contains(string(raw), item) {
+				t.Fatalf("PPTP CHAP file still contains %q: %s", item, raw)
+			}
+		}
+	}
+	assertCHAP([]string{"alice", "password-v1"}, nil)
+	chapAdded := chapV1 + "\n\"bob\" * \"password-b1\" *"
+	if err := server.startPPTPInbound(tag, configPath, chapAdded); err != nil {
+		t.Fatalf("adding a user should preserve the live pptpd process: %v", err)
+	}
+	assertCHAP([]string{"alice", "bob", "password-b1"}, nil)
+	chapUpdated := `"alice" * "password-v2" *` + "\n" + `"bob" * "password-b1" *`
+	if err := server.startPPTPInbound(tag, configPath, chapUpdated); err != nil {
+		t.Fatalf("updating a password should preserve the live pptpd process: %v", err)
+	}
+	assertCHAP([]string{"password-v2", "bob"}, []string{"password-v1"})
 	if err := server.startPPTPInbound(tag, configPath, `"alice" * "password-v2" *`); err != nil {
-		t.Fatalf("credential refresh should preserve the live pptpd process: %v", err)
+		t.Fatalf("removing a user should preserve the live pptpd process: %v", err)
 	}
 	if starts != 1 {
-		t.Fatalf("identical config started pptpd %d times, want 1", starts)
+		t.Fatalf("PPTP user-only sync started pptpd %d times, want 1", starts)
 	}
+	server.mu.Lock()
+	lastPID := server.pptpRuntimes[tag].cmd.Process.Pid
+	server.mu.Unlock()
+	if lastPID != firstPID {
+		t.Fatalf("PPTP user-only sync changed process identity: first=%d last=%d", firstPID, lastPID)
+	}
+	assertCHAP([]string{"alice", "password-v2"}, []string{"bob", "password-b1"})
 	if err := os.WriteFile(configPath, []byte("option /etc/ppp/options.pptpd\nlogwtmp\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
