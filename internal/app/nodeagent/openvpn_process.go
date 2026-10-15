@@ -332,6 +332,16 @@ func (s *Server) stopOpenVPNInbound(
 }
 
 func (s *Server) stopAllOpenVPNRuntimes() {
+	if err := s.stopAllOpenVPNRuntimesVerified(); err != nil {
+		s.appendLog("stop OpenVPN runtimes failed: " + err.Error())
+	}
+}
+
+// stopAllOpenVPNRuntimesVerified returns only after every managed OpenVPN
+// process has exited and its Wait goroutine has recorded completion. Callers
+// may use this as process evidence; clearing the in-memory runtime map alone is
+// not sufficient evidence that the daemon stopped.
+func (s *Server) stopAllOpenVPNRuntimesVerified() error {
 	s.mu.Lock()
 
 	runtimes := make(
@@ -348,6 +358,7 @@ func (s *Server) stopAllOpenVPNRuntimes() {
 
 	s.mu.Unlock()
 
+	var stopErr error
 	for tag, runtime := range runtimes {
 		if runtime == nil {
 			continue
@@ -362,8 +373,16 @@ func (s *Server) stopAllOpenVPNRuntimes() {
 				"stop openvpn runtime failed: " +
 					tag + ": " + err.Error(),
 			)
+			stopErr = errors.Join(stopErr, fmt.Errorf("stop OpenVPN %q: %w", tag, err))
+			continue
+		}
+		select {
+		case <-runtime.done:
+		default:
+			stopErr = errors.Join(stopErr, fmt.Errorf("OpenVPN %q process exit was not observed", tag))
 		}
 	}
+	return stopErr
 }
 
 func (s *Server) stopRemovedOpenVPNRuntimes(

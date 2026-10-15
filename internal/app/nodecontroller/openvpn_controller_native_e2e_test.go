@@ -9,7 +9,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"net"
 	"net/http/httptest"
@@ -302,9 +301,8 @@ func TestControllerOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	// Simulate a real NodeAgent process restart. The old agent stops its owned
 	// daemon; a fresh agent loads durable policy from the same data directory,
 	// then Controller reconciliation applies current DB desired state again.
-	stopErr := controller.StopNodeRuntime(ctx, 7)
-	if !errors.Is(stopErr, ErrCommandOutcomeUnknown) {
-		t.Fatalf("native runtime stop must be reported as uncertain until native process exit is verified: %v", stopErr)
+	if err := controller.StopNodeRuntime(ctx, 7); err != nil {
+		t.Fatalf("Controller could not verify OpenVPN native daemon stop before NodeAgent restart: %v", err)
 	}
 	if err := waitOpenVPNNativeController(func() bool { return openVPNNativeControllerPID(serverConfig) == 0 }); err != nil {
 		t.Fatalf("OpenVPN daemon did not stop before NodeAgent restart: %v", err)

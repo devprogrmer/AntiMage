@@ -439,12 +439,13 @@ func (s *Server) stopRuntimeActionInner(
 	if err := s.persistStoppedRuntimePolicy(); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, "persist stopped policy: "+err.Error())
 	}
-	// Native stop helpers do not yet return verified kernel/process evidence.
-	// Never turn their cleared bookkeeping into a durable stop assertion.
+	// OpenVPN teardown has a process Wait channel, so it can provide positive
+	// exit evidence. Other native runtimes still lack equivalent verified
+	// teardown evidence and must keep the overall stop result conservative.
 	s.mu.Lock()
-	nativePresent := len(s.openVPNRuntimes)+len(s.anyConnectRuntimes)+len(s.l2TPRuntimes)+len(s.pptpRuntimes)+len(s.ikev2Runtimes)+len(s.wireGuardRuntimes)+len(s.amneziaWGRuntimes) > 0
+	otherNativePresent := len(s.anyConnectRuntimes)+len(s.l2TPRuntimes)+len(s.pptpRuntimes)+len(s.ikev2Runtimes)+len(s.wireGuardRuntimes)+len(s.amneziaWGRuntimes) > 0
 	s.mu.Unlock()
-	s.stopAllOpenVPNRuntimes()
+	openVPNStopErr := s.stopAllOpenVPNRuntimesVerified()
 	s.stopAllAnyConnectRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
 	s.stopAllOpenVPNNATSpecs()
@@ -465,7 +466,7 @@ func (s *Server) stopRuntimeActionInner(
 	}
 
 	response := s.action("", "stopped")
-	response.Runtime.RuntimeStopVerified = !nativePresent && !response.Runtime.Started
+	response.Runtime.RuntimeStopVerified = openVPNStopErr == nil && !otherNativePresent && !response.Runtime.Started
 	return response, nil
 }
 
