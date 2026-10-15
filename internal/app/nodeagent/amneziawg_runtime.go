@@ -91,6 +91,14 @@ func amneziaWGGeneratedInterfaceName(tag string) (string, error) {
 }
 
 func (s *Server) prepareAmneziaWGInbound(inbound amneziaWGRuntimeInbound, callbacks ...nativeRuntimeSessionCallback) (preparedAmneziaWGRuntime, error) {
+	return s.prepareAmneziaWGInboundMode(inbound, true, callbacks...)
+}
+
+func (s *Server) prepareAmneziaWGMutation(inbound amneziaWGRuntimeInbound) (preparedAmneziaWGRuntime, error) {
+	return s.prepareAmneziaWGInboundMode(inbound, false)
+}
+
+func (s *Server) prepareAmneziaWGInboundMode(inbound amneziaWGRuntimeInbound, writeConfig bool, callbacks ...nativeRuntimeSessionCallback) (preparedAmneziaWGRuntime, error) {
 	tag := strings.TrimSpace(inbound.Tag)
 	if tag == "" {
 		return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg inbound tag is required")
@@ -153,12 +161,14 @@ func (s *Server) prepareAmneziaWGInbound(inbound amneziaWGRuntimeInbound, callba
 		return preparedAmneziaWGRuntime{}, fmt.Errorf("%s", strings.Replace(err.Error(), "wireguard", "amneziawg", 1))
 	}
 	dir := filepath.Join(s.cfg.DataDir, "amneziawg", "runtime", amneziaWGRuntimeDirName(tag))
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg %q: create runtime directory: %w", tag, err)
-	}
 	path := filepath.Join(dir, "interface.conf")
-	if err := atomicWriteFile(path, []byte(configText), 0600); err != nil {
-		return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg %q: write runtime config: %w", tag, err)
+	if writeConfig {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg %q: create runtime directory: %w", tag, err)
+		}
+		if err := atomicWriteFile(path, []byte(configText), 0600); err != nil {
+			return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg %q: write runtime config: %w", tag, err)
+		}
 	}
 	var callback nativeRuntimeSessionCallback
 	if len(callbacks) > 0 {

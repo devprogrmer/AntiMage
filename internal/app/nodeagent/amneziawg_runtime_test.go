@@ -272,6 +272,25 @@ func TestPrepareAmneziaWGInboundPreservesAllPeerEnforcementFields(t *testing.T) 
 	}
 }
 
+func TestPrepareAmneziaWGMutationDoesNotWriteRuntimeConfigBeforeCommit(t *testing.T) {
+	server := New(Config{DataDir: t.TempDir()})
+	inbound := amneziaWGRuntimeInbound{
+		Tag: "mutation-preflight", ListenPort: 51822,
+		Settings: map[string]any{"private_key": awgTestKey('s'), "address_pool": "10.72.0.0/24", "server_address": "10.72.0.1/24", "h1": "101", "h2": "102", "h3": "103", "h4": "104"},
+		Peers:    []amneziaWGRuntimePeer{{UserID: 7, PublicKey: awgTestKey('p'), Address: "10.72.0.2", Status: "active"}},
+	}
+	prepared, err := server.prepareAmneziaWGMutation(inbound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.ConfigText == "" {
+		t.Fatal("mutation preflight did not render the updated interface config")
+	}
+	if _, err := os.Stat(prepared.ConfigPath); !os.IsNotExist(err) {
+		t.Fatalf("preflight wrote runtime config before transactional commit: stat err=%v", err)
+	}
+}
+
 func TestPrepareAmneziaWGInboundRejectsDuplicatePeerAddress(t *testing.T) {
 	s := New(Config{DataDir: t.TempDir()})
 	inbound := amneziaWGRuntimeInbound{
