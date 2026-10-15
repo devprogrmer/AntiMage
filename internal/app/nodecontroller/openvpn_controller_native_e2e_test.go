@@ -34,6 +34,7 @@ import (
 )
 
 const nativeOpenVPNTestCapabilities = "[\"targeted_user_add_remove_openvpn\",\"targeted_user_update_openvpn\"]"
+const nativeOpenVPNTestNodeCapabilities = "[\"shared_fencing_v1\",\"command_idempotency_v1\",\"config_revision\",\"targeted_user_add_remove_openvpn\",\"targeted_user_update_openvpn\"]"
 
 type openVPNNativeControllerAgent struct{ *nodeagent.Server }
 
@@ -75,6 +76,7 @@ func TestControllerOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	if err := os.MkdirAll(root, 0700); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("ANTIMAGE_NODE_APP_DIR", root)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	serverTLS, clientTLS := openVPNNativeControllerTLS(t)
@@ -100,9 +102,15 @@ func TestControllerOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	}
 	defer client.Close()
 	client.SetHandshake("native-test", []string{"targeted_user_add_remove_openvpn", "targeted_user_update_openvpn"})
-	initialResult, err := controller.Connect(ctx, Request{NodeID: 7, ConfigJSON: runtimeConfig})
-	if err != nil || !initialResult.Connected {
-		t.Fatalf("Controller initial native OpenVPN sync: result=%+v err=%v", initialResult, err)
+	initialRequest := &nodev1.RuntimeConfigRequest{
+		OperationId: "native-openvpn-initial-100", ConfigJson: runtimeConfig,
+		OvRuntimeJson: initialNative, DesiredRevision: 100,
+	}
+	if err := controller.executeLegacyNodeCommand(legacyConfigEvidence(ctx, runtimeConfig), 7, initialRequest.GetOperationId(), "sync_config", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
+		initialRequest.Fence = fence
+		return client.Runtime().SyncConfig(worker, initialRequest)
+	}, nil); err != nil {
+		t.Fatalf("Controller initial native OpenVPN sync: %v", err)
 	}
 	serverConfig := filepath.Join(dataDir, "openvpn", openVPNNativeDirName("ov-in"), "server.conf")
 	if err := waitOpenVPNNativeController(func() bool { return openVPNNativeControllerPID(serverConfig) > 0 }); err != nil {
@@ -394,7 +402,7 @@ INSERT INTO users VALUES (7,'alice','0123456789abcdef0123456789abcdef',10,'activ
 INSERT INTO proxies VALUES (7,'openvpn');
 INSERT INTO hosts VALUES (1,'ov-in',0);
 INSERT INTO service_hosts VALUES (10,1);
-INSERT INTO inbounds VALUES ('ov-in',0,0,1);`, string(cert), string(key), nativeOpenVPNControllerNodeConfig(caPath, certPath, keyPath), string(cert), string(key), nativeOpenVPNControllerNodeConfig(caPath, certPath, keyPath), string(nativeOpenVPNTestCapabilities))
+INSERT INTO inbounds VALUES ('ov-in',0,0,1);`, string(cert), string(key), nativeOpenVPNControllerNodeConfig(caPath, certPath, keyPath), string(cert), string(key), nativeOpenVPNControllerNodeConfig(caPath, certPath, keyPath), string(nativeOpenVPNTestNodeCapabilities))
 	if err != nil {
 		_ = db.Close()
 		t.Fatal(err)
