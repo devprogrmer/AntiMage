@@ -559,10 +559,10 @@ func startOpenVPNNativeControllerClient(t *testing.T, root, ns, ca string, port 
 		t.Fatal(err)
 	}
 	dev := "t" + fmt.Sprintf("%x", sha256.Sum256([]byte(name)))[:10]
-	// Bound reconnection time in this recovery test. The production server
-	// pushes ping-restart 60; ignore only that timeout so a stopped/restarted
-	// native daemon can be observed reconnecting within the CI test deadline.
-	contents := fmt.Sprintf("client\nremote 10.250.0.1 %d\nproto udp\ndev %s\ndev-type tun\nnobind\nresolv-retry infinite\nconnect-retry 1 1\nconnect-retry-max 0\nping 2\nping-restart 6\npull-filter ignore \"ping-restart\"\npersist-key\npersist-tun\nca %s\nremote-cert-tls server\nverb 3\nauth-user-pass %s\nauth-nocache\n", port, dev, ca, auth)
+	// Bound keepalive and reconnection time in this recovery test. The server
+	// pushes ping 10 / ping-restart 60; ignore both pushed values so the
+	// client's ping 2 / ping-restart 6 are a consistent pair for CI recovery.
+	contents := fmt.Sprintf("client\nremote 10.250.0.1 %d\nproto udp\ndev %s\ndev-type tun\nnobind\nresolv-retry infinite\nconnect-retry 1 1\nconnect-retry-max 0\nping 2\nping-restart 6\npull-filter ignore \"ping\"\npull-filter ignore \"ping-restart\"\npersist-key\npersist-tun\nca %s\nremote-cert-tls server\nverb 3\nauth-user-pass %s\nauth-nocache\n", port, dev, ca, auth)
 	if err := os.WriteFile(config, []byte(contents), 0600); err != nil {
 		t.Fatal(err)
 	}
