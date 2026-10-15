@@ -301,9 +301,8 @@ func TestControllerOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	// Simulate a real NodeAgent process restart. The old agent stops its owned
 	// daemon; a fresh agent loads durable policy from the same data directory,
 	// then Controller reconciliation applies current DB desired state again.
-	stopResponse, err := client.Runtime().StopRuntime(ctx, &nodev1.StopRuntimeRequest{})
-	if err != nil || stopResponse == nil || !stopResponse.GetAccepted() {
-		t.Fatalf("stop native NodeAgent before restart: response=%v err=%v", stopResponse, err)
+	if err := controller.StopNodeRuntime(ctx, 7); err != nil {
+		t.Fatalf("stop native NodeAgent before restart through fenced Controller path: %v", err)
 	}
 	_ = client.Close()
 	grpcServer.Stop()
