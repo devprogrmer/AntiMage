@@ -63,6 +63,25 @@ type wireGuardPeerCounters struct {
 
 var wireGuardInterfaceNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,15}$`)
 
+// wireGuardUsageConfigWrite is replaceable in tests so transactional peer
+// mutations can prove that a failed helper-policy write leaves the previous
+// durable configuration intact.
+var wireGuardUsageConfigWrite = atomicWriteFile
+
+func writeWireGuardUsageConfig(path string, cfg wireGuardUsageRuntimeConfig) error {
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal wireguard usage config: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return fmt.Errorf("create wireguard usage config directory: %w", err)
+	}
+	if err := wireGuardUsageConfigWrite(path, raw, 0600); err != nil {
+		return fmt.Errorf("replace wireguard usage config: %w", err)
+	}
+	return nil
+}
+
 var wireGuardDumpInterface = func(
 	ctx context.Context,
 	interfaceName string,
@@ -450,7 +469,7 @@ func (s *Server) syncWireGuardUsageConfigs(
 			return fmt.Errorf("create wireguard usage config dir: %w", err)
 		}
 
-		raw, err := json.Marshal(wireGuardUsageRuntimeConfig{
+		usageConfig := wireGuardUsageRuntimeConfig{
 			InboundTag:        tag,
 			InterfaceName:     interfaceName,
 			ListenPort:        inbound.ListenPort,
@@ -459,27 +478,11 @@ func (s *Server) syncWireGuardUsageConfigs(
 			Policies:          policies,
 			AccountingEnabled: &accountingEnabled,
 			Callback:          callback,
-		})
-		if err != nil {
-			return fmt.Errorf(
-				"wireguard %q: marshal usage config: %w",
-				tag,
-				err,
-			)
 		}
 		path := filepath.Join(dir, "usage-helper.json")
-		tmp := path + ".tmp"
-		if err := os.WriteFile(tmp, raw, 0600); err != nil {
+		if err := writeWireGuardUsageConfig(path, usageConfig); err != nil {
 			return fmt.Errorf(
-				"wireguard %q: write usage config: %w",
-				tag,
-				err,
-			)
-		}
-		if err := os.Rename(tmp, path); err != nil {
-			_ = os.Remove(tmp)
-			return fmt.Errorf(
-				"wireguard %q: replace usage config: %w",
+				"wireguard %q: %w",
 				tag,
 				err,
 			)
