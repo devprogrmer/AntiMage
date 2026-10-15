@@ -77,6 +77,7 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertTableColumns(t, ctx, db, "sqlite", "node_operations", []string{"operation_type", "status", "idempotency_key"})
 	assertTableColumns(t, ctx, db, "sqlite", "diagnostics", []string{"id", "source", "resource_type", "resource_id", "severity", "code", "summary", "detail", "first_seen_at", "last_seen_at", "occurrence_count", "status", "recommended_action"})
 	assertTableColumns(t, ctx, db, "sqlite", "operations", []string{"id", "operation_type", "target_type", "target_id", "requested_by", "request_id", "state", "phase", "progress", "created_at", "started_at", "updated_at", "completed_at", "error", "metadata_json"})
+	assertTableColumns(t, ctx, db, "sqlite", "telegram_message_outbox", []string{"id", "event", "message", "status", "attempts", "send_at", "claimed_at", "last_error", "created_at", "updated_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_configs", []string{"id", "name", "enabled", "settings", "created_at", "updated_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_targets", []string{"config_id", "node_id", "listeners"})
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_templates", []string{"id", "name", "archive", "created_at"})

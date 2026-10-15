@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/antimage/antimage/internal/app/logging"
 )
 
 type Reporter struct {
 	repo   Repository
 	sender Sender
+	wake   func()
 }
 
 type LoginReport struct {
@@ -59,6 +62,10 @@ type NodeReport struct {
 
 func NewReporter(repo Repository, sender Sender) Reporter {
 	return Reporter{repo: repo, sender: sender}
+}
+
+func NewReporterWithWake(repo Repository, sender Sender, wake func()) Reporter {
+	return Reporter{repo: repo, sender: sender, wake: wake}
 }
 
 func (r Reporter) Login(ctx context.Context, report LoginReport) {
@@ -230,12 +237,13 @@ func (r Reporter) sendHTML(ctx context.Context, event string, text string) {
 	if err != nil || !enabled || !telegramReportsReady(settings) {
 		return
 	}
-	r.sender.SendMessageBestEffort(ctx, MessageRequest{
-		Destination:           DestinationRequest{Purpose: DestinationLogs, Category: event},
-		Text:                  text,
-		ParseMode:             "HTML",
-		DisableWebPagePreview: true,
-	})
+	if err := r.repo.EnqueueReport(ctx, event, text); err != nil {
+		logging.Warnf(logging.ComponentTelegram, "enqueue report event=%s failed: %v", event, err)
+		return
+	}
+	if r.wake != nil {
+		r.wake()
+	}
 }
 
 func telegramReportsReady(settings Settings) bool {

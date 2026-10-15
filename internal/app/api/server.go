@@ -56,6 +56,8 @@ type Server struct {
 	telegramRepo         telegramapp.Repository
 	telegramSender       telegramapp.Sender
 	telegramReports      telegramapp.Reporter
+	telegramOutbox       telegramapp.OutboxDispatcher
+	telegramOutboxKick   chan struct{}
 	telegramBackup       telegramapp.BackupDelivery
 	webhookRepo          webhookapp.Repository
 	webhookDispatch      webhookapp.Dispatcher
@@ -113,6 +115,7 @@ func New(cfg Config) (*Server, error) {
 	applyRuntimeSettingsToConfig(&cfg, runtimeSettings)
 	telegramRepo := telegramapp.NewRepository(pool.DB, pool.Dialect)
 	telegramSender := telegramapp.NewSender(telegramRepo, cfg.TelegramAPIBase)
+	telegramOutboxKick := make(chan struct{}, 1)
 	webhookRepo := webhookapp.NewRepository(pool.DB, pool.Dialect)
 	webhookDispatch := webhookapp.NewDispatcher(webhookRepo, webhookapp.Config{
 		Addresses:     cfg.WebhookAddresses,
@@ -149,10 +152,18 @@ func New(cfg Config) (*Server, error) {
 		settingsRepo:      settingsRepo,
 		telegramRepo:      telegramRepo,
 		telegramSender:    telegramSender,
-		telegramReports: telegramapp.NewReporter(
+		telegramReports: telegramapp.NewReporterWithWake(
 			telegramRepo,
 			telegramSender,
+			func() {
+				select {
+				case telegramOutboxKick <- struct{}{}:
+				default:
+				}
+			},
 		),
+		telegramOutbox:     telegramapp.NewOutboxDispatcher(telegramRepo, telegramSender),
+		telegramOutboxKick: telegramOutboxKick,
 		telegramBackup:     telegramapp.NewBackupDelivery(telegramRepo, telegramSender),
 		webhookRepo:        webhookRepo,
 		webhookDispatch:    webhookDispatch,
@@ -212,6 +223,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 		go s.runAdminLifecycleWorker(ctx)
 		s.runUserLifecycleWorkers(ctx)
 		go s.runTelegramBackupScheduler(ctx)
+		go s.runTelegramMessageWorker(ctx)
 		go s.runCertificateRenewalWorker(ctx)
 		go s.runWebhookWorker(ctx)
 		go s.runTelegramBot(ctx)
