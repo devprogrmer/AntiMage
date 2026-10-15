@@ -40,6 +40,28 @@ func TestFastCGIRequestStopsWhenRequestContextIsCanceled(t *testing.T) {
 	<-serverDone
 }
 
+func TestPHPMyAdminFastCGIAdmissionIsBoundedAndCancelSafe(t *testing.T) {
+	server := &Server{}
+	releaseFirst, err := server.acquirePHPMyAdminFastCGISlot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if release, err := server.acquirePHPMyAdminFastCGISlot(ctx); err == nil {
+		release()
+		t.Fatal("second FastCGI request entered while the only slot was occupied")
+	} else if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("waiting request error=%v, want context deadline", err)
+	}
+	releaseFirst()
+	releaseNext, err := server.acquirePHPMyAdminFastCGISlot(context.Background())
+	if err != nil {
+		t.Fatalf("canceled waiter leaked the FastCGI slot: %v", err)
+	}
+	releaseNext()
+}
+
 func TestFastCGIRequestRejectsOutputAboveConfiguredLimit(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

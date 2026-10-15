@@ -65,6 +65,8 @@ type Server struct {
 	certificateManager   *certificateapp.Manager
 	externalApps         *externalapps.Manager
 	backgroundOnce       sync.Once
+	phpMyAdminSlotOnce   sync.Once
+	phpMyAdminSlots      chan struct{}
 	nodeOperationsKick   chan struct{}
 	userOpsKickMu        sync.Mutex
 	userOpsKicking       bool

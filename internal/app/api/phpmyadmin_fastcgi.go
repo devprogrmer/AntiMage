@@ -29,6 +29,7 @@ const (
 	phpMyAdminExecutionLimitSecs = 600
 	phpMyAdminFastCGIResponseMax = int64(128 << 20)
 	phpMyAdminFastCGIConnectWait = 5 * time.Second
+	phpMyAdminFastCGIMaxActive   = 1
 )
 
 const (
@@ -91,6 +92,12 @@ func servePHPMyAdminStatic(w http.ResponseWriter, r *http.Request, fullPath stri
 }
 
 func (s *Server) servePHPMyAdminPHP(w http.ResponseWriter, r *http.Request, status phpMyAdminResponse, scriptRel string, scriptPath string) error {
+	release, err := s.acquirePHPMyAdminFastCGISlot(r.Context())
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	network, address, err := findPHPFPMSocket()
 	if err != nil {
 		return err
@@ -106,6 +113,18 @@ func (s *Server) servePHPMyAdminPHP(w http.ResponseWriter, r *http.Request, stat
 		return errors.New(strings.TrimSpace(string(stderr)))
 	}
 	return writePHPMyAdminFastCGIResponse(w, stdout, status)
+}
+
+func (s *Server) acquirePHPMyAdminFastCGISlot(ctx context.Context) (func(), error) {
+	s.phpMyAdminSlotOnce.Do(func() {
+		s.phpMyAdminSlots = make(chan struct{}, phpMyAdminFastCGIMaxActive)
+	})
+	select {
+	case s.phpMyAdminSlots <- struct{}{}:
+		return func() { <-s.phpMyAdminSlots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func safePHPMyAdminPath(rel string) (string, error) {
