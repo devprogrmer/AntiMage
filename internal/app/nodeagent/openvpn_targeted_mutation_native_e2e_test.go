@@ -244,7 +244,7 @@ func TestOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	waitErr := <-rpcDone
 	select {
 	case handlerErr := <-cancelRPCFinished:
-		if status.Code(handlerErr) != codes.DeadlineExceeded {
+		if status.Code(handlerErr) != codes.Canceled {
 			t.Fatalf("server did not observe per-inbound wait cancellation: %v", handlerErr)
 		}
 	case <-time.After(5 * time.Second):
@@ -254,8 +254,8 @@ func TestOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	if err := <-lockDone; err != nil {
 		t.Fatalf("release native per-inbound lifecycle lock: %v", err)
 	}
-	if waitErr == nil || status.Code(waitErr) != codes.DeadlineExceeded {
-		t.Fatalf("mutation lock wait error = %v, want deadline exceeded", waitErr)
+	if waitErr == nil || status.Code(waitErr) != codes.Canceled {
+		t.Fatalf("mutation lock wait error = %v, want canceled", waitErr)
 	}
 	lifecycleGate.mu.Lock()
 	waitersAfterCancel := len(lifecycleGate.waiters)
