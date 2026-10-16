@@ -142,6 +142,7 @@ func assertNativeAmneziaWGPersistenceRollback(t *testing.T, app *Server, ctx con
 	backup := policyPath + ".native-e2e-backup"
 	previous := runtimePolicyAtomicWrite
 	obstructed := false
+	restoredBackup := false
 	runtimePolicyAtomicWrite = func(path string, raw []byte) error {
 		if path == policyPath && !obstructed {
 			if err := os.Rename(path, backup); err != nil {
@@ -157,7 +158,7 @@ func assertNativeAmneziaWGPersistenceRollback(t *testing.T, app *Server, ctx con
 	}
 	defer func() {
 		runtimePolicyAtomicWrite = previous
-		if obstructed {
+		if obstructed && !restoredBackup {
 			_ = os.Remove(policyPath)
 			_ = os.Rename(backup, policyPath)
 		}
@@ -187,6 +188,7 @@ func assertNativeAmneziaWGPersistenceRollback(t *testing.T, app *Server, ctx con
 	if err != nil || string(restored) != string(original) {
 		t.Fatalf("AmneziaWG runtime policy rollback was not exact: err=%v", err)
 	}
+	restoredBackup = true
 }
 
 func mustAmneziaWGNativeJSON(t *testing.T, value any) string {
