@@ -67,8 +67,8 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, capability := range []string{"targeted_user_add_remove_amneziawg", "targeted_user_update_amneziawg"} {
-		if openVPNNativeControllerHasCapability(hello.GetRuntime().GetCapabilities(), capability) {
-			t.Fatalf("AmneziaWG capability %s was advertised before the Controller-native gate", capability)
+		if !openVPNNativeControllerHasCapability(hello.GetRuntime().GetCapabilities(), capability) {
+			t.Fatalf("AmneziaWG capability %s missing after the native mutation gate passed", capability)
 		}
 	}
 	capabilityJSON, err := json.Marshal(hello.GetRuntime().GetCapabilities())
@@ -115,11 +115,9 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.2/32", true) || !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.3/32", true) || nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.9/32", false) {
 		t.Fatal("native baseline did not preserve the two live peers and leave the target absent")
 	}
-	// Until the native gate is complete the production Hello deliberately does
-	// not advertise this capability. Seed only the Controller's handshake view
-	// here to exercise the exact production targeted dispatch over real gRPC.
-	capabilities := append(append([]string(nil), hello.GetRuntime().GetCapabilities()...), "targeted_user_add_remove_amneziawg", "targeted_user_update_amneziawg")
-	client.SetHandshake(hello.GetNodeVersion(), capabilities)
+	// Use the actual NodeAgent Hello capability set so Controller dispatch and
+	// legacy-node fallback match the production handshake.
+	client.SetHandshake(hello.GetNodeVersion(), hello.GetRuntime().GetCapabilities())
 	dropAck.Store(true)
 	add := OperationRow{ID: 401, OperationType: "add_user", UserID: sql.NullInt64{Int64: 8, Valid: true}}
 	firstAddErr := controller.grpcApplyUserOperation(ctx, client, node, add, nil)

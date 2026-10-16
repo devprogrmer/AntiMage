@@ -197,6 +197,11 @@ func TestRuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities(t *te
 			t.Fatalf("WireGuard capability %s advertised=%v, want %v for platform %s", capability, got, want, runtime.GOOS)
 		}
 	}
+	for _, capability := range []string{"targeted_user_update_amneziawg", "targeted_user_add_remove_amneziawg"} {
+		if got, want := seen[capability], runtime.GOOS == "linux"; got != want {
+			t.Fatalf("AmneziaWG capability %s advertised=%v, want %v for platform %s", capability, got, want, runtime.GOOS)
+		}
+	}
 }
 
 func TestXrayVLESSUserOperationsAreIdempotentAndRollbackFailedUpdate(t *testing.T) {
