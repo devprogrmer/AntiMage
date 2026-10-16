@@ -109,8 +109,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$ROOT" "$ROOT/etc/ppp/ip-pre-up.d" "$ROOT/etc/xl2tpd" "$ROOT/etc/run"
+mkdir -p "$ROOT" "$ROOT/etc"
 mkdir -p "$ROOT/l2tp-state"
+# Overlay a private /etc tree instead of bind-mounting individual config files.
+# L2TP preparation uses atomic rename for /etc/ipsec.conf and ipsec.secrets;
+# replacing a file bind-mount target fails with EBUSY on Linux.
+cp -a /etc/. "$ROOT/etc/"
+mkdir -p "$ROOT/etc/ppp/ip-pre-up.d" "$ROOT/etc/xl2tpd" "$ROOT/etc/run"
 # The package may auto-start a host strongSwan daemon before the test mount is
 # installed. Stop it so the production ipsec start command loads this test's
 # generated L2TP connection from the isolated /etc/ipsec.conf.
@@ -119,7 +124,7 @@ systemctl stop strongswan.service >/dev/null 2>&1 || true
 ipsec stop >/dev/null 2>&1 || true
 # strongSwan's bypass-lan plugin otherwise installs higher-priority cleartext
 # policies for the directly connected test subnet, shadowing UDP/1701 ESP.
-SERVER_STRONGSWAN_CONF="$ROOT/server-strongswan.conf"
+SERVER_STRONGSWAN_CONF="$ROOT/etc/strongswan.conf"
 cat >"$SERVER_STRONGSWAN_CONF" <<'EOF'
 include /etc/strongswan.d/*.conf
 charon {
@@ -130,7 +135,6 @@ charon {
     }
 }
 EOF
-mount --bind "$SERVER_STRONGSWAN_CONF" /etc/strongswan.conf
 # Current kernels expose the PPP-over-L2TP driver as l2tp_ppp. Try the legacy
 # pppol2tp module name too, but do not fail when that alias is not shipped.
 modprobe l2tp_ppp
@@ -144,10 +148,7 @@ if [ ! -x /etc/ppp/ip-pre-up ]; then
 fi
 cp -a /etc/ppp/ip-pre-up "$ROOT/etc/ppp/ip-pre-up"
 for file in "$ROOT/etc/ipsec.conf" "$ROOT/etc/ipsec.secrets" "$ROOT/etc/ppp/options"; do : >"$file"; done
-mount --bind "$ROOT/etc/ppp" /etc/ppp
-mount --bind "$ROOT/etc/xl2tpd" /etc/xl2tpd
-mount --bind "$ROOT/etc/ipsec.conf" /etc/ipsec.conf
-mount --bind "$ROOT/etc/ipsec.secrets" /etc/ipsec.secrets
+mount --bind "$ROOT/etc" /etc
 
 quota_bytes="${ANTIMAGE_L2TP_QUOTA_BYTES:-52428800}"
 stage() {
