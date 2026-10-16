@@ -70,6 +70,53 @@ func TestL2TPTargetedMutationUpdatesPolicyWithoutRestartAndIsIdempotent(t *testi
 }
 
 func TestL2TPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack(t *testing.T) {
+	t.Run("stale exited session record is not terminated", func(t *testing.T) {
+		h := newL2TPMutationFixture(t)
+		root := filepath.Join(h.root, "l2tp", l2TPRuntimeDirName("l2tp-main"))
+		session := pppOfflineSession{ID: "exited-target", UserID: 7, InboundTag: "l2tp-main", Interface: "ppp0", Process: "fixture-boot:101:1"}
+		if err := offlineDurableJSON(pppOfflineSessionActivePath(root, session.Interface, session.Process), session); err != nil {
+			t.Fatal(err)
+		}
+		previousReadProcess := pppOfflineReadProcess
+		pppOfflineReadProcess = func(string) (string, error) { return "", os.ErrNotExist }
+		t.Cleanup(func() { pppOfflineReadProcess = previousReadProcess })
+		request := &nodev1.RemoveInboundUserRequest{OperationId: "operation-remove-exited", InboundTag: "l2tp-main", Email: l2TPRemoveUserPrefix + "7:2"}
+		if _, err := h.server.RemoveUser(context.Background(), request); err != nil {
+			t.Fatalf("remove should ignore an exited process retained in active metadata: %v", err)
+		}
+		if len(h.terminated) != 0 {
+			t.Fatalf("stale exited session was sent a termination signal: %v", h.terminated)
+		}
+	})
+
+	t.Run("process exit racing pidfd open is idempotent", func(t *testing.T) {
+		h := newL2TPMutationFixture(t)
+		root := filepath.Join(h.root, "l2tp", l2TPRuntimeDirName("l2tp-main"))
+		session := pppOfflineSession{ID: "racing-target", UserID: 7, InboundTag: "l2tp-main", Interface: "ppp0", Process: "fixture-boot:101:1"}
+		if err := offlineDurableJSON(pppOfflineSessionActivePath(root, session.Interface, session.Process), session); err != nil {
+			t.Fatal(err)
+		}
+		exited := false
+		previousReadProcess := pppOfflineReadProcess
+		pppOfflineReadProcess = func(string) (string, error) {
+			if exited {
+				return "", os.ErrNotExist
+			}
+			return session.Process, nil
+		}
+		t.Cleanup(func() { pppOfflineReadProcess = previousReadProcess })
+		previousTerminate := l2TPMutationTerminateSession
+		l2TPMutationTerminateSession = func(context.Context, string) error {
+			exited = true
+			return os.ErrNotExist
+		}
+		t.Cleanup(func() { l2TPMutationTerminateSession = previousTerminate })
+		request := &nodev1.RemoveInboundUserRequest{OperationId: "operation-remove-exit-race", InboundTag: "l2tp-main", Email: l2TPRemoveUserPrefix + "7:2"}
+		if _, err := h.server.RemoveUser(context.Background(), request); err != nil {
+			t.Fatalf("remove should accept a confirmed process exit racing pidfd open: %v", err)
+		}
+	})
+
 	t.Run("remove only target session", func(t *testing.T) {
 		h := newL2TPMutationFixture(t)
 		activeDir := filepath.Join(h.root, "l2tp", l2TPRuntimeDirName("l2tp-main"), "ppp-accounting", "active")
@@ -81,6 +128,14 @@ func TestL2TPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack(t 
 				t.Fatal(err)
 			}
 		}
+		previousReadProcess := pppOfflineReadProcess
+		pppOfflineReadProcess = func(pid string) (string, error) {
+			if pid == "101" {
+				return "boot:101:1", nil
+			}
+			return "", os.ErrNotExist
+		}
+		t.Cleanup(func() { pppOfflineReadProcess = previousReadProcess })
 		_, err := h.server.RemoveUser(context.Background(), &nodev1.RemoveInboundUserRequest{OperationId: "operation-remove-alice", InboundTag: "l2tp-main", Email: l2TPRemoveUserPrefix + "7:2"})
 		if err != nil {
 			t.Fatal(err)

@@ -530,7 +530,20 @@ func (s *Server) terminateL2TPUserSessions(ctx context.Context, inboundTag strin
 		if session.InboundTag != inboundTag || session.UserID != userID {
 			continue
 		}
+		if !pppOfflineProcessIsLive(session.Process) {
+			// Stop callbacks can be delayed or retried after the process exits.
+			// Retained accounting metadata is not an active session and must not
+			// make a targeted remove fail.
+			continue
+		}
 		if err := l2TPMutationTerminateSession(ctx, session.Process); err != nil {
+			// The process can exit after the liveness check but before pidfd_open.
+			// Only suppress that race after revalidating this exact process
+			// generation as gone; permission and other inspection errors remain
+			// conservative failures in pppOfflineProcessIsLive.
+			if !pppOfflineProcessIsLive(session.Process) {
+				continue
+			}
 			return fmt.Errorf("terminate target PPP process: %w", err)
 		}
 	}
