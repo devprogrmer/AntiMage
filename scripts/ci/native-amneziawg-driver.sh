@@ -150,6 +150,15 @@ env ANTIMAGE_AWG_TARGETED_MUTATION_E2E=1 \
   ANTIMAGE_AWG_CLIENT_PUBLIC="$client_pub" \
   ANTIMAGE_AWG_EXTRA_CLIENT_PUBLIC="$client2_pub" \
   "$ANTIMAGE_AWG_TEST_BINARY" -test.run='^TestAmneziaWGTargetedMutationNativeE2E$' -test.v
+echo '=== AmneziaWG targeted Controller to NodeAgent gRPC mutation on live kernel interface ==='
+env ANTIMAGE_AWG_CONTROLLER_TARGETED_MUTATION_E2E=1 \
+  ANTIMAGE_AWG_NATIVE_STATE="$ROOT/awg-state" \
+  ANTIMAGE_AWG_NATIVE_INTERFACE="$IFACE" \
+  ANTIMAGE_AWG_NATIVE_CLIENT_NS="$NS" \
+  ANTIMAGE_AWG_CLIENT_PUBLIC="$client_pub" \
+  ANTIMAGE_AWG_EXTRA_CLIENT_PUBLIC="$client2_pub" \
+  ANTIMAGE_AWG_TOOL="$AWG_TOOL" \
+  "$ANTIMAGE_AWG_PANEL_TEST_BINARY" -test.run='^TestControllerAmneziaWGTargetedMutationNativeE2E$' -test.v
 NATIVE_SESSION_EXPECT_MARKER="$ROOT/awg-state/native-session-api/api-active"
 stage collect-first "$ROOT/awg-state"
 NATIVE_SESSION_EXPECT_MARKER=""

@@ -377,9 +377,9 @@ jobs:
           go-version-file: go.mod
       - name: Run AmneziaWG Controller RPC and NodeAgent mutation tests
         run: |
-          go test ./internal/app/nodecontroller -run 'Test(ControllerAmneziaWGOperationsUseAdvertisedTargetedRPC|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
+          go test ./internal/app/nodecontroller -run 'Test(ControllerAmneziaWGOperationsUseAdvertisedTargetedRPC|ControllerAmneziaWGTargetedMutationNativeE2E|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
           go test ./internal/app/nodeagent -run 'Test(AmneziaWGTargetedRPCIsIdempotentAndRejectsConflictingOperationID|ApplyAmneziaWGUserMutation|ApplyAmneziaWGIdenticalUpdateIsKernelNoop)' -count=1
       - name: Race test AmneziaWG Controller RPC and NodeAgent mutation tests
         run: |
-          go test -race ./internal/app/nodecontroller -run 'Test(ControllerAmneziaWGOperationsUseAdvertisedTargetedRPC|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
+          go test -race ./internal/app/nodecontroller -run 'Test(ControllerAmneziaWGOperationsUseAdvertisedTargetedRPC|ControllerAmneziaWGTargetedMutationNativeE2E|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
           go test -race ./internal/app/nodeagent -run 'Test(AmneziaWGTargetedRPCIsIdempotentAndRejectsConflictingOperationID|ApplyAmneziaWGUserMutation|ApplyAmneziaWGIdenticalUpdateIsKernelNoop)' -count=1
