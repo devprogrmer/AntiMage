@@ -358,9 +358,9 @@ jobs:
           go-version-file: go.mod
       - name: Run WireGuard Controller RPC and NodeAgent mutation tests
         run: |
-          go test ./internal/app/nodecontroller -run 'TestControllerWireGuard(AddAndUpdateUseTargetedRPC|RemoveUsesTargetedRPCAndStableIdentity)' -count=1
-          go test ./internal/app/nodeagent -run 'Test(WireGuardMutationRPC(AddUpdateRemovePreservesInterfaceAndUnrelatedPeer|RejectsOperationEnvelopeMismatch)|WireGuardMutationReceiptFailureRetriesWithoutReapplyingKernelMutation|RuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities)' -count=1
+          go test ./internal/app/nodecontroller -run 'Test(ControllerWireGuard(AddAndUpdateUseTargetedRPC|RemoveUsesTargetedRPCAndStableIdentity)|WireGuardTargetedCapabilityRequiresAdvertisedAssignedSingleProtocol)' -count=1
+          go test ./internal/app/nodeagent -run 'Test(WireGuardMutationRPC(AddUpdateRemovePreservesInterfaceAndUnrelatedPeer|RejectsOperationEnvelopeMismatch)|WireGuardMutationReceipt(RejectsConflictingOperationID|FailureRetriesWithoutReapplyingKernelMutation)|RuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities)' -count=1
       - name: Race test WireGuard Controller RPC and NodeAgent mutation tests
         run: |
-          go test -race ./internal/app/nodecontroller -run 'TestControllerWireGuard(AddAndUpdateUseTargetedRPC|RemoveUsesTargetedRPCAndStableIdentity)' -count=1
-          go test -race ./internal/app/nodeagent -run 'Test(WireGuardMutationRPC(AddUpdateRemovePreservesInterfaceAndUnrelatedPeer|RejectsOperationEnvelopeMismatch)|WireGuardMutationReceiptFailureRetriesWithoutReapplyingKernelMutation|RuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities)' -count=1
+          go test -race ./internal/app/nodecontroller -run 'Test(ControllerWireGuard(AddAndUpdateUseTargetedRPC|RemoveUsesTargetedRPCAndStableIdentity)|WireGuardTargetedCapabilityRequiresAdvertisedAssignedSingleProtocol)' -count=1
+          go test -race ./internal/app/nodeagent -run 'Test(WireGuardMutationRPC(AddUpdateRemovePreservesInterfaceAndUnrelatedPeer|RejectsOperationEnvelopeMismatch)|WireGuardMutationReceipt(RejectsConflictingOperationID|FailureRetriesWithoutReapplyingKernelMutation)|RuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities)' -count=1

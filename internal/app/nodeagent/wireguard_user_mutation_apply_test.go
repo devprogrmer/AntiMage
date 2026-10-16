@@ -481,6 +481,38 @@ func TestWireGuardMutationRPCRejectsOperationEnvelopeMismatch(t *testing.T) {
 	}
 }
 
+func TestWireGuardMutationReceiptRejectsConflictingOperationID(t *testing.T) {
+	key := strings.Repeat("A", 43) + "="
+	h := newWireGuardMutationHarness(t, nil)
+	request := &nodev1.InboundUserRequest{
+		OperationId: "wg-conflicting-operation",
+		InboundTag:  "wg-main",
+		User: h.user(7, "add", []wireGuardRuntimePeer{{
+			UserID: 7, PublicKey: key, Address: "10.69.0.7", Status: "active",
+		}}),
+	}
+	if response, err := h.server.AddUser(context.Background(), request); err != nil || !response.GetAccepted() {
+		t.Fatalf("initial add response=%v err=%v", response, err)
+	}
+	mutations := wireGuardSetCommandCount(h.commands)
+	conflicting := &nodev1.InboundUserRequest{
+		OperationId: request.GetOperationId(),
+		InboundTag:  request.GetInboundTag(),
+		User: h.user(7, "update", []wireGuardRuntimePeer{{
+			UserID: 7, PublicKey: key, Address: "10.69.0.9", Status: "active",
+		}}),
+	}
+	if response, err := h.server.UpdateUser(context.Background(), conflicting); response != nil || status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("conflicting operation response=%v err=%v, want failed precondition", response, err)
+	}
+	if got := h.peers[key].allowed; got != "10.69.0.7/32" {
+		t.Fatalf("conflicting operation changed target peer state to %q", got)
+	}
+	if got := wireGuardSetCommandCount(h.commands); got != mutations {
+		t.Fatalf("conflicting operation reached kernel: set commands=%d before=%d", got, mutations)
+	}
+}
+
 func TestWireGuardMutationReceiptFailureRetriesWithoutReapplyingKernelMutation(t *testing.T) {
 	targetKey := strings.Repeat("A", 43) + "="
 	h := newWireGuardMutationHarness(t, nil)

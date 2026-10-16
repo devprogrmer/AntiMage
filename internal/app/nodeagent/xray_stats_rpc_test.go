@@ -193,8 +193,8 @@ func TestRuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities(t *te
 		}
 	}
 	for _, capability := range []string{"targeted_user_update_wireguard", "targeted_user_add_remove_wireguard"} {
-		if seen[capability] {
-			t.Fatalf("WireGuard capability %s advertised before privileged Native E2E gate", capability)
+		if got, want := seen[capability], runtime.GOOS == "linux"; got != want {
+			t.Fatalf("WireGuard capability %s advertised=%v, want %v for platform %s", capability, got, want, runtime.GOOS)
 		}
 	}
 }

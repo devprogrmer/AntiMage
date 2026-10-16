@@ -84,9 +84,9 @@ func TestControllerWireGuardTargetedMutationNativeE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, capability := range hello.GetRuntime().GetCapabilities() {
-		if strings.Contains(capability, "wireguard") && strings.Contains(capability, "targeted_user") {
-			t.Fatalf("WireGuard targeted capability advertised before native gate: %s", capability)
+	for _, capability := range []string{"targeted_user_add_remove_wireguard", "targeted_user_update_wireguard"} {
+		if !nativeWireGuardControllerHasCapability(hello.GetRuntime().GetCapabilities(), capability) {
+			t.Fatalf("native NodeAgent did not advertise gated capability %s", capability)
 		}
 	}
 	var syncConfigCalls atomic.Int32
@@ -114,6 +114,7 @@ func TestControllerWireGuardTargetedMutationNativeE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
+	client.SetHandshake(hello.GetNodeVersion(), hello.GetRuntime().GetCapabilities())
 	initial := &nodev1.RuntimeConfigRequest{
 		OperationId: "native-wg-initial", ConfigJson: xrayConfig,
 		OvRuntimeJson: nativeConfig, DesiredRevision: 1,
@@ -137,10 +138,10 @@ func TestControllerWireGuardTargetedMutationNativeE2E(t *testing.T) {
 	}
 	dropAck.Store(true)
 	add := OperationRow{ID: 301, OperationType: "add_user", UserID: sql.NullInt64{Int64: 8, Valid: true}}
-	if err := controller.grpcApplyWireGuardUserOperation(ctx, client, node, add); err == nil {
+	if err := controller.grpcApplyUserOperation(ctx, client, node, add, nil); err == nil {
 		t.Fatal("simulated lost ACK was reported as delivered")
 	}
-	if err := controller.grpcApplyWireGuardUserOperation(ctx, client, node, add); err != nil {
+	if err := controller.grpcApplyUserOperation(ctx, client, node, add, nil); err != nil {
 		t.Fatalf("same operation retry after lost ACK: %v", err)
 	}
 	var targetAddress string
@@ -159,14 +160,14 @@ func TestControllerWireGuardTargetedMutationNativeE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	update := OperationRow{ID: 302, OperationType: "update_user", UserID: sql.NullInt64{Int64: 8, Valid: true}}
-	if err := controller.grpcApplyWireGuardUserOperation(ctx, client, node, update); err != nil {
+	if err := controller.grpcApplyUserOperation(ctx, client, node, update, nil); err != nil {
 		t.Fatalf("UpdateUser targeted RPC: %v", err)
 	}
 	if !nativeWireGuardPeerPresent(t, iface, updatedAddress) {
 		t.Fatalf("UpdateUser target address %s missing from live kernel peer", updatedAddress)
 	}
 	remove := OperationRow{ID: 303, OperationType: "remove_user", UserID: sql.NullInt64{Int64: 8, Valid: true}}
-	if err := controller.grpcApplyWireGuardUserOperation(ctx, client, node, remove); err != nil {
+	if err := controller.grpcApplyUserOperation(ctx, client, node, remove, nil); err != nil {
 		t.Fatalf("RemoveUser targeted RPC: %v", err)
 	}
 	if nativeWireGuardPeerPresent(t, iface, updatedAddress) {
@@ -183,7 +184,16 @@ func TestControllerWireGuardTargetedMutationNativeE2E(t *testing.T) {
 	if err != nil || after.Index != before.Index {
 		t.Fatalf("WireGuard interface identity changed: before=%d after=%v err=%v", before.Index, after, err)
 	}
-	t.Log("real Controller -> TLS/gRPC NodeAgent -> kernel Add/Update/Remove passed; ACK-loss retry was idempotent; client traffic, peer handshake and interface identity were preserved; no targeted-path SyncConfig fallback")
+	t.Log("real Controller handshake capability dispatch -> TLS/gRPC NodeAgent -> kernel Add/Update/Remove passed; ACK-loss retry was idempotent; client traffic, peer handshake and interface identity were preserved; no targeted-path SyncConfig fallback")
+}
+
+func nativeWireGuardControllerHasCapability(capabilities []string, want string) bool {
+	for _, capability := range capabilities {
+		if capability == want {
+			return true
+		}
+	}
+	return false
 }
 
 func wireGuardNativeControllerDB(t *testing.T, ctx context.Context, root, iface, primaryKey, serverPrivate string) (*sql.DB, Repository, NodeRow, string, string) {

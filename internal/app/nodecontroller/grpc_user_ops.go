@@ -134,9 +134,11 @@ func (c Controller) grpcApplyWireGuardUserOperation(ctx context.Context, client 
 		}
 	}
 	for _, tag := range tags {
+		operationID := fmt.Sprintf("%s-%d-%s", operation.OperationType, operation.ID, tag)
+		var response *nodev1.RuntimeActionResponse
 		if mutation == "remove" {
-			_, err = client.Runtime().RemoveUser(ctx, &nodev1.RemoveInboundUserRequest{
-				OperationId: fmt.Sprintf("%s-%d-%s", operation.OperationType, operation.ID, tag),
+			response, err = client.Runtime().RemoveUser(ctx, &nodev1.RemoveInboundUserRequest{
+				OperationId: operationID,
 				InboundTag:  tag,
 				Email:       fmt.Sprintf("wireguard-user:%d", operation.UserID.Int64),
 			})
@@ -146,18 +148,21 @@ func (c Controller) grpcApplyWireGuardUserOperation(ctx context.Context, client 
 				return userErr
 			}
 			request := &nodev1.InboundUserRequest{
-				OperationId: fmt.Sprintf("%s-%d-%s", operation.OperationType, operation.ID, tag),
+				OperationId: operationID,
 				InboundTag:  tag,
 				User:        user,
 			}
 			if mutation == "add" {
-				_, err = client.Runtime().AddUser(ctx, request)
+				response, err = client.Runtime().AddUser(ctx, request)
 			} else {
-				_, err = client.Runtime().UpdateUser(ctx, request)
+				response, err = client.Runtime().UpdateUser(ctx, request)
 			}
 		}
 		if err != nil {
 			return fmt.Errorf("apply WireGuard %s for inbound %s: %w", mutation, tag, err)
+		}
+		if response == nil || !response.GetAccepted() || strings.TrimSpace(response.GetOperationId()) != operationID {
+			return fmt.Errorf("apply WireGuard %s for inbound %s: missing, rejected, or mismatched acknowledgement", mutation, tag)
 		}
 	}
 	return nil

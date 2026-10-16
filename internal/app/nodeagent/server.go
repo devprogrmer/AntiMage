@@ -1231,6 +1231,7 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 	if runtime.GOOS == "linux" {
 		capabilities = append(capabilities,
 			"targeted_user_update_openvpn", "targeted_user_add_remove_openvpn",
+			"targeted_user_update_wireguard", "targeted_user_add_remove_wireguard",
 		)
 	}
 	if s.verifiedInstallerAvailable() {

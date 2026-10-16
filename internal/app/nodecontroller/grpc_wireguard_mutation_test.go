@@ -30,7 +30,31 @@ type wireGuardMutationRPCRecorder struct {
 
 func (r *wireGuardMutationRPCRecorder) RemoveUser(_ context.Context, req *nodev1.RemoveInboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
 	r.removed <- req
-	return &nodev1.RuntimeActionResponse{Accepted: true}, nil
+	return &nodev1.RuntimeActionResponse{Accepted: true, OperationId: req.GetOperationId()}, nil
+}
+
+func TestWireGuardTargetedCapabilityRequiresAdvertisedAssignedSingleProtocol(t *testing.T) {
+	client := &nodeclient.Client{}
+	client.SetHandshake("test", []string{"targeted_user_add_remove_wireguard", "targeted_user_update_wireguard"})
+	for _, test := range []struct {
+		name      string
+		protocols []string
+		operation string
+		assigned  bool
+		want      bool
+	}{
+		{name: "capable assigned add", protocols: []string{"wireguard"}, operation: "add_user", assigned: true, want: true},
+		{name: "legacy node", protocols: []string{"wireguard"}, operation: "add_user", assigned: false},
+		{name: "mixed protocol remains conservative", protocols: []string{"wireguard", "vless"}, operation: "add_user", assigned: true},
+		{name: "unadvertised operation", protocols: []string{"wireguard"}, operation: "sync_config", assigned: true},
+		{name: "targeted update", protocols: []string{"wireguard"}, operation: "update_user", assigned: true, want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := supportsTargetedUserMutation(client, test.protocols, test.operation, test.assigned); got != test.want {
+				t.Fatalf("targeted=%v want=%v", got, test.want)
+			}
+		})
+	}
 }
 
 func (r *wireGuardMutationRPCRecorder) AddUser(_ context.Context, req *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
