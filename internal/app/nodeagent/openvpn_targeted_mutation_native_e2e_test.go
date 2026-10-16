@@ -184,19 +184,52 @@ func TestOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	// A failed durable desired-state write must undo staged files and leave the
 	// already-running daemon and unrelated session intact.
 	bobV1 := openVPNRuntimeUser{UserID: 2, Username: "bob", VPNUsername: "bob", Password: "bob-native-v1", IPv4Address: "10.211.0.10", Status: "active"}
-	oldAtomicWrite := runtimePolicyAtomicWrite
-	runtimePolicyAtomicWrite = func(path string, data []byte) error {
-		if filepath.Clean(path) == filepath.Clean(server.runtimePolicyPath()) {
-			return errors.New("injected native E2E policy persistence failure")
-		}
-		return oldAtomicWrite(path, data)
+	policyPath := server.runtimePolicyPath()
+	policyBefore, err := os.ReadFile(policyPath)
+	if err != nil {
+		t.Fatalf("read durable OpenVPN policy before persistence-failure test: %v", err)
 	}
+	policyInfo, err := os.Stat(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(policyPath); err != nil {
+		t.Fatalf("prepare real runtime-policy write failure: %v", err)
+	}
+	if err := os.Mkdir(policyPath, 0700); err != nil {
+		t.Fatalf("prepare runtime policy path obstruction: %v", err)
+	}
+	policyObstructed := true
+	restorePolicy := func() error {
+		if !policyObstructed {
+			return nil
+		}
+		if err := os.Remove(policyPath); err != nil {
+			return err
+		}
+		if err := atomicWriteFile(policyPath, policyBefore, policyInfo.Mode().Perm()); err != nil {
+			return err
+		}
+		policyObstructed = false
+		return nil
+	}
+	defer func() {
+		if err := restorePolicy(); err != nil {
+			t.Errorf("restore durable runtime policy after injected filesystem failure: %v", err)
+		}
+	}()
 	rollbackRequest := openVPNMutationRequest("native-add-rollback", "add", 11, bobV1)
 	rollbackRequest.InboundTag = inbound.Tag
 	_, mutationErr := rpc.AddUser(context.Background(), rollbackRequest)
-	runtimePolicyAtomicWrite = oldAtomicWrite
+	if err := restorePolicy(); err != nil {
+		t.Fatalf("restore previous durable runtime policy: %v", err)
+	}
 	if mutationErr == nil || !strings.Contains(mutationErr.Error(), "persist OpenVPN user policy") {
 		t.Fatalf("persistence failure was not surfaced: %v", mutationErr)
+	}
+	policyAfter, err := os.ReadFile(policyPath)
+	if err != nil || string(policyAfter) != string(policyBefore) {
+		t.Fatalf("failed mutation changed durable policy snapshot: err=%v", err)
 	}
 	assertOpenVPNMutationRollback(t, server, inbound.Tag, 10, dataDir, "bob")
 	assertNativeOpenVPNSnapshot(t, server, inbound.Tag, runtimeBefore, pidBefore, tunName, tunBefore.Index, aliceClientID, "alice")
