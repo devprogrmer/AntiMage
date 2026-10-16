@@ -543,11 +543,11 @@ func (s *Server) applyWireGuardUserRPC(ctx context.Context, operationID, inbound
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	if encodedOperation != operation {
+	if encodedOperation != operation || strings.TrimSpace(operationID) == "" {
 		return nil, status.Error(codes.InvalidArgument, "WireGuard operation envelope mismatch")
 	}
 	err = s.runtimeLifecycleCoordinator().runMutation(ctx, inboundTag, func() error {
-		return s.applyWireGuardUserMutation(ctx, inboundTag, user, operation)
+		return s.applyWireGuardUserMutationOperation(ctx, operationID, inboundTag, user, operation)
 	})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -1230,7 +1230,6 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "runtime_evidence_v1", "targeted_user_update_vless", "targeted_user_add_remove_vless"}
 	if runtime.GOOS == "linux" {
 		capabilities = append(capabilities,
-			"targeted_user_update_wireguard", "targeted_user_add_remove_wireguard",
 			"targeted_user_update_openvpn", "targeted_user_add_remove_openvpn",
 		)
 	}

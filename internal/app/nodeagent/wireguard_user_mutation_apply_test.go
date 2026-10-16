@@ -26,6 +26,7 @@ type mutationTestPeer struct {
 
 type wireGuardMutationHarness struct {
 	server   *Server
+	dataDir  string
 	peers    map[string]mutationTestPeer
 	commands [][]string
 }
@@ -64,7 +65,7 @@ func newWireGuardMutationHarness(t *testing.T, initial []wireGuardRuntimePeer) *
 	}); err != nil {
 		t.Fatal(err)
 	}
-	h := &wireGuardMutationHarness{server: server, peers: make(map[string]mutationTestPeer)}
+	h := &wireGuardMutationHarness{server: server, dataDir: dataDir, peers: make(map[string]mutationTestPeer)}
 	for _, peer := range initial {
 		h.peers[peer.PublicKey] = mutationTestPeer{
 			publicKey: peer.PublicKey, psk: peer.PresharedKey,
@@ -410,6 +411,31 @@ func TestWireGuardMutationRPCAddUpdateRemovePreservesInterfaceAndUnrelatedPeer(t
 	if err != nil || !add.GetAccepted() || add.GetOperationId() != "wg-add-7" {
 		t.Fatalf("AddUser response=%v err=%v", add, err)
 	}
+	mutationsAfterAdd := wireGuardSetCommandCount(h.commands)
+	replayed, err := h.server.AddUser(context.Background(), &nodev1.InboundUserRequest{
+		OperationId: "wg-add-7", InboundTag: "wg-main", User: h.user(7, "add", []wireGuardRuntimePeer{added}),
+	})
+	if err != nil || !replayed.GetAccepted() || wireGuardSetCommandCount(h.commands) != mutationsAfterAdd {
+		t.Fatalf("same operation ID retry was not idempotent: response=%v set_commands=%d want=%d err=%v", replayed, wireGuardSetCommandCount(h.commands), mutationsAfterAdd, err)
+	}
+	conflict := h.user(7, "add", []wireGuardRuntimePeer{{UserID: 7, PublicKey: targetKey, Address: "10.69.0.10", Status: "active"}})
+	if response, err := h.server.AddUser(context.Background(), &nodev1.InboundUserRequest{
+		OperationId: "wg-add-7", InboundTag: "wg-main", User: conflict,
+	}); response != nil || status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("conflicting operation ID response=%v err=%v, want failed precondition", response, err)
+	}
+	if got := h.peers[targetKey].allowed; got != "10.69.0.7/32" {
+		t.Fatalf("conflicting retry changed target peer state: allowed=%q", got)
+	}
+	// A restarted NodeAgent has no in-memory operation state. The receipt must
+	// still suppress a second kernel mutation after an ACK was lost.
+	restartedAgent := New(Config{DataDir: h.dataDir})
+	restartedReplay, err := restartedAgent.AddUser(context.Background(), &nodev1.InboundUserRequest{
+		OperationId: "wg-add-7", InboundTag: "wg-main", User: h.user(7, "add", []wireGuardRuntimePeer{added}),
+	})
+	if err != nil || !restartedReplay.GetAccepted() || wireGuardSetCommandCount(h.commands) != mutationsAfterAdd {
+		t.Fatalf("post-restart same operation replay was not idempotent: response=%v set_commands=%d want=%d err=%v", restartedReplay, wireGuardSetCommandCount(h.commands), mutationsAfterAdd, err)
+	}
 	updated := wireGuardRuntimePeer{UserID: 7, PublicKey: targetKey, Address: "10.69.0.9", Status: "active"}
 	update, err := h.server.UpdateUser(context.Background(), &nodev1.InboundUserRequest{
 		OperationId: "wg-update-7", InboundTag: "wg-main", User: h.user(7, "update", []wireGuardRuntimePeer{updated}),
@@ -434,6 +460,16 @@ func TestWireGuardMutationRPCAddUpdateRemovePreservesInterfaceAndUnrelatedPeer(t
 	}
 }
 
+func wireGuardSetCommandCount(commands [][]string) int {
+	count := 0
+	for _, args := range commands {
+		if len(args) >= 3 && args[0] == "/fake/wg" && args[1] == "set" {
+			count++
+		}
+	}
+	return count
+}
+
 func TestWireGuardMutationRPCRejectsOperationEnvelopeMismatch(t *testing.T) {
 	h := newWireGuardMutationHarness(t, nil)
 	user := h.user(7, "update", []wireGuardRuntimePeer{{UserID: 7, PublicKey: strings.Repeat("A", 43) + "=", Address: "10.69.0.7", Status: "active"}})
@@ -442,5 +478,29 @@ func TestWireGuardMutationRPCRejectsOperationEnvelopeMismatch(t *testing.T) {
 	}
 	if len(h.commands) != 0 {
 		t.Fatalf("invalid operation envelope reached runtime: %v", h.commands)
+	}
+}
+
+func TestWireGuardMutationReceiptFailureRetriesWithoutReapplyingKernelMutation(t *testing.T) {
+	targetKey := strings.Repeat("A", 43) + "="
+	h := newWireGuardMutationHarness(t, nil)
+	oldWriter := wireGuardMutationReceiptWrite
+	wireGuardMutationReceiptWrite = func(string, []byte, os.FileMode) error { return errors.New("injected receipt persistence failure") }
+	request := &nodev1.InboundUserRequest{
+		OperationId: "wg-receipt-retry", InboundTag: "wg-main",
+		User: h.user(7, "add", []wireGuardRuntimePeer{{UserID: 7, PublicKey: targetKey, Address: "10.69.0.7", Status: "active"}}),
+	}
+	if response, err := h.server.AddUser(context.Background(), request); response != nil || status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("receipt failure response=%v err=%v, want failed precondition", response, err)
+	}
+	if _, ok := h.peers[targetKey]; !ok {
+		t.Fatal("successful peer mutation was unexpectedly rolled back after only the receipt write failed")
+	}
+	mutations := wireGuardSetCommandCount(h.commands)
+	wireGuardMutationReceiptWrite = oldWriter
+	t.Cleanup(func() { wireGuardMutationReceiptWrite = oldWriter })
+	response, err := h.server.AddUser(context.Background(), request)
+	if err != nil || !response.GetAccepted() || wireGuardSetCommandCount(h.commands) != mutations {
+		t.Fatalf("retry after receipt write failure re-applied kernel mutation: response=%v set_commands=%d want=%d err=%v", response, wireGuardSetCommandCount(h.commands), mutations, err)
 	}
 }
