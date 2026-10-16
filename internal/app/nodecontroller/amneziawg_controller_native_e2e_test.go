@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -67,22 +68,13 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 			t.Fatalf("AmneziaWG capability %s was advertised before the Controller-native gate", capability)
 		}
 	}
-	// The native driver starts AWG through the production runtime apply helper,
-	// then runs this Controller gate in a fresh test process. Establish the
-	// durable policy snapshot that a real successful SyncConfig leaves behind;
-	// targeted mutation must never invent a baseline from the live kernel.
-	initialRuntime := nativeAmneziaWGControllerRuntimeJSON(t, primaryKey, additionalKey)
-	initialSync, err := agent.SyncConfig(ctx, &nodev1.RuntimeConfigRequest{
-		OperationId: "native-awg-initial-policy-100", ConfigJson: `{"inbounds":[{"tag":"API_INBOUND","port":10085}]}`,
-		OvRuntimeJson: initialRuntime, DesiredRevision: 100,
-	})
-	if err != nil || initialSync == nil || !initialSync.GetAccepted() {
-		t.Fatalf("establish committed baseline runtime policy: response=%v err=%v", initialSync, err)
+	capabilityJSON, err := json.Marshal(hello.GetRuntime().GetCapabilities())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.2/32", true) || !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.3/32", true) || nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.9/32", true) {
-		t.Fatal("initial policy sync did not preserve the two live peers and leave the target absent")
+	if _, err := db.ExecContext(ctx, `UPDATE nodes SET node_capabilities=? WHERE id=7`, string(capabilityJSON)); err != nil {
+		t.Fatal(err)
 	}
-
 	var syncCalls, addCalls atomic.Int32
 	var dropAck atomic.Bool
 	interceptor := func(ctx context.Context, request any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
@@ -107,14 +99,29 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
+	node := NodeRow{ID: 7, Name: "native-awg-node", Address: "127.0.0.1", Status: "connected", Certificate: "native-cert", XrayConfigMode: "custom", XrayConfig: nativeAmneziaWGNodeConfig()}
+	controller := NewController(NewRepository(db, "sqlite"))
+	initialRuntime := nativeAmneziaWGControllerRuntimeJSON(t, primaryKey, additionalKey)
+	initialXrayConfig := string(nativeAmneziaWGNodeConfig())
+	initialRequest := &nodev1.RuntimeConfigRequest{
+		OperationId: "native-awg-initial-policy-100", ConfigJson: initialXrayConfig,
+		OvRuntimeJson: initialRuntime, DesiredRevision: 100,
+	}
+	if err := controller.executeLegacyNodeCommand(legacyConfigEvidence(ctx, initialXrayConfig), node.ID, initialRequest.GetOperationId(), "sync_config", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
+		initialRequest.Fence = fence
+		return client.Runtime().SyncConfig(worker, initialRequest)
+	}, nil); err != nil {
+		t.Fatalf("Controller fenced initial AmneziaWG policy sync: %v", err)
+	}
+	syncCalls.Store(0)
+	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.2/32", true) || !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.3/32", true) || nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.9/32", true) {
+		t.Fatal("initial policy sync did not preserve the two live peers and leave the target absent")
+	}
 	// Until the native gate is complete the production Hello deliberately does
 	// not advertise this capability. Seed only the Controller's handshake view
 	// here to exercise the exact production targeted dispatch over real gRPC.
 	capabilities := append(append([]string(nil), hello.GetRuntime().GetCapabilities()...), "targeted_user_add_remove_amneziawg", "targeted_user_update_amneziawg")
 	client.SetHandshake(hello.GetNodeVersion(), capabilities)
-	node := NodeRow{ID: 7, Name: "native-awg-node", Address: "127.0.0.1", Status: "connected", Certificate: "native-cert", XrayConfigMode: "custom", XrayConfig: nativeAmneziaWGNodeConfig()}
-	controller := NewController(NewRepository(db, "sqlite"))
-
 	dropAck.Store(true)
 	add := OperationRow{ID: 401, OperationType: "add_user", UserID: sql.NullInt64{Int64: 8, Valid: true}}
 	firstAddErr := controller.grpcApplyUserOperation(ctx, client, node, add, nil)
@@ -200,7 +207,7 @@ CREATE TABLE service_hosts (service_id INTEGER, host_id INTEGER);
 CREATE TABLE hosts (id INTEGER PRIMARY KEY, inbound_tag TEXT, is_disabled BOOLEAN DEFAULT 0);
 CREATE TABLE xray_config (id INTEGER PRIMARY KEY, data TEXT);
 CREATE TABLE inbounds (tag TEXT PRIMARY KEY, uplink INTEGER DEFAULT 0, downlink INTEGER DEFAULT 0, usage_coefficient REAL DEFAULT 1);
-CREATE TABLE nodes (id INTEGER PRIMARY KEY, name TEXT, address TEXT, port INTEGER, api_port INTEGER, status TEXT, xray_version TEXT, message TEXT, certificate TEXT, certificate_key TEXT, xray_config_mode TEXT, xray_config TEXT, usage_coefficient REAL DEFAULT 1);
+CREATE TABLE nodes (id INTEGER PRIMARY KEY, name TEXT, address TEXT, port INTEGER, api_port INTEGER, status TEXT, xray_version TEXT, message TEXT, certificate TEXT, certificate_key TEXT, xray_config_mode TEXT, xray_config TEXT, usage_coefficient REAL DEFAULT 1, node_capabilities TEXT);
 CREATE TABLE amneziawg_devices (inbound_tag TEXT NOT NULL, user_id INTEGER NOT NULL, device_index INTEGER NOT NULL, private_key TEXT NOT NULL, public_key TEXT NOT NULL, preshared_key TEXT NOT NULL DEFAULT '', address TEXT NOT NULL, generation INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(inbound_tag,user_id,device_index), UNIQUE(inbound_tag,address));
 INSERT INTO users VALUES (7,'native-awg',10,'active',0,0,0,2,0,0,0);
 INSERT INTO proxies VALUES (7,'amneziawg');
@@ -210,9 +217,20 @@ INSERT INTO hosts VALUES (1,'native-awg',0);
 INSERT INTO service_hosts VALUES (10,1);
 INSERT INTO inbounds VALUES ('native-awg',0,0,1);
 INSERT INTO xray_config VALUES (1,'{"inbounds":[{"tag":"native-awg","protocol":"amneziawg","port":51821,"targets":["node:7"],"settings":{"ipv4_pool_cidr":"10.74.0.0/24","server_address":"10.74.0.1/24","accounting_enabled":false}}]}');
-INSERT INTO nodes VALUES (7,'native-awg-node','127.0.0.1',0,0,'connected','','','native-cert','key','custom','{"inbounds":[{"tag":"native-awg","protocol":"amneziawg","port":51821,"targets":["node:7"],"settings":{"ipv4_pool_cidr":"10.74.0.0/24","server_address":"10.74.0.1/24","accounting_enabled":false}}]}',1);`
+INSERT INTO nodes VALUES (7,'native-awg-node','127.0.0.1',0,0,'connected','','','native-cert','key','custom','{"inbounds":[{"tag":"native-awg","protocol":"amneziawg","port":51821,"targets":["node:7"],"settings":{"ipv4_pool_cidr":"10.74.0.0/24","server_address":"10.74.0.1/24","accounting_enabled":false}}]}',1,NULL);`
 	if _, err := db.ExecContext(ctx, ddl); err != nil {
 		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`CREATE TABLE operations (id TEXT PRIMARY KEY,operation_type TEXT,target_type TEXT,target_id TEXT,requested_by TEXT,request_id TEXT,state TEXT,phase TEXT,progress INTEGER,created_at BIGINT,started_at BIGINT,updated_at BIGINT,completed_at BIGINT,error TEXT,metadata_json TEXT)`,
+		`CREATE TABLE operation_locks (target_type TEXT,target_id TEXT,operation_id TEXT UNIQUE,PRIMARY KEY(target_type,target_id))`,
+		`CREATE TABLE operation_events (operation_id TEXT,sequence INTEGER,state TEXT,phase TEXT,observed_at BIGINT,requested_by TEXT,request_id TEXT,event_type TEXT NOT NULL DEFAULT 'operation.transition',payload_json TEXT,PRIMARY KEY(operation_id,sequence))`,
+		`CREATE TABLE operation_executor_leases (operation_id TEXT PRIMARY KEY,executor_id TEXT NOT NULL,acquired_at BIGINT NOT NULL,expires_at BIGINT NOT NULL,generation BIGINT NOT NULL,revision BIGINT NOT NULL)`,
+		`CREATE TABLE operation_resource_fences (target_type TEXT NOT NULL,target_id TEXT NOT NULL,generation BIGINT NOT NULL,owner_operation_id TEXT NOT NULL,revision BIGINT NOT NULL,PRIMARY KEY(target_type,target_id))`,
+	} {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO amneziawg_devices VALUES ('native-awg',7,0,'existing-private-1',?,'','10.74.0.2',1), ('native-awg',7,1,'existing-private-2',?,'','10.74.0.3',1)`, envRequired(t, "ANTIMAGE_AWG_CLIENT_PUBLIC"), envRequired(t, "ANTIMAGE_AWG_EXTRA_CLIENT_PUBLIC")); err != nil {
 		t.Fatal(err)
@@ -245,6 +263,20 @@ func nativeAmneziaWGControllerRuntimeJSON(t *testing.T, primaryKey, additionalKe
 	if callbackURL != "" && callbackToken == "" {
 		t.Fatal("native AWG session callback token is required when callback URL is configured")
 	}
+	var dataLimit *int64
+	if rawLimit := strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_QUOTA_BYTES")); rawLimit != "" {
+		parsed, err := strconv.ParseInt(rawLimit, 10, 64)
+		if err != nil || parsed <= 0 {
+			t.Fatalf("invalid native AWG quota %q", rawLimit)
+		}
+		dataLimit = &parsed
+	}
+	primaryPeer := map[string]any{"user_id": 7, "username": "native-awg", "device_index": 1, "public_key": primaryKey, "address": "10.74.0.2", "status": "active", "usage_coefficient": 1.5, "inbound_coefficient": 2}
+	extraPeer := map[string]any{"user_id": 7, "username": "native-awg-extra", "device_index": 2, "public_key": additionalKey, "address": "10.74.0.3", "status": "active", "usage_coefficient": 1.5, "inbound_coefficient": 2}
+	if dataLimit != nil {
+		primaryPeer["data_limit"] = dataLimit
+		extraPeer["data_limit"] = dataLimit
+	}
 	payload := map[string]any{
 		"generated_at": time.Now().UTC().Format(time.RFC3339Nano),
 		"target":       "node:7",
@@ -264,8 +296,8 @@ func nativeAmneziaWGControllerRuntimeJSON(t *testing.T, primaryKey, additionalKe
 				"h1": "12345", "h2": "23456", "h3": "34567", "h4": "45678",
 			},
 			"peers": []any{
-				map[string]any{"user_id": 7, "username": "native-awg", "device_index": 1, "public_key": primaryKey, "address": "10.74.0.2", "status": "active", "usage_coefficient": 1.5, "inbound_coefficient": 2},
-				map[string]any{"user_id": 7, "username": "native-awg-extra", "device_index": 2, "public_key": additionalKey, "address": "10.74.0.3", "status": "active", "usage_coefficient": 1.5, "inbound_coefficient": 2},
+				primaryPeer,
+				extraPeer,
 			},
 		}},
 		"ikev2_inbounds":      []any{},
