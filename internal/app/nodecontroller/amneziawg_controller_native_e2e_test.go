@@ -52,6 +52,7 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
+	t.Setenv("ANTIMAGE_PUBLIC_URL", "https://panel.example.test")
 	root := t.TempDir()
 	db := nativeAmneziaWGControllerDB(t, ctx, root)
 	defer db.Close()
@@ -101,8 +102,12 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 
 	dropAck.Store(true)
 	add := OperationRow{ID: 401, OperationType: "add_user", UserID: sql.NullInt64{Int64: 8, Valid: true}}
-	if err := controller.grpcApplyUserOperation(ctx, client, node, add, nil); err == nil {
+	firstAddErr := controller.grpcApplyUserOperation(ctx, client, node, add, nil)
+	if firstAddErr == nil {
 		t.Fatal("lost ACK was reported as successful")
+	}
+	if dropAck.Load() {
+		t.Fatalf("AddUser failed before the post-commit ACK-loss hook: %v", firstAddErr)
 	}
 	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.9/32", true) {
 		t.Fatal("AddUser did not immediately add target peer to the live AWG interface")
