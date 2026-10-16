@@ -179,6 +179,17 @@ run_wireguard() {
       -test.run='^TestControllerWireGuardTargetedMutationNativeE2E$' -test.v
   fi
 
+  if [ -n "${ANTIMAGE_WIREGUARD_TEST_BINARY:-}" ]; then
+    echo '=== WireGuard runtime-policy persistence failure rollback ==='
+    ANTIMAGE_WIREGUARD_TARGETED_MUTATION_E2E=1 \
+      ANTIMAGE_WIREGUARD_NATIVE_INTERFACE=wg-native \
+      ANTIMAGE_WIREGUARD_NATIVE_PEER="$client_pub" \
+      ANTIMAGE_WIREGUARD_NATIVE_SERVER_PRIVATE_KEY="$server_priv" \
+      ANTIMAGE_WIREGUARD_NATIVE_CLIENT_NS="$NS" \
+      "$ANTIMAGE_WIREGUARD_TEST_BINARY" \
+      -test.run='^TestWireGuardTargetedMutationPersistenceFailureNativeRollback$' -test.v
+  fi
+
   ip link del wg-native
   ip link add wg-native type wireguard
   ip addr add 10.200.0.1/24 dev wg-native
