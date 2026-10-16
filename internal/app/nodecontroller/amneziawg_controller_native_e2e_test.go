@@ -55,6 +55,7 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 	defer cancel()
 	t.Setenv("ANTIMAGE_PUBLIC_URL", "https://panel.example.test")
 	root := t.TempDir()
+	t.Setenv("ANTIMAGE_NODE_APP_DIR", root)
 	db := nativeAmneziaWGControllerDB(t, ctx, root)
 	defer db.Close()
 	serverTLS, clientTLS := openVPNNativeControllerTLS(t)
