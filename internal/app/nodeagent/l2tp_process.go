@@ -414,6 +414,12 @@ func l2TPSystemServiceActive() bool {
 	if _, err := l2TPLookPath("service"); err == nil && l2TPCommandSucceeds("service", "xl2tpd", "status") {
 		return true
 	}
+	// Some distributions run xl2tpd directly when no service manager is
+	// available. The native runtime tracker is authoritative in that mode; the
+	// process check prevents a user mutation from treating a dead service as live.
+	if _, err := l2TPLookPath("pgrep"); err == nil && l2TPCommandSucceeds("pgrep", "-x", "xl2tpd") {
+		return true
+	}
 	return false
 }
 

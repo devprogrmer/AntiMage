@@ -160,6 +160,14 @@ stage() {
     ANTIMAGE_NODE_HELPER_BINARY="$ANTIMAGE_NODE_HELPER_BINARY" \
     "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPNativeAccountingStage$' -test.v
 }
+mutation_stage() {
+  local action="$1"
+  env ANTIMAGE_L2TP_NATIVE_STATE="$ROOT/l2tp-state" \
+    ANTIMAGE_L2TP_MUTATION_ACTION="$action" \
+    ANTIMAGE_L2TP_XL2TPD_PID="$(cat "$ROOT/server.pid")" \
+    ANTIMAGE_NODE_HELPER_BINARY="$ANTIMAGE_NODE_HELPER_BINARY" \
+    "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPTargetedMutationNativeStage$' -test.v
+}
 panel_replay() {
   env ANTIMAGE_L2TP_NATIVE_STATE="$ROOT/l2tp-state" \
     ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL="${1:-0}" \
@@ -544,6 +552,10 @@ start_client_b() {
     wait_for_new_l2tp_real_ip 10.252.0.2 client-b
   fi
 }
+set_client_b_credentials() {
+  local username="$1" password="$2"
+  sed -i "s/^name .*/name ${username}/; s/^password .*/password ${password}/" "$ROOT/client-b-options"
+}
 stop_client_b() {
   if [ -n "${CLIENT_DAEMON_PID_B:-}" ]; then stop_pid "$CLIENT_DAEMON_PID_B"; fi
   if [ -n "${CLIENT_LAUNCH_PID_B:-}" ]; then stop_pid "$CLIENT_LAUNCH_PID_B"; fi
@@ -591,6 +603,31 @@ start_client_ipsec_b
 wait_for 'assigned production VPN address' sh -c 'ip netns exec "$1" ip -o -4 addr show dev ppp0 | grep -q "10.67.0.2 peer 10.67.0.1"' _ "$NS"
 session_config="$(find "$ROOT/l2tp-state/l2tp" -name session-helper.json -print -quit)"
 assert_l2tp_real_ip "$ROOT/l2tp-state" 10.251.0.2
+
+echo '=== native targeted L2TP Add/Update/Remove preserves unrelated PPP session ==='
+server_pid_before="$(cat "$ROOT/server.pid")"
+alice_ifindex_before="$(cat "/sys/class/net/$(ip -o -4 addr show | awk '$2 ~ /^ppp[0-9]+$/ && $4 ~ /^10\.67\.0\.1(\/.*)?$/ { print $2; exit }')/ifindex")"
+mutation_stage add
+mutation_stage rollback
+set_client_b_credentials native-l2tp-bob native-l2tp-bob-v1
+start_client_b
+test "$(ip netns exec "$NS_B" ip -o -4 addr show dev ppp0 | awk 'NR == 1 { split($4, address, "/"); print address[1] }')" = 10.67.0.3
+mutation_stage update
+ip netns exec "$NS" ping -c 2 -W 2 10.67.0.1
+ip netns exec "$NS_B" ping -c 2 -W 2 10.67.0.1
+stop_client_b
+set_client_b_credentials native-l2tp-bob native-l2tp-bob-v2
+start_client_b
+ip netns exec "$NS_B" ping -c 2 -W 2 10.67.0.1
+mutation_stage remove
+wait_for_gone 'removed Bob PPP interface' ip netns exec "$NS_B" ip link show ppp0
+ip netns exec "$NS" ping -c 2 -W 2 10.67.0.1
+server_pid_after="$(cat "$ROOT/server.pid")"
+alice_ifindex_after="$(cat "/sys/class/net/$(ip -o -4 addr show | awk '$2 ~ /^ppp[0-9]+$/ && $4 ~ /^10\.67\.0\.1(\/.*)?$/ { print $2; exit }')/ifindex")"
+test "$server_pid_after" = "$server_pid_before"
+test "$alice_ifindex_after" = "$alice_ifindex_before"
+set_client_b_credentials native-l2tp native-l2tp-secret
+echo "L2TP targeted mutation preserved xl2tpd PID=${server_pid_after} and Alice PPP ifindex=${alice_ifindex_after}"
 
 echo '=== native concurrent L2TP DeviceLimit=1; source B denied with source A live ==='
 set_session_limits "$session_config" 1 0
