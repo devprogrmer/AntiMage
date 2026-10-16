@@ -3,10 +3,12 @@
 package nodecontroller
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -350,11 +352,49 @@ func nativeAmneziaWGControllerHandshake(t *testing.T, tool, iface, key string) i
 
 func nativeAmneziaWGControllerPing(t *testing.T, namespace string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "ip", "netns", "exec", namespace, "ping", "-c", "1", "-W", "2", "10.74.0.1").CombinedOutput()
+	// Use an echoed TCP payload through the live tunnel instead of a single ICMP
+	// packet. This proves both directions of application traffic after mutation
+	// and avoids treating a transient echo loss as evidence of a broken peer.
+	listener, err := net.Listen("tcp", "10.74.0.1:0")
 	if err != nil {
-		t.Fatalf("unrelated native AWG client traffic failed: %v: %s", err, out)
+		t.Fatalf("listen on native AWG server address: %v", err)
+	}
+	defer listener.Close()
+	payload := bytes.Repeat([]byte("antimage-awg-unrelated-peer-traffic\n"), 128)
+	type result struct {
+		data []byte
+		err  error
+	}
+	serverResult := make(chan result, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			serverResult <- result{err: acceptErr}
+			return
+		}
+		defer conn.Close()
+		data, readErr := io.ReadAll(conn)
+		if readErr == nil {
+			_, readErr = conn.Write(data)
+		}
+		serverResult <- result{data: data, err: readErr}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	port := listener.Addr().(*net.TCPAddr).Port
+	cmd := exec.CommandContext(ctx, "ip", "netns", "exec", namespace, "nc", "-N", "-w", "5", "10.74.0.1", strconv.Itoa(port))
+	cmd.Stdin = bytes.NewReader(payload)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("unrelated native AWG TCP tunnel traffic failed: %v: %s", err, out)
+	}
+	select {
+	case got := <-serverResult:
+		if got.err != nil || !bytes.Equal(got.data, payload) || !bytes.Equal(out, payload) {
+			t.Fatalf("unrelated native AWG TCP tunnel traffic mismatch: server_bytes=%d client_bytes=%d want=%d err=%v", len(got.data), len(out), len(payload), got.err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("unrelated native AWG TCP tunnel traffic timed out: %v", ctx.Err())
 	}
 }
 
