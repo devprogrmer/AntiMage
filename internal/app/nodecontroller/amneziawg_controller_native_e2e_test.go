@@ -104,22 +104,16 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 	defer client.Close()
 	node := NodeRow{ID: 7, Name: "native-awg-node", Address: "127.0.0.1", Status: "connected", Certificate: "native-cert", XrayConfigMode: "custom", XrayConfig: nativeAmneziaWGNodeConfig()}
 	controller := NewController(NewRepository(db, "sqlite"))
-	initialRuntime := nativeAmneziaWGControllerRuntimeJSON(t, primaryKey, additionalKey)
-	initialXrayConfig := string(nativeAmneziaWGNodeConfig())
-	initialRequest := &nodev1.RuntimeConfigRequest{
-		OperationId: "native-awg-initial-policy-100", ConfigJson: initialXrayConfig,
-		OvRuntimeJson: initialRuntime, DesiredRevision: 100,
+	// The preceding native NodeAgent lifecycle/mutation E2E established and
+	// persisted this same baseline policy against the live tunnel. Do not issue a
+	// full SyncConfig here: that would deliberately re-apply ReplacePeers to a
+	// healthy interface before measuring targeted Controller mutations.
+	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.2/32", true) || !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.3/32", true) {
+		t.Fatal("native NodeAgent E2E did not leave the expected baseline peers")
 	}
-	if err := controller.executeLegacyNodeCommand(legacyConfigEvidence(ctx, initialXrayConfig), node.ID, initialRequest.GetOperationId(), "sync_config", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
-		initialRequest.Fence = fence
-		return client.Runtime().SyncConfig(worker, initialRequest)
-	}, nil); err != nil {
-		t.Fatalf("Controller fenced initial AmneziaWG policy sync: %v", err)
-	}
-	syncCalls.Store(0)
-	nativeAmneziaWGControllerPing(t, clientNS, "after baseline SyncConfig")
+	nativeAmneziaWGControllerPing(t, clientNS, "before Controller mutation")
 	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.2/32", true) || !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.3/32", true) || nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.9/32", false) {
-		t.Fatal("initial policy sync did not preserve the two live peers and leave the target absent")
+		t.Fatal("native baseline did not preserve the two live peers and leave the target absent")
 	}
 	// Until the native gate is complete the production Hello deliberately does
 	// not advertise this capability. Seed only the Controller's handshake view
