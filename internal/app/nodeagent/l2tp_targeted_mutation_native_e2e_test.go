@@ -310,6 +310,11 @@ func nativeL2TPActiveUser(runtimeRoot string, userID int64) (pppOfflineSession, 
 		if session.UserID != userID || session.InboundTag != "native-l2tp" {
 			continue
 		}
+		if !pppOfflineProcessIsLive(session.Process) {
+			// Stop hooks retain active metadata so they can be retried after a
+			// lost callback ACK. Ignore records whose exact pppd process exited.
+			continue
+		}
 		if found.ID != "" {
 			return pppOfflineSession{}, fmt.Errorf("multiple live sessions for user %d", userID)
 		}

@@ -73,6 +73,12 @@ func offlineProcessIdentity(pid string) (string, error) {
 	if len(fields) < 20 {
 		return "", fmt.Errorf("short process stat")
 	}
+	// A terminated child can remain in /proc as a zombie until its parent
+	// reaps it. It is no longer a live PPP session and must not consume a
+	// device slot or block a targeted user removal during that interval.
+	if fields[0] == "Z" || fields[0] == "X" {
+		return "", os.ErrNotExist
+	}
 	return strings.TrimSpace(string(boot)) + ":" + pid + ":" + fields[19], nil
 }
 
