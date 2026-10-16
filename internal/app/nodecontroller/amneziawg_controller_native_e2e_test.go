@@ -150,7 +150,7 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 	if err := controller.grpcApplyUserOperation(ctx, client, node, update, nil); err != nil {
 		t.Fatalf("Controller UpdateUser: %v", err)
 	}
-	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.10/32", true) || nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.9/32", true) {
+	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.10/32", true) || nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.9/32", false) {
 		t.Fatal("UpdateUser did not replace the target AllowedIP immediately")
 	}
 
@@ -162,7 +162,7 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 	if err := controller.grpcApplyUserOperation(ctx, client, node, add, nil); err == nil {
 		t.Fatal("conflicting content under a committed Operation ID was accepted")
 	}
-	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.10/32", true) || nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.11/32", true) {
+	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.10/32", true) || nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.11/32", false) {
 		t.Fatal("conflicting Operation ID changed the live target peer")
 	}
 	if _, err := db.ExecContext(ctx, `UPDATE amneziawg_devices SET address='10.74.0.10' WHERE inbound_tag='native-awg' AND user_id=8 AND device_index=0`); err != nil {
@@ -173,7 +173,7 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 	if err := controller.grpcApplyUserOperation(ctx, client, node, remove, nil); err != nil {
 		t.Fatalf("Controller RemoveUser: %v", err)
 	}
-	if nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.10/32", true) {
+	if nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.10/32", false) {
 		t.Fatal("RemoveUser left target peer in the live AWG interface")
 	}
 	assertNativeAmneziaWGControllerPolicy(t, stateDir, 8, false)
