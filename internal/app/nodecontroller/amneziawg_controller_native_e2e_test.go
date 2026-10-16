@@ -117,6 +117,7 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 		t.Fatalf("Controller fenced initial AmneziaWG policy sync: %v", err)
 	}
 	syncCalls.Store(0)
+	nativeAmneziaWGControllerPing(t, clientNS, "after baseline SyncConfig")
 	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.2/32", true) || !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.3/32", true) || nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.9/32", false) {
 		t.Fatal("initial policy sync did not preserve the two live peers and leave the target absent")
 	}
@@ -140,6 +141,7 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 	if err := controller.grpcApplyUserOperation(ctx, client, node, add, nil); err != nil {
 		t.Fatalf("same Operation ID retry after lost ACK: %v", err)
 	}
+	nativeAmneziaWGControllerPing(t, clientNS, "after AddUser and ACK-loss retry")
 	if addCalls.Load() != 2 {
 		t.Fatalf("AddUser RPC count=%d, want initial attempt and one safe retry", addCalls.Load())
 	}
@@ -155,6 +157,7 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.10/32", true) || nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.9/32", false) {
 		t.Fatal("UpdateUser did not replace the target AllowedIP immediately")
 	}
+	nativeAmneziaWGControllerPing(t, clientNS, "after UpdateUser")
 
 	// Reusing the successful Add operation ID with changed desired content must
 	// be rejected and leave the committed target configuration untouched.
@@ -186,7 +189,7 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.2/32", true) || !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.3/32", true) {
 		t.Fatal("targeted user mutations disturbed existing AWG peers")
 	}
-	nativeAmneziaWGControllerPing(t, clientNS)
+	nativeAmneziaWGControllerPing(t, clientNS, "after RemoveUser")
 	if got, err := net.InterfaceByName(iface); err != nil || got.Index != before.Index {
 		t.Fatalf("targeted mutation recreated AWG interface: before=%d after=%v err=%v", before.Index, got, err)
 	}
@@ -350,14 +353,14 @@ func nativeAmneziaWGControllerHandshake(t *testing.T, tool, iface, key string) i
 	return 0
 }
 
-func nativeAmneziaWGControllerPing(t *testing.T, namespace string) {
+func nativeAmneziaWGControllerPing(t *testing.T, namespace, stage string) {
 	t.Helper()
 	// Use an echoed TCP payload through the live tunnel instead of a single ICMP
 	// packet. This proves both directions of application traffic after mutation
 	// and avoids treating a transient echo loss as evidence of a broken peer.
 	listener, err := net.Listen("tcp", "10.74.0.1:0")
 	if err != nil {
-		t.Fatalf("listen on native AWG server address: %v", err)
+		t.Fatalf("listen on native AWG server address at %s: %v", stage, err)
 	}
 	defer listener.Close()
 	payload := bytes.Repeat([]byte("antimage-awg-unrelated-peer-traffic\n"), 128)
@@ -386,15 +389,15 @@ func nativeAmneziaWGControllerPing(t *testing.T, namespace string) {
 	cmd.Stdin = bytes.NewReader(payload)
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("unrelated native AWG TCP tunnel traffic failed: %v: %s", err, out)
+		t.Fatalf("unrelated native AWG TCP tunnel traffic failed %s: %v: %s", stage, err, out)
 	}
 	select {
 	case got := <-serverResult:
 		if got.err != nil || !bytes.Equal(got.data, payload) || !bytes.Equal(out, payload) {
-			t.Fatalf("unrelated native AWG TCP tunnel traffic mismatch: server_bytes=%d client_bytes=%d want=%d err=%v", len(got.data), len(out), len(payload), got.err)
+			t.Fatalf("unrelated native AWG TCP tunnel traffic mismatch %s: server_bytes=%d client_bytes=%d want=%d err=%v", stage, len(got.data), len(out), len(payload), got.err)
 		}
 	case <-ctx.Done():
-		t.Fatalf("unrelated native AWG TCP tunnel traffic timed out: %v", ctx.Err())
+		t.Fatalf("unrelated native AWG TCP tunnel traffic timed out %s: %v", stage, ctx.Err())
 	}
 }
 
