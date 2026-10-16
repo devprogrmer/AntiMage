@@ -29,6 +29,18 @@ func TestParseWireGuardPeerSnapshotCapturesConfigurableState(t *testing.T) {
 	}
 }
 
+func TestParseWireGuardPeerSnapshotAcceptsDisabledKeepaliveFromWgDump(t *testing.T) {
+	key := strings.Repeat("C", 43) + "="
+	raw := "private\tpublic\t51820\toff\n" + key + "\t(none)\t(none)\t10.69.0.2/32\t0\t0\t0\toff\n"
+	peers, err := parseWireGuardPeerSnapshot(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := peers[key].PersistentKeepalive; got != 0 {
+		t.Fatalf("disabled keepalive parsed as %d, want 0", got)
+	}
+}
+
 func TestParseWireGuardPeerSnapshotRejectsIncompleteOrAmbiguousDump(t *testing.T) {
 	key := strings.Repeat("A", 43) + "="
 	peer := key + "\t(none)\t(none)\t10.69.0.2/32\t0\t0\t0\t0\n"

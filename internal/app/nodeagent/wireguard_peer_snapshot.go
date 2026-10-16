@@ -70,9 +70,13 @@ func parseWireGuardPeerSnapshot(raw string) (map[string]wireGuardKernelPeer, err
 		if err != nil {
 			return nil, fmt.Errorf("wireguard peer %q has invalid sent-byte counter", key)
 		}
-		keepalive, err := strconv.ParseUint(strings.TrimSpace(parts[7]), 10, 16)
-		if err != nil {
-			return nil, fmt.Errorf("wireguard peer %q has invalid keepalive", key)
+		keepaliveRaw := strings.TrimSpace(parts[7])
+		var keepalive uint64
+		if !strings.EqualFold(keepaliveRaw, "off") {
+			keepalive, err = strconv.ParseUint(keepaliveRaw, 10, 16)
+			if err != nil {
+				return nil, fmt.Errorf("wireguard peer %q has invalid keepalive", key)
+			}
 		}
 		peers[key] = wireGuardKernelPeer{
 			PublicKey:           key,
