@@ -85,7 +85,7 @@ jobs:
         run: bash scripts/antimage/test-database-maintenance.sh
 
       - name: Upload dashboard
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dashboard-build
           path: dashboard/build
@@ -218,14 +218,14 @@ jobs:
 
       - name: Upload Linux package artifact
         if: matrix.asset_arch == 'amd64' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix == true)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: antimage-linux-${{ matrix.asset_arch }}
           path: dist/antimage-linux-${{ matrix.asset_arch }}.tar.gz
 
       - name: Upload Linux node artifact
         if: matrix.asset_arch == 'amd64' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix == true)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: antimage-node-binaries-linux-${{ matrix.asset_arch }}
           path: dist/antimage-node-linux-${{ matrix.asset_arch }}
@@ -281,7 +281,7 @@ jobs:
             -Force
 
       - name: Upload Windows package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: antimage-windows-amd64
           path: dist/antimage-windows-amd64.zip
