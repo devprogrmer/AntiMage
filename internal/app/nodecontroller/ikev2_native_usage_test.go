@@ -257,7 +257,7 @@ INSERT INTO system (id) VALUES (1);`)
 			assertNativePanelDBQueryInt64(t, db, `SELECT SUM(used_traffic) FROM node_user_usages WHERE user_id=? AND node_id=9`, int64(userRaw*3), uid)
 		}
 		assertInt64(t, db, `SELECT users_usage FROM admins WHERE id=1`, int64(rawTotal*3))
-		if rawTotal*3 >= 50<<20 {
+		if rawByUser[7]*3 >= 50<<20 {
 			assertString(t, db, `SELECT status FROM users WHERE id=7`, "limited")
 		}
 		if err := db.Close(); err != nil {
