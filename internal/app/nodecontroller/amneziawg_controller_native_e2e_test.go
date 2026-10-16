@@ -67,6 +67,21 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 			t.Fatalf("AmneziaWG capability %s was advertised before the Controller-native gate", capability)
 		}
 	}
+	// The native driver starts AWG through the production runtime apply helper,
+	// then runs this Controller gate in a fresh test process. Establish the
+	// durable policy snapshot that a real successful SyncConfig leaves behind;
+	// targeted mutation must never invent a baseline from the live kernel.
+	initialRuntime := nativeAmneziaWGControllerRuntimeJSON(t, primaryKey, additionalKey)
+	initialSync, err := agent.SyncConfig(ctx, &nodev1.RuntimeConfigRequest{
+		OperationId: "native-awg-initial-policy-100", ConfigJson: `{"inbounds":[{"tag":"API_INBOUND","port":10085}]}`,
+		OvRuntimeJson: initialRuntime, DesiredRevision: 100,
+	})
+	if err != nil || initialSync == nil || !initialSync.GetAccepted() {
+		t.Fatalf("establish committed baseline runtime policy: response=%v err=%v", initialSync, err)
+	}
+	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.2/32", true) || !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.3/32", true) || nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.9/32", true) {
+		t.Fatal("initial policy sync did not preserve the two live peers and leave the target absent")
+	}
 
 	var syncCalls, addCalls atomic.Int32
 	var dropAck atomic.Bool
@@ -221,6 +236,46 @@ INSERT INTO nodes VALUES (7,'native-awg-node','127.0.0.1',0,0,'connected','','',
 func nativeAmneziaWGNodeConfig() []byte {
 	raw, _ := json.Marshal(map[string]any{"inbounds": []any{map[string]any{"tag": "native-awg", "protocol": "amneziawg", "port": 51821, "targets": []any{"node:7"}, "settings": map[string]any{"ipv4_pool_cidr": "10.74.0.0/24", "server_address": "10.74.0.1/24", "accounting_enabled": false}}}})
 	return raw
+}
+
+func nativeAmneziaWGControllerRuntimeJSON(t *testing.T, primaryKey, additionalKey string) string {
+	t.Helper()
+	callbackURL := strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_SESSION_CALLBACK_URL"))
+	callbackToken := strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_SESSION_CALLBACK_TOKEN"))
+	if callbackURL != "" && callbackToken == "" {
+		t.Fatal("native AWG session callback token is required when callback URL is configured")
+	}
+	payload := map[string]any{
+		"generated_at": time.Now().UTC().Format(time.RFC3339Nano),
+		"target":       "node:7",
+		"session_callback": map[string]any{
+			"url": callbackURL, "token": callbackToken, "node_id": 7,
+		},
+		"inbounds":      []any{},
+		"l2tp_inbounds": []any{},
+		"pptp_inbounds": []any{},
+		"wg_inbounds":   []any{},
+		"awg_inbounds": []any{map[string]any{
+			"tag": "native-awg", "listen_port": 51821,
+			"settings": map[string]any{
+				"private_key":  strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_SERVER_PRIVATE")),
+				"address_pool": "10.74.0.0/24", "server_address": "10.74.0.1/24", "mtu": 1420,
+				"jc": 4, "jmin": 8, "jmax": 80, "s1": 77, "s2": 90,
+				"h1": "12345", "h2": "23456", "h3": "34567", "h4": "45678",
+			},
+			"peers": []any{
+				map[string]any{"user_id": 7, "username": "native-awg", "device_index": 1, "public_key": primaryKey, "address": "10.74.0.2", "status": "active", "usage_coefficient": 1.5, "inbound_coefficient": 2},
+				map[string]any{"user_id": 7, "username": "native-awg-extra", "device_index": 2, "public_key": additionalKey, "address": "10.74.0.3", "status": "active", "usage_coefficient": 1.5, "inbound_coefficient": 2},
+			},
+		}},
+		"ikev2_inbounds":      []any{},
+		"anyconnect_inbounds": []any{},
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
 }
 
 func nativeAmneziaWGControllerPeer(t *testing.T, tool, iface, allowedIP string, want bool) bool {
