@@ -627,6 +627,7 @@ server_pid_after="$(cat "$ROOT/server.pid")"
 alice_ifindex_after="$(cat "/sys/class/net/$(ip -o -4 addr show | awk '$2 ~ /^ppp[0-9]+$/ && $4 ~ /^10\.67\.0\.1(\/.*)?$/ { print $2; exit }')/ifindex")"
 test "$server_pid_after" = "$server_pid_before"
 test "$alice_ifindex_after" = "$alice_ifindex_before"
+stop_client_b
 set_client_b_credentials native-l2tp native-l2tp-secret
 echo "L2TP targeted mutation preserved xl2tpd PID=${server_pid_after} and Alice PPP ifindex=${alice_ifindex_after}"
 
