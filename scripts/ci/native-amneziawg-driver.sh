@@ -148,6 +148,7 @@ env ANTIMAGE_AWG_TARGETED_MUTATION_E2E=1 \
   ANTIMAGE_AWG_NATIVE_CLIENT_NS="$NS" \
   ANTIMAGE_AWG_SERVER_PRIVATE="$server_priv" \
   ANTIMAGE_AWG_CLIENT_PUBLIC="$client_pub" \
+  ANTIMAGE_AWG_EXTRA_CLIENT_PUBLIC="$client2_pub" \
   "$ANTIMAGE_AWG_TEST_BINARY" -test.run='^TestAmneziaWGTargetedMutationNativeE2E$' -test.v
 NATIVE_SESSION_EXPECT_MARKER="$ROOT/awg-state/native-session-api/api-active"
 stage collect-first "$ROOT/awg-state"

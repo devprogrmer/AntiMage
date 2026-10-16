@@ -28,7 +28,8 @@ func TestAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 	clientNS := strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_NATIVE_CLIENT_NS"))
 	serverPrivate := strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_SERVER_PRIVATE"))
 	primaryKey := strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_CLIENT_PUBLIC"))
-	for name, value := range map[string]string{"state": stateDir, "interface": iface, "client namespace": clientNS, "server private key": serverPrivate, "primary public key": primaryKey} {
+	additionalKey := strings.TrimSpace(os.Getenv("ANTIMAGE_AWG_EXTRA_CLIENT_PUBLIC"))
+	for name, value := range map[string]string{"state": stateDir, "interface": iface, "client namespace": clientNS, "server private key": serverPrivate, "primary public key": primaryKey, "additional public key": additionalKey} {
 		if value == "" {
 			t.Fatalf("native AmneziaWG %s is required", name)
 		}
@@ -45,7 +46,8 @@ func TestAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 		"jc": 4, "jmin": 8, "jmax": 80, "s1": 77, "s2": 90, "h1": "12345", "h2": "23456", "h3": "34567", "h4": "45678",
 	}
 	primary := amneziaWGRuntimePeer{UserID: 7, Username: "native-awg", DeviceIndex: 1, PublicKey: primaryKey, Address: "10.74.0.2", Status: "active", UsageCoefficient: 1.5, InboundCoefficient: 2}
-	inbound := amneziaWGRuntimeInbound{Tag: "native-awg", TunnelTag: "native-awg-tunnel", ListenPort: 51821, Settings: settings, Peers: []amneziaWGRuntimePeer{primary}}
+	additional := amneziaWGRuntimePeer{UserID: 7, Username: "native-awg-extra", DeviceIndex: 2, PublicKey: additionalKey, Address: "10.74.0.3", Status: "active", UsageCoefficient: 1.5, InboundCoefficient: 2}
+	inbound := amneziaWGRuntimeInbound{Tag: "native-awg", TunnelTag: "native-awg-tunnel", ListenPort: 51821, Settings: settings, Peers: []amneziaWGRuntimePeer{primary, additional}}
 	nativeRaw, err := json.Marshal(nativeRuntimePayload{AmneziaWGInbounds: []amneziaWGRuntimeInbound{inbound}})
 	if err != nil {
 		t.Fatal(err)
@@ -120,16 +122,17 @@ func TestAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 	}
 	assertNativeAmneziaWGPeer(t, iface, target.PublicKey, "", false)
 	assertNativeAmneziaWGPeer(t, iface, primaryKey, "10.74.0.2/32", true)
+	assertNativeAmneziaWGPeer(t, iface, additionalKey, "10.74.0.3/32", true)
 	assertNativeAmneziaWGClientTraffic(t, clientNS)
 	after, err := net.InterfaceByName(iface)
 	if err != nil || after.Index != before.Index || nativeAmneziaWGPeerIdentity(t, iface) != identity {
 		t.Fatalf("AmneziaWG interface identity changed: before=%d after=%v err=%v", before.Index, after, err)
 	}
-	assertNativeAmneziaWGPersistenceRollback(t, app, ctx, inbound, target, clientNS, iface, primaryKey, before.Index)
+	assertNativeAmneziaWGPersistenceRollback(t, app, ctx, inbound, target, clientNS, iface, primaryKey, additionalKey, before.Index)
 	t.Log("real AmneziaWG Add/Update/Remove RPCs applied peer-only changes; duplicate operation retry did not reapply; conflicting ID was rejected; unrelated client traffic and interface identity remained intact; native persistence rollback passed")
 }
 
-func assertNativeAmneziaWGPersistenceRollback(t *testing.T, app *Server, ctx context.Context, inbound amneziaWGRuntimeInbound, target amneziaWGRuntimePeer, namespace, iface, primaryKey string, interfaceIndex int) {
+func assertNativeAmneziaWGPersistenceRollback(t *testing.T, app *Server, ctx context.Context, inbound amneziaWGRuntimeInbound, target amneziaWGRuntimePeer, namespace, iface, primaryKey, additionalKey string, interfaceIndex int) {
 	t.Helper()
 	policyPath := app.runtimePolicyPath()
 	original, err := os.ReadFile(policyPath)
@@ -169,6 +172,7 @@ func assertNativeAmneziaWGPersistenceRollback(t *testing.T, app *Server, ctx con
 	}
 	assertNativeAmneziaWGPeer(t, iface, target.PublicKey, "", false)
 	assertNativeAmneziaWGPeer(t, iface, primaryKey, "10.74.0.2/32", true)
+	assertNativeAmneziaWGPeer(t, iface, additionalKey, "10.74.0.3/32", true)
 	assertNativeAmneziaWGClientTraffic(t, namespace)
 	if got, err := net.InterfaceByName(iface); err != nil || got.Index != interfaceIndex {
 		t.Fatalf("rollback recreated AmneziaWG interface: got=%v err=%v want index=%d", got, err, interfaceIndex)
