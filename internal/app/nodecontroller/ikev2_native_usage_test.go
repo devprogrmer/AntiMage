@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 )
 
@@ -102,11 +103,46 @@ func TestNativePanelDBExactOnceIncludesFinalBatch(t *testing.T) {
 	}
 }
 
+func TestNativePanelDBExactOnceSupportsMultipleUsers(t *testing.T) {
+	dir := t.TempDir()
+	raw, err := proto.Marshal(&nodev1.UserUsageBatch{
+		BatchId: "mixed-users",
+		Stats: []*nodev1.UserUsageSample{
+			{Uid: "l2tp:7", Value: 10},
+			{Uid: "l2tp:8", Value: 5},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "native-first-batch.pb"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	runNativePanelDBExactOnce(t, dir, false)
+	var receipt struct {
+		RawTotal uint64 `json:"raw_total"`
+	}
+	receiptRaw, err := os.ReadFile(filepath.Join(dir, "native-panel-receipt.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(receiptRaw, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if receipt.RawTotal != 15 {
+		t.Fatalf("mixed-user batch bytes were not conserved: %+v", receipt)
+	}
+	assertNativePanelDBInt64(t, filepath.Join(dir, "native-panel.db"), `SELECT used_traffic FROM users WHERE id=7`, 30)
+	assertNativePanelDBInt64(t, filepath.Join(dir, "native-panel.db"), `SELECT used_traffic FROM users WHERE id=8`, 15)
+}
+
 func runNativePanelDBExactOnce(t *testing.T, dir string, requireFinalBatch bool) {
 	t.Helper()
 	ctx := context.Background()
 	batches := []*nodev1.UserUsageBatch{}
 	var rawTotal uint64
+	rawByUser := make(map[int64]uint64)
+	userIDs := make(map[int64]struct{})
 	extraBatchPaths, err := filepath.Glob(filepath.Join(dir, "native-batch-*.pb"))
 	if err != nil {
 		t.Fatal(err)
@@ -140,11 +176,13 @@ func runNativePanelDBExactOnce(t *testing.T, dir string, requireFinalBatch bool)
 		batches = append(batches, batch)
 		for _, sample := range batch.Stats {
 			uid, online, ok := parseUserUsageSampleUID(sample.Uid)
-			if !ok || uid != 7 {
+			if !ok || uid <= 0 {
 				t.Fatalf("unexpected native UID: %q", sample.Uid)
 			}
+			userIDs[uid] = struct{}{}
 			if !online {
 				rawTotal += sample.Value
+				rawByUser[uid] += sample.Value
 			}
 		}
 	}
@@ -167,12 +205,25 @@ func runNativePanelDBExactOnce(t *testing.T, dir string, requireFinalBatch bool)
 		_, err := db.ExecContext(ctx, `INSERT INTO admins (id) VALUES (1);
 INSERT INTO services (id) VALUES (2);
 INSERT INTO admins_services (admin_id,service_id) VALUES (1,2);
-INSERT INTO users (id,status,data_limit,admin_id,service_id) VALUES (7,'active',52428800,1,2);
 INSERT INTO nodes (id,status,usage_coefficient) VALUES (9,'connected',1.5);
 INSERT INTO inbounds (tag) VALUES ('native');
 INSERT INTO system (id) VALUES (1);`)
 		if err != nil {
 			t.Fatal(err)
+		}
+		orderedUserIDs := make([]int64, 0, len(userIDs))
+		for uid := range userIDs {
+			orderedUserIDs = append(orderedUserIDs, uid)
+		}
+		sort.Slice(orderedUserIDs, func(i, j int) bool { return orderedUserIDs[i] < orderedUserIDs[j] })
+		for _, uid := range orderedUserIDs {
+			dataLimit := int64(0)
+			if uid == 7 {
+				dataLimit = 52428800
+			}
+			if _, err := db.ExecContext(ctx, `INSERT INTO users (id,status,data_limit,admin_id,service_id) VALUES (?, 'active', ?, 1, 2)`, uid, dataLimit); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	defer func() { db.Close() }()
@@ -201,8 +252,10 @@ INSERT INTO system (id) VALUES (1);`)
 		if _, err := repo.FlushStagedUsageHistory(ctx, 100, UsagePersistOptions{}); err != nil {
 			t.Fatal(err)
 		}
-		assertInt64(t, db, `SELECT used_traffic FROM users WHERE id=7`, int64(rawTotal*3))
-		assertInt64(t, db, `SELECT SUM(used_traffic) FROM node_user_usages WHERE user_id=7 AND node_id=9`, int64(rawTotal*3))
+		for uid, userRaw := range rawByUser {
+			assertNativePanelDBQueryInt64(t, db, `SELECT used_traffic FROM users WHERE id=?`, int64(userRaw*3), uid)
+			assertNativePanelDBQueryInt64(t, db, `SELECT SUM(used_traffic) FROM node_user_usages WHERE user_id=? AND node_id=9`, int64(userRaw*3), uid)
+		}
 		assertInt64(t, db, `SELECT users_usage FROM admins WHERE id=1`, int64(rawTotal*3))
 		if rawTotal*3 >= 50<<20 {
 			assertString(t, db, `SELECT status FROM users WHERE id=7`, "limited")
@@ -224,4 +277,25 @@ INSERT INTO system (id) VALUES (1);`)
 		t.Fatal(err)
 	}
 	t.Logf("native DB exact once after replay/reopen: raw=%d effective=%d batches=%v", rawTotal, rawTotal*3, ids)
+}
+
+func assertNativePanelDBInt64(t *testing.T, path, query string, want int64) {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	assertNativePanelDBQueryInt64(t, db, query, want)
+}
+
+func assertNativePanelDBQueryInt64(t *testing.T, db *sql.DB, query string, want int64, args ...any) {
+	t.Helper()
+	var got int64
+	if err := db.QueryRow(query, args...).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("native panel DB value for %q = %d, want %d", query, got, want)
+	}
 }
