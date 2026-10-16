@@ -90,6 +90,8 @@ wireguard_native_stage() {
   [ -n "${ANTIMAGE_WIREGUARD_TEST_BINARY:-}" ] || return 0
   env ANTIMAGE_WIREGUARD_NATIVE_STATE="$state" \
     ANTIMAGE_WIREGUARD_NATIVE_INTERFACE=wg-native \
+    ANTIMAGE_WIREGUARD_NATIVE_SERVER_PRIVATE_KEY="${server_priv:-}" \
+    ANTIMAGE_WIREGUARD_NATIVE_CLIENT_NS="$NS" \
     ANTIMAGE_WIREGUARD_NATIVE_PEER="$client_pub" \
     ANTIMAGE_WIREGUARD_EXTRA_PEER_PUBLIC_KEY="${client2_pub:-}" \
     ANTIMAGE_WIREGUARD_NATIVE_QUOTA_BYTES="$quota_bytes" \
@@ -165,6 +167,13 @@ run_wireguard() {
   wireguard_native_stage collect "$ROOT/wireguard-accounting"
   NATIVE_SESSION_EXPECT_MARKER=""
   wait_for 'native WireGuard Panel session seen event' test -s "$ROOT/wireguard-accounting/native-session-api/api-active"
+
+  if [ -n "${ANTIMAGE_WIREGUARD_CONTROLLER_TEST_BINARY:-}" ]; then
+    echo '=== WireGuard targeted Controller -> NodeAgent -> kernel mutation ==='
+    ANTIMAGE_WIREGUARD_TARGETED_MUTATION_E2E=1 \
+      "$ANTIMAGE_WIREGUARD_CONTROLLER_TEST_BINARY" \
+      -test.run='^TestControllerWireGuardTargetedMutationNativeE2E$' -test.v
+  fi
 
   ip link del wg-native
   ip link add wg-native type wireguard

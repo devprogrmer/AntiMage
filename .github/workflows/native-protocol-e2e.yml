@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        protocol: ${{ github.event_name == 'push' && fromJSON('["openvpn"]') || fromJSON('["xray","wireguard","amneziawg","openvpn","l2tp","pptp","anyconnect","ikev2"]') }}
+        protocol: ${{ github.event_name == 'push' && fromJSON('["openvpn","wireguard"]') || fromJSON('["xray","wireguard","amneziawg","openvpn","l2tp","pptp","anyconnect","ikev2"]') }}
     env:
       CGO_ENABLED: '1'
     steps:
@@ -107,12 +107,15 @@ jobs:
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           api_test="$RUNNER_TEMP/antimage-api.test"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           go test -c -o "$api_test" ./internal/app/api
           sudo env ANTIMAGE_NATIVE_RUN_OPENVPN=0 ANTIMAGE_NATIVE_RUN_PANEL=0 \
             RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_WIREGUARD_CONTROLLER_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_VPN_API_TEST_BINARY="$api_test" \
             bash scripts/ci/native-vpn-drivers.sh
 
@@ -342,3 +345,22 @@ jobs:
         run: go test ./internal/app/nodeagent -run 'Test(OpenVPNTargetedRPCAddUpdateRemoveKeepsManagedProcessAndReplaysACK|DecodeOpenVPNMutationRequiresOperationAndRevision|OpenVPNMutationReceiptIsDurableAndRejectsOperationIDReuse|OpenVPNMutationLockWaitHonorsCancellation|StartOpenVPNInboundPreservesProcessForIdenticalConfig|OpenVPNUserOnlyMutationUpdatesAuthWithoutRestart|ApplyNativeRuntimePreservesOpenVPNProcessForUserOnlySync|StopReceiptSurvivesLostACKWithoutProcessReplay)' -count=1
       - name: Race test OpenVPN NodeAgent mutation and lifecycle
         run: go test -race ./internal/app/nodeagent -run 'Test(OpenVPNTargetedRPCAddUpdateRemoveKeepsManagedProcessAndReplaysACK|DecodeOpenVPNMutationRequiresOperationAndRevision|OpenVPNMutationReceiptIsDurableAndRejectsOperationIDReuse|OpenVPNMutationLockWaitHonorsCancellation|StartOpenVPNInboundPreservesProcessForIdenticalConfig|OpenVPNUserOnlyMutationUpdatesAuthWithoutRestart|ApplyNativeRuntimePreservesOpenVPNProcessForUserOnlySync|StopReceiptSurvivesLostACKWithoutProcessReplay)' -count=1
+
+  controller-wireguard-targeted:
+    name: controller-wireguard-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run WireGuard Controller RPC and NodeAgent mutation tests
+        run: |
+          go test ./internal/app/nodecontroller -run 'TestControllerWireGuard(AddAndUpdateUseTargetedRPC|RemoveUsesTargetedRPCAndStableIdentity)' -count=1
+          go test ./internal/app/nodeagent -run 'Test(WireGuardMutationRPC(AddUpdateRemovePreservesInterfaceAndUnrelatedPeer|RejectsOperationEnvelopeMismatch)|WireGuardMutationReceiptFailureRetriesWithoutReapplyingKernelMutation|RuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities)' -count=1
+      - name: Race test WireGuard Controller RPC and NodeAgent mutation tests
+        run: |
+          go test -race ./internal/app/nodecontroller -run 'TestControllerWireGuard(AddAndUpdateUseTargetedRPC|RemoveUsesTargetedRPCAndStableIdentity)' -count=1
+          go test -race ./internal/app/nodeagent -run 'Test(WireGuardMutationRPC(AddUpdateRemovePreservesInterfaceAndUnrelatedPeer|RejectsOperationEnvelopeMismatch)|WireGuardMutationReceiptFailureRetriesWithoutReapplyingKernelMutation|RuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities)' -count=1
