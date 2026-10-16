@@ -171,6 +171,10 @@ run_wireguard() {
   if [ -n "${ANTIMAGE_WIREGUARD_CONTROLLER_TEST_BINARY:-}" ]; then
     echo '=== WireGuard targeted Controller -> NodeAgent -> kernel mutation ==='
     ANTIMAGE_WIREGUARD_TARGETED_MUTATION_E2E=1 \
+      ANTIMAGE_WIREGUARD_NATIVE_INTERFACE=wg-native \
+      ANTIMAGE_WIREGUARD_NATIVE_PEER="$client_pub" \
+      ANTIMAGE_WIREGUARD_NATIVE_SERVER_PRIVATE_KEY="$server_priv" \
+      ANTIMAGE_WIREGUARD_NATIVE_CLIENT_NS="$NS" \
       "$ANTIMAGE_WIREGUARD_CONTROLLER_TEST_BINARY" \
       -test.run='^TestControllerWireGuardTargetedMutationNativeE2E$' -test.v
   fi
