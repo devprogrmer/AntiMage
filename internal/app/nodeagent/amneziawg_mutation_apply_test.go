@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type amneziaWGMutationHarness struct {
@@ -217,5 +219,44 @@ func TestApplyAmneziaWGIdenticalUpdateIsKernelNoop(t *testing.T) {
 	}
 	if h.commands != 0 {
 		t.Fatalf("identical update issued %d kernel commands", h.commands)
+	}
+}
+
+func TestAmneziaWGTargetedRPCIsIdempotentAndRejectsConflictingOperationID(t *testing.T) {
+	otherKey, targetKey := awgTestKey('o'), awgTestKey('p')
+	other := amneziaWGRuntimePeer{UserID: 8, PublicKey: otherKey, Address: "10.72.0.8", Status: "active"}
+	h := newAmneziaWGMutationHarness(t, []amneziaWGRuntimePeer{other})
+	added := amneziaWGRuntimePeer{UserID: 7, PublicKey: targetKey, Address: "10.72.0.7", Status: "active"}
+	request := &nodev1.InboundUserRequest{OperationId: "awg-add-7", InboundTag: "awg-mutation", User: h.user(7, "add", []amneziaWGRuntimePeer{added})}
+	response, err := h.server.AddUser(context.Background(), request)
+	if err != nil || !response.GetAccepted() || response.GetOperationId() != request.GetOperationId() {
+		t.Fatalf("AddUser response=%v err=%v", response, err)
+	}
+	mutations := h.commands
+	response, err = h.server.AddUser(context.Background(), request)
+	if err != nil || !response.GetAccepted() || h.commands != mutations {
+		t.Fatalf("same operation retry response=%v mutations=%d want=%d err=%v", response, h.commands, mutations, err)
+	}
+	conflicting := &nodev1.InboundUserRequest{OperationId: request.GetOperationId(), InboundTag: request.GetInboundTag(), User: h.user(7, "update", []amneziaWGRuntimePeer{{UserID: 7, PublicKey: targetKey, Address: "10.72.0.9", Status: "active"}})}
+	if response, err := h.server.UpdateUser(context.Background(), conflicting); response != nil || status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("conflicting operation response=%v err=%v, want failed precondition", response, err)
+	}
+	if got := h.peers[targetKey].AllowedIPs[0]; got != "10.72.0.7/32" || h.commands != mutations {
+		t.Fatalf("conflicting operation changed runtime: peer=%q commands=%d before=%d", got, h.commands, mutations)
+	}
+	updated := added
+	updated.Address = "10.72.0.9"
+	updateRequest := &nodev1.InboundUserRequest{OperationId: "awg-update-7", InboundTag: "awg-mutation", User: h.user(7, "update", []amneziaWGRuntimePeer{updated})}
+	response, err = h.server.UpdateUser(context.Background(), updateRequest)
+	if err != nil || !response.GetAccepted() || response.GetOperationId() != updateRequest.GetOperationId() || h.peers[targetKey].AllowedIPs[0] != "10.72.0.9/32" {
+		t.Fatalf("UpdateUser response=%v peer=%+v err=%v", response, h.peers[targetKey], err)
+	}
+	removeRequest := &nodev1.RemoveInboundUserRequest{OperationId: "awg-remove-7", InboundTag: "awg-mutation", Email: "amneziawg-user:7"}
+	response, err = h.server.RemoveUser(context.Background(), removeRequest)
+	if err != nil || !response.GetAccepted() || response.GetOperationId() != removeRequest.GetOperationId() {
+		t.Fatalf("RemoveUser response=%v err=%v", response, err)
+	}
+	if _, exists := h.peers[targetKey]; exists || h.peers[otherKey].AllowedIPs[0] != "10.72.0.8/32" {
+		t.Fatalf("target/unrelated peer state after remove: target=%v unrelated=%+v", h.peers[targetKey], h.peers[otherKey])
 	}
 }

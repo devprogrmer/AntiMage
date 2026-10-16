@@ -167,6 +167,13 @@ func AWGRuntimeSettings(inbound map[string]any) map[string]any {
 	for key, value := range settings {
 		out[key] = value
 	}
+	// NodeAgent's AmneziaWG runtime consumes address_pool. Panel configs use
+	// the same ipv4_pool_cidr aliases as the other native VPN runtimes.
+	if pool := strings.TrimSpace(firstNonEmptyOVString(
+		out["address_pool"], out["ipv4_pool_cidr"], out["ipv4PoolCidr"],
+	)); pool != "" {
+		out["address_pool"] = pool
+	}
 	delete(out, "clients")
 	return out
 }

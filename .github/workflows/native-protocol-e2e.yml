@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        protocol: ${{ github.event_name == 'push' && fromJSON('["openvpn","wireguard"]') || fromJSON('["xray","wireguard","amneziawg","openvpn","l2tp","pptp","anyconnect","ikev2"]') }}
+        protocol: ${{ github.event_name == 'push' && fromJSON('["openvpn","wireguard","amneziawg"]') || fromJSON('["xray","wireguard","amneziawg","openvpn","l2tp","pptp","anyconnect","ikev2"]') }}
     env:
       CGO_ENABLED: '1'
     steps:
@@ -364,3 +364,22 @@ jobs:
         run: |
           go test -race ./internal/app/nodecontroller -run 'Test(ControllerWireGuard(AddAndUpdateUseTargetedRPC|RemoveUsesTargetedRPCAndStableIdentity)|WireGuardTargetedCapabilityRequiresAdvertisedAssignedSingleProtocol)' -count=1
           go test -race ./internal/app/nodeagent -run 'Test(WireGuardMutationRPC(AddUpdateRemovePreservesInterfaceAndUnrelatedPeer|RejectsOperationEnvelopeMismatch)|WireGuardMutationReceipt(RejectsConflictingOperationID|FailureRetriesWithoutReapplyingKernelMutation)|RuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities)' -count=1
+
+  controller-amneziawg-targeted:
+    name: controller-amneziawg-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run AmneziaWG Controller RPC and NodeAgent mutation tests
+        run: |
+          go test ./internal/app/nodecontroller -run 'Test(ControllerAmneziaWGOperationsUseAdvertisedTargetedRPC|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
+          go test ./internal/app/nodeagent -run 'Test(AmneziaWGTargetedRPCIsIdempotentAndRejectsConflictingOperationID|ApplyAmneziaWGUserMutation|ApplyAmneziaWGIdenticalUpdateIsKernelNoop)' -count=1
+      - name: Race test AmneziaWG Controller RPC and NodeAgent mutation tests
+        run: |
+          go test -race ./internal/app/nodecontroller -run 'Test(ControllerAmneziaWGOperationsUseAdvertisedTargetedRPC|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
+          go test -race ./internal/app/nodeagent -run 'Test(AmneziaWGTargetedRPCIsIdempotentAndRejectsConflictingOperationID|ApplyAmneziaWGUserMutation|ApplyAmneziaWGIdenticalUpdateIsKernelNoop)' -count=1

@@ -141,6 +141,14 @@ timeout 30 nc -l -p 19090 >"$ROOT/initial-received" 2>&1 &
 PIDS+=("$!")
 wait_for 'initial AWG receiver' sh -c 'ss -lnt "( sport = :19090 )" | grep -q 19090'
 ip netns exec "$NS" sh -c 'dd if=/dev/zero bs=1M count=2 2>/dev/null | nc -N -w 3 10.74.0.1 19090'
+echo '=== AmneziaWG targeted NodeAgent RPC mutation on live kernel interface ==='
+env ANTIMAGE_AWG_TARGETED_MUTATION_E2E=1 \
+  ANTIMAGE_AWG_NATIVE_STATE="$ROOT/awg-state" \
+  ANTIMAGE_AWG_NATIVE_INTERFACE="$IFACE" \
+  ANTIMAGE_AWG_NATIVE_CLIENT_NS="$NS" \
+  ANTIMAGE_AWG_SERVER_PRIVATE="$server_priv" \
+  ANTIMAGE_AWG_CLIENT_PUBLIC="$client_pub" \
+  "$ANTIMAGE_AWG_TEST_BINARY" -test.run='^TestAmneziaWGTargetedMutationNativeE2E$' -test.v
 NATIVE_SESSION_EXPECT_MARKER="$ROOT/awg-state/native-session-api/api-active"
 stage collect-first "$ROOT/awg-state"
 NATIVE_SESSION_EXPECT_MARKER=""
