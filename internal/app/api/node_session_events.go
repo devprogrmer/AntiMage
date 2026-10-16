@@ -86,6 +86,25 @@ func (s *Server) handleNodeSessionEvent(w http.ResponseWriter, r *http.Request) 
 		writeStatusError(w, err)
 		return
 	}
+	if event := strings.ToLower(strings.TrimSpace(payload.Event)); event == "start" || event == "seen" {
+		// Durable node outboxes can replay a start after its user was deleted
+		// while the panel was unavailable. Acknowledge that stale event as a
+		// no-op so it cannot pin later valid events in the FIFO. Stop events are
+		// still processed below to close any session row created before deletion.
+		var userID int64
+		err := s.db.QueryRowContext(r.Context(), `
+SELECT id FROM users
+WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted'
+LIMIT 1`, payload.UserID).Scan(&userID)
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "ignored": "deleted_user"})
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+	}
 	if strings.EqualFold(strings.TrimSpace(payload.Event), "ready") {
 		nodeID := payload.NodeID
 		if err := s.nodeControllerQueueSync(r.Context(), &nodeID, map[string]any{"source": "node_ready"}); err != nil {
