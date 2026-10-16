@@ -29,6 +29,7 @@ type nativeSessionHelperConfig struct {
 	Users                   map[string]int64                   `json:"users"`
 	Policies                map[string]nativeSessionUserPolicy `json:"policies,omitempty"`
 	StateDir                string                             `json:"state_dir"`
+	Transitioning           bool                               `json:"transitioning,omitempty"`
 	ManagementNetwork       string                             `json:"management_network,omitempty"`
 	ManagementAddress       string                             `json:"management_address,omitempty"`
 }
@@ -122,6 +123,9 @@ func RunNativeSessionEventHelper(args []string) error {
 			// ancestry selects this runtime's own session before parsing ipparam.
 			return nil
 		}
+	}
+	if cfg.Transitioning && (eventName == "pre-up" || eventName == "start") {
+		return fmt.Errorf("%s runtime policy is being updated; retry admission", protocol)
 	}
 	clientIP := firstNonEmptyIPEnv("trusted_ip", "trusted_ip6", "IPPARAM", "REMOTENUMBER", "IP_REAL")
 	if len(args) == 3 && nativeSpeedIsPPPProtocol(protocol) {

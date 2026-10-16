@@ -142,6 +142,41 @@ func TestPPPPreUpAdmissionRejectsDurableOfflineQuota(t *testing.T) {
 	}
 }
 
+func TestPPPTransitioningPolicyBlocksNewSessionsButAllowsStop(t *testing.T) {
+	dir := t.TempDir()
+	runtimeRoot := filepath.Join(dir, "l2tp", "native")
+	if err := os.MkdirAll(runtimeRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(runtimeRoot, "session-helper.json")
+	if err := offlineDurableJSON(configPath, nativeSessionHelperConfig{
+		Protocol: "l2tp", InboundTag: "native", Users: map[string]int64{"alice": 42},
+		Policies: map[string]nativeSessionUserPolicy{"alice": {Status: "active"}},
+		StateDir: filepath.Join(runtimeRoot, "sessions"), Transitioning: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("common_name", "alice")
+	t.Setenv("PPPD_PID", "123")
+	t.Setenv("IPPARAM", "198.51.100.10")
+	previousProcess, previousProtocol := pppOfflineReadProcess, pppOfflineDetectProtocol
+	pppOfflineReadProcess = func(pid string) (string, error) { return "fixture-boot:123:1", nil }
+	pppOfflineDetectProtocol = func(string) (string, error) { return "l2tp", nil }
+	t.Cleanup(func() {
+		pppOfflineReadProcess, pppOfflineDetectProtocol = previousProcess, previousProtocol
+	})
+
+	for _, event := range []string{"pre-up", "start"} {
+		err := RunNativeSessionEventHelper([]string{configPath, event})
+		if err == nil || !strings.Contains(err.Error(), "policy is being updated") {
+			t.Fatalf("%s should be held during policy transition, got %v", event, err)
+		}
+	}
+	if err := RunNativeSessionEventHelper([]string{configPath, "stop"}); err == nil || strings.Contains(err.Error(), "policy is being updated") {
+		t.Fatalf("stop should pass the transition gate and reach session lookup, got %v", err)
+	}
+}
+
 func TestL2TPPreUpDeviceLimitDenialPersistsPeerWithoutCreatingSession(t *testing.T) {
 	dir := t.TempDir()
 	runtimeRoot := filepath.Join(dir, "l2tp", "native")
