@@ -159,12 +159,17 @@ func TestPPPTransitioningPolicyBlocksNewSessionsButAllowsStop(t *testing.T) {
 	t.Setenv("common_name", "alice")
 	t.Setenv("PPPD_PID", "123")
 	t.Setenv("IPPARAM", "198.51.100.10")
-	previousProcess, previousProtocol := pppOfflineReadProcess, pppOfflineDetectProtocol
+	previousProcess, previousProtocol, previousSignal := pppOfflineReadProcess, pppOfflineDetectProtocol, nativePPPProcessSignal
 	pppOfflineReadProcess = func(pid string) (string, error) { return "fixture-boot:123:1", nil }
 	pppOfflineDetectProtocol = func(string) (string, error) { return "l2tp", nil }
+	var signaled string
+	nativePPPProcessSignal = func(identity string) error { signaled = identity; return nil }
 	t.Cleanup(func() {
-		pppOfflineReadProcess, pppOfflineDetectProtocol = previousProcess, previousProtocol
+		pppOfflineReadProcess, pppOfflineDetectProtocol, nativePPPProcessSignal = previousProcess, previousProtocol, previousSignal
 	})
+	if err := pppOfflineWriteAdmissionReservation(dir, 42, "native", "fixture-boot:123:1", "198.51.100.10"); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, event := range []string{"pre-up", "start"} {
 		err := RunNativeSessionEventHelper([]string{configPath, event})
@@ -174,6 +179,12 @@ func TestPPPTransitioningPolicyBlocksNewSessionsButAllowsStop(t *testing.T) {
 	}
 	if err := RunNativeSessionEventHelper([]string{configPath, "stop"}); err == nil || strings.Contains(err.Error(), "policy is being updated") {
 		t.Fatalf("stop should pass the transition gate and reach session lookup, got %v", err)
+	}
+	if signaled != "fixture-boot:123:1" {
+		t.Fatalf("transitioning start did not terminate its exact PPP process: %q", signaled)
+	}
+	if _, err := os.Stat(pppOfflineAdmissionReservationPath(dir, signaled)); !os.IsNotExist(err) {
+		t.Fatalf("transitioning start left a stale pending reservation: %v", err)
 	}
 }
 

@@ -103,7 +103,14 @@ func updateL2TPManagedBlock(
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	updated := replaceL2TPManagedBlock(existing, start, end, body)
+	if bytes.Equal(existing, updated) {
+		return nil
+	}
+	return atomicWriteFile(path, updated, 0600)
+}
 
+func replaceL2TPManagedBlock(existing []byte, start, end, body string) []byte {
 	text := string(existing)
 
 	block := start + "\n"
@@ -137,11 +144,7 @@ func updateL2TPManagedBlock(
 		}
 		text += block
 	}
-	if bytes.Equal(existing, []byte(text)) {
-		return nil
-	}
-
-	return atomicWriteFile(path, []byte(text), 0600)
+	return []byte(text)
 }
 
 type l2TPInstallChanges struct {

@@ -311,7 +311,12 @@ func (s *Server) applyNativeRuntime(raw string) error {
 			return fmt.Errorf("only one l2tp runtime inbound is supported")
 		}
 
-		files, err := s.prepareL2TPInbound(inbound, payload.SessionCallback)
+		var files l2TPRuntimeFiles
+		err := withPPPAdmissionLock(s.cfg.DataDir, func() error {
+			var prepareErr error
+			files, prepareErr = s.prepareL2TPInbound(inbound, payload.SessionCallback)
+			return prepareErr
+		})
 		if err != nil {
 			return err
 		}

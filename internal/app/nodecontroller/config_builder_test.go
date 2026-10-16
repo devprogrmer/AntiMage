@@ -196,6 +196,14 @@ func TestOpenVPNTargetedMutationCapabilitiesAreOperationSpecific(t *testing.T) {
 	}
 }
 
+func TestL2TPTargetedMutationCapabilityRemainsDisabledUntilNativeGate(t *testing.T) {
+	for _, operation := range []string{"add_user", "update_user", "remove_user", "enable_user", "disable_user"} {
+		if got := targetedUserCapability("l2tp", operation); got != "" {
+			t.Fatalf("L2TP %s must remain on safe full sync until native E2E: capability=%q", operation, got)
+		}
+	}
+}
+
 func TestInlineTLSCertificateFilesReadsMasterPaths(t *testing.T) {
 	dir := t.TempDir()
 	certPath := filepath.Join(dir, "fullchain.pem")

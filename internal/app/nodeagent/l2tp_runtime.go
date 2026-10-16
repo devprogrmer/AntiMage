@@ -107,25 +107,7 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 		return l2TPRuntimeFiles{}, err
 	}
 
-	usageUsers := make(map[string]int64)
-	for _, user := range inbound.Users {
-		if !l2TPUserAllowed(user) || user.UserID <= 0 {
-			continue
-		}
-		rawIP := strings.TrimSpace(user.IPv4Address)
-		if rawIP == "" {
-			continue
-		}
-		addr, err := netip.ParseAddr(rawIP)
-		if err != nil || !addr.Is4() {
-			continue
-		}
-		usageUsers[addr.String()] = user.UserID
-	}
-	usageConfig := l2TPUsageRuntimeConfig{
-		InboundTag: tag,
-		Users:      usageUsers,
-	}
+	usageConfig := l2TPUsageConfigForInbound(inbound)
 	rawUsageConfig, err := json.Marshal(usageConfig)
 	if err != nil {
 		return l2TPRuntimeFiles{}, fmt.Errorf(
@@ -207,23 +189,56 @@ func (s *Server) prepareL2TPInbound(inbound l2TPRuntimeInbound, callback nativeR
 		}
 	}
 
+	files.Identity, err = l2TPRuntimeIdentity(files, helperExecutable)
+	if err != nil {
+		return l2TPRuntimeFiles{}, fmt.Errorf("l2tp %q: read runtime identity input: %w", tag, err)
+	}
+	return files, nil
+}
+
+func l2TPUsageConfigForInbound(inbound l2TPRuntimeInbound) l2TPUsageRuntimeConfig {
+	users := make(map[string]int64)
+	for _, user := range inbound.Users {
+		if !l2TPUserAllowed(user) || user.UserID <= 0 {
+			continue
+		}
+		if rawIP := strings.TrimSpace(user.IPv4Address); rawIP != "" {
+			address, err := netip.ParseAddr(rawIP)
+			if err == nil && address.Is4() {
+				users[address.String()] = user.UserID
+			}
+		}
+	}
+	return l2TPUsageRuntimeConfig{InboundTag: strings.TrimSpace(inbound.Tag), Users: users}
+}
+
+func l2TPRuntimeIdentity(files l2TPRuntimeFiles, helperExecutable string) ([32]byte, error) {
+	return l2TPRuntimeIdentityWithOverrides(files, helperExecutable, nil)
+}
+
+func l2TPRuntimeIdentityWithOverrides(files l2TPRuntimeFiles, helperExecutable string, overrides map[string][]byte) ([32]byte, error) {
 	identity := sha256.New()
 	for _, path := range []string{files.IPSecConfig, files.IPSecSecrets, files.XL2TPConfig, files.PPPOptions, files.CHAPSecrets, files.IPUpScript, files.IPDownScript, files.SessionConfig, files.UsageConfig} {
 		identity.Write([]byte{0})
 		if path == "" {
 			continue
 		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return l2TPRuntimeFiles{}, fmt.Errorf("l2tp %q: read runtime identity input: %w", tag, err)
+		content, exists := overrides[path]
+		if !exists {
+			var err error
+			content, err = os.ReadFile(path)
+			if err != nil {
+				return [32]byte{}, err
+			}
 		}
 		identity.Write(content)
 	}
 	if helperExecutable != "" {
 		identity.Write([]byte(renderL2TPSystemIPPreUpHook(helperExecutable, files.SessionConfig)))
 	}
-	copy(files.Identity[:], identity.Sum(nil))
-	return files, nil
+	var result [32]byte
+	copy(result[:], identity.Sum(nil))
+	return result, nil
 }
 
 func renderL2TPIPSecConfig() string {

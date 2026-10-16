@@ -11,3 +11,8 @@ func withPPPAdmissionLock(_ string, fn func() error) error {
 	defer pppAdmissionLockMu.Unlock()
 	return fn()
 }
+
+func acquirePPPAdmissionLock(_ string) (func(), error) {
+	pppAdmissionLockMu.Lock()
+	return pppAdmissionLockMu.Unlock, nil
+}
