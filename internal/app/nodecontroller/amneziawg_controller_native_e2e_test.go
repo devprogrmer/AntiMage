@@ -115,7 +115,7 @@ func TestControllerAmneziaWGTargetedMutationNativeE2E(t *testing.T) {
 		t.Fatalf("Controller fenced initial AmneziaWG policy sync: %v", err)
 	}
 	syncCalls.Store(0)
-	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.2/32", true) || !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.3/32", true) || nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.9/32", true) {
+	if !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.2/32", true) || !nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.3/32", true) || nativeAmneziaWGControllerPeer(t, tool, iface, "10.74.0.9/32", false) {
 		t.Fatal("initial policy sync did not preserve the two live peers and leave the target absent")
 	}
 	// Until the native gate is complete the production Hello deliberately does
