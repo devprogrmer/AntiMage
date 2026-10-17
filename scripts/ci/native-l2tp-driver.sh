@@ -778,6 +778,10 @@ find "$ROOT/l2tp-state" -path '*/ppp-accounting/admission-denials/7.json' -delet
 printf 'c antimage\n' >"$ROOT/client.control"
 wait_for 'durable L2TP reconnect denial' sh -c 'find "$1" -path "*/ppp-accounting/admission-denials/7.json" -print -quit | grep -q .' _ "$ROOT/l2tp-state"
 wait_for_gone 'denied reconnect PPP interface' ip netns exec "$NS" ip link show ppp0
+# The client namespace link can disappear before the server-side pppd has
+# finished its synchronous ip-down callback. Keep the Panel API alive until
+# xl2tpd removes every server PPP interface and those stop hooks have returned.
+wait_for_gone 'all server PPP interfaces after quota denial' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
 stage collect-final
 panel_replay 1
 stage ack
