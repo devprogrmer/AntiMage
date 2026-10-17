@@ -56,6 +56,14 @@ func TestOfflineProcessIdentityRetainsZombieForStopAndExcludesItFromLiveSessions
 }
 
 func TestL2TPStopHookPersistsFinalRecordWhenPPPDIsZombie(t *testing.T) {
+	testL2TPExitedStopHook(t, false)
+}
+
+func TestL2TPStopHookPersistsFinalRecordWhenPPPDIsReaped(t *testing.T) {
+	testL2TPExitedStopHook(t, true)
+}
+
+func testL2TPExitedStopHook(t *testing.T, reap bool) {
 	child := exec.Command("sh", "-c", "exit 0")
 	if err := child.Start(); err != nil {
 		t.Fatal(err)
@@ -89,6 +97,15 @@ func TestL2TPStopHookPersistsFinalRecordWhenPPPDIsZombie(t *testing.T) {
 	}
 	if identity == "" {
 		t.Fatalf("child process %s did not become a zombie", pid)
+	}
+
+	if reap {
+		if err := child.Wait(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := offlineProcessIdentity(pid); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("reaped child must no longer have a process identity: %v", err)
+		}
 	}
 
 	dataDir := t.TempDir()
@@ -176,5 +193,84 @@ func TestL2TPStopHookPersistsFinalRecordWhenPPPDIsZombie(t *testing.T) {
 	}
 	if _, err := os.Stat(statePath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Panel stop callback state should be removed after delivery: err=%v", err)
+	}
+}
+
+func TestPPPReapedStopIdentitySafety(t *testing.T) {
+	bootRaw, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	boot := strings.TrimSpace(string(bootRaw))
+	for _, tc := range []struct {
+		name    string
+		records []pppOfflineSession
+		want    string
+		reject  bool
+	}{
+		{name: "unique", records: []pppOfflineSession{{Process: boot + ":123:10", Interface: "ppp0"}}, want: boot + ":123:10"},
+		{name: "duplicate retained identity", records: []pppOfflineSession{{Process: boot + ":123:10", Interface: "ppp0"}, {Process: boot + ":123:10", Interface: "ppp0"}}, want: boot + ":123:10"},
+		{name: "foreign boot", records: []pppOfflineSession{{Process: "other:123:10", Interface: "ppp0"}}, reject: true},
+		{name: "wrong interface", records: []pppOfflineSession{{Process: boot + ":123:10", Interface: "ppp1"}}, reject: true},
+		{name: "reused PID same interface", records: []pppOfflineSession{{Process: boot + ":123:10", Interface: "ppp0"}, {Process: boot + ":123:20", Interface: "ppp0"}}, reject: true},
+		{name: "reused PID other interface", records: []pppOfflineSession{{Process: boot + ":123:10", Interface: "ppp0"}, {Process: boot + ":123:20", Interface: "ppp1"}}, reject: true},
+		{name: "invalid start time", records: []pppOfflineSession{{Process: boot + ":123:bad", Interface: "ppp0"}}, reject: true},
+		{name: "missing", reject: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			dir := filepath.Join(root, "ppp-accounting", "active")
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			for i, record := range tc.records {
+				raw, err := json.Marshal(record)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, strconv.Itoa(i)+".json"), raw, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := pppOfflineFindReapedProcess(root, "ppp0", "123", boot)
+			if tc.reject {
+				if err == nil {
+					t.Fatalf("unsafe identity accepted: %q", got)
+				}
+			} else if err != nil || got != tc.want {
+				t.Fatalf("identity=%q err=%v", got, err)
+			}
+		})
+	}
+}
+
+func TestPPPReapedStopIdentityRejectsPIDReuseDuringLookup(t *testing.T) {
+	bootRaw, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	boot := strings.TrimSpace(string(bootRaw))
+	root := t.TempDir()
+	record := pppOfflineSession{ID: "reaped", Process: boot + ":123:10", Interface: "ppp0"}
+	if err := pppOfflineSessionEvent(root, "start", record); err != nil {
+		t.Fatal(err)
+	}
+	previous := pppOfflineReadProcess
+	t.Cleanup(func() { pppOfflineReadProcess = previous })
+	calls := 0
+	pppOfflineReadProcess = func(string) (string, error) {
+		calls++
+		if calls == 1 {
+			return "", os.ErrNotExist
+		}
+		return boot + ":123:20", nil
+	}
+	if identity, err := pppOfflineStopProcessIdentity(root, "ppp0", "123"); err == nil || identity != "" {
+		t.Fatalf("PID reuse accepted: %q %v", identity, err)
+	}
+	calls = 0
+	pppOfflineReadProcess = func(string) (string, error) { calls++; return "", os.ErrPermission }
+	if _, err := pppOfflineStopProcessIdentity(root, "ppp0", "123"); !errors.Is(err, os.ErrPermission) || calls != 1 {
+		t.Fatalf("non-missing process error must not use fallback: calls=%d err=%v", calls, err)
 	}
 }

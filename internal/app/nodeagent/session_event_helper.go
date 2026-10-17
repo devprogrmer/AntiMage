@@ -199,7 +199,11 @@ func RunNativeSessionEventHelper(args []string) error {
 	userID := cfg.Users[commonName]
 	pppProcess := ""
 	if nativeSpeedIsPPPProtocol(protocol) && (eventName == "start" || eventName == "stop") {
-		pppProcess, err = pppOfflineReadProcess(firstNonEmptyEnv("PPPD_PID"))
+		if eventName == "stop" {
+			pppProcess, err = pppOfflineStopProcessIdentity(filepath.Dir(configPath), interfaceName, firstNonEmptyEnv("PPPD_PID"))
+		} else {
+			pppProcess, err = pppOfflineReadProcess(firstNonEmptyEnv("PPPD_PID"))
+		}
 		if err != nil {
 			return fmt.Errorf("PPP process identity: %w", err)
 		}
