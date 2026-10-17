@@ -67,6 +67,13 @@ func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclie
 				return c.grpcApplyOpenVPNUserOperation(ctx, client, node, operation)
 			}
 		}
+		if len(userProtocols) == 1 && strings.EqualFold(strings.TrimSpace(userProtocols[0]), "l2tp") {
+			capability := targetedUserCapability("l2tp", operation.OperationType)
+			if capability != "" && client.Supports(capability) {
+				return c.grpcApplyL2TPUserOperation(ctx, client, node, operation)
+			}
+			return c.grpcApplyLegacyFullSyncForUserOperation(ctx, client, node, operation, prepared)
+		}
 	}
 	switch operation.OperationType {
 	case "remove_user", "disable_user":
@@ -78,6 +85,36 @@ func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclie
 	default:
 		return fmt.Errorf("unsupported runtime user operation: %s", operation.OperationType)
 	}
+}
+
+func (c Controller) grpcApplyLegacyFullSyncForUserOperation(ctx context.Context, client *nodeclient.Client, node NodeRow, operation OperationRow, prepared *preparedRuntimeConfig) error {
+	operationID := fmt.Sprintf("legacy-full-sync-%s-%d", operation.OperationType, operation.ID)
+	var request *nodev1.RuntimeConfigRequest
+	if prepared != nil && prepared.nodeID == node.ID && strings.TrimSpace(prepared.configJSON) != "" {
+		request = &nodev1.RuntimeConfigRequest{
+			OperationId: operationID, ConfigJson: prepared.configJSON,
+			OvRuntimeJson: prepared.ovRuntimeJSON, DesiredRevision: uint64(operation.ID),
+		}
+	} else {
+		configJSON, err := c.buildRuntimeConfig(ctx, node)
+		if err != nil {
+			return err
+		}
+		request, err = c.runtimeConfigRequest(ctx, node, operationID, configJSON)
+		if err != nil {
+			return err
+		}
+	}
+	if err := c.prepareRuntimeRevision(ctx, client, node.ID, request); err != nil {
+		return err
+	}
+	return c.executeLegacyNodeCommand(legacyConfigEvidence(ctx, request.ConfigJson), node.ID, request.OperationId, "sync_config", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
+		request.Fence = fence
+		return client.Runtime().SyncConfig(worker, request)
+	}, func(worker context.Context, response *nodev1.RuntimeActionResponse) error {
+		_, err := c.finishRuntime(worker, node, response.GetRuntime(), response.GetMessage())
+		return err
+	})
 }
 
 func (c Controller) grpcApplyAmneziaWGUserOperation(ctx context.Context, client *nodeclient.Client, node NodeRow, operation OperationRow) error {

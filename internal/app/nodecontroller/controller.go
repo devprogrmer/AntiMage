@@ -664,6 +664,13 @@ func targetedUserCapability(protocol, operation string) string {
 		case "add_user", "remove_user", "disable_user", "enable_user":
 			return "targeted_user_add_remove_openvpn"
 		}
+	case "l2tp":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_l2tp"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_l2tp"
+		}
 	}
 	return ""
 }

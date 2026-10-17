@@ -196,10 +196,13 @@ func TestOpenVPNTargetedMutationCapabilitiesAreOperationSpecific(t *testing.T) {
 	}
 }
 
-func TestL2TPTargetedMutationCapabilityRemainsDisabledUntilNativeGate(t *testing.T) {
-	for _, operation := range []string{"add_user", "update_user", "remove_user", "enable_user", "disable_user"} {
-		if got := targetedUserCapability("l2tp", operation); got != "" {
-			t.Fatalf("L2TP %s must remain on safe full sync until native E2E: capability=%q", operation, got)
+func TestL2TPTargetedMutationCapabilityRequiresOperationSpecificGate(t *testing.T) {
+	if got := targetedUserCapability("l2tp", "update_user"); got != "targeted_user_update_l2tp" {
+		t.Fatalf("L2TP update capability=%q", got)
+	}
+	for _, operation := range []string{"add_user", "remove_user", "enable_user", "disable_user"} {
+		if got := targetedUserCapability("l2tp", operation); got != "targeted_user_add_remove_l2tp" {
+			t.Fatalf("L2TP %s capability=%q", operation, got)
 		}
 	}
 }

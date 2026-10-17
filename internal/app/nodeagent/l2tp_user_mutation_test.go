@@ -203,13 +203,17 @@ func TestL2TPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack(t 
 func TestL2TPTargetedUpdateKeepsExistingPPPInterfaceAndChangesCredentialPolicy(t *testing.T) {
 	h := newL2TPMutationFixture(t)
 	root := filepath.Join(h.root, "l2tp", l2TPRuntimeDirName("l2tp-main"))
-	session := pppOfflineSession{ID: "alice-live", UserID: 7, InboundTag: "l2tp-main", Interface: "ppp0", PeerIP: "10.67.0.7", ClientIP: "198.51.100.7", Identity: "fixture-ifindex-4", Process: "fixture-boot:77:4"}
+	processIdentity, err := offlineProcessIdentity(strconv.Itoa(os.Getpid()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := pppOfflineSession{ID: "alice-live", UserID: 7, InboundTag: "l2tp-main", Interface: "ppp0", PeerIP: "10.67.0.7", ClientIP: "198.51.100.7", Identity: "fixture-ifindex-4", Process: processIdentity}
 	activePath := pppOfflineSessionActivePath(root, session.Interface, session.Process)
 	if err := offlineDurableJSON(activePath, session); err != nil {
 		t.Fatal(err)
 	}
 	updated := l2TPRuntimeUser{UserID: 7, Username: "alice", VPNUsername: "alice", Password: "new-password", IPv4Address: "10.67.0.7", Status: "active"}
-	_, err := h.server.UpdateUser(context.Background(), &nodev1.InboundUserRequest{
+	_, err = h.server.UpdateUser(context.Background(), &nodev1.InboundUserRequest{
 		OperationId: "operation-update-alice", InboundTag: "l2tp-main", User: h.user(7, "update", &updated, 2),
 	})
 	if err != nil {
