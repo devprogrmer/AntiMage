@@ -578,9 +578,28 @@ instrument_ip_down_hook() {
 set +e
 printf 'begin pppd_pid_set=%s ifname_set=%s device_set=%s common_name_set=%s peername_set=%s username_set=%s ipremote_set=%s bytes_sent_set=%s bytes_rcvd_set=%s\\n' \\
   "\${PPPD_PID:+yes}" "\${IFNAME:+yes}" "\${DEVICE:+yes}" "\${common_name:+yes}" "\${PEERNAME:+yes}" "\${USERNAME:+yes}" "\${IPREMOTE:+yes}" "\${BYTES_SENT:+yes}" "\${BYTES_RCVD:+yes}" >>"$trace"
-"$helper" session-event "$config" stop "\${6:-}" >/dev/null 2>&1
+error_file="\$(mktemp)"
+trap 'rm -f "\$error_file"' EXIT HUP INT TERM
+"$helper" session-event "$config" stop "\${6:-}" >/dev/null 2>"\$error_file"
 rc=\$?
-printf 'end helper_exit=%s\\n' "\$rc" >>"$trace"
+error_class=none
+if [ "\$rc" -ne 0 ]; then
+  if grep -q 'PPP process identity' "\$error_file"; then error_class=process_identity
+  elif grep -q 'missing trusted PPP start metadata' "\$error_file"; then error_class=missing_start_record
+  elif grep -q 'PPP stop metadata does not match start' "\$error_file"; then error_class=start_stop_mismatch
+  elif grep -q 'PPP stop inbound mismatch' "\$error_file"; then error_class=inbound_mismatch
+  elif grep -q 'PPP BYTES_SENT' "\$error_file"; then error_class=sent_counter
+  elif grep -q 'PPP BYTES_RCVD' "\$error_file"; then error_class=received_counter
+  elif grep -q 'PPP final counter overflow' "\$error_file"; then error_class=counter_overflow
+  elif grep -q 'PPP session identity' "\$error_file"; then error_class=session_identity
+  elif grep -q 'session state' "\$error_file"; then error_class=callback_state
+  elif [ -s "\$error_file" ]; then error_class=other_helper_error
+  else error_class=no_helper_error_text
+  fi
+fi
+printf 'end helper_exit=%s error_class=%s\\n' "\$rc" "\$error_class" >>"$trace"
+rm -f "\$error_file"
+trap - EXIT HUP INT TERM
 exit "\$rc"
 EOF
   chmod 0700 "$hook"
