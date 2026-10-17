@@ -439,9 +439,22 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 	if err := RunNativeSessionEventHelper([]string{configPath, "start", "203.0.113.11"}); err != nil {
 		t.Fatal(err)
 	}
+	// ip-down may not retain the address variables provided to ip-up. Stop
+	// must use the exact pppd process identity and durable start record.
+	t.Setenv("IPREMOTE", "")
+	t.Setenv("REMOTENUMBER", "")
+	t.Setenv("trusted_ip", "")
+	t.Setenv("trusted_ip6", "")
+	t.Setenv("IFNAME", "ppp0")
+	t.Setenv("BYTES_SENT", "1234")
+	t.Setenv("BYTES_RCVD", "5678")
 
-	if len(events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(events))
+	if err := RunNativeSessionEventHelper([]string{configPath, "stop"}); err != nil {
+		t.Fatalf("stop did not recover durable PPP session metadata: %v", err)
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("expected start and stop events, got %d", len(events))
 	}
 	event := events[0]
 	if event.Protocol != protocol {
@@ -452,6 +465,9 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 	}
 	if event.AssignedIP != "10.67.0.10" || event.ClientIP != "203.0.113.11" {
 		t.Fatalf("unexpected event addresses: %#v", event)
+	}
+	if events[1].Event != "stop" || events[1].SessionID != event.SessionID || events[1].AssignedIP != event.AssignedIP || events[1].ClientIP != event.ClientIP {
+		t.Fatalf("stop did not preserve exact start identity after environment changed: start=%#v stop=%#v", event, events[1])
 	}
 }
 

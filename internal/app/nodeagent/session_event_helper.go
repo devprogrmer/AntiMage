@@ -188,6 +188,13 @@ func RunNativeSessionEventHelper(args []string) error {
 	if commonName == "" {
 		return fmt.Errorf("%s session username is missing", protocol)
 	}
+	assignedIP := firstNonEmptyEnv(
+		"ifconfig_pool_remote_ip",
+		"IPREMOTE",
+		"PPP_REMOTE",
+		"IP_REMOTE",
+	)
+	interfaceName := firstNonEmptyEnv("IFNAME", "DEVICE")
 
 	userID := cfg.Users[commonName]
 	pppProcess := ""
@@ -206,6 +213,13 @@ func RunNativeSessionEventHelper(args []string) error {
 		if record.InboundTag != cfg.InboundTag {
 			return fmt.Errorf("PPP stop inbound mismatch")
 		}
+		// pppd may omit or rewrite address environment variables on ip-down.
+		// The exact process identity locates the durable start record, which is
+		// authoritative for the session's address and client identity.
+		interfaceName = record.Interface
+		assignedIP = record.PeerIP
+		clientIP = record.ClientIP
+		pppProcess = record.Process
 		userID = record.UserID
 	}
 	if userID <= 0 {
@@ -230,15 +244,6 @@ func RunNativeSessionEventHelper(args []string) error {
 			return err
 		}
 	}
-
-	assignedIP := firstNonEmptyEnv(
-		"ifconfig_pool_remote_ip",
-		"IPREMOTE",
-		"PPP_REMOTE",
-		"IP_REMOTE",
-	)
-
-	interfaceName := firstNonEmptyEnv("IFNAME", "DEVICE")
 
 	trustedPort := firstNonEmptyEnv("trusted_port")
 
@@ -280,7 +285,9 @@ func RunNativeSessionEventHelper(args []string) error {
 		trustedPort,
 	)
 	if pppProcess != "" {
-		sum := sha256.Sum256([]byte(stateKey + "\x00" + pppProcess))
+		// PPP process identity is stable across ip-up/ip-down even when pppd
+		// changes or drops IP environment variables between those hooks.
+		sum := sha256.Sum256([]byte(protocol + "\x00" + cfg.InboundTag + "\x00" + pppProcess))
 		stateKey = hex.EncodeToString(sum[:16])
 	}
 
