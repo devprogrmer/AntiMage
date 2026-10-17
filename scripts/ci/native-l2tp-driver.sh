@@ -571,12 +571,32 @@ wait_for_empty_session_outbox() {
   cat "$ROOT/panel-api.log" >&2
   return 1
 }
+instrument_ip_down_hook() {
+  local hook="$1" helper="$2" config="$3" trace="$4"
+  cat >"$hook" <<EOF
+#!/bin/sh
+set +e
+printf 'begin pppd_pid_set=%s ifname_set=%s device_set=%s common_name_set=%s peername_set=%s username_set=%s ipremote_set=%s bytes_sent_set=%s bytes_rcvd_set=%s\\n' \\
+  "\${PPPD_PID:+yes}" "\${IFNAME:+yes}" "\${DEVICE:+yes}" "\${common_name:+yes}" "\${PEERNAME:+yes}" "\${USERNAME:+yes}" "\${IPREMOTE:+yes}" "\${BYTES_SENT:+yes}" "\${BYTES_RCVD:+yes}" >>"$trace"
+"$helper" session-event "$config" stop "\${6:-}" >/dev/null 2>&1
+rc=\$?
+printf 'end helper_exit=%s\\n' "\$rc" >>"$trace"
+exit "\$rc"
+EOF
+  chmod 0700 "$hook"
+}
 
 echo '=== production L2TP daemon configuration and real xl2tpd/PPP tunnel ==='
 stage prepare
 config_path="$(cat "$ROOT/l2tp-state/xl2tpd-config-path")"
 ppp_options_path="$(awk -F ' = ' '/^pppoptfile = / {print $2}' "$config_path")"
 printf '\ndebug\nlogfile %s\n' "$ROOT/server-pppd.log" >>"$ppp_options_path"
+session_config="$(find "$ROOT/l2tp-state/l2tp" -name session-helper.json -print -quit)"
+instrument_ip_down_hook \
+  "$(dirname "$session_config")/ip-down.sh" \
+  "$ANTIMAGE_NODE_HELPER_BINARY" \
+  "$session_config" \
+  "$ROOT/ppp-ip-down-trace.log"
 cp "$config_path" /etc/xl2tpd/xl2tpd.conf
 write_client_files
 write_client_b_files
