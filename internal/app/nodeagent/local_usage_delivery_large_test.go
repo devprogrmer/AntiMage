@@ -203,3 +203,74 @@ func TestLocalDeliveryIndexedSteadyStateAllocationBudget(t *testing.T) {
 		t.Fatalf("steady-state reflection allocated %f times; want zero", allocations)
 	}
 }
+
+func TestLocalDeliveryProductionShapeMixedReflectionConservation(t *testing.T) {
+	deliveries := largeUsageDeliveryFixture()
+	type marker struct {
+		root     string
+		position int
+	}
+	reflected := map[int64]marker{}
+	for position, delivery := range deliveries {
+		for _, row := range delivery.Rows {
+			if row.UserID%4 == 0 {
+				reflected[row.UserID] = marker{delivery.BatchID, position}
+			}
+		}
+	}
+	expected := map[localUsageReflectionQuery]uint64{}
+	queries := make([]localUsageReflectionQuery, 0, 512*12)
+	var reflectedRaw uint64
+	for position, delivery := range deliveries {
+		for _, row := range delivery.Rows {
+			m, exists := reflected[row.UserID]
+			if exists && position <= m.position {
+				reflectedRaw += row.Raw
+				continue
+			}
+			key := localUsageReflectionQuery{Protocol: row.Protocol, UserID: row.UserID, InboundTag: row.InboundTag}
+			expected[key] += row.Raw
+		}
+	}
+	for uid := int64(1); uid <= 512; uid++ {
+		for _, protocol := range []string{"xray", "wireguard", "l2tp"} {
+			for tag := 0; tag < 4; tag++ {
+				root := "stale-unknown"
+				if m, ok := reflected[uid]; ok {
+					root = m.root
+				}
+				queries = append(queries, localUsageReflectionQuery{Protocol: protocol, UserID: uid, InboundTag: fmt.Sprintf("inbound-%d", tag), ReflectedRootBatchID: root})
+			}
+		}
+	}
+	s := &Server{cfg: Config{DataDir: t.TempDir()}}
+	if err := s.persistLocalUsageDeliveriesLocked(deliveries); err != nil {
+		t.Fatal(err)
+	}
+	results, err := s.localAwaitingReflectionUsageBatch(queries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var awaiting uint64
+	for i, query := range queries {
+		key := query
+		key.ReflectedRootBatchID = ""
+		if results[i].Awaiting != expected[key] {
+			t.Fatalf("owner %v got=%d want=%d", key, results[i].Awaiting, expected[key])
+		}
+		awaiting += results[i].Awaiting
+	}
+	if awaiting+reflectedRaw != 12454882550 {
+		t.Fatalf("lost accounting bytes: awaiting=%d reflected=%d", awaiting, reflectedRaw)
+	}
+	restarted := &Server{cfg: s.cfg}
+	again, err := restarted.localAwaitingReflectionUsageBatch(queries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range results {
+		if again[i] != results[i] {
+			t.Fatalf("restart changed query %d: %+v != %+v", i, again[i], results[i])
+		}
+	}
+}
