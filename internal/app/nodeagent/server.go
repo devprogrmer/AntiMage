@@ -57,6 +57,7 @@ type Server struct {
 	localUsageMu                     sync.Mutex
 	localUsageLoaded                 bool
 	localUsageDeliveries             []localUsageDelivery
+	localUsageDeliveryIndex          *localUsageDeliveryIndex
 	localQuotaViews                  map[localQuotaOwner]localQuotaView
 	localQuotaAggregates             map[localQuotaAggregateKey]uint64
 	nativeQuotaPolicySchedules       map[string]nativeQuotaPolicySchedule
