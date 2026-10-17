@@ -32,7 +32,7 @@ func pppOfflineSignalSessionWithWait(ctx context.Context, identity string, wait 
 		return fmt.Errorf("open PPP process handle: %w", err)
 	}
 	defer unix.Close(fd)
-	current, err := offlineProcessIdentity(parts[1])
+	current, err := offlineLiveProcessIdentity(parts[1])
 	if err != nil {
 		return err
 	}

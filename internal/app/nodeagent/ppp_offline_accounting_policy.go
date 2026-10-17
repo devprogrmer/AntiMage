@@ -64,7 +64,7 @@ func (s *Server) quotaCheckPPPOffline(ctx context.Context) error {
 				} else if !os.IsNotExist(finalErr) {
 					return finalErr
 				}
-				identity, err := pppOfflineReadProcess(parts[1])
+				identity, err := pppOfflineReadLiveProcess(parts[1])
 				if err != nil || identity != live.Process {
 					continue
 				}

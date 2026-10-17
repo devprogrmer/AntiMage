@@ -23,7 +23,7 @@ func (s *Server) openVPNOfflineGeneration(tag, root string, durable bool) (strin
 	s.mu.Unlock()
 	path := filepath.Join(root, "accounting-generation.json")
 	if pid > 0 {
-		identity, err := offlineProcessIdentity(strconv.Itoa(pid))
+		identity, err := offlineLiveProcessIdentity(strconv.Itoa(pid))
 		if err != nil {
 			return "", err
 		}

@@ -27,6 +27,7 @@ type pppOfflineSession struct {
 
 var pppOfflineReadIdentity = pppOfflineInterfaceIdentity
 var pppOfflineReadProcess = offlineProcessIdentity
+var pppOfflineReadLiveProcess = offlineLiveProcessIdentity
 var pppOfflineDetectProtocol = pppOfflineProcessProtocol
 var pppOfflineReadCounter = readL2TPInterfaceCounter
 var pppSessionHelperExecutable = os.Executable
@@ -54,32 +55,46 @@ func offlineDurableJSON(path string, value any) error {
 }
 
 func offlineProcessIdentity(pid string) (string, error) {
-	if _, err := strconv.ParseUint(pid, 10, 32); err != nil {
+	identity, _, err := offlineProcessDetails(pid)
+	return identity, err
+}
+
+// offlineLiveProcessIdentity is for admission and enforcement decisions. A
+// zombie still has a readable /proc/<pid>/stat and must remain addressable by
+// identity so its ip-down hook can persist the final session record. It must
+// not, however, count as a live session or be signalled as one.
+func offlineLiveProcessIdentity(pid string) (string, error) {
+	identity, state, err := offlineProcessDetails(pid)
+	if err != nil {
 		return "", err
+	}
+	if state == "Z" || state == "X" {
+		return "", os.ErrNotExist
+	}
+	return identity, nil
+}
+
+func offlineProcessDetails(pid string) (string, string, error) {
+	if _, err := strconv.ParseUint(pid, 10, 32); err != nil {
+		return "", "", err
 	}
 	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	raw, err := os.ReadFile(filepath.Join("/proc", pid, "stat"))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	end := strings.LastIndexByte(string(raw), ')')
 	if end < 0 {
-		return "", fmt.Errorf("invalid process stat")
+		return "", "", fmt.Errorf("invalid process stat")
 	}
 	fields := strings.Fields(string(raw)[end+1:])
 	if len(fields) < 20 {
-		return "", fmt.Errorf("short process stat")
+		return "", "", fmt.Errorf("short process stat")
 	}
-	// A terminated child can remain in /proc as a zombie until its parent
-	// reaps it. It is no longer a live PPP session and must not consume a
-	// device slot or block a targeted user removal during that interval.
-	if fields[0] == "Z" || fields[0] == "X" {
-		return "", os.ErrNotExist
-	}
-	return strings.TrimSpace(string(boot)) + ":" + pid + ":" + fields[19], nil
+	return strings.TrimSpace(string(boot)) + ":" + pid + ":" + fields[19], fields[0], nil
 }
 
 // pppOfflineProcessProtocol resolves a pppd process to the VPN daemon that

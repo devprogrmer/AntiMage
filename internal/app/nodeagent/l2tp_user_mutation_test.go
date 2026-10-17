@@ -77,9 +77,9 @@ func TestL2TPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack(t 
 		if err := offlineDurableJSON(pppOfflineSessionActivePath(root, session.Interface, session.Process), session); err != nil {
 			t.Fatal(err)
 		}
-		previousReadProcess := pppOfflineReadProcess
-		pppOfflineReadProcess = func(string) (string, error) { return "", os.ErrNotExist }
-		t.Cleanup(func() { pppOfflineReadProcess = previousReadProcess })
+		previousReadProcess := pppOfflineReadLiveProcess
+		pppOfflineReadLiveProcess = func(string) (string, error) { return "", os.ErrNotExist }
+		t.Cleanup(func() { pppOfflineReadLiveProcess = previousReadProcess })
 		request := &nodev1.RemoveInboundUserRequest{OperationId: "operation-remove-exited", InboundTag: "l2tp-main", Email: l2TPRemoveUserPrefix + "7:2"}
 		if _, err := h.server.RemoveUser(context.Background(), request); err != nil {
 			t.Fatalf("remove should ignore an exited process retained in active metadata: %v", err)
@@ -97,14 +97,14 @@ func TestL2TPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack(t 
 			t.Fatal(err)
 		}
 		exited := false
-		previousReadProcess := pppOfflineReadProcess
-		pppOfflineReadProcess = func(string) (string, error) {
+		previousReadProcess := pppOfflineReadLiveProcess
+		pppOfflineReadLiveProcess = func(string) (string, error) {
 			if exited {
 				return "", os.ErrNotExist
 			}
 			return session.Process, nil
 		}
-		t.Cleanup(func() { pppOfflineReadProcess = previousReadProcess })
+		t.Cleanup(func() { pppOfflineReadLiveProcess = previousReadProcess })
 		previousTerminate := l2TPMutationTerminateSession
 		l2TPMutationTerminateSession = func(context.Context, string) error {
 			exited = true
@@ -128,14 +128,14 @@ func TestL2TPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack(t 
 				t.Fatal(err)
 			}
 		}
-		previousReadProcess := pppOfflineReadProcess
-		pppOfflineReadProcess = func(pid string) (string, error) {
+		previousReadProcess := pppOfflineReadLiveProcess
+		pppOfflineReadLiveProcess = func(pid string) (string, error) {
 			if pid == "101" {
 				return "boot:101:1", nil
 			}
 			return "", os.ErrNotExist
 		}
-		t.Cleanup(func() { pppOfflineReadProcess = previousReadProcess })
+		t.Cleanup(func() { pppOfflineReadLiveProcess = previousReadProcess })
 		_, err := h.server.RemoveUser(context.Background(), &nodev1.RemoveInboundUserRequest{OperationId: "operation-remove-alice", InboundTag: "l2tp-main", Email: l2TPRemoveUserPrefix + "7:2"})
 		if err != nil {
 			t.Fatal(err)
@@ -152,9 +152,9 @@ func TestL2TPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack(t 
 		if err := offlineDurableJSON(pppOfflineSessionActivePath(root, session.Interface, session.Process), session); err != nil {
 			t.Fatal(err)
 		}
-		previousReadProcess := pppOfflineReadProcess
-		pppOfflineReadProcess = func(string) (string, error) { return session.Process, nil }
-		t.Cleanup(func() { pppOfflineReadProcess = previousReadProcess })
+		previousReadProcess := pppOfflineReadLiveProcess
+		pppOfflineReadLiveProcess = func(string) (string, error) { return session.Process, nil }
+		t.Cleanup(func() { pppOfflineReadLiveProcess = previousReadProcess })
 		previousTerminate := l2TPMutationTerminateSession
 		l2TPMutationTerminateSession = func(context.Context, string) error { return errors.New("injected process termination failure") }
 		t.Cleanup(func() { l2TPMutationTerminateSession = previousTerminate })
@@ -165,7 +165,7 @@ func TestL2TPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack(t 
 		if _, err := h.server.RemoveUser(context.Background(), request); err == nil || !strings.Contains(err.Error(), "still has a live or pending PPP session") {
 			t.Fatalf("retry falsely acknowledged a still-live target session: %v", err)
 		}
-		pppOfflineReadProcess = func(string) (string, error) { return "", os.ErrNotExist }
+		pppOfflineReadLiveProcess = func(string) (string, error) { return "", os.ErrNotExist }
 		if _, err := h.server.RemoveUser(context.Background(), request); err != nil {
 			t.Fatalf("retry after target process exit should be acknowledged: %v", err)
 		}

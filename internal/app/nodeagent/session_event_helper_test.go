@@ -214,7 +214,7 @@ func TestL2TPPreUpDeviceLimitDenialPersistsPeerWithoutCreatingSession(t *testing
 	t.Setenv("common_name", "alice")
 	t.Setenv("PPPD_PID", "222")
 	t.Setenv("IPPARAM", "10.252.0.2")
-	previousProcess, previousSignal := pppOfflineReadProcess, nativePPPProcessSignal
+	previousProcess, previousLiveProcess, previousSignal := pppOfflineReadProcess, pppOfflineReadLiveProcess, nativePPPProcessSignal
 	previousIdentity, previousProtocol := pppOfflineReadIdentity, pppOfflineDetectProtocol
 	pppOfflineReadProcess = func(pid string) (string, error) {
 		switch pid {
@@ -226,6 +226,7 @@ func TestL2TPPreUpDeviceLimitDenialPersistsPeerWithoutCreatingSession(t *testing
 			return "", os.ErrNotExist
 		}
 	}
+	pppOfflineReadLiveProcess = pppOfflineReadProcess
 	pppOfflineReadIdentity = func(iface string) (string, error) {
 		if iface == first.Interface {
 			return first.Identity, nil
@@ -236,7 +237,7 @@ func TestL2TPPreUpDeviceLimitDenialPersistsPeerWithoutCreatingSession(t *testing
 	var signaled string
 	nativePPPProcessSignal = func(identity string) error { signaled = identity; return nil }
 	t.Cleanup(func() {
-		pppOfflineReadProcess, nativePPPProcessSignal = previousProcess, previousSignal
+		pppOfflineReadProcess, pppOfflineReadLiveProcess, nativePPPProcessSignal = previousProcess, previousLiveProcess, previousSignal
 		pppOfflineReadIdentity, pppOfflineDetectProtocol = previousIdentity, previousProtocol
 	})
 

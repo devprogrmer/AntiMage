@@ -28,7 +28,7 @@ func TestL2TPTargetedMutationNativeStage(t *testing.T) {
 	if serverPID == "" {
 		t.Fatal("native xl2tpd PID is required")
 	}
-	serverIdentity, err := offlineProcessIdentity(serverPID)
+	serverIdentity, err := offlineLiveProcessIdentity(serverPID)
 	if err != nil {
 		t.Fatalf("read native xl2tpd identity before mutation: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestL2TPTargetedMutationNativeStage(t *testing.T) {
 
 	assertRuntimeUnchanged := func() {
 		t.Helper()
-		current, err := offlineProcessIdentity(serverPID)
+		current, err := offlineLiveProcessIdentity(serverPID)
 		if err != nil || current != serverIdentity {
 			t.Fatalf("xl2tpd process identity changed during targeted mutation: before=%s after=%s err=%v", serverIdentity, current, err)
 		}
@@ -387,7 +387,7 @@ func waitL2TPNativeProcessGone(identity string, timeout time.Duration) error {
 	}
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		current, err := pppOfflineReadProcess(parts[1])
+		current, err := pppOfflineReadLiveProcess(parts[1])
 		if os.IsNotExist(err) || (err == nil && current != identity) {
 			return nil
 		}

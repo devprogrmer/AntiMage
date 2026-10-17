@@ -298,7 +298,7 @@ func RunNativeSessionEventHelper(args []string) error {
 
 	if (protocol == "ov" || protocol == "openvpn") && eventName == "start" {
 		if pid := firstNonEmptyEnv("daemon_pid"); pid != "" {
-			identity, err := offlineProcessIdentity(pid)
+			identity, err := offlineLiveProcessIdentity(pid)
 			if err != nil {
 				return fmt.Errorf("OpenVPN daemon identity: %w", err)
 			}

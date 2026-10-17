@@ -505,7 +505,7 @@ func pppOfflineProcessIsLive(process string) bool {
 	if len(parts) != 3 {
 		return true // Unknown identity must block a successful remove acknowledgement.
 	}
-	identity, err := pppOfflineReadProcess(parts[1])
+	identity, err := pppOfflineReadLiveProcess(parts[1])
 	if os.IsNotExist(err) {
 		return false
 	}
