@@ -782,6 +782,9 @@ wait_for_gone 'denied reconnect PPP interface' ip netns exec "$NS" ip link show 
 # finished its synchronous ip-down callback. Keep the Panel API alive until
 # xl2tpd removes every server PPP interface and those stop hooks have returned.
 wait_for_gone 'all server PPP interfaces after quota denial' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
+# The interface is removed before pppd waits for ip-down children. Reap every
+# PPP daemon too, so the final Panel assertion observes delivered stop events.
+wait_for_gone 'all pppd stop callbacks after quota denial' pgrep -x pppd
 stage collect-final
 panel_replay 1
 stage ack
