@@ -326,7 +326,7 @@ func TestControllerOpenVPNTargetedMutationNativeE2E(t *testing.T) {
 	}, prepared); err != nil {
 		t.Fatalf("Controller reconciliation after NodeAgent restart: %v", err)
 	}
-	if err := waitOpenVPNNativeController(func() bool {
+	if err := waitOpenVPNNativeControllerFor(25*time.Second, func() bool {
 		return openVPNNativeControllerPID(serverConfig) > 0 && openVPNNativeControllerHasClient(dataDir, "alice")
 	}); err != nil {
 		t.Fatalf("Alice did not reconnect after NodeAgent recovery sync: %v", err)
@@ -560,10 +560,8 @@ func startOpenVPNNativeControllerClient(t *testing.T, root, ns, ca string, port 
 	}
 	dev := "t" + fmt.Sprintf("%x", sha256.Sum256([]byte(name)))[:10]
 	// Bound keepalive and reconnection time in this recovery test. The server
-	// The server emits keepalive packets every 10 seconds. Keep the client's
-	// restart deadline above that interval so idle tunnel traffic is not
-	// mistaken for an interrupted session during a targeted mutation.
-	contents := fmt.Sprintf("client\nremote 10.250.0.1 %d\nproto udp\ndev %s\ndev-type tun\nnobind\nresolv-retry infinite\nconnect-retry 1 1\nconnect-retry-max 0\nping 2\nping-restart 30\npull-filter ignore \"ping\"\npull-filter ignore \"ping-restart\"\npersist-key\npersist-tun\nca %s\nremote-cert-tls server\nverb 3\nauth-user-pass %s\nauth-nocache\n", port, dev, ca, auth)
+	// emits keepalives every 10 seconds, so the restart deadline leaves margin.
+	contents := fmt.Sprintf("client\nremote 10.250.0.1 %d\nproto udp\ndev %s\ndev-type tun\nnobind\nresolv-retry infinite\nconnect-retry 1 1\nconnect-retry-max 0\nping 2\nping-restart 14\npull-filter ignore \"ping\"\npull-filter ignore \"ping-restart\"\npersist-key\npersist-tun\nca %s\nremote-cert-tls server\nverb 3\nauth-user-pass %s\nauth-nocache\n", port, dev, ca, auth)
 	if err := os.WriteFile(config, []byte(contents), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -653,7 +651,10 @@ func ioReadUntilEnd(conn net.Conn) (string, error) {
 	}
 }
 func waitOpenVPNNativeController(test func() bool) error {
-	deadline := time.Now().Add(15 * time.Second)
+	return waitOpenVPNNativeControllerFor(15*time.Second, test)
+}
+func waitOpenVPNNativeControllerFor(timeout time.Duration, test func() bool) error {
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if test() {
 			return nil
