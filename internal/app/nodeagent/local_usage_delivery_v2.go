@@ -417,8 +417,20 @@ func (s *Server) localUsageReflectionV2Locked(queries []localUsageReflectionQuer
 		var reflected uint64
 		covered := false
 		legacyRoot := q.ReflectedRootBatchID
-		if q.ReflectedLedger != "" {
-			w, err := usagereflection.Decode(q.ReflectedLedger)
+		reflectedLedger := q.ReflectedLedger
+		panelWatermark := reflectedLedger != ""
+		if reflectedLedger == "" && q.ReflectedRootBatchID != "" {
+			// A controller that predates reflection receipts still advances its
+			// cursor by root batch id. Resolve that cursor against the durable
+			// receipt for the same root so its acknowledged cumulative bytes are
+			// not reported as unreflected forever. Unknown or stale roots keep the
+			// conservative anchor-based fallback below.
+			if latest, found := s.localUsageV2.Latest[usageRootFamily(q.ReflectedRootBatchID)]; found && latest.Root == q.ReflectedRootBatchID {
+				reflectedLedger = latest.Receipts[q.UserID]
+			}
+		}
+		if reflectedLedger != "" {
+			w, err := usagereflection.Decode(reflectedLedger)
 			if err != nil {
 				return err
 			}
@@ -428,7 +440,11 @@ func (s *Server) localUsageReflectionV2Locked(queries []localUsageReflectionQuer
 				if reflected > o.Total {
 					return fmt.Errorf("reflection exceeds durable accounting total")
 				}
-				if o.LegacyTotal > 0 && reflected >= o.LegacyTotal {
+				// Anchor compaction requires the panel's own durable watermark.
+				// A cursor recovered from the node's local receipt proves nothing
+				// about panel persistence, so raw transport ACK must not retire
+				// legacy anchors; only an explicit retirement proof may.
+				if panelWatermark && o.LegacyTotal > 0 && reflected >= o.LegacyTotal {
 					compactOwners[localUsageOwnerKey{q.Protocol, q.UserID, q.InboundTag}] = true
 				}
 				results[i].PendingReflected = q.PendingChildID != "" && o.LastChild == q.PendingChildID && reflected >= o.Total

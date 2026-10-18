@@ -214,3 +214,53 @@ func TestV2DeliveryPersistenceFailureRollsBackAndReplaysAfterRestart(t *testing.
 		t.Fatalf("ACK changed cumulative total: %+v", final.localUsageV2)
 	}
 }
+
+func TestLegacyControllerRootCursorResolvesAgainstDurableReceipt(t *testing.T) {
+	dataDir := t.TempDir()
+	s := New(Config{DataDir: dataDir})
+	s.localUsageLoaded = true
+	// Seed a v1 migration anchor so the owner carries LegacyTotal, just like a
+	// node that upgraded from the capacity-limited ledger.
+	seed := []localUsageDelivery{{
+		BatchID: "xray-legacy-seed",
+		Rows:    []localUsageDeliveryRow{{Protocol: "xray", ChildID: "xray-seed-child", UserID: 23, InboundTag: "legacy-in", Raw: 100}},
+	}}
+	if err := s.persistLocalUsageDeliveriesLocked(seed); err != nil {
+		t.Fatal(err)
+	}
+	s.localUsageDeliveries = seed
+	s.xrayUsageLoaded = true
+	s.xrayUsagePending = &xrayUsagePendingBatch{BatchID: "xray-legacy-cursor", Samples: []xrayUsageSample{{UserID: 23, InboundTag: "legacy-in", Value: 444}}}
+	if err := s.persistXrayUsageStateLocked(); err != nil {
+		t.Fatal(err)
+	}
+	// Legacy controller: no reflection receipts in the response, but it still
+	// acknowledges by the root batch id.
+	batch, err := s.CollectUserUsage(context.Background(), &nodev1.CollectUsageRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batch.GetReflectionReceipts()) != 0 {
+		t.Fatal("legacy controller unexpectedly received reflection receipts")
+	}
+	awaiting, err := s.localAwaitingReflectionUsage("xray", 23, "legacy-in", "", batch.GetBatchId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if awaiting != 0 {
+		t.Fatalf("legacy root cursor left %d bytes unreflected", awaiting)
+	}
+	// Resolving our own local receipt must not be mistaken for panel authority
+	// to retire the migration anchor; that still requires a committed proof.
+	if s.localUsageV2.Owners[0].LegacyTotal != 100 || len(s.localUsageDeliveries) != 1 {
+		t.Fatalf("local receipt was treated as a durable retirement proof: ledger=%+v anchors=%+v", s.localUsageV2.Owners, s.localUsageDeliveries)
+	}
+	restarted := New(Config{DataDir: dataDir})
+	awaiting, err = restarted.localAwaitingReflectionUsage("xray", 23, "legacy-in", "", "xray-legacy-cursor")
+	if err != nil || awaiting != 0 {
+		t.Fatalf("restart awaiting=%d err=%v", awaiting, err)
+	}
+	if len(restarted.localUsageDeliveries) != 1 || restarted.localUsageV2.Owners[0].LegacyTotal != 100 {
+		t.Fatal("restart retired an unproven legacy anchor")
+	}
+}
