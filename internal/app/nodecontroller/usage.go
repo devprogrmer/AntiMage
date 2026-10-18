@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/antimage/antimage/internal/app/nodeclient"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	mysqlDriver "github.com/go-sql-driver/mysql"
 )
@@ -269,10 +270,52 @@ func (c Controller) collectUsageForNode(
 			result.Errors = append(result.Errors, fmt.Sprintf("node %d ack outbound usage: %s", node.ID, err.Error()))
 		}
 	}
+	if err := c.repo.EnsureAccountingRetirementProofs(nodeCtx, node.ID); err != nil {
+		result.Errors = append(result.Errors, fmt.Sprintf("node %d accounting retirement state: %s", node.ID, err.Error()))
+	}
+	if supportsAccountingRetirementProof(client) {
+		if err := c.deliverAccountingRetirementProofs(nodeCtx, client.Usage(), node.ID); err != nil {
+			recordCommunicationFailure(err)
+			result.Errors = append(result.Errors, fmt.Sprintf("node %d accounting retirement proof: %s", node.ID, err.Error()))
+		}
+	}
 	if !communicationFailed {
 		c.clearHealthFailures(node.ID)
 	}
 	return result
+}
+
+func supportsAccountingRetirementProof(client *nodeclient.Client) bool {
+	return client != nil && client.Supports("accounting_retirement_proof_v1")
+}
+
+func (c Controller) deliverAccountingRetirementProofs(ctx context.Context, usage nodev1.NodeUsageServiceClient, nodeID int64) error {
+	proofs, err := c.repo.PendingAccountingRetirementProofs(ctx, nodeID)
+	if err != nil || len(proofs) == 0 {
+		return err
+	}
+	response, err := usage.RetireAccountingAnchors(ctx, &nodev1.RetireAccountingAnchorsRequest{Proofs: proofs})
+	if err != nil {
+		return err
+	}
+	if response == nil || !response.GetAcknowledged() {
+		return fmt.Errorf("node did not acknowledge accounting retirement proofs")
+	}
+	requested := make(map[string]struct{}, len(proofs))
+	for _, proof := range proofs {
+		requested[proof.GetProofId()] = struct{}{}
+	}
+	accepted := make([]string, 0, len(response.GetAcceptedProofIds()))
+	for _, id := range response.GetAcceptedProofIds() {
+		if _, ok := requested[id]; !ok {
+			return fmt.Errorf("node acknowledged an unknown accounting retirement proof")
+		}
+		accepted = append(accepted, id)
+	}
+	if len(accepted) != len(requested) {
+		return fmt.Errorf("node acknowledged %d of %d accounting retirement proofs", len(accepted), len(requested))
+	}
+	return c.repo.MarkAccountingRetirementProofsDelivered(ctx, nodeID, accepted)
 }
 
 func mergeCollectUsageResult(result *CollectUsageResult, next CollectUsageResult) {

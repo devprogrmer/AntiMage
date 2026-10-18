@@ -30,6 +30,17 @@ type PendingChild struct {
 
 // Key is collision-free even when inbound tags contain separators.
 func Key(protocol, tag string) string { return strconv.Quote(protocol) + ":" + strconv.Quote(tag) }
+
+// RetirementProofID binds a durable panel retirement receipt to one node,
+// owner, accounting epoch, cumulative total, and legacy anchor total. Replays
+// of the same committed proof therefore have the same identity, while a newer
+// watermark gets a distinct identity.
+func RetirementProofID(nodeID, userID int64, epoch, ownerKey string, total, legacy uint64) string {
+	payload := strconv.FormatInt(nodeID, 10) + "\x00" + strconv.FormatInt(userID, 10) + "\x00" + epoch + "\x00" + ownerKey + "\x00" + strconv.FormatUint(total, 10) + "\x00" + strconv.FormatUint(legacy, 10)
+	sum := sha256.Sum256([]byte(payload))
+	return hex.EncodeToString(sum[:])
+}
+
 func StorageKey(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])

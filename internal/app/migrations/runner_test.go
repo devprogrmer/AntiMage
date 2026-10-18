@@ -83,9 +83,10 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_targets", []string{"config_id", "node_id", "listeners"})
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_templates", []string{"id", "name", "archive", "created_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "node_wireguard_usage_reflection", []string{"node_id", "user_id", "batch_id", "updated_at", "ledger_json"})
-	assertTableColumns(t, ctx, db, "sqlite", "node_usage_reflection_staged", []string{"node_id", "user_id", "epoch", "owner_hash", "owner_key", "total_raw"})
+	assertTableColumns(t, ctx, db, "sqlite", "node_usage_reflection_staged", []string{"node_id", "user_id", "epoch", "owner_hash", "owner_key", "total_raw", "legacy_raw", "legacy_raw_complete"})
 	assertTableColumns(t, ctx, db, "sqlite", "user_accounting_tombstones", []string{"user_id", "deleted_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "node_usage_retirement_ledger", []string{"node_id", "user_id", "epoch", "owner_hash", "owner_key", "settled_raw", "total_raw", "retired_raw", "updated_at"})
+	assertTableColumns(t, ctx, db, "sqlite", "node_usage_retirement_proofs", []string{"proof_id", "node_id", "user_id", "epoch", "owner_hash", "owner_key", "total_raw", "legacy_raw", "created_at", "delivered_at"})
 	if _, err := db.ExecContext(ctx, `INSERT INTO haproxy_configs (id, name, enabled, settings, created_at, updated_at) VALUES (9101, 'first', 0, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP), (9102, 'second', 0, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
 		t.Fatalf("seed HAProxy configs: %v", err)
 	}
@@ -133,6 +134,24 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	if second.GooseVersion != version.GooseVersion {
 		t.Fatalf("goose version changed after idempotent run: %#v -> %#v", version, second)
 	}
+}
+
+func TestUsageRetirementProofMigrationPreservesExistingReflectionRows(t *testing.T) {
+	ctx := context.Background()
+	db := openSQLiteTestDB(t)
+	if err := RunMigrationsTo(ctx, db, "sqlite", 73); err != nil {
+		t.Fatalf("run migrations through v73: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO node_usage_reflection_staged(node_id,user_id,epoch,owner_hash,owner_key,total_raw) VALUES(7,10,'old-epoch','owner-hash','"xray":"in"',900)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunMigrationsTo(ctx, db, "sqlite", 74); err != nil {
+		t.Fatalf("apply retirement proof migration: %v", err)
+	}
+	assertDBInt64Migration(t, db, `SELECT total_raw FROM node_usage_reflection_staged WHERE node_id=7 AND user_id=10 AND epoch='old-epoch'`, 900)
+	assertDBInt64Migration(t, db, `SELECT legacy_raw FROM node_usage_reflection_staged WHERE node_id=7 AND user_id=10 AND epoch='old-epoch'`, 0)
+	assertDBInt64Migration(t, db, `SELECT legacy_raw_complete FROM node_usage_reflection_staged WHERE node_id=7 AND user_id=10 AND epoch='old-epoch'`, 0)
+	assertTableColumns(t, ctx, db, "sqlite", "node_usage_retirement_proofs", []string{"proof_id", "node_id", "user_id", "epoch", "owner_hash", "owner_key", "total_raw", "legacy_raw", "created_at", "delivered_at"})
 }
 
 func TestRunMigrationsExternalDatabase(t *testing.T) {

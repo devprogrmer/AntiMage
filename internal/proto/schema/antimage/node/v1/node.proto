@@ -39,6 +39,7 @@ service NodeUsageService {
   rpc AckUserUsage(AckUsageRequest) returns (AckUsageResponse);
   rpc CollectOutboundUsage(CollectUsageRequest) returns (OutboundUsageBatch);
   rpc AckOutboundUsage(AckUsageRequest) returns (AckUsageResponse);
+  rpc RetireAccountingAnchors(RetireAccountingAnchorsRequest) returns (RetireAccountingAnchorsResponse);
 }
 
 service NodeLogsService {
@@ -432,6 +433,27 @@ message AckUsageRequest {
 message AckUsageResponse {
   string batch_id = 1;
   bool acknowledged = 2;
+}
+
+// Retirement proofs are panel-persisted only after the delete tombstone and
+// cumulative raw accounting state commit in the same durable database.
+message AccountingRetirementProof {
+  string proof_id = 1;
+  int64 user_id = 2;
+  string epoch = 3;
+  string owner_key = 4;
+  uint64 total_raw = 5;
+  uint64 legacy_raw = 6;
+  int64 node_id = 7;
+}
+
+message RetireAccountingAnchorsRequest {
+  repeated AccountingRetirementProof proofs = 1;
+}
+
+message RetireAccountingAnchorsResponse {
+  bool acknowledged = 1;
+  repeated string accepted_proof_ids = 2;
 }
 
 message StreamLogsRequest {

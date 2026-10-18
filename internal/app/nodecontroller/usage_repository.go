@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/antimage/antimage/internal/platform/usagereflection"
+	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
 const usagePersistBatchSize = 200
@@ -1294,8 +1295,13 @@ func (r Repository) insertStagedUserUsage(ctx context.Context, tx *sql.Tx, nodeI
 				return fmt.Errorf("accounting watermark exceeds supported database integer range")
 			}
 			old := w.Baselines[key]
+			incomingLegacy, err := legacyRawForOwner(w, key, total)
+			if err != nil {
+				return err
+			}
 			var savedKey string
-			err := tx.QueryRowContext(ctx, `SELECT owner_key,total_raw FROM node_usage_reflection_staged WHERE node_id=? AND user_id=? AND epoch=? AND owner_hash=?`, nodeID, uid, w.Epoch, usagereflection.StorageKey(key)).Scan(&savedKey, &old)
+			var savedLegacy uint64
+			err = tx.QueryRowContext(ctx, `SELECT owner_key,total_raw,legacy_raw FROM node_usage_reflection_staged WHERE node_id=? AND user_id=? AND epoch=? AND owner_hash=?`, nodeID, uid, w.Epoch, usagereflection.StorageKey(key)).Scan(&savedKey, &old, &savedLegacy)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
@@ -1304,6 +1310,9 @@ func (r Repository) insertStagedUserUsage(ctx context.Context, tx *sql.Tx, nodeI
 			}
 			if total < old {
 				return fmt.Errorf("reflection receipt regressed")
+			}
+			if savedLegacy > 0 && incomingLegacy > 0 && savedLegacy != incomingLegacy {
+				return fmt.Errorf("reflection receipt changed immutable legacy anchor total")
 			}
 		}
 		if _, tombstoned := tombstonedUsers[uid]; tombstoned {
@@ -1359,16 +1368,34 @@ func (r Repository) insertStagedUserUsage(ctx context.Context, tx *sql.Tx, nodeI
 			return err
 		}
 		for key, total := range w.Totals {
-			query := `INSERT INTO node_usage_reflection_staged(node_id,user_id,epoch,owner_hash,owner_key,total_raw) VALUES(?,?,?,?,?,?) ON CONFLICT(node_id,user_id,epoch,owner_hash) DO UPDATE SET owner_key=excluded.owner_key,total_raw=CASE WHEN excluded.total_raw>node_usage_reflection_staged.total_raw THEN excluded.total_raw ELSE node_usage_reflection_staged.total_raw END`
-			if r.dialect != "sqlite" {
-				query = `INSERT INTO node_usage_reflection_staged(node_id,user_id,epoch,owner_hash,owner_key,total_raw) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE owner_key=VALUES(owner_key),total_raw=GREATEST(total_raw,VALUES(total_raw))`
+			legacyRaw, err := legacyRawForOwner(w, key, total)
+			if err != nil {
+				return err
 			}
-			if _, err := tx.ExecContext(ctx, query, nodeID, uid, w.Epoch, usagereflection.StorageKey(key), key, total); err != nil {
+			query := `INSERT INTO node_usage_reflection_staged(node_id,user_id,epoch,owner_hash,owner_key,total_raw,legacy_raw,legacy_raw_complete) VALUES(?,?,?,?,?,?,?,1) ON CONFLICT(node_id,user_id,epoch,owner_hash) DO UPDATE SET owner_key=excluded.owner_key,total_raw=CASE WHEN excluded.total_raw>node_usage_reflection_staged.total_raw THEN excluded.total_raw ELSE node_usage_reflection_staged.total_raw END,legacy_raw=CASE WHEN excluded.legacy_raw>0 THEN excluded.legacy_raw ELSE node_usage_reflection_staged.legacy_raw END,legacy_raw_complete=1`
+			if r.dialect != "sqlite" {
+				query = `INSERT INTO node_usage_reflection_staged(node_id,user_id,epoch,owner_hash,owner_key,total_raw,legacy_raw,legacy_raw_complete) VALUES(?,?,?,?,?,?,?,1) ON DUPLICATE KEY UPDATE owner_key=VALUES(owner_key),total_raw=GREATEST(total_raw,VALUES(total_raw)),legacy_raw=IF(VALUES(legacy_raw)>0,VALUES(legacy_raw),legacy_raw),legacy_raw_complete=1`
+			}
+			if _, err := tx.ExecContext(ctx, query, nodeID, uid, w.Epoch, usagereflection.StorageKey(key), key, total, legacyRaw); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+func legacyRawForOwner(w usagereflection.Watermark, ownerKey string, total uint64) (uint64, error) {
+	var legacy uint64
+	for _, raw := range w.LegacyBatches[ownerKey] {
+		if math.MaxUint64-legacy < raw {
+			return 0, fmt.Errorf("legacy usage total overflow")
+		}
+		legacy += raw
+	}
+	if legacy > total || legacy > math.MaxInt64 {
+		return 0, fmt.Errorf("legacy usage total exceeds cumulative watermark")
+	}
+	return legacy, nil
 }
 
 // recordRetiredUsageWatermarkTx durably carries cumulative raw bytes for a
@@ -1377,24 +1404,233 @@ func (r Repository) insertStagedUserUsage(ctx context.Context, tx *sql.Tx, nodeI
 // node-side legacy anchor. That requires a separate committed retirement proof.
 func (r Repository) recordRetiredUsageWatermarkTx(ctx context.Context, tx *sql.Tx, nodeID, userID int64, w usagereflection.Watermark, now time.Time) error {
 	for ownerKey, total := range w.Totals {
-		if total > math.MaxInt64 {
-			return fmt.Errorf("retired accounting watermark exceeds supported database integer range")
-		}
-		hash := usagereflection.StorageKey(ownerKey)
-		var saved string
-		err := tx.QueryRowContext(ctx, `SELECT owner_key FROM node_usage_retirement_ledger WHERE node_id=? AND user_id=? AND epoch=? AND owner_hash=?`, nodeID, userID, w.Epoch, hash).Scan(&saved)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		legacyRaw, err := legacyRawForOwner(w, ownerKey, total)
+		if err != nil {
 			return err
 		}
-		if saved != "" && saved != ownerKey {
-			return fmt.Errorf("retired accounting owner key hash collision")
+		if err := r.persistRetiredUsageOwnerTx(ctx, tx, nodeID, userID, w.Epoch, ownerKey, total, legacyRaw, now); err != nil {
+			return err
 		}
-		query := `INSERT INTO node_usage_retirement_ledger(node_id,user_id,epoch,owner_hash,owner_key,settled_raw,total_raw,retired_raw,updated_at) VALUES(?,?,?,?,?,0,?,?,?) ON CONFLICT(node_id,user_id,epoch,owner_hash) DO UPDATE SET owner_key=excluded.owner_key,total_raw=CASE WHEN excluded.total_raw>node_usage_retirement_ledger.total_raw THEN excluded.total_raw ELSE node_usage_retirement_ledger.total_raw END,retired_raw=CASE WHEN excluded.retired_raw>node_usage_retirement_ledger.retired_raw THEN excluded.retired_raw ELSE node_usage_retirement_ledger.retired_raw END,updated_at=excluded.updated_at`
-		if r.dialect != "sqlite" {
-			query = `INSERT INTO node_usage_retirement_ledger(node_id,user_id,epoch,owner_hash,owner_key,settled_raw,total_raw,retired_raw,updated_at) VALUES(?,?,?,?,?,0,?,?,?) ON DUPLICATE KEY UPDATE owner_key=VALUES(owner_key),total_raw=GREATEST(total_raw,VALUES(total_raw)),retired_raw=GREATEST(retired_raw,VALUES(retired_raw)),updated_at=VALUES(updated_at)`
+	}
+	return nil
+}
+
+func (r Repository) persistRetiredUsageOwnerTx(ctx context.Context, tx *sql.Tx, nodeID, userID int64, epoch, ownerKey string, total, legacyRaw uint64, now time.Time) error {
+	if total > math.MaxInt64 || legacyRaw > total || legacyRaw > math.MaxInt64 {
+		return fmt.Errorf("retired accounting watermark exceeds supported database integer range")
+	}
+	hash := usagereflection.StorageKey(ownerKey)
+	var saved string
+	err := tx.QueryRowContext(ctx, `SELECT owner_key FROM node_usage_retirement_ledger WHERE node_id=? AND user_id=? AND epoch=? AND owner_hash=?`, nodeID, userID, epoch, hash).Scan(&saved)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if saved != "" && saved != ownerKey {
+		return fmt.Errorf("retired accounting owner key hash collision")
+	}
+	ledgerQuery := `INSERT INTO node_usage_retirement_ledger(node_id,user_id,epoch,owner_hash,owner_key,settled_raw,total_raw,retired_raw,updated_at) VALUES(?,?,?,?,?,0,?,?,?) ON CONFLICT(node_id,user_id,epoch,owner_hash) DO UPDATE SET owner_key=excluded.owner_key,total_raw=CASE WHEN excluded.total_raw>node_usage_retirement_ledger.total_raw THEN excluded.total_raw ELSE node_usage_retirement_ledger.total_raw END,retired_raw=CASE WHEN excluded.retired_raw>node_usage_retirement_ledger.retired_raw THEN excluded.retired_raw ELSE node_usage_retirement_ledger.retired_raw END,updated_at=excluded.updated_at`
+	if r.dialect != "sqlite" {
+		ledgerQuery = `INSERT INTO node_usage_retirement_ledger(node_id,user_id,epoch,owner_hash,owner_key,settled_raw,total_raw,retired_raw,updated_at) VALUES(?,?,?,?,?,0,?,?,?) ON DUPLICATE KEY UPDATE owner_key=VALUES(owner_key),total_raw=GREATEST(total_raw,VALUES(total_raw)),retired_raw=GREATEST(retired_raw,VALUES(retired_raw)),updated_at=VALUES(updated_at)`
+	}
+	if _, err := tx.ExecContext(ctx, ledgerQuery, nodeID, userID, epoch, hash, ownerKey, total, total, r.timeArg(now)); err != nil {
+		return fmt.Errorf("persist retired accounting watermark for user %d: %w", userID, err)
+	}
+	if legacyRaw == 0 {
+		return nil
+	}
+	proofID := usagereflection.RetirementProofID(nodeID, userID, epoch, ownerKey, total, legacyRaw)
+	var savedOwner string
+	var savedTotal, savedLegacy uint64
+	err = tx.QueryRowContext(ctx, `SELECT owner_key,total_raw,legacy_raw FROM node_usage_retirement_proofs WHERE node_id=? AND user_id=? AND epoch=? AND owner_hash=?`, nodeID, userID, epoch, hash).Scan(&savedOwner, &savedTotal, &savedLegacy)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("load prior accounting retirement proof: %w", err)
+	}
+	if savedOwner != "" && savedOwner != ownerKey {
+		return fmt.Errorf("retirement proof owner key hash collision")
+	}
+	if err == nil && (savedLegacy != legacyRaw || total < savedTotal) {
+		return fmt.Errorf("accounting retirement proof regressed")
+	}
+	proofQuery := `INSERT INTO node_usage_retirement_proofs(proof_id,node_id,user_id,epoch,owner_hash,owner_key,total_raw,legacy_raw,created_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,NULL) ON CONFLICT(node_id,user_id,epoch,owner_hash) DO UPDATE SET delivered_at=CASE WHEN excluded.proof_id<>node_usage_retirement_proofs.proof_id THEN NULL ELSE node_usage_retirement_proofs.delivered_at END,proof_id=excluded.proof_id,owner_key=excluded.owner_key,total_raw=excluded.total_raw,legacy_raw=excluded.legacy_raw,created_at=CASE WHEN excluded.proof_id<>node_usage_retirement_proofs.proof_id THEN excluded.created_at ELSE node_usage_retirement_proofs.created_at END`
+	if r.dialect != "sqlite" {
+		proofQuery = `INSERT INTO node_usage_retirement_proofs(proof_id,node_id,user_id,epoch,owner_hash,owner_key,total_raw,legacy_raw,created_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,NULL) ON DUPLICATE KEY UPDATE delivered_at=IF(VALUES(proof_id)<>proof_id,NULL,delivered_at),created_at=IF(VALUES(proof_id)<>proof_id,VALUES(created_at),created_at),proof_id=VALUES(proof_id),owner_key=VALUES(owner_key),total_raw=VALUES(total_raw),legacy_raw=VALUES(legacy_raw)`
+	}
+	if _, err := tx.ExecContext(ctx, proofQuery, proofID, nodeID, userID, epoch, hash, ownerKey, total, legacyRaw, r.timeArg(now)); err != nil {
+		return fmt.Errorf("persist accounting retirement proof: %w", err)
+	}
+	return nil
+}
+
+// EnsureAccountingRetirementProofs carries the last committed reflection for
+// tombstoned users into the retirement ledger even when they have no new
+// traffic receipt. The transaction is independent of soft deletion and runs
+// only after the tombstone is visible; any unresolved bytes remain represented
+// by the durable raw total and NodeAgent still requires an exact local match.
+func (r Repository) EnsureAccountingRetirementProofs(ctx context.Context, nodeID int64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT s.user_id,s.epoch,s.owner_key,s.total_raw,s.legacy_raw,s.legacy_raw_complete FROM node_usage_reflection_staged s JOIN user_accounting_tombstones t ON t.user_id=s.user_id WHERE s.node_id=? AND (s.legacy_raw_complete=0 OR NOT EXISTS (SELECT 1 FROM node_usage_retirement_ledger l WHERE l.node_id=s.node_id AND l.user_id=s.user_id AND l.epoch=s.epoch AND l.owner_hash=s.owner_hash AND l.total_raw>=s.total_raw) OR (s.legacy_raw>0 AND NOT EXISTS (SELECT 1 FROM node_usage_retirement_proofs p WHERE p.node_id=s.node_id AND p.user_id=s.user_id AND p.epoch=s.epoch AND p.owner_hash=s.owner_hash AND p.total_raw=s.total_raw AND p.legacy_raw=s.legacy_raw))) ORDER BY s.user_id,s.epoch,s.owner_hash`, nodeID)
+	if err != nil {
+		return err
+	}
+	type ownerRow struct {
+		userID         int64
+		epoch          string
+		key            string
+		total          uint64
+		legacy         uint64
+		legacyComplete bool
+	}
+	var owners []ownerRow
+	for rows.Next() {
+		var owner ownerRow
+		var complete int
+		if err := rows.Scan(&owner.userID, &owner.epoch, &owner.key, &owner.total, &owner.legacy, &complete); err != nil {
+			rows.Close()
+			return err
 		}
-		if _, err := tx.ExecContext(ctx, query, nodeID, userID, w.Epoch, hash, ownerKey, total, total, r.timeArg(now)); err != nil {
-			return fmt.Errorf("persist retired accounting watermark for user %d: %w", userID, err)
+		owner.legacyComplete = complete != 0
+		owners = append(owners, owner)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for i := range owners {
+		owner := &owners[i]
+		if !owner.legacyComplete {
+			legacy, found, err := r.legacyRawFromStagedReceiptsTx(ctx, tx, nodeID, owner.userID, owner.epoch, owner.key)
+			if err != nil {
+				return err
+			}
+			owner.legacyComplete = true
+			if found {
+				owner.legacy = legacy
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE node_usage_reflection_staged SET legacy_raw=?,legacy_raw_complete=1 WHERE node_id=? AND user_id=? AND epoch=? AND owner_hash=? AND legacy_raw_complete=0`, owner.legacy, nodeID, owner.userID, owner.epoch, usagereflection.StorageKey(owner.key)); err != nil {
+				return fmt.Errorf("backfill staged legacy accounting watermark: %w", err)
+			}
+		}
+		if owner.legacy > 0 && owner.total < owner.legacy {
+			return fmt.Errorf("staged retirement anchor exceeds raw total for user %d", owner.userID)
+		}
+		if err := r.persistRetiredUsageOwnerTx(ctx, tx, nodeID, owner.userID, owner.epoch, owner.key, owner.total, owner.legacy, now); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (r Repository) legacyRawFromStagedReceiptsTx(ctx context.Context, tx *sql.Tx, nodeID, userID int64, epoch, ownerKey string) (uint64, bool, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT ledger_json FROM node_usage_user_queue WHERE node_id=? AND user_id=? AND COALESCE(ledger_json,'')<>'' ORDER BY created_at DESC`, nodeID, userID)
+	if err != nil {
+		return 0, false, err
+	}
+	var total uint64
+	found := false
+	for rows.Next() {
+		var encoded string
+		if err := rows.Scan(&encoded); err != nil {
+			rows.Close()
+			return 0, false, err
+		}
+		watermark, err := usagereflection.Decode(encoded)
+		if err != nil {
+			rows.Close()
+			return 0, false, fmt.Errorf("decode prior staged retirement watermark: %w", err)
+		}
+		if watermark.Epoch != epoch {
+			continue
+		}
+		if _, ok := watermark.Totals[ownerKey]; !ok {
+			continue
+		}
+		legacy, err := legacyRawForOwner(watermark, ownerKey, watermark.Totals[ownerKey])
+		if err != nil {
+			rows.Close()
+			return 0, false, err
+		}
+		found = true
+		if legacy > 0 {
+			if total > 0 && total != legacy {
+				rows.Close()
+				return 0, false, fmt.Errorf("prior receipts disagree on immutable legacy anchor total")
+			}
+			total = legacy
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, false, err
+	}
+	if err := rows.Close(); err != nil {
+		return 0, false, err
+	}
+	return total, found, nil
+}
+
+// PendingAccountingRetirementProofs returns only the latest durable proof for
+// each owner. A proof remains pending until the node confirms that it persisted
+// the matching retirement state; a lost RPC ACK therefore causes a safe retry.
+func (r Repository) PendingAccountingRetirementProofs(ctx context.Context, nodeID int64) ([]*nodev1.AccountingRetirementProof, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT proof_id,user_id,epoch,owner_key,total_raw,legacy_raw FROM node_usage_retirement_proofs WHERE node_id=? AND delivered_at IS NULL ORDER BY user_id,epoch,owner_hash LIMIT 100`, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var proofs []*nodev1.AccountingRetirementProof
+	for rows.Next() {
+		proof := &nodev1.AccountingRetirementProof{NodeId: nodeID}
+		if err := rows.Scan(&proof.ProofId, &proof.UserId, &proof.Epoch, &proof.OwnerKey, &proof.TotalRaw, &proof.LegacyRaw); err != nil {
+			return nil, err
+		}
+		proofs = append(proofs, proof)
+	}
+	return proofs, rows.Err()
+}
+
+// MarkAccountingRetirementProofsDelivered is conditional on the exact proof
+// identity so an old ACK can never mark a newer cumulative proof delivered.
+func (r Repository) MarkAccountingRetirementProofsDelivered(ctx context.Context, nodeID int64, proofIDs []string) error {
+	seen := make(map[string]struct{}, len(proofIDs))
+	unique := proofIDs[:0]
+	for _, id := range proofIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	proofIDs = unique
+	if len(proofIDs) == 0 {
+		return nil
+	}
+	now := r.timeArg(time.Now().UTC())
+	for start := 0; start < len(proofIDs); start += usagePersistBatchSize {
+		end := start + usagePersistBatchSize
+		if end > len(proofIDs) {
+			end = len(proofIDs)
+		}
+		chunk := proofIDs[start:end]
+		query := `UPDATE node_usage_retirement_proofs SET delivered_at=? WHERE node_id=? AND delivered_at IS NULL AND proof_id IN (` + placeholders(len(chunk)) + `)`
+		args := make([]any, 0, len(chunk)+2)
+		args = append(args, now, nodeID)
+		for _, id := range chunk {
+			args = append(args, id)
+		}
+		if _, err := r.db.ExecContext(ctx, query, args...); err != nil {
+			return err
 		}
 	}
 	return nil

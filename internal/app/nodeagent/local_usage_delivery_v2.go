@@ -16,14 +16,17 @@ type localUsageOwnerKey struct {
 	InboundTag string
 }
 type localUsageOwnerV2 struct {
-	Protocol    string `json:"protocol"`
-	UserID      int64  `json:"user_id"`
-	InboundTag  string `json:"inbound_tag"`
-	Total       uint64 `json:"total"`
-	LegacyTotal uint64 `json:"legacy_total"`
-	LastChild   string `json:"last_child"`
-	LastRaw     uint64 `json:"last_raw"`
-	LastRoot    string `json:"last_root,omitempty"`
+	Protocol          string `json:"protocol"`
+	UserID            int64  `json:"user_id"`
+	InboundTag        string `json:"inbound_tag"`
+	Total             uint64 `json:"total"`
+	LegacyTotal       uint64 `json:"legacy_total"`
+	RetiredLegacyRaw  uint64 `json:"retired_legacy_raw,omitempty"`
+	RetiredThrough    uint64 `json:"retired_through,omitempty"`
+	RetirementProofID string `json:"retirement_proof_id,omitempty"`
+	LastChild         string `json:"last_child"`
+	LastRaw           uint64 `json:"last_raw"`
+	LastRoot          string `json:"last_root,omitempty"`
 }
 type localUsageReceiptV2 struct {
 	Root     string           `json:"root"`
@@ -60,7 +63,10 @@ func validateLocalUsageV2(v *localUsageLedgerV2) error {
 	seen := map[localUsageOwnerKey]bool{}
 	for _, o := range v.Owners {
 		key := localUsageOwnerKey{o.Protocol, o.UserID, o.InboundTag}
-		if o.UserID <= 0 || o.Protocol == "" || o.LegacyTotal > o.Total || o.LastRaw > o.Total || seen[key] {
+		retired := o.RetiredLegacyRaw > 0
+		if o.UserID <= 0 || o.Protocol == "" || o.LegacyTotal > o.Total || o.LastRaw > o.Total || o.RetiredLegacyRaw > o.Total || o.RetiredThrough > o.Total || seen[key] ||
+			(retired && (o.LegacyTotal != 0 || o.RetiredThrough < o.RetiredLegacyRaw || o.RetirementProofID == "")) ||
+			(!retired && (o.RetiredThrough != 0 || o.RetirementProofID != "")) {
 			return fmt.Errorf("invalid v2 accounting owner")
 		}
 		seen[key] = true

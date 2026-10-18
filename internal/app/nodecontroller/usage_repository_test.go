@@ -1320,9 +1320,10 @@ func createUsageTables(t *testing.T, ctx context.Context, db *sql.DB) {
 		`CREATE TABLE admins (id INTEGER PRIMARY KEY, users_usage INTEGER NOT NULL DEFAULT 0, lifetime_usage INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE node_usage_batch_tombstones (node_id INTEGER NOT NULL, batch_id TEXT NOT NULL, kind TEXT NOT NULL, pruned INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (node_id, batch_id, kind))`,
 		`CREATE TABLE node_wireguard_usage_reflection (node_id INTEGER NOT NULL, user_id INTEGER NOT NULL, batch_id TEXT NOT NULL, ledger_json TEXT NULL, updated_at DATETIME NOT NULL, PRIMARY KEY (node_id, user_id))`,
-		`CREATE TABLE node_usage_reflection_staged (node_id INTEGER NOT NULL,user_id INTEGER NOT NULL,epoch TEXT NOT NULL,owner_hash TEXT NOT NULL,owner_key TEXT NOT NULL,total_raw INTEGER NOT NULL,PRIMARY KEY(node_id,user_id,epoch,owner_hash))`,
+		`CREATE TABLE node_usage_reflection_staged (node_id INTEGER NOT NULL,user_id INTEGER NOT NULL,epoch TEXT NOT NULL,owner_hash TEXT NOT NULL,owner_key TEXT NOT NULL,total_raw INTEGER NOT NULL,legacy_raw INTEGER NOT NULL DEFAULT 0,legacy_raw_complete INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(node_id,user_id,epoch,owner_hash))`,
 		`CREATE TABLE user_accounting_tombstones (user_id INTEGER PRIMARY KEY, deleted_at DATETIME NOT NULL)`,
 		`CREATE TABLE node_usage_retirement_ledger (node_id INTEGER NOT NULL,user_id INTEGER NOT NULL,epoch TEXT NOT NULL,owner_hash TEXT NOT NULL,owner_key TEXT NOT NULL,settled_raw INTEGER NOT NULL,total_raw INTEGER NOT NULL,retired_raw INTEGER NOT NULL,updated_at DATETIME NOT NULL,PRIMARY KEY(node_id,user_id,epoch,owner_hash))`,
+		`CREATE TABLE node_usage_retirement_proofs (proof_id TEXT NOT NULL PRIMARY KEY,node_id INTEGER NOT NULL,user_id INTEGER NOT NULL,epoch TEXT NOT NULL,owner_hash TEXT NOT NULL,owner_key TEXT NOT NULL,total_raw INTEGER NOT NULL,legacy_raw INTEGER NOT NULL,created_at DATETIME NOT NULL,delivered_at DATETIME NULL,UNIQUE(node_id,user_id,epoch,owner_hash))`,
 		`CREATE TABLE services (id INTEGER PRIMARY KEY, used_traffic INTEGER NOT NULL DEFAULT 0, lifetime_used_traffic INTEGER NOT NULL DEFAULT 0, users_usage INTEGER NOT NULL DEFAULT 0, updated_at DATETIME NULL)`,
 		`CREATE TABLE admins_services (admin_id INTEGER NOT NULL, service_id INTEGER NOT NULL, used_traffic INTEGER NOT NULL DEFAULT 0, lifetime_used_traffic INTEGER NOT NULL DEFAULT 0, updated_at DATETIME NULL, PRIMARY KEY (admin_id, service_id))`,
 		`CREATE TABLE users (id INTEGER PRIMARY KEY, status TEXT NOT NULL, used_traffic INTEGER NOT NULL DEFAULT 0, data_limit INTEGER NULL, expire INTEGER NULL, online_at DATETIME NULL, on_hold_expire_duration INTEGER NULL, on_hold_timeout DATETIME NULL, edit_at DATETIME NULL, created_at DATETIME NULL, last_status_change DATETIME NULL, admin_id INTEGER NULL, service_id INTEGER NULL)`,
@@ -1827,6 +1828,7 @@ func TestDeletedUserAccountingMovesToDurableRetirementBeforeACK(t *testing.T) {
 	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id=10`, 123)
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_ledger WHERE node_id=7 AND epoch='retirement-epoch'`, 3)
 	assertInt64(t, db, `SELECT SUM(retired_raw) FROM node_usage_retirement_ledger WHERE node_id=7 AND epoch='retirement-epoch'`, 6656)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs WHERE node_id=7 AND epoch='retirement-epoch'`, 3)
 	assertInt64(t, db, `SELECT retirement_pending FROM node_usage_user_queue WHERE node_id=7 AND batch_id='combined-retirement' AND user_id=10`, 1)
 	assertInt64(t, db, `SELECT retirement_pending FROM node_usage_user_queue WHERE node_id=7 AND batch_id='combined-retirement' AND user_id=11`, 1)
 	if _, err := repo.FlushStagedUsage(ctx, 100); err != nil {
@@ -1834,10 +1836,30 @@ func TestDeletedUserAccountingMovesToDurableRetirementBeforeACK(t *testing.T) {
 	}
 	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id=10`, 123)
 	assertInt64(t, db, `SELECT SUM(total_raw) FROM node_usage_retirement_ledger WHERE node_id=7 AND user_id=10 AND epoch='retirement-epoch'`, 4608)
+	pendingProofs, err := NewRepository(db, "sqlite").PendingAccountingRetirementProofs(ctx, 7)
+	if err != nil || len(pendingProofs) != 3 {
+		t.Fatalf("durable proofs after repository restart: count=%d err=%v", len(pendingProofs), err)
+	}
+	if pendingProofs[0].GetProofId() == "" || pendingProofs[0].GetLegacyRaw() == 0 || pendingProofs[0].GetTotalRaw() < pendingProofs[0].GetLegacyRaw() {
+		t.Fatalf("invalid durable retirement proof: %+v", pendingProofs[0])
+	}
+	proofIDs := make([]string, 0, len(pendingProofs))
+	for _, proof := range pendingProofs {
+		proofIDs = append(proofIDs, proof.GetProofId())
+	}
+	if err := repo.MarkAccountingRetirementProofsDelivered(ctx, 7, proofIDs); err != nil {
+		t.Fatal(err)
+	}
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs WHERE node_id=7 AND delivered_at IS NULL`, 0)
+	if err := repo.EnsureAccountingRetirementProofs(ctx, 7); err != nil {
+		t.Fatal(err)
+	}
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs WHERE node_id=7 AND delivered_at IS NULL`, 0)
 
 	next, err := json.Marshal(usagereflection.Watermark{
 		Version: 2, Epoch: "retirement-epoch", Root: "combined-retirement-next",
 		Totals: map[string]uint64{key: 8192}, Baselines: map[string]uint64{key: 0},
+		LegacyBatches:   map[string]map[string]uint64{key: {"combined-legacy-root": 4096}},
 		PendingChildren: map[string]usagereflection.PendingChild{key: {BatchID: "xray-retirement-next", Raw: 4096}},
 	})
 	if err != nil {
@@ -1853,4 +1875,81 @@ func TestDeletedUserAccountingMovesToDurableRetirementBeforeACK(t *testing.T) {
 	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id=10`, 123)
 	assertInt64(t, db, `SELECT SUM(total_raw) FROM node_usage_retirement_ledger WHERE node_id=7 AND user_id=10 AND epoch='retirement-epoch'`, 8704)
 	assertInt64(t, db, `SELECT SUM(retired_raw) FROM node_usage_retirement_ledger WHERE node_id=7 AND epoch='retirement-epoch'`, 10752)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs WHERE node_id=7 AND epoch='retirement-epoch' AND delivered_at IS NULL AND total_raw=8192 AND legacy_raw=4096`, 1)
+}
+
+func TestAccountingRetirementProofRollsBackWithFailedPanelTransaction(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-retirement-proof-rollback.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+	if _, err := db.ExecContext(ctx, `INSERT INTO users(id,status,used_traffic) VALUES(10,'deleted',123); INSERT INTO nodes(id,status,usage_coefficient) VALUES(7,'connected',1); INSERT INTO user_accounting_tombstones(user_id,deleted_at) VALUES(10,CURRENT_TIMESTAMP); CREATE TRIGGER reject_retirement_proof BEFORE INSERT ON node_usage_retirement_proofs BEGIN SELECT RAISE(ABORT,'injected proof persistence failure'); END;`); err != nil {
+		t.Fatal(err)
+	}
+	key := usagereflection.Key("xray", "in")
+	receipt, err := json.Marshal(usagereflection.Watermark{
+		Version: 2, Epoch: "proof-rollback-epoch", Root: "combined-proof-rollback",
+		Totals: map[string]uint64{key: 4096}, Baselines: map[string]uint64{key: 0},
+		LegacyBatches: map[string]map[string]uint64{key: {"combined-legacy": 4096}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = NewRepository(db, "sqlite").StoreCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, "combined-proof-rollback", nil, "", nil, UsagePersistOptions{ReflectionReceipts: map[int64]string{10: string(receipt)}})
+	if err == nil {
+		t.Fatal("expected injected durable-proof write failure")
+	}
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_ledger`, 0)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs`, 0)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_reflection_staged`, 0)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_user_queue`, 0)
+}
+
+func TestAccountingRetirementProofCanUsePriorCommittedWatermarkWithoutNewReceipt(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-retirement-prior-watermark.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+	if _, err := db.ExecContext(ctx, `INSERT INTO nodes(id,status,usage_coefficient) VALUES(7,'connected',1)`); err != nil {
+		t.Fatal(err)
+	}
+	key := usagereflection.Key("xray", "in")
+	encoded, err := json.Marshal(usagereflection.Watermark{
+		Version: 2, Epoch: "prior-watermark-epoch", Root: "combined-prior-watermark",
+		Totals: map[string]uint64{key: 900}, Baselines: map[string]uint64{key: 0},
+		LegacyBatches: map[string]map[string]uint64{key: {"combined-legacy": 600}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewRepository(db, "sqlite")
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.insertStagedUserUsage(ctx, tx, 7, "combined-prior-watermark", map[int64]int64{10: 0}, time.Now().UTC(), map[int64]string{10: string(encoded)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	assertInt64(t, db, `SELECT legacy_raw FROM node_usage_reflection_staged WHERE node_id=7 AND user_id=10 AND epoch='prior-watermark-epoch'`, 600)
+	if _, err := db.ExecContext(ctx, `UPDATE node_usage_reflection_staged SET legacy_raw=0,legacy_raw_complete=0 WHERE node_id=7 AND user_id=10`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO user_accounting_tombstones(user_id,deleted_at) VALUES(10,CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewRepository(db, "sqlite").EnsureAccountingRetirementProofs(ctx, 7); err != nil {
+		t.Fatal(err)
+	}
+	assertInt64(t, db, `SELECT total_raw FROM node_usage_retirement_ledger WHERE node_id=7 AND user_id=10 AND epoch='prior-watermark-epoch'`, 900)
+	assertInt64(t, db, `SELECT retired_raw FROM node_usage_retirement_ledger WHERE node_id=7 AND user_id=10 AND epoch='prior-watermark-epoch'`, 900)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs WHERE node_id=7 AND user_id=10 AND total_raw=900 AND legacy_raw=600 AND delivered_at IS NULL`, 1)
 }

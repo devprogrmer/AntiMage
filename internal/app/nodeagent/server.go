@@ -1322,7 +1322,7 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 	configHash, coreVersion, coreStartedAt := s.activeConfigSHA256, s.runningCoreVersion, s.coreStartedAt
 	torProxyCount := len(s.torProxies)
 	s.mu.Unlock()
-	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "runtime_evidence_v1", "targeted_user_update_vless", "targeted_user_add_remove_vless"}
+	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "runtime_evidence_v1", "accounting_retirement_proof_v1", "targeted_user_update_vless", "targeted_user_add_remove_vless"}
 	if runtime.GOOS == "linux" {
 		capabilities = append(capabilities,
 			"targeted_user_update_openvpn", "targeted_user_add_remove_openvpn",
