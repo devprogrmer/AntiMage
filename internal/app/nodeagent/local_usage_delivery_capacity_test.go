@@ -18,12 +18,15 @@ func TestCollectUserUsageContinuesPastLegacyDeliveryCapacity(t *testing.T) {
 		s.xrayUsageMu.Lock()
 		s.xrayUsagePending = &xrayUsagePendingBatch{BatchID: id, Samples: []xrayUsageSample{{UserID: 11, InboundTag: "long", Value: 1}}}
 		s.xrayUsageMu.Unlock()
-		batch, err := s.CollectUserUsage(context.Background(), &nodev1.CollectUsageRequest{ReflectionVersion: 2})
+		// Exercise the legacy wire request. It must remain usable even though it
+		// does not ask for reflection receipts; persistence still uses the bounded
+		// v2 ledger internally.
+		batch, err := s.CollectUserUsage(context.Background(), &nodev1.CollectUsageRequest{})
 		if err != nil {
 			t.Fatalf("collection %d: %v", i, err)
 		}
-		if batch.GetBatchId() != id || batch.GetReflectionReceipts()[11] == "" {
-			t.Fatalf("collection %d omitted its durable receipt", i)
+		if batch.GetBatchId() != id || len(batch.GetReflectionReceipts()) != 0 {
+			t.Fatalf("legacy collection %d changed its response contract: %+v", i, batch)
 		}
 		ack, err := s.AckUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: id})
 		if err != nil || !ack.GetAcknowledged() {
@@ -49,9 +52,8 @@ func TestCollectUserUsageContinuesPastLegacyDeliveryCapacity(t *testing.T) {
 func TestCollectUserUsageMigratesFullProductionLedger(t *testing.T) {
 	s := New(Config{DataDir: t.TempDir()})
 	fixture := largeUsageDeliveryFixture()
-	// Prove this fixture is the concrete production failure: the legacy v1
-	// collector rejects the next delivery at the 4096-entry boundary. The
-	// reflection-v2 path below must migrate the same bytes and keep collecting.
+	// Prove the exact production-shaped v1 ledger is accepted by the legacy RPC
+	// request after migration to bounded cumulative state.
 	legacyProbe := New(Config{DataDir: t.TempDir()})
 	if err := legacyProbe.persistLocalUsageDeliveriesLocked(fixture); err != nil {
 		t.Fatal(err)
@@ -61,8 +63,25 @@ func TestCollectUserUsageMigratesFullProductionLedger(t *testing.T) {
 	if err := legacyProbe.persistXrayUsageStateLocked(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := legacyProbe.CollectUserUsage(context.Background(), &nodev1.CollectUsageRequest{}); err == nil || err.Error() != "unreflected accounting delivery capacity exceeded" {
-		t.Fatalf("CollectUserUsage production failure was not reproduced exactly: %v", err)
+	// Reproduce the exact production failure in the capacity-limited v1 batch
+	// primitive. The RPC path below must stop routing new deliveries through
+	// that primitive once the ledger is migrated to bounded cumulative state.
+	if err := legacyProbe.recordLocalUsageDelivery("xray-capacity-regression"); err == nil || err.Error() != "unreflected accounting delivery capacity exceeded" {
+		t.Fatalf("production capacity failure was not reproduced exactly: %v", err)
+	}
+	legacyBatch, err := legacyProbe.CollectUserUsage(context.Background(), &nodev1.CollectUsageRequest{})
+	if err != nil {
+		t.Fatalf("legacy CollectUserUsage rejected full production ledger: %v", err)
+	}
+	if legacyBatch.GetBatchId() != "xray-capacity-regression" || len(legacyBatch.GetReflectionReceipts()) != 0 {
+		t.Fatalf("legacy response contract changed: %+v", legacyBatch)
+	}
+	if legacyProbe.localUsageV2 == nil || len(legacyProbe.localUsageDeliveries) != 4096 {
+		t.Fatal("legacy collector did not migrate while preserving unproven anchors")
+	}
+	legacyAck, err := legacyProbe.AckUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: legacyBatch.GetBatchId()})
+	if err != nil || !legacyAck.GetAcknowledged() || len(legacyProbe.localUsageDeliveries) != 4096 {
+		t.Fatalf("legacy ACK retired anchors without reflection proof: ack=%+v err=%v anchors=%d", legacyAck, err, len(legacyProbe.localUsageDeliveries))
 	}
 
 	var inbound string

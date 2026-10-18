@@ -826,16 +826,17 @@ func (s *Server) CollectUserUsage(
 	if err != nil {
 		return nil, err
 	}
-	if req.GetReflectionVersion() >= 2 {
-		receipts, err := s.recordLocalUsageDeliveryV2(batch.GetBatchId())
-		if err != nil {
-			s.recordLocalAccountingHealth("delivery", err)
-			return nil, err
-		}
-		batch.ReflectionReceipts = receipts
-	} else if err := s.recordLocalUsageDelivery(batch.GetBatchId()); err != nil {
+	// Persist every collection in the bounded cumulative ledger, even when an
+	// older controller does not understand reflection receipts. The response
+	// stays wire-compatible; receipt delivery is opt-in, while durable node-side
+	// accounting must not fall back to the capacity-limited v1 batch list.
+	receipts, err := s.recordLocalUsageDeliveryV2(batch.GetBatchId())
+	if err != nil {
 		s.recordLocalAccountingHealth("delivery", err)
 		return nil, err
+	}
+	if req.GetReflectionVersion() >= 2 {
+		batch.ReflectionReceipts = receipts
 	}
 	s.recordLocalAccountingHealth("delivery", nil)
 	return batch, nil
