@@ -61,8 +61,8 @@ func TestCollectUserUsageMigratesFullProductionLedger(t *testing.T) {
 	if err := legacyProbe.persistXrayUsageStateLocked(); err != nil {
 		t.Fatal(err)
 	}
-	if err := legacyProbe.recordLocalUsageDelivery("xray-capacity-regression"); err == nil || err.Error() != "unreflected accounting delivery capacity exceeded" {
-		t.Fatalf("legacy production failure was not reproduced exactly: %v", err)
+	if _, err := legacyProbe.CollectUserUsage(context.Background(), &nodev1.CollectUsageRequest{}); err == nil || err.Error() != "unreflected accounting delivery capacity exceeded" {
+		t.Fatalf("CollectUserUsage production failure was not reproduced exactly: %v", err)
 	}
 
 	var inbound string
