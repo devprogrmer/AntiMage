@@ -1953,3 +1953,29 @@ func TestAccountingRetirementProofCanUsePriorCommittedWatermarkWithoutNewReceipt
 	assertInt64(t, db, `SELECT retired_raw FROM node_usage_retirement_ledger WHERE node_id=7 AND user_id=10 AND epoch='prior-watermark-epoch'`, 900)
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs WHERE node_id=7 AND user_id=10 AND total_raw=900 AND legacy_raw=600 AND delivered_at IS NULL`, 1)
 }
+
+func TestAccountingTombstoneAloneDoesNotCreateRetirementProof(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-retirement-tombstone-only.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+	if _, err := db.ExecContext(ctx, `INSERT INTO users(id,status,used_traffic) VALUES(10,'deleted',123); INSERT INTO nodes(id,status,usage_coefficient) VALUES(7,'connected',1); INSERT INTO user_accounting_tombstones(user_id,deleted_at) VALUES(10,CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewRepository(db, "sqlite")
+	if err := repo.EnsureAccountingRetirementProofs(ctx, 7); err != nil {
+		t.Fatal(err)
+	}
+	proofs, err := repo.PendingAccountingRetirementProofs(ctx, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proofs) != 0 {
+		t.Fatalf("tombstone without durable accounting reflection produced proofs: %+v", proofs)
+	}
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_ledger WHERE node_id=7 AND user_id=10`, 0)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs WHERE node_id=7 AND user_id=10`, 0)
+}
