@@ -117,6 +117,7 @@ func TestUserMutationCreateUpdateDeleteQueuesOperations(t *testing.T) {
 	}
 	assertUserOperationCount(t, db, "remove_user", "go_user", 1)
 	assertDBString(t, db, `SELECT status FROM users WHERE username = 'go_user'`, "deleted")
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM user_accounting_tombstones WHERE user_id = (SELECT id FROM users WHERE username = 'go_user')`, 1)
 }
 
 func TestUserSubscriptionMessageCreateEditAndClear(t *testing.T) {
@@ -460,6 +461,7 @@ func TestServiceScopedBulkActionRollsBackWhenNodeOperationFails(t *testing.T) {
 		t.Fatalf("expected service-scoped action to fail when operation enqueue fails")
 	}
 	assertDBString(t, db, `SELECT status FROM users WHERE username = 'service_rollback_user'`, "active")
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM user_accounting_tombstones WHERE user_id = 89`, 0)
 }
 
 func TestServiceAdminLimitsEnforcedForUserCreate(t *testing.T) {

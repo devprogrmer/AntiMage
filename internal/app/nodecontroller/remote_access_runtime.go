@@ -39,6 +39,7 @@ type RemoteAccessRuntimeUser struct {
 	DeviceLimit           int64   `json:"device_limit,omitempty"`
 	IPLimit               int64   `json:"ip_limit,omitempty"`
 	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	ReflectedUsageLedger  string  `json:"reflected_usage_ledger,omitempty"`
 	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
 	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
 	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`

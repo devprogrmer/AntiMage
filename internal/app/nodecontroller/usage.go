@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -133,8 +134,9 @@ func (c Controller) collectUsageForNode(
 
 	if collectUsers {
 		userBatch, err = client.Usage().CollectUserUsage(nodeCtx, &nodev1.CollectUsageRequest{
-			CollectorId: collectorID,
-			Reset_:      reset,
+			CollectorId:       collectorID,
+			Reset_:            reset,
+			ReflectionVersion: 2,
 		})
 		if err != nil {
 			recordCommunicationFailure(err)
@@ -147,10 +149,22 @@ func (c Controller) collectUsageForNode(
 		for _, sample := range userBatch.GetStats() {
 			userID, onlineOnly, ok := parseUserUsageSampleUID(sample.GetUid())
 			if !ok {
+				if sample.GetValue() > 0 && len(userBatch.GetReflectionReceipts()) > 0 {
+					result.Errors = append(result.Errors, fmt.Sprintf("node %d returned an unparseable reflected usage owner %q", node.ID, sample.GetUid()))
+					return result
+				}
 				continue
+			}
+			if sample.GetValue() > uint64(math.MaxInt64) && len(userBatch.GetReflectionReceipts()) > 0 {
+				result.Errors = append(result.Errors, fmt.Sprintf("node %d usage sample exceeds supported accounting range", node.ID))
+				return result
 			}
 			value := int64(sample.GetValue())
 			if onlineOnly {
+				if value > 0 && len(userBatch.GetReflectionReceipts()) > 0 {
+					result.Errors = append(result.Errors, fmt.Sprintf("node %d returned bytes on an online-only usage sample", node.ID))
+					return result
+				}
 				userDeltas = append(userDeltas, UserUsageDelta{UserID: userID, Online: true})
 				result.UserSamples++
 				continue
@@ -160,7 +174,7 @@ func (c Controller) collectUsageForNode(
 				if tag := strings.TrimSpace(sample.GetInboundTag()); tag != "" {
 					coefficient = normalizeUsageFactor(inboundCoefficients[tag])
 				}
-				userDeltas = append(userDeltas, UserUsageDelta{UserID: userID, Value: value, Online: true, InboundCoefficient: coefficient})
+				userDeltas = append(userDeltas, UserUsageDelta{UserID: userID, Value: value, Online: true, InboundCoefficient: coefficient, InboundTag: strings.TrimSpace(sample.GetInboundTag()), AccountingProtocol: strings.TrimSpace(sample.GetProtocol()), AccountingChildID: strings.TrimSpace(sample.GetChildBatchId()), RawValue: sample.GetValue()})
 				result.UserSamples++
 			}
 		}
@@ -222,7 +236,9 @@ func (c Controller) collectUsageForNode(
 	userBatchID := ""
 	if userBatch != nil {
 		userBatchID = userBatch.GetBatchId()
+		persistOptions.ReflectionReceipts = userBatch.GetReflectionReceipts()
 	}
+	persistOptions.InboundCoefficients = inboundCoefficients
 	outboundBatchID := ""
 	if outboundBatch != nil {
 		outboundBatchID = outboundBatch.GetBatchId()

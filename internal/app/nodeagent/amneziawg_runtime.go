@@ -28,6 +28,7 @@ type amneziaWGRuntimeInbound struct {
 
 type amneziaWGRuntimePeer struct {
 	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	ReflectedUsageLedger  string  `json:"reflected_usage_ledger,omitempty"`
 	UserID                int64   `json:"user_id"`
 	Username              string  `json:"username"`
 	DeviceIndex           int     `json:"device_index"`
@@ -192,7 +193,7 @@ func filterAmneziaWGRuntimeInboundByPolicy(inbound amneziaWGRuntimeInbound, now 
 	filtered := inbound
 	filtered.Peers = make([]amneziaWGRuntimePeer, 0, len(inbound.Peers))
 	for _, peer := range inbound.Peers {
-		policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic, ReflectedUsageBatchID: peer.ReflectedUsageBatchID}
+		policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic, ReflectedUsageBatchID: peer.ReflectedUsageBatchID, ReflectedUsageLedger: peer.ReflectedUsageLedger}
 		if peer.DataLimit != nil {
 			policy.DataLimit = *peer.DataLimit
 		}
@@ -231,7 +232,7 @@ func amneziaWGPeerPolicies(peers []amneziaWGRuntimePeer) map[string]nativeSessio
 }
 
 func amneziaWGPeerPolicy(peer amneziaWGRuntimePeer) nativeSessionUserPolicy {
-	policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic, ReflectedUsageBatchID: peer.ReflectedUsageBatchID}
+	policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic, ReflectedUsageBatchID: peer.ReflectedUsageBatchID, ReflectedUsageLedger: peer.ReflectedUsageLedger}
 	if peer.DataLimit != nil {
 		policy.DataLimit = *peer.DataLimit
 	}

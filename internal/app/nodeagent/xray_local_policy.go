@@ -89,7 +89,7 @@ func (s *Server) xrayQuotaPolicyIndexFor(snapshot *runtimePolicySnapshot) (*xray
 		policy := index.Policies[policyPosition]
 		index.ReflectionQueries[queryPosition] = localUsageReflectionQuery{
 			Protocol: "xray", UserID: policy.UserID, InboundTag: policy.InboundTag,
-			ReflectedRootBatchID: policy.ReflectedUsageBatchID,
+			ReflectedRootBatchID: policy.ReflectedUsageBatchID, ReflectedLedger: policy.ReflectedUsageLedger,
 		}
 	}
 	if cacheable {

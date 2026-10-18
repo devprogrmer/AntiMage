@@ -71,13 +71,13 @@ CREATE TABLE nodes (id INTEGER PRIMARY KEY, status TEXT DEFAULT 'connected', las
 CREATE TABLE proxies (user_id INTEGER, type TEXT);
 CREATE TABLE hosts (id INTEGER PRIMARY KEY, inbound_tag TEXT, is_disabled BOOLEAN DEFAULT 0);
 CREATE TABLE service_hosts (service_id INTEGER, host_id INTEGER);
-CREATE TABLE node_wireguard_usage_reflection (node_id INTEGER, user_id INTEGER, batch_id TEXT, PRIMARY KEY(node_id,user_id));
+CREATE TABLE node_wireguard_usage_reflection (node_id INTEGER, user_id INTEGER, batch_id TEXT, ledger_json TEXT NULL, updated_at DATETIME, PRIMARY KEY(node_id,user_id));
 INSERT INTO users (id,username,credential_key,service_id,status,used_traffic,data_limit,expire,device_limit,ip_limit,upload_speed_limit,download_speed_limit) VALUES (7,'l2tp-user','0123456789abcdef0123456789abcdef',10,'active',123,100000,0,2,3,4000,8000);
 INSERT INTO nodes (id) VALUES (7);
 INSERT INTO proxies VALUES (7,'l2tp');
 INSERT INTO hosts VALUES (1,'l2tp-in',0);
 INSERT INTO service_hosts VALUES (10,1);
-INSERT INTO node_wireguard_usage_reflection VALUES (7,7,'batch-current');`)
+INSERT INTO node_wireguard_usage_reflection (node_id,user_id,batch_id) VALUES (7,7,'batch-current');`)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -432,9 +432,11 @@ func xrayUsageBatchProto(
 		stats = append(
 			stats,
 			&nodev1.UserUsageSample{
-				Uid:        uid,
-				Value:      sample.Value,
-				InboundTag: sample.InboundTag,
+				Uid:          uid,
+				Value:        sample.Value,
+				InboundTag:   sample.InboundTag,
+				Protocol:     "xray",
+				ChildBatchId: pending.BatchID,
 			},
 		)
 	}

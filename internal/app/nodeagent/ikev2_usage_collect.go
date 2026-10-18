@@ -578,9 +578,11 @@ func ikev2UsageBatchProto(
 		stats = append(
 			stats,
 			&nodev1.UserUsageSample{
-				Uid:        statUID,
-				Value:      sample.Value,
-				InboundTag: sample.InboundTag,
+				Uid:          statUID,
+				Value:        sample.Value,
+				InboundTag:   sample.InboundTag,
+				Protocol:     "ikev2",
+				ChildBatchId: pending.BatchID,
 			},
 		)
 

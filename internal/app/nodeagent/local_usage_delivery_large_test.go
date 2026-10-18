@@ -1,11 +1,14 @@
 package nodeagent
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/antimage/antimage/internal/platform/usagereflection"
 )
 
 // Match the production failure shape: 4096 roots, 4056 combined, 6194 rows.
@@ -41,6 +44,72 @@ func largeUsageDeliveryFixture() []localUsageDelivery {
 		}
 	}
 	return deliveries
+}
+
+func TestV2ReflectionCompactsOnlyReflectedLegacyOwner(t *testing.T) {
+	dir := t.TempDir()
+	deliveries := largeUsageDeliveryFixture()
+	s := &Server{cfg: Config{DataDir: dir}, localUsageLoaded: true, localUsageDeliveries: deliveries}
+	ledger, err := s.migratedLocalUsageV2Locked()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.localUsageV2 = ledger
+	if err := s.persistLocalUsageDeliveriesLocked(deliveries); err != nil {
+		t.Fatal(err)
+	}
+	if len(ledger.Owners) == 0 {
+		t.Fatal("fixture did not migrate any owners")
+	}
+	owner := ledger.Owners[0]
+	key := usagereflection.Key(owner.Protocol, owner.InboundTag)
+	encoded, err := json.Marshal(usagereflection.Watermark{Version: 2, Epoch: ledger.Epoch, Root: "combined-reflected", Totals: map[string]uint64{key: owner.Total}, Baselines: map[string]uint64{key: owner.LegacyTotal}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queries := []localUsageReflectionQuery{{Protocol: owner.Protocol, UserID: owner.UserID, InboundTag: owner.InboundTag, ReflectedLedger: string(encoded)}}
+	results := make([]localUsageReflectionResult, 1)
+	if err := s.localAwaitingReflectionUsageBatchInto(queries, &results); err != nil {
+		t.Fatal(err)
+	}
+	if results[0].Awaiting != 0 {
+		t.Fatalf("reflected owner still awaiting %d bytes", results[0].Awaiting)
+	}
+	var before, after uint64
+	for _, d := range deliveries {
+		for _, row := range d.Rows {
+			before += row.Raw
+		}
+	}
+	for _, d := range s.localUsageDeliveries {
+		for _, row := range d.Rows {
+			if row.UserID == owner.UserID && row.Protocol == owner.Protocol && row.InboundTag == owner.InboundTag {
+				t.Fatal("reflected legacy owner remained pinned in anchors")
+			}
+			after += row.Raw
+		}
+	}
+	if before != after+owner.Total {
+		t.Fatalf("anchor conservation before=%d after=%d compacted=%d", before, after, owner.Total)
+	}
+	if s.localUsageV2.Owners[s.localUsageV2IndexLocked().Owners[localUsageOwnerKey{owner.Protocol, owner.UserID, owner.InboundTag}]].LegacyTotal != 0 {
+		t.Fatal("compacted owner still has a legacy baseline")
+	}
+
+	restarted := &Server{cfg: Config{DataDir: dir}}
+	if err := restarted.ensureLocalUsageDeliveriesLocked(); err != nil {
+		t.Fatal(err)
+	}
+	results = make([]localUsageReflectionResult, 1)
+	if err := restarted.localAwaitingReflectionUsageBatchInto(queries, &results); err != nil {
+		t.Fatal(err)
+	}
+	if results[0].Awaiting != 0 {
+		t.Fatalf("restart lost reflected watermark: awaiting=%d", results[0].Awaiting)
+	}
+	if len(restarted.localUsageDeliveries) >= len(deliveries) {
+		t.Fatalf("legacy anchors were not compacted: got %d roots from %d", len(restarted.localUsageDeliveries), len(deliveries))
+	}
 }
 
 func TestLocalDeliveryProductionShapeConservesBytes(t *testing.T) {

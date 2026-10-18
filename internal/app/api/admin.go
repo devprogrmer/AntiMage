@@ -18,6 +18,7 @@ import (
 
 	adminapp "github.com/antimage/antimage/internal/app/admin"
 	telegramapp "github.com/antimage/antimage/internal/app/telegram"
+	userapp "github.com/antimage/antimage/internal/app/user"
 	webhookapp "github.com/antimage/antimage/internal/app/webhook"
 )
 
@@ -659,6 +660,9 @@ func (s *Server) handleDeleteAdmin(w http.ResponseWriter, r *http.Request, usern
 			}
 		}
 		if _, err := tx.ExecContext(r.Context(), `UPDATE users SET status = ?, last_status_change = ? WHERE admin_id = ?`, "deleted", now, target.ID); err != nil {
+			return err
+		}
+		if err := userapp.RecordAccountingDeletionTx(r.Context(), tx, s.dialect, userIDs, time.Now().UTC()); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(r.Context(), `UPDATE admins SET status = ? WHERE id = ?`, string(adminapp.StatusDeleted), target.ID); err != nil {

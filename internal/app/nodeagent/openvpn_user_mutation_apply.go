@@ -392,7 +392,7 @@ func openVPNRuntimePolicy(user openVPNRuntimeUser) nativeSessionUserPolicy {
 	}
 	return nativeSessionUserPolicy{Status: user.Status, UsedTraffic: user.UsedTraffic, DataLimit: limit, Expire: expire,
 		DeviceLimit: user.DeviceLimit, IPLimit: user.IPLimit, UploadSpeedLimit: user.UploadSpeedLimit,
-		DownloadSpeedLimit: user.DownloadSpeedLimit, ReflectedUsageBatchID: user.ReflectedUsageBatchID,
+		DownloadSpeedLimit: user.DownloadSpeedLimit, ReflectedUsageBatchID: user.ReflectedUsageBatchID, ReflectedUsageLedger: user.ReflectedUsageLedger,
 		UsageCoefficient: user.UsageCoefficient, InboundCoefficient: user.InboundCoefficient}
 }
 

@@ -32,6 +32,7 @@ type wireGuardRuntimePeer struct {
 	Status                string  `json:"status"`
 	UsedTraffic           int64   `json:"used_traffic"`
 	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	ReflectedUsageLedger  string  `json:"reflected_usage_ledger,omitempty"`
 	DataLimit             *int64  `json:"data_limit,omitempty"`
 	Expire                *int64  `json:"expire,omitempty"`
 	DeviceLimit           int64   `json:"device_limit,omitempty"`
@@ -447,7 +448,7 @@ func (s *Server) syncWireGuardUsageConfigs(
 				),
 
 				UsedTraffic:           peer.UsedTraffic,
-				ReflectedUsageBatchID: strings.TrimSpace(peer.ReflectedUsageBatchID),
+				ReflectedUsageBatchID: strings.TrimSpace(peer.ReflectedUsageBatchID), ReflectedUsageLedger: peer.ReflectedUsageLedger,
 
 				DataLimit: dataLimit,
 

@@ -1,6 +1,8 @@
 package nodeagent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -25,8 +27,10 @@ type localUsageDelivery struct {
 }
 
 type localUsageDeliveryState struct {
-	Version    int                  `json:"version"`
-	Deliveries []localUsageDelivery `json:"deliveries"`
+	LegacyAnchorsHash string               `json:"legacy_anchors_hash,omitempty"`
+	Version           int                  `json:"version"`
+	Deliveries        []localUsageDelivery `json:"deliveries"`
+	Ledger            *localUsageLedgerV2  `json:"ledger,omitempty"`
 }
 
 func (s *Server) ensureLocalUsageDeliveriesLocked() error {
@@ -45,8 +49,58 @@ func (s *Server) ensureLocalUsageDeliveriesLocked() error {
 	if err := json.Unmarshal(raw, &state); err != nil {
 		return fmt.Errorf("decode accounting delivery ledger: %w", err)
 	}
-	if state.Version != 1 || len(state.Deliveries) > 4096 {
+	if (state.Version != 1 && state.Version != 2) || len(state.Deliveries) > 4096 {
 		return fmt.Errorf("invalid accounting delivery ledger version or capacity")
+	}
+	if state.Version == 2 && state.LegacyAnchorsHash != "" {
+		if len(state.LegacyAnchorsHash) != 64 {
+			return fmt.Errorf("invalid migration anchor identity")
+		}
+		if _, err := hex.DecodeString(state.LegacyAnchorsHash); err != nil {
+			return fmt.Errorf("invalid migration anchor identity")
+		}
+		path := filepath.Join(s.cfg.DataDir, "accounting", "deliveries-v1-"+state.LegacyAnchorsHash+".json")
+		raw, err := readOfflineAccountingState(path)
+		if err != nil {
+			return fmt.Errorf("read migration anchors: %w", err)
+		}
+		hash := sha256.Sum256(raw)
+		if hex.EncodeToString(hash[:]) != state.LegacyAnchorsHash {
+			return fmt.Errorf("migration anchor checksum mismatch")
+		}
+		var anchors localUsageDeliveryState
+		if err := json.Unmarshal(raw, &anchors); err != nil {
+			return fmt.Errorf("decode migration anchors: %w", err)
+		}
+		if anchors.Version != 1 || len(anchors.Deliveries) > 4096 {
+			return fmt.Errorf("invalid migration anchors")
+		}
+		state.Deliveries = anchors.Deliveries
+	}
+	if state.Version == 2 {
+		if err := validateLocalUsageV2(state.Ledger); err != nil {
+			return err
+		}
+		legacyTotals := map[localUsageOwnerKey]uint64{}
+		for _, delivery := range state.Deliveries {
+			for _, row := range delivery.Rows {
+				key := localUsageOwnerKey{row.Protocol, row.UserID, row.InboundTag}
+				if ^uint64(0)-legacyTotals[key] < row.Raw {
+					return fmt.Errorf("migration anchor accounting overflow")
+				}
+				legacyTotals[key] += row.Raw
+			}
+		}
+		for _, owner := range state.Ledger.Owners {
+			key := localUsageOwnerKey{owner.Protocol, owner.UserID, owner.InboundTag}
+			if legacyTotals[key] != owner.LegacyTotal {
+				return fmt.Errorf("migration anchor total mismatch for user %d protocol %s inbound %s", owner.UserID, owner.Protocol, owner.InboundTag)
+			}
+			delete(legacyTotals, key)
+		}
+		if len(legacyTotals) != 0 {
+			return fmt.Errorf("migration anchors contain an owner missing from cumulative ledger")
+		}
 	}
 	seen := map[string]bool{}
 	for _, delivery := range state.Deliveries {
@@ -60,8 +114,12 @@ func (s *Server) ensureLocalUsageDeliveriesLocked() error {
 			}
 		}
 	}
+	if state.Version == 2 {
+		s.localUsageV2 = state.Ledger
+	}
 	s.localUsageDeliveries = state.Deliveries
 	s.localUsageDeliveryIndex = nil
+	s.localUsageLegacyHash = state.LegacyAnchorsHash
 	s.localUsageLoaded = true
 	return nil
 }
@@ -71,14 +129,41 @@ func (s *Server) persistLocalUsageDeliveriesLocked(deliveries []localUsageDelive
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	raw, err := json.Marshal(localUsageDeliveryState{Version: 1, Deliveries: deliveries})
+	state := localUsageDeliveryState{Version: 1, Deliveries: deliveries}
+	previousAnchorHash := s.localUsageLegacyHash
+	if s.localUsageV2 != nil {
+		state.Version = 2
+		state.Ledger = s.localUsageV2
+		if len(deliveries) > 0 {
+			raw, err := json.Marshal(localUsageDeliveryState{Version: 1, Deliveries: deliveries})
+			if err != nil {
+				return err
+			}
+			sum := sha256.Sum256(raw)
+			state.LegacyAnchorsHash = hex.EncodeToString(sum[:])
+			if state.LegacyAnchorsHash != previousAnchorHash {
+				anchorPath := filepath.Join(filepath.Dir(path), "deliveries-v1-"+state.LegacyAnchorsHash+".json")
+				if err := writeAccountingState(anchorPath, raw); err != nil {
+					return fmt.Errorf("persist migration anchors: %w", err)
+				}
+			}
+		}
+		state.Deliveries = nil
+	}
+	raw, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}
 	if err := writeAccountingState(path, raw); err != nil {
 		return err
 	}
+	s.localUsageLegacyHash = state.LegacyAnchorsHash
 	s.localUsageDeliveryIndex = nil
+	if previousAnchorHash != "" && previousAnchorHash != state.LegacyAnchorsHash {
+		// The new content-addressed anchor is durable and referenced by the main
+		// state before the old sidecar is removed.
+		_ = os.Remove(filepath.Join(filepath.Dir(path), "deliveries-v1-"+previousAnchorHash+".json"))
+	}
 	return nil
 }
 
@@ -88,6 +173,12 @@ func usageDeliveryRows(protocol, childID string, batch *nodev1.UserUsageBatch) (
 	}
 	rows := make([]localUsageDeliveryRow, 0, len(batch.GetStats()))
 	for _, sample := range batch.GetStats() {
+		if sample.GetProtocol() != "" && sample.GetProtocol() != protocol {
+			return nil, fmt.Errorf("accounting sample protocol mismatch: got %s want %s", sample.GetProtocol(), protocol)
+		}
+		if sample.GetChildBatchId() != "" && sample.GetChildBatchId() != childID {
+			return nil, fmt.Errorf("accounting sample child mismatch: got %s want %s", sample.GetChildBatchId(), childID)
+		}
 		uid := strings.TrimPrefix(sample.GetUid(), "online:")
 		if _, suffix, found := strings.Cut(uid, ":"); found {
 			uid = suffix
@@ -241,6 +332,10 @@ func (s *Server) recordLocalUsageDelivery(batchID string) error {
 		s.localUsageMu.Unlock()
 		return err
 	}
+	if s.localUsageV2 != nil {
+		s.localUsageMu.Unlock()
+		return fmt.Errorf("accounting ledger v2 requires a reflection-v2 collector; upgrade the panel before the node")
+	}
 	for _, delivery := range s.localUsageDeliveries {
 		if delivery.BatchID == batchID {
 			s.localUsageMu.Unlock()
@@ -280,10 +375,10 @@ func (s *Server) recordLocalUsageDelivery(batchID string) error {
 	return nil
 }
 
-func (s *Server) localAwaitingReflectionUsage(protocol string, userID int64, inboundTag, pendingChildID, reflectedRootBatchID string) (uint64, error) {
+func (s *Server) localAwaitingReflectionUsage(protocol string, userID int64, inboundTag, pendingChildID, reflectedRootBatchID string, ledger ...string) (uint64, error) {
 	results, err := s.localAwaitingReflectionUsageBatch([]localUsageReflectionQuery{{
 		Protocol: protocol, UserID: userID, InboundTag: inboundTag,
-		PendingChildID: pendingChildID, ReflectedRootBatchID: reflectedRootBatchID,
+		PendingChildID: pendingChildID, ReflectedRootBatchID: reflectedRootBatchID, ReflectedLedger: firstReflectionLedger(ledger),
 	}})
 	if err != nil {
 		return 0, err
@@ -297,6 +392,7 @@ type localUsageReflectionQuery struct {
 	InboundTag           string
 	PendingChildID       string
 	ReflectedRootBatchID string
+	ReflectedLedger      string
 }
 
 type localUsageReflectionResult struct {
@@ -334,6 +430,9 @@ func (s *Server) localAwaitingReflectionUsageBatchInto(queries []localUsageRefle
 		clear(*results)
 	}
 	resultRows := *results
+	if s.localUsageV2 != nil {
+		return s.localUsageReflectionV2Locked(queries, resultRows)
+	}
 	if unchanged, err := s.localUsageReflectionIndexedLocked(queries, resultRows); unchanged || err != nil {
 		return err
 	}
@@ -408,14 +507,17 @@ func (s *Server) localAwaitingReflectionUsageBatchInto(queries []localUsageRefle
 	return nil
 }
 
-func (s *Server) localPendingUsageReflected(protocol string, userID int64, pendingChildID, reflectedRootBatchID string) (bool, error) {
-	if pendingChildID == "" || reflectedRootBatchID == "" {
+func (s *Server) localPendingUsageReflected(protocol string, userID int64, pendingChildID, reflectedRootBatchID string, ledger ...string) (bool, error) {
+	if pendingChildID == "" || (reflectedRootBatchID == "" && firstReflectionLedger(ledger) == "") {
 		return false, nil
 	}
 	s.localUsageMu.Lock()
 	defer s.localUsageMu.Unlock()
 	if err := s.ensureLocalUsageDeliveriesLocked(); err != nil {
 		return false, err
+	}
+	if s.localUsageV2 != nil && firstReflectionLedger(ledger) != "" {
+		return s.localPendingReflectedV2Locked(protocol, userID, pendingChildID, firstReflectionLedger(ledger))
 	}
 	index := s.localUsageIndexLocked()
 	position, found := index.Batches[reflectedRootBatchID]

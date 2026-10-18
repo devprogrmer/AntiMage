@@ -99,7 +99,7 @@ func (s *Server) quotaCheckPPPOffline(ctx context.Context) error {
 					if err != nil {
 						return err
 					}
-					usage, err := s.offlinePolicyRaw(preview.Baseline, protocol, uid, cfg.InboundTag, preview.PendingID, policy.ReflectedUsageBatchID, pendingRaw)
+					usage, err := s.offlinePolicyRaw(preview.Baseline, protocol, uid, cfg.InboundTag, preview.PendingID, policy.ReflectedUsageBatchID, pendingRaw, policy.ReflectedUsageLedger)
 					if err != nil {
 						return err
 					}

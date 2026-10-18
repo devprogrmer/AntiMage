@@ -370,6 +370,7 @@ message TransferMetrics {
 message CollectUsageRequest {
   string collector_id = 1;
   bool reset = 2;
+  uint32 reflection_version = 3;
 }
 
 message UserUsageBatch {
@@ -377,6 +378,8 @@ message UserUsageBatch {
   repeated UserUsageSample stats = 2;
   repeated OnlineUserIP online_ips = 3;
   repeated UserTrafficSpeed speeds = 4;
+  // Per-user cumulative raw receipts; persisted with staged usage, reflected only on flush.
+  map<int64, string> reflection_receipts = 5;
 }
 
 message UserTrafficSpeed {
@@ -389,6 +392,8 @@ message UserUsageSample {
   string uid = 1;
   uint64 value = 2;
   string inbound_tag = 3;
+  string protocol = 4;
+  string child_batch_id = 5;
 }
 
 message OnlineUserIP {

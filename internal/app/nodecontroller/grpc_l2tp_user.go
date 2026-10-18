@@ -134,6 +134,7 @@ func (c Controller) grpcApplyL2TPUserOperation(ctx context.Context, client *node
 			reflection := reflections[desired.UserID]
 			desired.UsedTraffic = reflection.UsedTraffic
 			desired.ReflectedUsageBatchID = reflection.BatchID
+			desired.ReflectedUsageLedger = reflection.Ledger
 			user, userErr := grpcL2TPMutationUser(*desired, mutation, uint64(operation.ID))
 			if userErr != nil {
 				return userErr

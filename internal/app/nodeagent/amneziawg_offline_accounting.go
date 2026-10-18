@@ -277,7 +277,7 @@ func (s *Server) amneziaWGOfflineLocked(ctx context.Context, enforce, checkpoint
 				if s.amneziaWGUsagePending != nil {
 					pendingID = s.amneziaWGUsagePending.BatchID
 				}
-				reflected, err := s.localPendingUsageReflected("amneziawg", uid, pendingID, policy.ReflectedUsageBatchID)
+				reflected, err := s.localPendingUsageReflected("amneziawg", uid, pendingID, policy.ReflectedUsageBatchID, policy.ReflectedUsageLedger)
 				if err != nil {
 					return state, err
 				}
@@ -292,7 +292,12 @@ func (s *Server) amneziaWGOfflineLocked(ctx context.Context, enforce, checkpoint
 						total -= sample.Value
 					}
 				}
-				credit, err := amneziaWGAwaitingReflectionUsage(s, uid, cfg.InboundTag, pendingID, policy.ReflectedUsageBatchID)
+				var credit uint64
+				if policy.ReflectedUsageLedger != "" {
+					credit, err = s.localAwaitingReflectionUsage("amneziawg", uid, cfg.InboundTag, pendingID, policy.ReflectedUsageBatchID, policy.ReflectedUsageLedger)
+				} else {
+					credit, err = amneziaWGAwaitingReflectionUsage(s, uid, cfg.InboundTag, pendingID, policy.ReflectedUsageBatchID)
+				}
 				if err != nil {
 					return state, err
 				}

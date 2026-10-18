@@ -54,6 +54,7 @@ func (s *Server) wireGuardLiveUnackedUsageLocked(
 	pending := s.wireGuardUsagePending
 
 	reflectedBatchID := ""
+	reflectedLedger := ""
 	for publicKey, mappedUserID := range cfg.Peers {
 		if mappedUserID != userID {
 			continue
@@ -79,13 +80,17 @@ func (s *Server) wireGuardLiveUnackedUsageLocked(
 		}
 
 		reflectedBatchID = candidate
+		if reflectedLedger != "" && reflectedLedger != policy.ReflectedUsageLedger {
+			return 0, fmt.Errorf("wireguard reflected ledger mismatch")
+		}
+		reflectedLedger = policy.ReflectedUsageLedger
 	}
 
 	pendingReflected := pending != nil &&
 		reflectedBatchID != "" &&
 		strings.TrimSpace(pending.BatchID) == reflectedBatchID
 	if pending != nil && !pendingReflected {
-		matched, err := s.localPendingUsageReflected("wireguard", userID, pending.BatchID, reflectedBatchID)
+		matched, err := s.localPendingUsageReflected("wireguard", userID, pending.BatchID, reflectedBatchID, reflectedLedger)
 		if err != nil {
 			return 0, err
 		}
@@ -111,7 +116,7 @@ func (s *Server) wireGuardLiveUnackedUsageLocked(
 	awaitingUsage, err := s.wireGuardAwaitingReflectionUsageLocked(
 		inboundTag,
 		userID,
-		reflectedBatchID,
+		reflectedBatchID, reflectedLedger,
 	)
 	if err != nil {
 		return 0, err

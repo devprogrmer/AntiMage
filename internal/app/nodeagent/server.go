@@ -54,6 +54,9 @@ type Server struct {
 	localAccountingFailures          map[string]string
 	localPolicyFailures              map[string]string
 	localRuntimeFailures             map[string]string
+	localUsageV2                     *localUsageLedgerV2
+	localUsageV2Index                *localUsageV2Index
+	localUsageLegacyHash             string
 	localUsageMu                     sync.Mutex
 	localUsageLoaded                 bool
 	localUsageDeliveries             []localUsageDelivery
@@ -823,7 +826,14 @@ func (s *Server) CollectUserUsage(
 	if err != nil {
 		return nil, err
 	}
-	if err := s.recordLocalUsageDelivery(batch.GetBatchId()); err != nil {
+	if req.GetReflectionVersion() >= 2 {
+		receipts, err := s.recordLocalUsageDeliveryV2(batch.GetBatchId())
+		if err != nil {
+			s.recordLocalAccountingHealth("delivery", err)
+			return nil, err
+		}
+		batch.ReflectionReceipts = receipts
+	} else if err := s.recordLocalUsageDelivery(batch.GetBatchId()); err != nil {
 		s.recordLocalAccountingHealth("delivery", err)
 		return nil, err
 	}

@@ -251,7 +251,7 @@ func amneziaWGUsageBatchProto(pending *amneziaWGUsagePendingBatch, onlineIPs []*
 		onlineIPs = pending.OnlineIPs
 		batchID = pending.BatchID
 		for _, sample := range pending.Samples {
-			stats = append(stats, &nodev1.UserUsageSample{Uid: "amneziawg:" + strconv.FormatInt(sample.UserID, 10), InboundTag: sample.InboundTag, Value: sample.Value})
+			stats = append(stats, &nodev1.UserUsageSample{Uid: "amneziawg:" + strconv.FormatInt(sample.UserID, 10), InboundTag: sample.InboundTag, Protocol: "amneziawg", ChildBatchId: pending.BatchID, Value: sample.Value})
 		}
 	}
 	for _, item := range onlineIPs {

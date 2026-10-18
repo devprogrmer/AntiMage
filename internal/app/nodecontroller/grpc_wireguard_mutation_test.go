@@ -156,7 +156,7 @@ CREATE TABLE inbounds (tag TEXT PRIMARY KEY, uplink INTEGER DEFAULT 0, downlink 
 CREATE TABLE nodes (id INTEGER PRIMARY KEY, name TEXT, address TEXT, port INTEGER, api_port INTEGER, status TEXT, xray_version TEXT, message TEXT, certificate TEXT, certificate_key TEXT, xray_config_mode TEXT, xray_config TEXT, usage_coefficient REAL DEFAULT 1);
 CREATE TABLE wireguard_devices (inbound_tag TEXT, user_id INTEGER, device_index INTEGER, private_key TEXT, public_key TEXT, address TEXT, generation INTEGER DEFAULT 1, PRIMARY KEY(inbound_tag,user_id,device_index));
 CREATE TABLE wireguard_device_revocations (inbound_tag TEXT, user_id INTEGER, device_index INTEGER, credential_fingerprint TEXT);
-CREATE TABLE node_wireguard_usage_reflection (node_id INTEGER, user_id INTEGER, batch_id TEXT);
+CREATE TABLE node_wireguard_usage_reflection (node_id INTEGER, user_id INTEGER, batch_id TEXT, ledger_json TEXT NULL, updated_at DATETIME);
 INSERT INTO users VALUES (7,'wg-user',10,'active','0123456789abcdef0123456789abcdef',0,0,0,1,0,0,0);
 INSERT INTO proxies VALUES (7,'wireguard');
 INSERT INTO hosts VALUES (1,'wg-in',0);

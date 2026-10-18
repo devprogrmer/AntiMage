@@ -424,7 +424,7 @@ func amneziaWGPeersFromWireGuard(peers []wireGuardRuntimePeer) []amneziaWGRuntim
 	result := make([]amneziaWGRuntimePeer, 0, len(peers))
 	for _, peer := range peers {
 		result = append(result, amneziaWGRuntimePeer{
-			ReflectedUsageBatchID: peer.ReflectedUsageBatchID, UserID: peer.UserID,
+			ReflectedUsageBatchID: peer.ReflectedUsageBatchID, ReflectedUsageLedger: peer.ReflectedUsageLedger, UserID: peer.UserID,
 			Username: peer.Username, DeviceIndex: peer.DeviceIndex, PublicKey: peer.PublicKey,
 			PresharedKey: peer.PresharedKey, Address: peer.Address, Status: peer.Status,
 			UsedTraffic: peer.UsedTraffic, DataLimit: peer.DataLimit, Expire: peer.Expire,

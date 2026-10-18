@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/antimage/antimage/internal/platform/usagereflection"
 )
 
 const usagePersistBatchSize = 200
@@ -34,6 +36,10 @@ type UserUsageDelta struct {
 	Value              int64
 	Online             bool
 	InboundCoefficient float64
+	AccountingProtocol string
+	AccountingChildID  string
+	InboundTag         string
+	RawValue           uint64
 }
 
 type OutboundUsageDelta struct {
@@ -49,6 +55,8 @@ type InboundUsageDelta struct {
 }
 
 type UsagePersistOptions struct {
+	ReflectionReceipts       map[int64]string
+	InboundCoefficients      map[string]float64
 	SkipNodeUsageHistory     bool
 	SkipNodeUserUsageHistory bool
 }
@@ -82,6 +90,7 @@ type UsageHistoryFlushResult struct {
 }
 
 type stagedUserUsageRow struct {
+	Ledger      string
 	ID          int64
 	NodeID      int64
 	BatchID     string
@@ -326,18 +335,245 @@ func (r Repository) StoreCollectedUsage(ctx context.Context, node NodeRow, userB
 	return r.StoreCollectedUsageWithInbounds(ctx, node, userBatchID, userDeltas, outboundBatchID, outboundDeltas, nil, optionValues...)
 }
 
-func (r Repository) StoreCollectedUsageWithInbounds(ctx context.Context, node NodeRow, userBatchID string, userDeltas []UserUsageDelta, outboundBatchID string, outboundDeltas []OutboundUsageDelta, inboundDeltas []InboundUsageDelta, optionValues ...UsagePersistOptions) error {
-	if len(userDeltas) == 0 && len(outboundDeltas) == 0 && len(inboundDeltas) == 0 {
-		return nil
+func (r Repository) applyReflectionUsageDeltasTx(ctx context.Context, tx *sql.Tx, node NodeRow, batchID string, deltas []UserUsageDelta, receipts map[int64]string, coefficients map[string]float64) ([]UserUsageDelta, error) {
+	type accountingOwner struct {
+		user     int64
+		protocol string
+		tag      string
 	}
+	type ownerReceipt struct {
+		total         uint64
+		stagedBefore  uint64
+		legacyPending map[string]uint64
+		pendingChild  usagereflection.PendingChild
+		hasCursor     bool
+	}
+	watermarks := make(map[int64]usagereflection.Watermark, len(receipts))
+	for uid, encoded := range receipts {
+		w, err := usagereflection.Decode(encoded)
+		if err != nil {
+			return nil, err
+		}
+		if w.Root != batchID {
+			return nil, fmt.Errorf("reflection receipt batch identity mismatch")
+		}
+		watermarks[uid] = w
+	}
+	rootSet := map[string]struct{}{}
+	owners := map[accountingOwner]ownerReceipt{}
+	for uid, w := range watermarks {
+		for key, total := range w.Totals {
+			protocol, tag, err := usagereflection.ParseKey(key)
+			if err != nil {
+				return nil, err
+			}
+			owner := accountingOwner{uid, protocol, tag}
+			entry := ownerReceipt{total: total, legacyPending: map[string]uint64{}, pendingChild: w.PendingChildren[key]}
+			var savedKey string
+			err = tx.QueryRowContext(ctx, `SELECT owner_key,total_raw FROM node_usage_reflection_staged WHERE node_id=? AND user_id=? AND epoch=? AND owner_hash=?`, node.ID, uid, w.Epoch, usagereflection.StorageKey(key)).Scan(&savedKey, &entry.stagedBefore)
+			if err == nil && savedKey != key {
+				return nil, fmt.Errorf("accounting owner key hash collision")
+			}
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return nil, err
+			}
+			entry.hasCursor = err == nil
+			if !entry.hasCursor {
+				entry.stagedBefore = 0
+				for root := range w.LegacyBatches[key] {
+					if root != "" {
+						rootSet[root] = struct{}{}
+					}
+				}
+			}
+			owners[owner] = entry
+		}
+	}
+	stagedRoots := map[string]bool{}
+	roots := make([]string, 0, len(rootSet))
+	for root := range rootSet {
+		roots = append(roots, root)
+	}
+	sort.Strings(roots)
+	for start := 0; start < len(roots); start += usagePersistBatchSize {
+		end := start + usagePersistBatchSize
+		if end > len(roots) {
+			end = len(roots)
+		}
+		chunk := roots[start:end]
+		query := `SELECT batch_id FROM node_usage_batch_tombstones WHERE node_id=? AND kind='user' AND batch_id IN (` + placeholders(len(chunk)) + `)`
+		args := make([]any, 0, len(chunk)+1)
+		args = append(args, node.ID)
+		for _, root := range chunk {
+			args = append(args, root)
+		}
+		rows, err := tx.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var root string
+			if err := rows.Scan(&root); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			stagedRoots[root] = true
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	for uid, w := range watermarks {
+		for key := range w.Totals {
+			protocol, tag, err := usagereflection.ParseKey(key)
+			if err != nil {
+				return nil, err
+			}
+			owner := accountingOwner{uid, protocol, tag}
+			entry := owners[owner]
+			if !entry.hasCursor {
+				for root, raw := range w.LegacyBatches[key] {
+					if stagedRoots[root] {
+						if ^uint64(0)-entry.stagedBefore < raw {
+							return nil, fmt.Errorf("staged legacy usage overflow")
+						}
+						entry.stagedBefore += raw
+					} else {
+						entry.legacyPending[root] = raw
+					}
+				}
+			}
+			if entry.total < entry.stagedBefore {
+				return nil, fmt.Errorf("cumulative usage receipt regressed for user %d", uid)
+			}
+			owners[owner] = entry
+		}
+	}
+
+	// Keep legacy batches that were never staged separate from the current
+	// samples. This recovers bytes from the v1 ledger that may never have
+	// reached the panel before migration, without double-billing tombstoned
+	// roots. Each historical root remains a separate scaling sample, matching
+	// the pre-migration per-batch rounding behavior.
+	legacyRaw := map[accountingOwner]uint64{}
+	legacyDeltas := make([]UserUsageDelta, 0)
+	for owner, entry := range owners {
+		for root, raw := range entry.legacyPending {
+			if ^uint64(0)-legacyRaw[owner] < raw {
+				return nil, fmt.Errorf("unreflected legacy usage overflow")
+			}
+			legacyRaw[owner] += raw
+			value := int64(math.MaxInt64)
+			if raw <= math.MaxInt64 {
+				value = int64(raw)
+			}
+			legacyDeltas = append(legacyDeltas, UserUsageDelta{UserID: owner.user, Value: value, RawValue: raw, Online: true, AccountingProtocol: owner.protocol, AccountingChildID: root, InboundTag: owner.tag, InboundCoefficient: normalizeUsageFactor(coefficients[owner.tag])})
+		}
+	}
+
+	sampleRaw := map[accountingOwner]uint64{}
+	for _, d := range deltas {
+		if d.UserID <= 0 || d.RawValue == 0 || d.InboundTag == "" {
+			continue
+		}
+		if d.AccountingProtocol == "" {
+			return nil, fmt.Errorf("accounting protocol missing from reflected usage sample")
+		}
+		owner := accountingOwner{d.UserID, d.AccountingProtocol, d.InboundTag}
+		if ^uint64(0)-sampleRaw[owner] < d.RawValue {
+			return nil, fmt.Errorf("accounting sample overflow")
+		}
+		sampleRaw[owner] += d.RawValue
+	}
+	for owner, entry := range owners {
+		if entry.total < entry.stagedBefore {
+			return nil, fmt.Errorf("cumulative usage receipt regressed")
+		}
+		delta := entry.total - entry.stagedBefore
+		if delta < legacyRaw[owner] {
+			return nil, fmt.Errorf("accounting receipt/sample mismatch for user %d protocol %s inbound %s: receipt=%d staged=%d legacy=%d sample=%d", owner.user, owner.protocol, owner.tag, entry.total, entry.stagedBefore, legacyRaw[owner], sampleRaw[owner])
+		}
+		currentRaw := delta - legacyRaw[owner]
+		if sampleRaw[owner] > 0 {
+			if entry.pendingChild.BatchID == "" || entry.pendingChild.Raw != sampleRaw[owner] {
+				return nil, fmt.Errorf("accounting pending child receipt mismatch for user %d", owner.user)
+			}
+			for _, sample := range deltas {
+				if sample.UserID == owner.user && sample.AccountingProtocol == owner.protocol && sample.InboundTag == owner.tag && sample.RawValue > 0 && sample.AccountingChildID != entry.pendingChild.BatchID {
+					return nil, fmt.Errorf("accounting child identity mismatch for user %d", owner.user)
+				}
+			}
+		}
+		if currentRaw != sampleRaw[owner] {
+			if currentRaw != 0 || sampleRaw[owner] == 0 || entry.pendingChild.Raw != sampleRaw[owner] {
+				return nil, fmt.Errorf("accounting receipt/sample mismatch for user %d protocol %s inbound %s: receipt=%d staged=%d legacy=%d sample=%d", owner.user, owner.protocol, owner.tag, entry.total, entry.stagedBefore, legacyRaw[owner], sampleRaw[owner])
+			}
+		} else if sampleRaw[owner] > 0 && entry.pendingChild.BatchID == "" {
+			return nil, fmt.Errorf("accounting pending child identity missing for user %d", owner.user)
+		}
+	}
+
+	out := append([]UserUsageDelta(nil), legacyDeltas...)
+	online := map[int64]bool{}
+	for _, d := range deltas {
+		if d.UserID <= 0 {
+			continue
+		}
+		if d.Online {
+			online[d.UserID] = true
+		}
+		if d.RawValue == 0 || d.InboundTag == "" {
+			if d.Online {
+				out = append(out, d)
+			}
+			continue
+		}
+		owner := accountingOwner{d.UserID, d.AccountingProtocol, d.InboundTag}
+		entry, hasReceipt := owners[owner]
+		if !hasReceipt {
+			if _, hasUserReceipt := watermarks[d.UserID]; hasUserReceipt {
+				return nil, fmt.Errorf("accounting sample has no matching owner receipt for user %d", d.UserID)
+			}
+			out = append(out, d) // legacy/unreceipted node
+			continue
+		}
+		newRaw := entry.total - entry.stagedBefore - legacyRaw[owner]
+		if newRaw > 0 {
+			out = append(out, d)
+		}
+	}
+	for uid := range online {
+		found := false
+		for i := range out {
+			if out[i].UserID == uid {
+				out[i].Online = true
+				found = true
+			}
+		}
+		if !found {
+			out = append(out, UserUsageDelta{UserID: uid, Online: true})
+		}
+	}
+	return out, nil
+}
+
+func (r Repository) StoreCollectedUsageWithInbounds(ctx context.Context, node NodeRow, userBatchID string, userDeltas []UserUsageDelta, outboundBatchID string, outboundDeltas []OutboundUsageDelta, inboundDeltas []InboundUsageDelta, optionValues ...UsagePersistOptions) error {
 	options := mergeUsagePersistOptions(optionValues)
 	userBatchID = strings.TrimSpace(userBatchID)
 	outboundBatchID = strings.TrimSpace(outboundBatchID)
+	hasReflectionReceipt := userBatchID != "" && len(options.ReflectionReceipts) > 0
+	if len(userDeltas) == 0 && len(outboundDeltas) == 0 && len(inboundDeltas) == 0 && !hasReflectionReceipt {
+		return nil
+	}
 
 	normalizedUsers, onlineUsers := aggregateUserUsageForStage(node, userDeltas)
 	normalizedOutbound := aggregateOutboundUsageForStage(outboundDeltas)
 	normalizedInbound := aggregateInboundUsageForStage(inboundDeltas)
-	if len(normalizedUsers) == 0 && len(onlineUsers) == 0 && len(normalizedOutbound) == 0 && len(normalizedInbound) == 0 {
+	if len(normalizedUsers) == 0 && len(onlineUsers) == 0 && len(normalizedOutbound) == 0 && len(normalizedInbound) == 0 && !hasReflectionReceipt {
 		return nil
 	}
 	now := time.Now().UTC()
@@ -359,15 +595,29 @@ func (r Repository) StoreCollectedUsageWithInbounds(ctx context.Context, node No
 		return err
 	}
 	defer tx.Rollback()
+	if userBatchID != "" && len(options.ReflectionReceipts) > 0 {
+		userDeltas, err = r.applyReflectionUsageDeltasTx(ctx, tx, node, userBatchID, userDeltas, options.ReflectionReceipts, options.InboundCoefficients)
+		if err != nil {
+			return fmt.Errorf("apply cumulative accounting receipts: %w", err)
+		}
+		normalizedUsers, onlineUsers = aggregateUserUsageForStage(node, userDeltas)
+		// Even a zero delta must carry the watermark into the queue. This
+		// records that older staged child bytes now have a cumulative cursor.
+		for uid := range options.ReflectionReceipts {
+			if _, ok := normalizedUsers[uid]; !ok {
+				normalizedUsers[uid] = 0
+			}
+		}
+	}
 
 	if _, err := r.queueRuntimeSyncForStaleUsersTx(ctx, tx, node.ID, unionInt64Keys(normalizedUsers, onlineUsers), now); err != nil {
 		return fmt.Errorf("stage stale runtime user cleanup: %w", err)
 	}
 
 	var operations []usageQueuedOperation
-	if len(normalizedUsers) > 0 {
+	if len(normalizedUsers) > 0 || userBatchID != "" && len(options.ReflectionReceipts) > 0 {
 		if userBatchID != "" {
-			if err := r.insertStagedUserUsage(ctx, tx, node.ID, userBatchID, normalizedUsers, now); err != nil {
+			if err := r.insertStagedUserUsage(ctx, tx, node.ID, userBatchID, normalizedUsers, now, options.ReflectionReceipts); err != nil {
 				return fmt.Errorf("stage user usage: %w", err)
 			}
 		} else {
@@ -604,6 +854,12 @@ func (r Repository) FlushStagedUsageHistory(ctx context.Context, limit int, opti
 func mergeUsagePersistOptions(optionValues []UsagePersistOptions) UsagePersistOptions {
 	var merged UsagePersistOptions
 	for _, options := range optionValues {
+		if options.ReflectionReceipts != nil {
+			merged.ReflectionReceipts = options.ReflectionReceipts
+		}
+		if options.InboundCoefficients != nil {
+			merged.InboundCoefficients = options.InboundCoefficients
+		}
 		merged.SkipNodeUsageHistory = merged.SkipNodeUsageHistory || options.SkipNodeUsageHistory
 		merged.SkipNodeUserUsageHistory = merged.SkipNodeUserUsageHistory || options.SkipNodeUserUsageHistory
 	}
@@ -991,30 +1247,157 @@ func (r Repository) touchUsersOnline(ctx context.Context, userIDs []int64) error
 	})
 }
 
-func (r Repository) insertStagedUserUsage(ctx context.Context, tx *sql.Tx, nodeID int64, batchID string, usageByUser map[int64]int64, now time.Time) error {
+func (r Repository) insertStagedUserUsage(ctx context.Context, tx *sql.Tx, nodeID int64, batchID string, usageByUser map[int64]int64, now time.Time, receiptValues ...map[int64]string) error {
+	var receipts map[int64]string
+	if len(receiptValues) > 0 {
+		receipts = receiptValues[0]
+	}
 	if pruned, err := r.lockUsageBatch(ctx, tx, nodeID, batchID, "user"); err != nil || pruned {
 		return err
 	}
+	tombstonedUsers := map[int64]struct{}{}
+	receiptUsers := make([]int64, 0, len(receipts))
+	for uid := range receipts {
+		receiptUsers = append(receiptUsers, uid)
+	}
+	sort.Slice(receiptUsers, func(i, j int) bool { return receiptUsers[i] < receiptUsers[j] })
+	if err := forEachInt64Chunk(receiptUsers, usagePersistBatchSize, func(chunk []int64) error {
+		if len(chunk) == 0 {
+			return nil
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT user_id FROM user_accounting_tombstones WHERE user_id IN (`+placeholders(len(chunk))+`)`, int64Args(chunk)...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var uid int64
+			if err := rows.Scan(&uid); err != nil {
+				return err
+			}
+			tombstonedUsers[uid] = struct{}{}
+		}
+		return rows.Err()
+	}); err != nil {
+		return fmt.Errorf("load accounting retirement tombstones: %w", err)
+	}
+	for uid, encoded := range receipts {
+		w, err := usagereflection.Decode(encoded)
+		if err != nil {
+			return err
+		}
+		if w.Root != batchID {
+			return fmt.Errorf("reflection receipt batch identity mismatch")
+		}
+		for key, total := range w.Totals {
+			if total > math.MaxInt64 {
+				return fmt.Errorf("accounting watermark exceeds supported database integer range")
+			}
+			old := w.Baselines[key]
+			var savedKey string
+			err := tx.QueryRowContext(ctx, `SELECT owner_key,total_raw FROM node_usage_reflection_staged WHERE node_id=? AND user_id=? AND epoch=? AND owner_hash=?`, nodeID, uid, w.Epoch, usagereflection.StorageKey(key)).Scan(&savedKey, &old)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			if savedKey != "" && savedKey != key {
+				return fmt.Errorf("accounting owner key hash collision")
+			}
+			if total < old {
+				return fmt.Errorf("reflection receipt regressed")
+			}
+		}
+		if _, tombstoned := tombstonedUsers[uid]; tombstoned {
+			if err := r.recordRetiredUsageWatermarkTx(ctx, tx, nodeID, uid, w, now); err != nil {
+				return err
+			}
+		}
+	}
 	userIDs := keysInt64(usageByUser)
-	return forEachInt64Chunk(userIDs, usagePersistBatchSize, func(chunk []int64) error {
+	if err := forEachInt64Chunk(userIDs, usagePersistBatchSize, func(chunk []int64) error {
 		var builder strings.Builder
-		builder.WriteString(`INSERT INTO node_usage_user_queue (node_id, batch_id, user_id, used_traffic, online, created_at, history_processed_at) VALUES `)
+		builder.WriteString(`INSERT INTO node_usage_user_queue (node_id,batch_id,user_id,used_traffic,online,created_at,history_processed_at,ledger_json) VALUES `)
 		args := make([]any, 0, len(chunk)*6)
-		for i, userID := range chunk {
+		for i, uid := range chunk {
 			if i > 0 {
 				builder.WriteString(",")
 			}
-			builder.WriteString("(?, ?, ?, ?, 1, ?, NULL)")
-			args = append(args, nodeID, batchID, userID, usageByUser[userID], r.timeArg(now))
+			builder.WriteString("(?, ?, ?, ?, 1, ?, NULL, ?)")
+			args = append(args, nodeID, batchID, uid, usageByUser[uid], r.timeArg(now), receipts[uid])
 		}
 		if r.dialect == "sqlite" {
-			builder.WriteString(` ON CONFLICT(node_id, batch_id, user_id) DO UPDATE SET online = CASE WHEN excluded.online > node_usage_user_queue.online THEN excluded.online ELSE node_usage_user_queue.online END`)
+			builder.WriteString(` ON CONFLICT(node_id,batch_id,user_id) DO UPDATE SET online=CASE WHEN excluded.online>node_usage_user_queue.online THEN excluded.online ELSE node_usage_user_queue.online END, ledger_json=CASE WHEN COALESCE(node_usage_user_queue.ledger_json,'')='' THEN excluded.ledger_json ELSE node_usage_user_queue.ledger_json END`)
 		} else {
-			builder.WriteString(` ON DUPLICATE KEY UPDATE online = GREATEST(online, VALUES(online))`)
+			builder.WriteString(` ON DUPLICATE KEY UPDATE online=GREATEST(online,VALUES(online)), ledger_json=IF(COALESCE(ledger_json,'')='',VALUES(ledger_json),ledger_json)`)
 		}
-		_, err := tx.ExecContext(ctx, builder.String(), args...)
+		if _, err := tx.ExecContext(ctx, builder.String(), args...); err != nil {
+			return err
+		}
+		for _, uid := range chunk {
+			if raw := receipts[uid]; raw != "" {
+				var saved string
+				var value int64
+				if err := tx.QueryRowContext(ctx, `SELECT COALESCE(ledger_json,''),used_traffic FROM node_usage_user_queue WHERE node_id=? AND batch_id=? AND user_id=?`, nodeID, batchID, uid).Scan(&saved, &value); err != nil {
+					return err
+				}
+				if saved != raw {
+					return fmt.Errorf("conflicting replay of accounting receipt")
+				}
+			}
+		}
+		return nil
+	}); err != nil {
 		return err
-	})
+	}
+	if len(userIDs) > 0 {
+		if _, err := tx.ExecContext(ctx, `UPDATE node_usage_user_queue SET retirement_pending=1 WHERE node_id=? AND batch_id=? AND user_id IN (SELECT user_id FROM user_accounting_tombstones)`, nodeID, batchID); err != nil {
+			return fmt.Errorf("mark newly staged deleted-user accounting for retirement: %w", err)
+		}
+	}
+	for uid, encoded := range receipts {
+		w, err := usagereflection.Decode(encoded)
+		if err != nil {
+			return err
+		}
+		for key, total := range w.Totals {
+			query := `INSERT INTO node_usage_reflection_staged(node_id,user_id,epoch,owner_hash,owner_key,total_raw) VALUES(?,?,?,?,?,?) ON CONFLICT(node_id,user_id,epoch,owner_hash) DO UPDATE SET owner_key=excluded.owner_key,total_raw=CASE WHEN excluded.total_raw>node_usage_reflection_staged.total_raw THEN excluded.total_raw ELSE node_usage_reflection_staged.total_raw END`
+			if r.dialect != "sqlite" {
+				query = `INSERT INTO node_usage_reflection_staged(node_id,user_id,epoch,owner_hash,owner_key,total_raw) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE owner_key=VALUES(owner_key),total_raw=GREATEST(total_raw,VALUES(total_raw))`
+			}
+			if _, err := tx.ExecContext(ctx, query, nodeID, uid, w.Epoch, usagereflection.StorageKey(key), key, total); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// recordRetiredUsageWatermarkTx durably carries cumulative raw bytes for a
+// soft-deleted user before the collection transaction can be ACKed. It is an
+// accounting journal only; it never bills the user or authorizes deleting a
+// node-side legacy anchor. That requires a separate committed retirement proof.
+func (r Repository) recordRetiredUsageWatermarkTx(ctx context.Context, tx *sql.Tx, nodeID, userID int64, w usagereflection.Watermark, now time.Time) error {
+	for ownerKey, total := range w.Totals {
+		if total > math.MaxInt64 {
+			return fmt.Errorf("retired accounting watermark exceeds supported database integer range")
+		}
+		hash := usagereflection.StorageKey(ownerKey)
+		var saved string
+		err := tx.QueryRowContext(ctx, `SELECT owner_key FROM node_usage_retirement_ledger WHERE node_id=? AND user_id=? AND epoch=? AND owner_hash=?`, nodeID, userID, w.Epoch, hash).Scan(&saved)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if saved != "" && saved != ownerKey {
+			return fmt.Errorf("retired accounting owner key hash collision")
+		}
+		query := `INSERT INTO node_usage_retirement_ledger(node_id,user_id,epoch,owner_hash,owner_key,settled_raw,total_raw,retired_raw,updated_at) VALUES(?,?,?,?,?,0,?,?,?) ON CONFLICT(node_id,user_id,epoch,owner_hash) DO UPDATE SET owner_key=excluded.owner_key,total_raw=CASE WHEN excluded.total_raw>node_usage_retirement_ledger.total_raw THEN excluded.total_raw ELSE node_usage_retirement_ledger.total_raw END,retired_raw=CASE WHEN excluded.retired_raw>node_usage_retirement_ledger.retired_raw THEN excluded.retired_raw ELSE node_usage_retirement_ledger.retired_raw END,updated_at=excluded.updated_at`
+		if r.dialect != "sqlite" {
+			query = `INSERT INTO node_usage_retirement_ledger(node_id,user_id,epoch,owner_hash,owner_key,settled_raw,total_raw,retired_raw,updated_at) VALUES(?,?,?,?,?,0,?,?,?) ON DUPLICATE KEY UPDATE owner_key=VALUES(owner_key),total_raw=GREATEST(total_raw,VALUES(total_raw)),retired_raw=GREATEST(retired_raw,VALUES(retired_raw)),updated_at=VALUES(updated_at)`
+		}
+		if _, err := tx.ExecContext(ctx, query, nodeID, userID, w.Epoch, hash, ownerKey, total, total, r.timeArg(now)); err != nil {
+			return fmt.Errorf("persist retired accounting watermark for user %d: %w", userID, err)
+		}
+	}
+	return nil
 }
 
 func (r Repository) insertStagedOutboundUsage(ctx context.Context, tx *sql.Tx, nodeID int64, batchID string, outbounds map[string]OutboundUsageDelta, inbounds map[string]InboundUsageDelta, now time.Time) error {
@@ -1877,20 +2260,38 @@ func (r Repository) markWireGuardUsageReflected(
 			continue
 		}
 
+		if row.Ledger != "" {
+			var previous, previousRoot string
+			query := `SELECT COALESCE(ledger_json,''), batch_id FROM node_wireguard_usage_reflection WHERE node_id=? AND user_id=?`
+			if r.dialect != "sqlite" {
+				query += " FOR UPDATE"
+			}
+			err := tx.QueryRowContext(ctx, query, row.NodeID, row.UserID).Scan(&previous, &previousRoot)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			merged, err := usagereflection.Merge(previous, row.Ledger, previousRoot)
+			if err != nil {
+				return err
+			}
+			row.Ledger = merged
+		}
 		var query string
 		if r.dialect == "sqlite" {
 			query = `INSERT INTO node_wireguard_usage_reflection
-    (node_id, user_id, batch_id, updated_at)
-VALUES (?, ?, ?, ?)
+    (node_id, user_id, batch_id, updated_at, ledger_json)
+VALUES (?, ?, ?, ?, ?)
 ON CONFLICT(node_id, user_id) DO UPDATE SET
     batch_id = excluded.batch_id,
+    ledger_json = CASE WHEN excluded.ledger_json != '' THEN excluded.ledger_json ELSE node_wireguard_usage_reflection.ledger_json END,
     updated_at = excluded.updated_at`
 		} else {
 			query = `INSERT INTO node_wireguard_usage_reflection
-    (node_id, user_id, batch_id, updated_at)
-VALUES (?, ?, ?, ?)
+    (node_id, user_id, batch_id, updated_at, ledger_json)
+VALUES (?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
     batch_id = VALUES(batch_id),
+    ledger_json = CASE WHEN VALUES(ledger_json) != '' THEN VALUES(ledger_json) ELSE ledger_json END,
     updated_at = VALUES(updated_at)`
 		}
 
@@ -1900,7 +2301,7 @@ ON DUPLICATE KEY UPDATE
 			row.NodeID,
 			row.UserID,
 			batchID,
-			r.timeArg(now),
+			r.timeArg(now), row.Ledger,
 		); err != nil {
 			return fmt.Errorf(
 				"mark wireguard usage reflected node=%d user=%d batch=%q: %w",
@@ -1925,7 +2326,7 @@ func isWireGuardReflectionBatchID(batchID string) bool {
 }
 
 func (r Repository) pendingStagedUserUsage(ctx context.Context, limit int) ([]stagedUserUsageRow, error) {
-	return r.queryStagedUserUsage(ctx, `SELECT id, node_id, batch_id, user_id, used_traffic, online, created_at
+	return r.queryStagedUserUsage(ctx, `SELECT id, node_id, batch_id, user_id, used_traffic, online, created_at, COALESCE(ledger_json,'')
 FROM node_usage_user_queue
 WHERE processed_at IS NULL
 ORDER BY id
@@ -1933,7 +2334,7 @@ LIMIT ?`, limit)
 }
 
 func (r Repository) pendingStagedUserUsageHistory(ctx context.Context, limit int) ([]stagedUserUsageRow, error) {
-	return r.queryStagedUserUsage(ctx, `SELECT id, node_id, batch_id, user_id, used_traffic, online, created_at
+	return r.queryStagedUserUsage(ctx, `SELECT id, node_id, batch_id, user_id, used_traffic, online, created_at, COALESCE(ledger_json,'')
 FROM node_usage_user_queue
 WHERE processed_at IS NOT NULL AND history_processed_at IS NULL
 ORDER BY id
@@ -1951,7 +2352,7 @@ func (r Repository) queryStagedUserUsage(ctx context.Context, query string, limi
 		var row stagedUserUsageRow
 		var online int
 		var createdAt any
-		if err := rows.Scan(&row.ID, &row.NodeID, &row.BatchID, &row.UserID, &row.UsedTraffic, &online, &createdAt); err != nil {
+		if err := rows.Scan(&row.ID, &row.NodeID, &row.BatchID, &row.UserID, &row.UsedTraffic, &online, &createdAt, &row.Ledger); err != nil {
 			return nil, err
 		}
 		parsed := usageDBTime(createdAt)

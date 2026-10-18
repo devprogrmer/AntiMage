@@ -123,7 +123,7 @@ func (s *Server) openVPNOfflinePolicySnapshot(cfg nativeSessionHelperConfig, pre
 		if err != nil {
 			return cfg, err
 		}
-		usage, err := s.offlinePolicyRaw(preview.Baseline, "openvpn", uid, cfg.InboundTag, preview.PendingID, policy.ReflectedUsageBatchID, pendingRaw)
+		usage, err := s.offlinePolicyRaw(preview.Baseline, "openvpn", uid, cfg.InboundTag, preview.PendingID, policy.ReflectedUsageBatchID, pendingRaw, policy.ReflectedUsageLedger)
 		if err != nil {
 			return cfg, err
 		}
