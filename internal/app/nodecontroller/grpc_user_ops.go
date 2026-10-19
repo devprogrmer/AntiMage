@@ -74,6 +74,13 @@ func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclie
 			}
 			return c.grpcApplyLegacyFullSyncForUserOperation(ctx, client, node, operation, prepared)
 		}
+		if len(userProtocols) == 1 && strings.EqualFold(strings.TrimSpace(userProtocols[0]), "pptp") {
+			capability := targetedUserCapability("pptp", operation.OperationType)
+			if capability != "" && client.Supports(capability) {
+				return c.grpcApplyPPTPUserOperation(ctx, client, node, operation)
+			}
+			return c.grpcApplyLegacyFullSyncForUserOperation(ctx, client, node, operation, prepared)
+		}
 	}
 	switch operation.OperationType {
 	case "remove_user", "disable_user":

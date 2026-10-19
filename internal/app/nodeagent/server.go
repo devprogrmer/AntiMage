@@ -490,6 +490,9 @@ func (s *Server) AddUser(ctx context.Context, req *nodev1.InboundUserRequest) (*
 	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "l2tp") {
 		return s.applyL2TPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
 	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "pptp") {
+		return s.applyPPTPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
+	}
 	user, err := xrayVLESSUserMessage(req.GetUser())
 	if err != nil {
 		if errors.Is(err, errUnsupportedXrayUserProtocol) {
@@ -529,6 +532,9 @@ func (s *Server) UpdateUser(ctx context.Context, req *nodev1.InboundUserRequest)
 	}
 	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "l2tp") {
 		return s.applyL2TPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "pptp") {
+		return s.applyPPTPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
 	}
 	user, err := xrayVLESSUserMessage(req.GetUser())
 	if err != nil {
@@ -655,6 +661,30 @@ func (s *Server) applyL2TPUserRPC(ctx context.Context, operationID, inboundTag s
 	return s.action(operationID, "L2TP user "+operation+" completed"), nil
 }
 
+func (s *Server) applyPPTPUserRPC(ctx context.Context, operationID, inboundTag string, user *nodev1.InboundUser, operation string) (*nodev1.RuntimeActionResponse, error) {
+	_, _, encodedOperation, _, err := decodePPTPMutationUser(user, operation)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if encodedOperation != operation || strings.TrimSpace(operationID) == "" {
+		return nil, status.Error(codes.InvalidArgument, "PPTP operation envelope mismatch")
+	}
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, inboundTag, func() error {
+		return s.applyPPTPUserMutationOperation(ctx, operationID, inboundTag, user, operation)
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		if errors.Is(err, errRuntimeStopping) || errors.Is(err, errRuntimeStopped) || status.Code(err) != codes.Unknown {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "%s PPTP user: %v", operation, err)
+	}
+	s.wakeLocalQuota("pptp")
+	return s.action(operationID, "PPTP user "+operation+" completed"), nil
+}
+
 func (s *Server) targetedXrayUserClient() (*xrayStatsClient, error) {
 	s.mu.Lock()
 	apiPort, xrayPath := s.cfg.XrayAPIPort, s.cfg.XrayPath
@@ -717,6 +747,18 @@ func (s *Server) RemoveUser(ctx context.Context, req *nodev1.RemoveInboundUserRe
 			l2TPMutationRevision:    strconv.FormatUint(revision, 10),
 		}}
 		return s.applyL2TPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
+	}
+	if strings.HasPrefix(strings.TrimSpace(req.GetEmail()), pptpRemoveUserPrefix) {
+		userID, revision, ok := pptpRemoveUserIdentity(req.GetEmail())
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "PPTP remove user identity is invalid")
+		}
+		user := &nodev1.InboundUser{Protocol: "pptp", Fields: map[string]string{
+			pptpMutationUserIDField: strconv.FormatInt(userID, 10),
+			pptpMutationOperation:   "remove",
+			pptpMutationRevision:    strconv.FormatUint(revision, 10),
+		}}
+		return s.applyPPTPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
 	}
 	err := s.runtimeLifecycleCoordinator().runMutation(ctx, req.GetInboundTag(), func() error {
 		client, clientErr := s.targetedXrayUserClient()
@@ -1330,6 +1372,7 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 			"targeted_user_update_l2tp", "targeted_user_add_remove_l2tp",
 			"targeted_user_update_wireguard", "targeted_user_add_remove_wireguard",
 			"targeted_user_update_amneziawg", "targeted_user_add_remove_amneziawg",
+			"targeted_user_update_pptp", "targeted_user_add_remove_pptp",
 		)
 	}
 	if s.verifiedInstallerAvailable() {

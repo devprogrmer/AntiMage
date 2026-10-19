@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        protocol: ${{ github.event_name == 'push' && fromJSON('["openvpn","wireguard","amneziawg","l2tp"]') || fromJSON('["xray","wireguard","amneziawg","openvpn","l2tp","pptp","anyconnect","ikev2"]') }}
+        protocol: ${{ github.event_name == 'push' && fromJSON('["openvpn","wireguard","amneziawg","l2tp","pptp"]') || fromJSON('["xray","wireguard","amneziawg","openvpn","l2tp","pptp","anyconnect","ikev2"]') }}
     env:
       CGO_ENABLED: '1'
     steps:
@@ -383,3 +383,41 @@ jobs:
         run: |
           go test -race ./internal/app/nodecontroller -run 'Test(ControllerAmneziaWGOperationsUseAdvertisedTargetedRPC|ControllerAmneziaWGTargetedMutationNativeE2E|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
           go test -race ./internal/app/nodeagent -run 'Test(AmneziaWGTargetedRPCIsIdempotentAndRejectsConflictingOperationID|ApplyAmneziaWGUserMutation|ApplyAmneziaWGIdenticalUpdateIsKernelNoop)' -count=1
+
+  controller-l2tp-targeted:
+    name: controller-l2tp-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run L2TP Controller RPC and NodeAgent mutation tests
+        run: |
+          go test ./internal/app/nodecontroller -run 'Test(ControllerL2TP(UsesTargetedRPCsAndAcknowledgements|RejectsInvalidAcknowledgement)|LegacyL2TPNodeUsesFencedFullSyncFallback|L2TPTargetedCapabilityIsOperationSpecificAndConservative|L2TPMutationRequestCarriesDesiredStateAndRevision)' -count=1
+          go test ./internal/app/nodeagent -run 'Test(L2TPTargetedMutationUpdatesPolicyWithoutRestartAndIsIdempotent|L2TPTargetedUpdateKeepsExistingPPPInterfaceAndChangesCredentialPolicy|L2TPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack)' -count=1
+      - name: Race test L2TP Controller RPC and NodeAgent mutation tests
+        run: |
+          go test -race ./internal/app/nodecontroller -run 'Test(ControllerL2TP(UsesTargetedRPCsAndAcknowledgements|RejectsInvalidAcknowledgement)|LegacyL2TPNodeUsesFencedFullSyncFallback|L2TPTargetedCapabilityIsOperationSpecificAndConservative|L2TPMutationRequestCarriesDesiredStateAndRevision)' -count=1
+          go test -race ./internal/app/nodeagent -run 'Test(L2TPTargetedMutationUpdatesPolicyWithoutRestartAndIsIdempotent|L2TPTargetedUpdateKeepsExistingPPPInterfaceAndChangesCredentialPolicy|L2TPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack)' -count=1
+
+  controller-pptp-targeted:
+    name: controller-pptp-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run PPTP Controller RPC and NodeAgent mutation tests
+        run: |
+          go test ./internal/app/nodecontroller -run 'Test(ControllerPPTP(UsesTargetedRPCsAndAcknowledgements|RejectsInvalidAcknowledgement)|LegacyPPTPNodeUsesFencedFullSyncFallback|PPTPTargetedCapabilityIsOperationSpecificAndConservative|PPTPMutationRequestCarriesDesiredStateAndRevision)' -count=1
+          go test ./internal/app/nodeagent -run 'Test(PPTPTargetedMutationUpdatesPolicyWithoutRestartAndIsIdempotent|PPTPTargetedUpdateKeepsExistingPPPSessionAndChangesCredentialPolicy|PPTPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack|PPTPRemoveUserIdentityRejectsMalformedInput)' -count=1
+      - name: Race test PPTP Controller RPC and NodeAgent mutation tests
+        run: |
+          go test -race ./internal/app/nodecontroller -run 'Test(ControllerPPTP(UsesTargetedRPCsAndAcknowledgements|RejectsInvalidAcknowledgement)|LegacyPPTPNodeUsesFencedFullSyncFallback|PPTPTargetedCapabilityIsOperationSpecificAndConservative|PPTPMutationRequestCarriesDesiredStateAndRevision)' -count=1
+          go test -race ./internal/app/nodeagent -run 'Test(PPTPTargetedMutationUpdatesPolicyWithoutRestartAndIsIdempotent|PPTPTargetedUpdateKeepsExistingPPPSessionAndChangesCredentialPolicy|PPTPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack|PPTPRemoveUserIdentityRejectsMalformedInput)' -count=1

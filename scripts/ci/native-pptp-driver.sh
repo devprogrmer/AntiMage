@@ -97,6 +97,15 @@ stage() {
     "$ANTIMAGE_PPTP_TEST_BINARY" -test.run='^TestPPTPNativeAccountingStage$' -test.v
 }
 
+mutation_stage() {
+  local action="$1"
+  env ANTIMAGE_PPTP_NATIVE_STATE="$ROOT/pptp-state" \
+    ANTIMAGE_PPTP_MUTATION_ACTION="$action" \
+    ANTIMAGE_PPTP_PID="$(cat "$ROOT/server.pid")" \
+    ANTIMAGE_NODE_HELPER_BINARY="$ANTIMAGE_NODE_HELPER_BINARY" \
+    "$ANTIMAGE_PPTP_TEST_BINARY" -test.run='^TestPPTPTargetedMutationNativeStage$' -test.v
+}
+
 panel_replay() {
   env ANTIMAGE_PPTP_NATIVE_STATE="$ROOT/pptp-state" \
     ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL="${1:-0}" \
@@ -254,13 +263,15 @@ capture_ppp_state() {
 start_server() {
   pptpd -f -c "$server_config" >"$ROOT/pptpd.log" 2>&1 &
   SERVER_PID="$!"
+  echo "$SERVER_PID" >"$ROOT/server.pid"
   PIDS+=("$SERVER_PID")
   wait_for 'PPTP TCP control listener' sh -c 'ss -lnt "( sport = :1723 )" | grep -q 1723'
 }
 
 start_client() {
   local client_ns="${1:-$NS}" server_ip="${2:-10.251.0.1}" output="${3:-$ROOT/pppd-client.log}" wait_active="${4:-1}"
-  ip netns exec "$client_ns" pppd nodetach noauth name native-pptp password native-pptp-secret \
+  local name="${5:-native-pptp}" password="${6:-native-pptp-secret}"
+  ip netns exec "$client_ns" pppd nodetach noauth name "$name" password "$password" \
     refuse-eap refuse-pap refuse-chap refuse-mschap \
     require-mppe-128 noipdefault nodefaultroute mtu 1200 mru 1200 \
     pty "$PPTP_CLIENT --nolaunchpppd $server_ip --loglevel 0" \
@@ -272,6 +283,17 @@ start_client() {
     wait_for 'server PPP interface' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
     wait_for 'durable server session-start hook' sh -c 'find "$1" -path "*/ppp-accounting/active/ppp*.json" -print -quit | grep -q .' _ "$ROOT/pptp-state"
   fi
+}
+
+start_client_b() {
+  local wait_active="${1:-1}"
+  start_client "$NS_B" 10.252.0.1 "$ROOT/pppd-client-b.log" "$wait_active" "${CLIENT_B_NAME:-native-pptp-bob}" "${CLIENT_B_PASSWORD:-native-pptp-bob-v1}"
+  CLIENT_B_PID="$CLIENT_PID"
+}
+
+set_client_b_credentials() {
+  CLIENT_B_NAME="$1"
+  CLIENT_B_PASSWORD="$2"
 }
 
 ip netns add "$NS"
@@ -302,6 +324,26 @@ client_a_pid="$CLIENT_PID"
 wait_for 'first PPTP tunnel traffic' ip netns exec "$NS" ping -c 1 -W 1 10.68.0.1
 session_config="$(find "$ROOT/pptp-state/pptp" -name session-helper.json -print -quit)"
 assert_ppp_real_ip "$ROOT/pptp-state" 10.251.0.2
+
+echo '=== native targeted PPTP Add/Update/Remove preserves unrelated PPP session ==='
+server_pid_before="$(cat "$ROOT/server.pid")"
+alice_ifindex_before="$(cat "/sys/class/net/$(ip -o -4 addr show | awk '$2 ~ /^ppp[0-9]+$/ && $4 ~ /^10\.68\.0\.1(\/.*)?$/ { print $2; exit }')/ifindex")"
+mutation_stage add
+mutation_stage rollback
+set_client_b_credentials native-pptp-bob native-pptp-bob-v1
+start_client_b
+test "$(ip netns exec "$NS_B" ip -o -4 addr show dev ppp0 | awk 'NR == 1 { split($4, address, "/"); print address[1] }')" = 10.68.0.3
+mutation_stage update
+ip netns exec "$NS" ping -c 2 -W 2 10.68.0.1
+ip netns exec "$NS_B" ping -c 2 -W 2 10.68.0.1
+mutation_stage remove
+wait_for_gone 'removed Bob PPP interface' ip netns exec "$NS_B" ip link show ppp0
+ip netns exec "$NS" ping -c 2 -W 2 10.68.0.1
+server_pid_after="$(cat "$ROOT/server.pid")"
+alice_ifindex_after="$(cat "/sys/class/net/$(ip -o -4 addr show | awk '$2 ~ /^ppp[0-9]+$/ && $4 ~ /^10\.68\.0\.1(\/.*)?$/ { print $2; exit }')/ifindex")"
+test "$server_pid_after" = "$server_pid_before"
+test "$alice_ifindex_after" = "$alice_ifindex_before"
+echo "PPTP targeted mutation preserved pptpd PID=${server_pid_after} and Alice PPP ifindex=${alice_ifindex_after}"
 
 echo '=== native concurrent PPTP DeviceLimit=1; reserve first authenticated session ==='
 set_session_limits "$session_config" 1 0

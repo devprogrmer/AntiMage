@@ -158,12 +158,16 @@ func TestNodeRuntimeRemoveUserCallsXrayAndReportsSuccessOnlyAfterRPC(t *testing.
 
 func TestNodeRuntimeUserOperationsDoNotReportUnsupportedMutationsAsAccepted(t *testing.T) {
 	s := New(Config{})
-	unsupported := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "pptp"}}
+	unsupported := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "ikev2"}}
 	if response, err := s.AddUser(context.Background(), unsupported); response != nil || status.Code(err) != codes.Unimplemented {
 		t.Fatalf("AddUser response=%v err=%v, want unimplemented", response, err)
 	}
 	if response, err := s.UpdateUser(context.Background(), unsupported); response != nil || status.Code(err) != codes.Unimplemented {
 		t.Fatalf("UpdateUser response=%v err=%v, want unimplemented", response, err)
+	}
+	malformedPPTP := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "pptp"}}
+	if response, err := s.AddUser(context.Background(), malformedPPTP); response != nil || status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("malformed PPTP AddUser response=%v err=%v, want invalid argument", response, err)
 	}
 	malformedOpenVPN := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "openvpn"}}
 	if response, err := s.AddUser(context.Background(), malformedOpenVPN); response != nil || status.Code(err) != codes.InvalidArgument {
@@ -203,6 +207,11 @@ func TestRuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities(t *te
 	for _, capability := range []string{"targeted_user_update_amneziawg", "targeted_user_add_remove_amneziawg"} {
 		if got, want := seen[capability], runtime.GOOS == "linux"; got != want {
 			t.Fatalf("AmneziaWG capability %s advertised=%v, want %v for platform %s", capability, got, want, runtime.GOOS)
+		}
+	}
+	for _, capability := range []string{"targeted_user_update_pptp", "targeted_user_add_remove_pptp"} {
+		if got, want := seen[capability], runtime.GOOS == "linux"; got != want {
+			t.Fatalf("PPTP capability %s advertised=%v, want %v for platform %s", capability, got, want, runtime.GOOS)
 		}
 	}
 }
