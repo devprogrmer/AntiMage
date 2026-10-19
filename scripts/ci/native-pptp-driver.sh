@@ -194,7 +194,7 @@ wait_for_pptp_user_session() {
   local user_id="$1" client_ns="$2" assigned_ip="$3" client_ip="$4"
   local client_assigned
   for _ in $(seq 1 600); do
-    client_assigned="$(ip netns exec "$client_ns" -o -4 addr show dev ppp0 2>/dev/null | awk 'NR == 1 { split($4, address, "/"); print address[1] }' || true)"
+    client_assigned="$(ip netns exec "$client_ns" ip -o -4 addr show dev ppp0 2>/dev/null | awk 'NR == 1 { split($4, address, "/"); print address[1] }' || true)"
     if [ "$client_assigned" = "$assigned_ip" ] && python3 - "$ROOT/pptp-state" "$user_id" "$assigned_ip" "$client_ip" <<'PY' >/dev/null 2>&1
 import glob, json, os, sys
 root, user_id, assigned, client = sys.argv[1:]
@@ -219,7 +219,7 @@ PY
   # Recheck briefly after the last poll to avoid reporting a timeout if the
   # session becomes durable while the final poll hands off to the callback.
   for _ in $(seq 1 50); do
-    client_assigned="$(ip netns exec "$client_ns" -o -4 addr show dev ppp0 2>/dev/null | awk 'NR == 1 { split($4, address, "/"); print address[1] }' || true)"
+    client_assigned="$(ip netns exec "$client_ns" ip -o -4 addr show dev ppp0 2>/dev/null | awk 'NR == 1 { split($4, address, "/"); print address[1] }' || true)"
     if [ "$client_assigned" = "$assigned_ip" ] && python3 - "$ROOT/pptp-state" "$user_id" "$assigned_ip" "$client_ip" <<'PY' >/dev/null 2>&1
 import glob, json, os, sys
 root, user_id, assigned, client = sys.argv[1:]
