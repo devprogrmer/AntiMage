@@ -54,6 +54,8 @@ func (c *cli) checkMaintenanceFence(args []string) error {
 		return fmt.Errorf("operation unavailable")
 	}
 	allowed := map[string][]string{"update": {"update"}, "restart": {"restart", "soft-reload"}, "soft-reload": {"soft-reload"}, "update-rollback": {"rollback", "update"}, "update-commit": {"update", "rollback"}, "update-activate": {"update", "rollback"}, "restart-activate": {"restart", "soft-reload"}}
+	allowed["start"] = []string{"start"}
+	allowed["stop"] = []string{"stop"}
 	allowed["resume-panel-install"] = []string{"update"}
 	allowed["resume-panel-restore"] = []string{"update", "rollback"}
 	allowed["resume-panel-restart"] = []string{"update", "rollback"}

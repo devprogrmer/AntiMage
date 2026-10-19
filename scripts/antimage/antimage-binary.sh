@@ -6047,7 +6047,23 @@ panel_route_destructive_command() {
         return $?
     fi
     case "$cmd" in
-        update|restart|update-rollback)
+        up|start)
+            # Lifecycle actions run for local root/sudo through the shared
+            # fenced, audited operation layer; no panel token required.
+            check_running_as_root
+            antimage_cli start "${args[@]}" ;;
+        down|stop)
+            check_running_as_root
+            antimage_cli stop "${args[@]}" ;;
+        restart)
+            # Root restarts locally without a token; non-root keeps the
+            # authenticated panel path.
+            if [ "$(id -u)" = "0" ]; then
+                antimage_cli restart "${args[@]}"
+            else
+                antimage_cli maintenance request restart "${args[@]}"
+            fi ;;
+        update|update-rollback)
             antimage_cli maintenance request "$cmd" "${args[@]}" ;;
         core-update)
             antimage_cli maintenance request core-update "${args[@]}" ;;
