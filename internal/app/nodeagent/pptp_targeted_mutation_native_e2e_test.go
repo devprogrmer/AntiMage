@@ -242,7 +242,7 @@ func nativePPTPMutationServer(t *testing.T, dataDir string) (*Server, *runtimePo
 	}
 	if policy == nil {
 		inbound.Users = []pptpRuntimeUser{{UserID: 7, Username: "native-pptp", VPNUsername: "native-pptp", Password: "native-pptp-secret", IPv4Address: "10.68.0.2", Status: "active", UsageCoefficient: 1.5, InboundCoefficient: 2}}
-		payload := nativeRuntimePayload{Target: "native-e2e", PPTPInbounds: []pptpRuntimeInbound{inbound}}
+		payload := nativeRuntimePayload{Target: "native-e2e", SessionCallback: helper.Callback, PPTPInbounds: []pptpRuntimeInbound{inbound}}
 		encoded, marshalErr := json.Marshal(payload)
 		if marshalErr != nil {
 			t.Fatal(marshalErr)
