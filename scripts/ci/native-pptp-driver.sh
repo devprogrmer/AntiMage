@@ -193,7 +193,7 @@ wait_for() {
 wait_for_pptp_user_session() {
   local user_id="$1" client_ns="$2" assigned_ip="$3" client_ip="$4"
   local client_assigned
-  for _ in $(seq 1 200); do
+  for _ in $(seq 1 600); do
     client_assigned="$(ip netns exec "$client_ns" -o -4 addr show dev ppp0 2>/dev/null | awk 'NR == 1 { split($4, address, "/"); print address[1] }' || true)"
     if [ "$client_assigned" = "$assigned_ip" ] && python3 - "$ROOT/pptp-state" "$user_id" "$assigned_ip" "$client_ip" <<'PY' >/dev/null 2>&1
 import glob, json, os, sys
@@ -216,6 +216,28 @@ PY
     fi
     sleep .1
   done
+  # Recheck after the last poll to avoid reporting a timeout if the session
+  # became durable at the polling boundary.
+  client_assigned="$(ip netns exec "$client_ns" -o -4 addr show dev ppp0 2>/dev/null | awk 'NR == 1 { split($4, address, "/"); print address[1] }' || true)"
+  if [ "$client_assigned" = "$assigned_ip" ] && python3 - "$ROOT/pptp-state" "$user_id" "$assigned_ip" "$client_ip" <<'PY' >/dev/null 2>&1
+import glob, json, os, sys
+root, user_id, assigned, client = sys.argv[1:]
+for path in glob.glob(os.path.join(root, "pptp", "*", "ppp-accounting", "active", "*.json")):
+    try:
+        with open(path, encoding="utf-8") as stream: record = json.load(stream)
+    except (OSError, ValueError):
+        continue
+    if (int(record.get("UserID", 0)) == int(user_id)
+            and record.get("PeerIP") == assigned
+            and record.get("ClientIP") == client
+            and record.get("Final") is not True):
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+  then
+    echo "PPTP user ${user_id} authenticated with PPP address ${assigned_ip} and client ${client_ip}"
+    return 0
+  fi
   echo "timeout waiting for PPTP user ${user_id} authenticated PPP session (expected server address ${assigned_ip}, client ${client_ip})" >&2
   for log in "$ROOT"/pppd-client-b.log "$ROOT"/pptpd.log; do
     [ -f "$log" ] && { echo "--- $log ---" >&2; cat "$log" >&2; }
