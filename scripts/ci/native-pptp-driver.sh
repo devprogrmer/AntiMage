@@ -267,20 +267,31 @@ assert_pptp_user_auth_rejected() {
     return 1
   fi
   if python3 - "$ROOT/pptp-state" <<'PY'
-import glob, json, sys
+import glob, json, os, sys
 for path in glob.glob(sys.argv[1] + '/pptp/*/ppp-accounting/active/*.json'):
     try:
         with open(path, encoding='utf-8') as stream: record = json.load(stream)
     except (OSError, ValueError):
         continue
-    if int(record.get('UserID', 0)) == 8 and record.get('Final') is not True:
+    if int(record.get('UserID', 0)) != 8 or record.get('Final') is True:
+        continue
+    session_id = str(record.get('ID', '')).strip()
+    final_path = os.path.join(os.path.dirname(os.path.dirname(path)), 'final', session_id + '.json')
+    try:
+        with open(final_path, encoding='utf-8') as stream: final = json.load(stream)
+    except (OSError, ValueError):
+        raise SystemExit(1)
+    if not (final.get('Final') is True
+            and final.get('ID') == record.get('ID')
+            and int(final.get('UserID', 0)) == 8
+            and final.get('Process') == record.get('Process')):
         raise SystemExit(1)
 PY
   then
     return 0
   fi
   cat "$log_path" >&2
-  echo 'removed PPTP user still has an active accounting session after the rejection probe' >&2
+  echo 'removed PPTP user still has an effective active accounting session after the rejection probe' >&2
   return 1
 }
 
