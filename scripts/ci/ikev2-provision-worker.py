@@ -48,6 +48,20 @@ for name,initial in [('ipsec.conf','config setup\n    uniqueids=no\n'), ('ipsec.
 pathlib.Path('/run/antimage-ikev2-isolated').write_text(str(root))
 env = {**os.environ, 'ANTIMAGE_IKEV2_PROVISION_ROOT':str(root)}
 subprocess.run([os.environ['ANTIMAGE_IKEV2_TEST_BINARY'],'-test.run=^TestIKEv2NativeProvision$','-test.v'],env=env,check=True)
+# The CI PID namespace has no systemd. The production `ipsec start` command
+# therefore cannot launch starter through systemctl; start the same native
+# starter directly after provisioning so rereadsecrets/reload and VICI use the
+# real strongSwan runtime in this namespace.
+starter_log = open(root/'starter.stdout', 'w')
+starter = subprocess.Popen(['/usr/lib/ipsec/starter', '--daemon', 'charon', '--nofork'], stdout=starter_log, stderr=subprocess.STDOUT)
+for _ in range(100):
+    if pathlib.Path('/run/charon.vici').exists():
+        break
+    if starter.poll() is not None:
+        raise SystemExit('starter exited with code '+str(starter.returncode))
+    import time; time.sleep(0.1)
+else:
+    raise SystemExit('starter VICI socket did not become available')
 (root/'provision-ready').write_text('ready')
 signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 while True:
