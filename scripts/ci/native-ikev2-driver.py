@@ -243,7 +243,21 @@ pools {
     def client(ns=C,side='client',host='10.80.0.1',identity='client'):
         p=start_isolated(['charon-cmd','--host',host,'--identity',identity,'--remote-identity','server','--p12',pathlib.Path('/etc/ipsec.d')/(identity+'.p12'),'--profile','ikev2-pub','--remote-ts','10.81.0.1/32','--ike-proposal','aes256-sha256-modp2048','--esp-proposal','aes256-sha256'],ns,side+'.conf',side+'.stdout')
         wait(lambda:'INSTALLED' in sas(),'CHILD_SA');return p
-    srv=server();cli=client();traffic('initial')
+    srv=server()
+    if os.environ.get('ANTIMAGE_IKEV2_TARGETED_E2E') == '1':
+        if not os.environ.get('ANTIMAGE_IKEV2_TEST_BINARY'):
+            raise RuntimeError('targeted IKEv2 E2E requires ANTIMAGE_IKEV2_TEST_BINARY')
+        charon_pid=run(['pgrep','-n','charon'],S).strip()
+        env={**os.environ,'ANTIMAGE_IKEV2_TARGETED_E2E':'1','ANTIMAGE_IKEV2_TARGETED_ROOT':str(R),'ANTIMAGE_IKEV2_CLIENT_NS':C,'ANTIMAGE_IKEV2_CHARON_PID':charon_pid}
+        command=['nsenter','-t',str(srv.pid),'-m','-n','-p','--',os.environ['ANTIMAGE_IKEV2_TEST_BINARY'],'-test.run=^TestIKEv2TargetedMutationNativeE2E$','-test.v']
+        targeted=sp.run(command,env=env,text=True,stdout=sp.PIPE,stderr=sp.STDOUT,timeout=300)
+        print(targeted.stdout,flush=True)
+        if targeted.returncode:
+            raise RuntimeError('native IKEv2 targeted mutation E2E failed')
+        write('targeted-evidence.json',json.dumps({'targeted_rpc_e2e':True,'charon_pid':charon_pid},indent=2)+'\n')
+        print('PASS native IKEv2 targeted mutation E2E',flush=True)
+        raise SystemExit(0)
+    cli=client();traffic('initial')
     before=sas();print(sw('--rekey','--child',CONN if os.environ.get('ANTIMAGE_IKEV2_PROVISION') else 'tunnel'),flush=True)
     wait(lambda:sas()!=before,'rekey change');traffic('after-child-rekey')
     print(sw('--rekey','--ike',CONN),flush=True);time.sleep(1);traffic('after-ike-rekey')

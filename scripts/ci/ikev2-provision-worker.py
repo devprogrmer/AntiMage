@@ -14,6 +14,9 @@ subprocess.run(['mount', '--make-rprivate', '/'], check=True)
 # private filesystem shared here so VICI sockets remain reachable by the driver.
 (root/'private-ipsec.d').mkdir(exist_ok=True)
 subprocess.run(['mount', '--bind', str(root/'private-ipsec.d'), '/etc/ipsec.d'], check=True)
+for source in (root/'ipsec.d').glob('*.p12'):
+    target = root/'private-ipsec.d'/source.name
+    target.write_bytes(source.read_bytes())
 # The production `ipsec start` launcher reads strongswan.conf for VICI and
 # plugin configuration; STRONGSWAN_CONF in the parent is not a substitute for
 # installing that config at the daemon's standard path inside this namespace.
