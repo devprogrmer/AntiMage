@@ -143,7 +143,8 @@ type nativeIKEv2Client struct{ cmd *exec.Cmd }
 
 func startNativeIKEv2EAPClient(t *testing.T, ns, user, password, p12 string) *nativeIKEv2Client {
 	t.Helper()
-	cmd := exec.Command("ip", "netns", "exec", ns, "sh", "-c", fmt.Sprintf("printf '%%s\\n' %q | exec charon-cmd --host 10.80.0.1 --identity %s --eap-identity %s --remote-identity server --p12 %s --profile ikev2-pub-eap --remote-ts 10.81.0.1/32 --ike-proposal aes256-sha256-modp2048 --esp-proposal aes256-sha256", password, user, user, p12))
+	// The fixture PKCS#12 certificate identifies "client"; EAP identifies the user.
+	cmd := exec.Command("ip", "netns", "exec", ns, "sh", "-c", fmt.Sprintf("printf '%%s\\n' %q | exec charon-cmd --host 10.80.0.1 --identity client --eap-identity %s --remote-identity server --p12 %s --profile ikev2-pub-eap --remote-ts 10.81.0.1/32 --ike-proposal aes256-sha256-modp2048 --esp-proposal aes256-sha256", password, user, p12))
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}

@@ -247,7 +247,9 @@ pools {
     if os.environ.get('ANTIMAGE_IKEV2_TARGETED_E2E') == '1':
         if not os.environ.get('ANTIMAGE_IKEV2_TEST_BINARY'):
             raise RuntimeError('targeted IKEv2 E2E requires ANTIMAGE_IKEV2_TEST_BINARY')
-        charon_pid=run(['pgrep','-n','charon'],S).strip()
+        # The Go test enters the worker PID namespace and reads its private /proc.
+        # Resolve charon's PID there; the host PID is not visible in that /proc.
+        charon_pid=run(['nsenter','-t',str(srv.pid),'-m','-n','-p','--','pgrep','-n','charon']).strip()
         env={**os.environ,'ANTIMAGE_IKEV2_TARGETED_E2E':'1','ANTIMAGE_IKEV2_TARGETED_ROOT':str(R),'ANTIMAGE_IKEV2_CLIENT_NS':C,'ANTIMAGE_IKEV2_CHARON_PID':charon_pid}
         command=['nsenter','-t',str(srv.pid),'-m','-n','-p','--',os.environ['ANTIMAGE_IKEV2_TEST_BINARY'],'-test.run=^TestIKEv2TargetedMutationNativeE2E$','-test.v']
         targeted=sp.run(command,env=env,text=True,stdout=sp.PIPE,stderr=sp.STDOUT,timeout=300)

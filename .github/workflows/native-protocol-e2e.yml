@@ -79,7 +79,7 @@ jobs:
             ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
-            bash scripts/ci/native-l2tp-driver.sh
+            timeout --signal=TERM --kill-after=30s 12m bash scripts/ci/native-l2tp-driver.sh
 
       - name: Run real Xray protocol E2E
         if: ${{ matrix.protocol == 'xray' }}
@@ -294,7 +294,7 @@ jobs:
             ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
-            bash scripts/ci/native-l2tp-driver.sh
+            timeout --signal=TERM --kill-after=30s 12m bash scripts/ci/native-l2tp-driver.sh
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_PPTP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_PPTP_PANEL_TEST_BINARY="$nodecontroller_test" \
