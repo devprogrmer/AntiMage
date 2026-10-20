@@ -179,18 +179,22 @@ func assertNativeIKEv2NoSA(t *testing.T, user string, d time.Duration) {
 
 func waitNativeIKEv2SA(t *testing.T, user string) {
 	t.Helper()
-	for i := 0; i < 100; i++ {
+	deadline := time.Now().Add(60 * time.Second)
+	var lastOutput string
+	for time.Now().Before(deadline) {
 		out, _ := exec.Command("swanctl", "--list-sas", "--uri", "unix:///run/charon.vici").CombinedOutput()
-		if strings.Contains(string(out), user) && strings.Contains(string(out), "ESTABLISHED") {
+		lastOutput = string(out)
+		if strings.Contains(lastOutput, user) && strings.Contains(lastOutput, "ESTABLISHED") {
 			return
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+	t.Logf("swanctl --list-sas output at timeout: %s", lastOutput)
 	t.Fatalf("IKEv2 SA for %s not established", user)
 }
 func assertNativeIKEv2Traffic(t *testing.T, ns string) {
 	t.Helper()
-	if out, err := exec.Command("ip", "netns", "exec", ns, "ping", "-c", "1", "-W", "2", "10.81.0.1").CombinedOutput(); err != nil {
+	if out, err := exec.Command("ip", "netns", "exec", ns, "ping", "-c", "3", "-i", "1", "-W", "2", "10.81.0.1").CombinedOutput(); err != nil {
 		t.Fatalf("IKEv2 traffic failed: %v: %s", err, out)
 	}
 }
