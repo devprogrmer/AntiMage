@@ -61,6 +61,18 @@ for _ in range(100):
         raise SystemExit('starter exited with code '+str(starter.returncode))
     import time; time.sleep(0.1)
 else:
+    diagnostics = []
+    for command in (['ps', '-eo', 'pid,ppid,stat,comm,args'], ['ipsec', 'statusall'], ['find', '/run', '-maxdepth', '2', '-ls'], ['find', '/var/run', '-maxdepth', '2', '-ls']):
+        try:
+            result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=8, check=False)
+            diagnostics.append('$ '+' '.join(command)+'\n'+result.stdout)
+        except Exception as exc:
+            diagnostics.append('$ '+' '.join(command)+'\n'+repr(exc))
+    try:
+        diagnostics.append('--- starter stdout ---\n'+(root/'starter.stdout').read_text())
+    except Exception as exc:
+        diagnostics.append('--- starter stdout unavailable ---\n'+repr(exc))
+    (root/'starter-diagnostics.txt').write_text('\n'.join(diagnostics))
     raise SystemExit('starter VICI socket did not become available')
 (root/'provision-ready').write_text('ready')
 signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
