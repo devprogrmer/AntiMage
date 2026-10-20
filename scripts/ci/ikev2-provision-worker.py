@@ -43,6 +43,9 @@ for source in (root/'ipsec.d').glob('*.p12'):
 # NodeAgent owns ipsec.conf and ipsec.secrets, not strongswan.conf. The native
 # driver supplies the private VICI config before production ipsec start.
 (private_etc/'strongswan.conf').write_text((root/'server.conf').read_text())
+# The driver passes its host-side fixture path in STRONGSWAN_CONF. Once /etc is
+# private, all strongSwan processes must read the namespace-local config path.
+os.environ['STRONGSWAN_CONF'] = '/etc/strongswan.conf'
 private_charon_plugins = private_etc/'strongswan.d'/'charon'
 private_charon_plugins.mkdir(parents=True, exist_ok=True)
 for plugin in (
