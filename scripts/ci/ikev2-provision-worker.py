@@ -20,7 +20,7 @@ private_etc.mkdir(exist_ok=True)
 # Copy only the configuration consumed by strongSwan and the test tools. A
 # recursive copy of all of /etc includes large mounted trees on CI and can
 # outlive the worker's startup window.
-for entry in ('strongswan.d', 'ssl', 'ca-certificates', 'default'):
+for entry in ('strongswan.d', 'ssl', 'ca-certificates', 'default', 'alternatives'):
     source = pathlib.Path('/etc')/entry
     if source.exists():
         subprocess.run(['cp', '-a', str(source), str(private_etc)], check=True)
