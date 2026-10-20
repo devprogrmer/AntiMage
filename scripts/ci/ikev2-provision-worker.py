@@ -5,6 +5,7 @@ import pathlib
 import signal
 import subprocess
 import sys
+import time
 
 root = pathlib.Path(sys.argv[1])
 if os.getpid() != 1:
@@ -39,42 +40,31 @@ private_ipsec_d.mkdir(parents=True, exist_ok=True)
 for source in (root/'ipsec.d').glob('*.p12'):
     target = private_ipsec_d/source.name
     target.write_bytes(source.read_bytes())
-# The NodeAgent writes the production strongswan.conf during provisioning; it
-# includes /etc/strongswan.d/charon/*.conf. Keep that config intact and provide
-# only the optional native-test plugins it needs, without importing host plugin
-# fragments or unrelated host settings.
+# NodeAgent owns ipsec.conf and ipsec.secrets, not strongswan.conf. The native
+# driver supplies the private VICI config before production ipsec start.
+(private_etc/'strongswan.conf').write_text((root/'server.conf').read_text())
 private_charon_plugins = private_etc/'strongswan.d'/'charon'
 private_charon_plugins.mkdir(parents=True, exist_ok=True)
-(private_charon_plugins/'vici.conf').write_text('''vici {
-    load = yes
-    socket = unix:///run/charon.vici
-}
-''')
-(private_charon_plugins/'eap-identity.conf').write_text('''eap-identity {
-    load = yes
-}
-''')
-(private_charon_plugins/'eap-mschapv2.conf').write_text('''eap-mschapv2 {
-    load = yes
-}
-''')
+for plugin in (
+    'aes', 'attr', 'constraints', 'eap-identity', 'eap-mschapv2',
+    'gmp', 'hmac', 'kernel-netlink', 'nonce', 'openssl', 'pem',
+    'pkcs1', 'pkcs8', 'pkcs12', 'pubkey', 'random', 'revocation',
+    'sha1', 'sha2', 'socket-default', 'stroke', 'vici', 'x509',
+):
+    extra = '    socket = unix:///run/charon.vici\n' if plugin == 'vici' else ''
+    (private_charon_plugins/(plugin+'.conf')).write_text(
+        plugin+' {\n    load = yes\n'+extra+'}\n'
+    )
 for name,initial in [('ipsec.conf','config setup\n    uniqueids=no\n'), ('ipsec.secrets','')]:
     (private_etc/name).write_text(initial)
 pathlib.Path('/run/antimage-ikev2-isolated').write_text(str(root))
 env = {**os.environ, 'ANTIMAGE_IKEV2_PROVISION_ROOT':str(root)}
 subprocess.run([os.environ['ANTIMAGE_IKEV2_TEST_BINARY'],'-test.run=^TestIKEv2NativeProvision$','-test.v'],env=env,check=True)
-# The CI PID namespace has no systemd. The production `ipsec start` command
-# therefore cannot launch starter through systemctl; start the same native
-# starter directly after provisioning so rereadsecrets/reload and VICI use the
-# real strongSwan runtime in this namespace.
-starter_log = open(root/'starter.stdout', 'w')
-starter = subprocess.Popen(['/usr/lib/ipsec/starter', '--daemon', 'charon', '--nofork'], stdout=starter_log, stderr=subprocess.STDOUT)
+# The production ipsec start must bring up charon; a second starter could hide failure.
 for _ in range(100):
-    if pathlib.Path('/run/charon.vici').exists():
+    if pathlib.Path('/run/charon.vici').is_socket():
         break
-    if starter.poll() is not None and starter.returncode != 0:
-        raise SystemExit('starter exited with code '+str(starter.returncode))
-    import time; time.sleep(0.1)
+    time.sleep(0.1)
 else:
     diagnostics = []
     for command in (['ps', '-eo', 'pid,ppid,stat,comm,args'], ['ipsec', 'statusall'], ['find', '/run', '-maxdepth', '2', '-ls'], ['find', '/var/run', '-maxdepth', '2', '-ls']):
@@ -84,9 +74,9 @@ else:
         except Exception as exc:
             diagnostics.append('$ '+' '.join(command)+'\n'+repr(exc))
     try:
-        diagnostics.append('--- starter stdout ---\n'+(root/'starter.stdout').read_text())
+        diagnostics.append('--- production provision stdout ---\n'+(root/'server.stdout').read_text())
     except Exception as exc:
-        diagnostics.append('--- starter stdout unavailable ---\n'+repr(exc))
+        diagnostics.append('--- production provision stdout unavailable ---\n'+repr(exc))
     for label, command in (
         ('effective strongSwan config', ['cat', '/etc/strongswan.conf']),
         ('strongSwan config tree', ['find', '/etc/strongswan.d', '-maxdepth', '3', '-type', 'f', '-print']),
@@ -119,6 +109,7 @@ else:
     except Exception as exc:
         diagnostics.append('--- charon config/library diagnostic unavailable ---\n'+repr(exc))
     (root/'starter-diagnostics.txt').write_text('\n'.join(diagnostics))
+    print((root/'starter-diagnostics.txt').read_text(), flush=True)
     raise SystemExit('starter VICI socket did not become available')
 (root/'provision-ready').write_text('ready')
 signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
