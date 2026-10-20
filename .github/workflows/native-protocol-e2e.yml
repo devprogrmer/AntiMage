@@ -21,7 +21,7 @@ permissions:
 jobs:
   native-runtime:
     name: native-${{ matrix.protocol }}
-    runs-on: ${{ matrix.protocol == 'pptp' && 'ubuntu-22.04' || 'ubuntu-latest' }}
+    runs-on: ${{ (matrix.protocol == 'pptp' || matrix.protocol == 'l2tp' || matrix.protocol == 'amneziawg') && 'ubuntu-22.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -329,7 +329,7 @@ jobs:
 
   native-race:
     name: native-race
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -434,3 +434,18 @@ jobs:
         run: |
           go test -race ./internal/app/nodecontroller -run 'Test(ControllerPPTP(UsesTargetedRPCsAndAcknowledgements|RejectsInvalidAcknowledgement)|LegacyPPTPNodeUsesFencedFullSyncFallback|PPTPTargetedCapabilityIsOperationSpecificAndConservative|PPTPMutationRequestCarriesDesiredStateAndRevision)' -count=1
           go test -race ./internal/app/nodeagent -run 'Test(PPTPTargetedMutationUpdatesPolicyWithoutRestartAndIsIdempotent|PPTPTargetedUpdateKeepsExistingPPPSessionAndChangesCredentialPolicy|PPTPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack|PPTPRemoveUserIdentityRejectsMalformedInput)' -count=1
+
+  controller-ikev2-targeted:
+    name: controller-ikev2-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run IKEv2 controller targeted and fallback tests
+        run: go test ./internal/app/nodecontroller -run 'Test(IKEv2MutationRequestCarriesDesiredStateAndRevision|IKEv2CapabilityMappingRemainsExplicitAndControllerFallbackIsConservative|IKEv2LegacyNodeUsesFallbackAndCapableNodeUsesTargetedOnly|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
+      - name: Race test IKEv2 controller targeted and fallback paths
+        run: go test -race ./internal/app/nodecontroller -run 'Test(IKEv2MutationRequestCarriesDesiredStateAndRevision|IKEv2CapabilityMappingRemainsExplicitAndControllerFallbackIsConservative|IKEv2LegacyNodeUsesFallbackAndCapableNodeUsesTargetedOnly|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1

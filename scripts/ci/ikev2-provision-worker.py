@@ -34,33 +34,46 @@ for entry in ('hosts', 'resolv.conf', 'nsswitch.conf', 'passwd', 'group', 'servi
         else:
             subprocess.run(['cp', '-a', str(source), str(target)], check=True)
 subprocess.run(['mount', '--bind', str(private_etc), '/etc'], check=True)
-(private_etc/'strongswan.d'/'charon').mkdir(parents=True, exist_ok=True)
-(private_etc/'strongswan.d'/'charon'/'antimage-native.conf').write_text('''charon {
-    plugins {
-        kernel-netlink { load = yes }
-        socket-default { load = yes }
-        vici { load = yes }\n        stroke { load = yes }
-        openssl { load = yes }
-        x509 { load = yes }
-        pubkey { load = yes }
-        pem { load = yes }
-        pkcs12 { load = yes }
-        random { load = yes }
-        nonce { load = yes }
-        eap-identity { load = yes }
-        eap-mschapv2 { load = yes }
-    }
-}
-''')
 private_ipsec_d = private_etc/'ipsec.d'
 private_ipsec_d.mkdir(parents=True, exist_ok=True)
 for source in (root/'ipsec.d').glob('*.p12'):
     target = private_ipsec_d/source.name
     target.write_bytes(source.read_bytes())
-# The production `ipsec start` launcher reads strongswan.conf for VICI and
-# plugin configuration; STRONGSWAN_CONF in the parent is not a substitute for
-# installing that config at the daemon's standard path inside this namespace.
-(private_etc/'strongswan.conf').write_bytes((root/'server.conf').read_bytes())
+# Keep the native fixture's library/charon config separate from the driver's
+# swanctl client config.  Declare only the plugins required by this EAP native
+# gate directly, so host plugin fragments and their integrity settings cannot
+# leak into the private runtime.
+(private_etc/'strongswan.conf').write_text('''charon {
+    load_modular = yes
+    plugins {
+        kernel-netlink { load = yes }
+        socket-default { load = yes }
+        stroke { load = yes }
+        vici { socket = unix:///run/charon.vici }
+        openssl { load = yes }
+        aes { load = yes }
+        sha1 { load = yes }
+        sha2 { load = yes }
+        md5 { load = yes }
+        hmac { load = yes }
+        gmp { load = yes }
+        random { load = yes }
+        nonce { load = yes }
+        x509 { load = yes }
+        constraints { load = yes }
+        revocation { load = yes }
+        pubkey { load = yes }
+        pkcs1 { load = yes }
+        pkcs7 { load = yes }
+        pkcs8 { load = yes }
+        pkcs12 { load = yes }
+        pem { load = yes }
+        eap-identity { load = yes }
+        eap-mschapv2 { load = yes }
+    }
+}
+''')
+os.environ['STRONGSWAN_CONF'] = '/etc/strongswan.conf'
 for name,initial in [('ipsec.conf','config setup\n    uniqueids=no\n'), ('ipsec.secrets','')]:
     (private_etc/name).write_text(initial)
 pathlib.Path('/run/antimage-ikev2-isolated').write_text(str(root))
@@ -90,6 +103,37 @@ else:
         diagnostics.append('--- starter stdout ---\n'+(root/'starter.stdout').read_text())
     except Exception as exc:
         diagnostics.append('--- starter stdout unavailable ---\n'+repr(exc))
+    for label, command in (
+        ('effective strongSwan config', ['cat', '/etc/strongswan.conf']),
+        ('strongSwan config tree', ['find', '/etc/strongswan.d', '-maxdepth', '3', '-type', 'f', '-print']),
+        ('integrity settings', ['sh', '-c', "grep -Rni 'integrity_test' /etc/strongswan.conf /etc/strongswan.d 2>/dev/null || true"]),
+        ('strongSwan package versions', ['dpkg-query', '-W', '-f=${Package} ${Version}\\n', 'strongswan', 'strongswan-charon', 'strongswan-starter', 'libstrongswan', 'libstrongswan-standard-plugins']),
+        ('strongSwan package verification', ['sh', '-c', 'dpkg -V strongswan-charon strongswan-starter libstrongswan libstrongswan-standard-plugins 2>&1 || true']),
+        ('charon linked libraries', ['ldd', '/usr/lib/ipsec/charon']),
+        ('strongSwan binary/plugin checksums', ['sh', '-c', 'sha256sum /usr/lib/ipsec/charon /usr/lib/ipsec/libstrongswan.so* /usr/lib/ipsec/libchecksum.so /usr/lib/ipsec/plugins/libstrongswan-hmac.so /usr/lib/ipsec/plugins/libstrongswan-vici.so 2>&1 || true']),
+    ):
+        try:
+            result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=8, check=False)
+            diagnostics.append('--- '+label+' (exit '+str(result.returncode)+') ---\n'+result.stdout)
+        except Exception as exc:
+            diagnostics.append('--- '+label+' unavailable ---\n'+repr(exc))
+    # Starter's summary maps several charon startup failures to the same
+    # message. Run charon briefly with non-private config/library diagnostics
+    # in this disposable namespace to retain the parser's actual error.
+    try:
+        probe = subprocess.run(
+            ['/usr/lib/ipsec/charon', '--debug-cfg', '2', '--debug-lib', '2', '--debug-dmn', '2'],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            timeout=5, check=False,
+        )
+        diagnostics.append('--- charon config/library diagnostic (exit '+str(probe.returncode)+') ---\n'+probe.stdout)
+    except subprocess.TimeoutExpired as exc:
+        output = exc.stdout or b''
+        if isinstance(output, bytes):
+            output = output.decode(errors='replace')
+        diagnostics.append('--- charon config/library diagnostic timed out ---\n'+output)
+    except Exception as exc:
+        diagnostics.append('--- charon config/library diagnostic unavailable ---\n'+repr(exc))
     (root/'starter-diagnostics.txt').write_text('\n'.join(diagnostics))
     raise SystemExit('starter VICI socket did not become available')
 (root/'provision-ready').write_text('ready')

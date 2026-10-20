@@ -249,6 +249,54 @@ PY
   return 1
 }
 
+wait_for_pptp_current_accounting_session() {
+  local user_id="$1" assigned_ip="$2" client_ip="$3"
+  for _ in $(seq 1 600); do
+    if python3 - "$ROOT/pptp-state" "$user_id" "$assigned_ip" "$client_ip" <<'PY' >/dev/null 2>&1
+import glob, json, os, sys
+root, user_id, assigned, client = sys.argv[1:]
+try:
+    pid = open('/run/ppp0.pid', encoding='ascii').read().strip()
+    boot = open('/proc/sys/kernel/random/boot_id', encoding='ascii').read().strip()
+    ifindex = open('/sys/class/net/ppp0/ifindex', encoding='ascii').read().strip()
+    stat = open(f'/proc/{pid}/stat', encoding='ascii').read()
+except (OSError, ValueError):
+    raise SystemExit(1)
+end = stat.rfind(')')
+if end < 0:
+    raise SystemExit(1)
+fields = stat[end + 1:].split()
+if len(fields) < 20 or fields[0] in ('Z', 'X'):
+    raise SystemExit(1)
+process = f'{boot}:{pid}:{fields[19]}'
+identity = f'{boot}:{ifindex}'
+for path in glob.glob(os.path.join(root, 'pptp', '*', 'ppp-accounting', 'active', 'ppp0-*.json')):
+    try:
+        with open(path, encoding='utf-8') as stream:
+            record = json.load(stream)
+    except (OSError, ValueError):
+        continue
+    if (int(record.get('UserID', 0)) == int(user_id)
+            and record.get('Interface') == 'ppp0'
+            and record.get('PeerIP') == assigned
+            and record.get('ClientIP') == client
+            and record.get('Identity') == identity
+            and record.get('Process') == process
+            and record.get('Final') is not True):
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+    then
+      echo "PPTP accounting session verified for user ${user_id}: ppp0=${assigned_ip}, client=${client_ip}"
+      return 0
+    fi
+    sleep .1
+  done
+  find "$ROOT/pptp-state" -path '*/ppp-accounting/active/ppp0-*.json' -type f -print -exec cat {} \; >&2
+  echo "timeout waiting for current PPTP accounting identity: user=${user_id} peer=${assigned_ip} client=${client_ip}" >&2
+  return 1
+}
+
 assert_pptp_user_auth_rejected() {
   local log_path="$1" status="$2"
   if [ "$status" -eq 0 ] || [ "$status" -eq 124 ]; then
@@ -532,6 +580,7 @@ wait_for_gone 'server PPP interface shutdown' sh -c 'ip -o link show | grep -q "
 start_server
 start_client
 wait_for 'post-restart PPTP tunnel traffic' ip netns exec "$NS" ping -c 1 -W 1 10.68.0.1
+wait_for_pptp_current_accounting_session 7 10.68.0.2 10.251.0.2
 stage collect-next "$ROOT/pptp-state"
 panel_replay
 stage ack "$ROOT/pptp-state"
