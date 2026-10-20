@@ -217,22 +217,23 @@ jobs:
 
       - name: Capture runner networking state after failure
         if: failure()
+        timeout-minutes: 3
         shell: bash
         run: |
           for evidence in "$RUNNER_TEMP"/antimage-*-failure "$RUNNER_TEMP"/antimage-ikev2-*; do
             [ -e "$evidence" ] || continue
-            sudo chown -R "$(id -u):$(id -g)" "$evidence"
-            sudo chmod -R u+rwX "$evidence"
+            sudo timeout 45s chown -R "$(id -u):$(id -g)" "$evidence" || true
+            sudo timeout 45s chmod -R u+rwX "$evidence" || true
           done
           {
             date -u
-            sudo ip -details addr show || true
-            sudo ip route show table all || true
-            sudo ip netns list || true
-            sudo nft list ruleset || true
-            sudo tc -s qdisc show || true
-            sudo wg show all dump || true
-            sudo occtl --socket-file="$RUNNER_TEMP/ocserv.sock" show users || true
+            sudo timeout 10s ip -details addr show || true
+            sudo timeout 10s ip route show table all || true
+            sudo timeout 10s ip netns list || true
+            sudo timeout 10s nft list ruleset || true
+            sudo timeout 10s tc -s qdisc show || true
+            sudo timeout 10s wg show all dump || true
+            sudo timeout 10s occtl --socket-file="$RUNNER_TEMP/ocserv.sock" show users || true
             ps -ef || true
           } > "$RUNNER_TEMP/native-runner-state.txt" 2>&1
 
@@ -243,7 +244,12 @@ jobs:
           name: native-${{ matrix.protocol }}-evidence-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/antimage-*-failure/**
-            ${{ runner.temp }}/antimage-ikev2-*/**
+            ${{ runner.temp }}/antimage-ikev2-*/server.stdout
+            ${{ runner.temp }}/antimage-ikev2-*/server.conf
+            ${{ runner.temp }}/antimage-ikev2-*/starter-diagnostics.txt
+            ${{ runner.temp }}/antimage-ikev2-*/targeted-evidence.json
+            ${{ runner.temp }}/antimage-ikev2-*/targeted-server.log
+            ${{ runner.temp }}/antimage-ikev2-*/targeted-client-*.log
             ${{ runner.temp }}/antimage-anyconnect-failure/**
             ${{ runner.temp }}/native-runner-state.txt
           if-no-files-found: ignore
