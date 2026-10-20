@@ -36,6 +36,9 @@ func decodeIKEv2MutationUser(user *nodev1.InboundUser, envelope string) (int64, 
 		return 0, 0, "", nil, fmt.Errorf("IKEv2 desired revision is invalid")
 	}
 	op := strings.ToLower(strings.TrimSpace(f[ikev2MutationOperation]))
+	if op != "add" && op != "update" && op != "remove" {
+		return 0, 0, "", nil, fmt.Errorf("unsupported IKEv2 mutation operation %q", op)
+	}
 	if op != strings.ToLower(strings.TrimSpace(envelope)) {
 		return 0, 0, "", nil, fmt.Errorf("IKEv2 operation envelope mismatch")
 	}
@@ -119,6 +122,10 @@ func (s *Server) applyIKEv2UserMutation(ctx context.Context, operationID, tag st
 		return nil
 	}
 	s.mu.Lock()
+	if rev < s.appliedRev {
+		s.mu.Unlock()
+		return fmt.Errorf("stale IKEv2 mutation revision %d (applied %d)", rev, s.appliedRev)
+	}
 	proc := s.ikev2Runtimes[tag]
 	if proc == nil {
 		s.mu.Unlock()
@@ -191,6 +198,11 @@ func (s *Server) applyIKEv2UserMutation(ctx context.Context, operationID, tag st
 		restore()
 		return err
 	}
+	s.mu.Lock()
+	if rev > s.appliedRev {
+		s.appliedRev = rev
+	}
+	s.mu.Unlock()
 	return nil
 }
 
