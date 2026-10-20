@@ -678,6 +678,13 @@ func targetedUserCapability(protocol, operation string) string {
 		case "add_user", "remove_user", "disable_user", "enable_user":
 			return "targeted_user_add_remove_pptp"
 		}
+	case "ikev2":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_ikev2"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_ikev2"
+		}
 	}
 	return ""
 }

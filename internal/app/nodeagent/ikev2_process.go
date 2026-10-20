@@ -19,6 +19,7 @@ const (
 type ikev2Process struct {
 	tag     string
 	inbound ikev2RuntimeInbound
+	files   ikev2RuntimeFiles
 }
 
 var (
@@ -107,6 +108,7 @@ func (s *Server) applyIKEv2Runtimes(
 		next[runtime.Tag] = &ikev2Process{
 			tag:     runtime.Tag,
 			inbound: runtime.Inbound,
+			files:   runtime.Files,
 		}
 	}
 

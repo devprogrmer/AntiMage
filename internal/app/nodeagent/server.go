@@ -493,6 +493,9 @@ func (s *Server) AddUser(ctx context.Context, req *nodev1.InboundUserRequest) (*
 	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "pptp") {
 		return s.applyPPTPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
 	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "ikev2") {
+		return s.applyIKEv2UserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
+	}
 	user, err := xrayVLESSUserMessage(req.GetUser())
 	if err != nil {
 		if errors.Is(err, errUnsupportedXrayUserProtocol) {
@@ -535,6 +538,9 @@ func (s *Server) UpdateUser(ctx context.Context, req *nodev1.InboundUserRequest)
 	}
 	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "pptp") {
 		return s.applyPPTPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "ikev2") {
+		return s.applyIKEv2UserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
 	}
 	user, err := xrayVLESSUserMessage(req.GetUser())
 	if err != nil {
@@ -661,6 +667,25 @@ func (s *Server) applyL2TPUserRPC(ctx context.Context, operationID, inboundTag s
 	return s.action(operationID, "L2TP user "+operation+" completed"), nil
 }
 
+func (s *Server) applyIKEv2UserRPC(ctx context.Context, operationID, inboundTag string, user *nodev1.InboundUser, operation string) (*nodev1.RuntimeActionResponse, error) {
+	_, _, encoded, _, err := decodeIKEv2MutationUser(user, operation)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if encoded != operation || strings.TrimSpace(operationID) == "" {
+		return nil, status.Error(codes.InvalidArgument, "IKEv2 operation envelope mismatch")
+	}
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, inboundTag, func() error { return s.applyIKEv2UserMutation(ctx, operationID, inboundTag, user, operation) })
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "%s IKEv2 user: %v", operation, err)
+	}
+	s.wakeLocalQuota("ikev2")
+	return s.action(operationID, "IKEv2 user "+operation+" completed"), nil
+}
+
 func (s *Server) applyPPTPUserRPC(ctx context.Context, operationID, inboundTag string, user *nodev1.InboundUser, operation string) (*nodev1.RuntimeActionResponse, error) {
 	_, _, encodedOperation, _, err := decodePPTPMutationUser(user, operation)
 	if err != nil {
@@ -747,6 +772,14 @@ func (s *Server) RemoveUser(ctx context.Context, req *nodev1.RemoveInboundUserRe
 			l2TPMutationRevision:    strconv.FormatUint(revision, 10),
 		}}
 		return s.applyL2TPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
+	}
+	if strings.HasPrefix(strings.TrimSpace(req.GetEmail()), ikev2RemoveUserPrefix) {
+		id, rev, ok := ikev2RemoveUserIdentity(req.GetEmail())
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "IKEv2 remove user identity is invalid")
+		}
+		user := &nodev1.InboundUser{Protocol: "ikev2", Fields: map[string]string{ikev2MutationUserIDField: strconv.FormatInt(id, 10), ikev2MutationOperation: "remove", ikev2MutationRevision: strconv.FormatUint(rev, 10)}}
+		return s.applyIKEv2UserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
 	}
 	if strings.HasPrefix(strings.TrimSpace(req.GetEmail()), pptpRemoveUserPrefix) {
 		userID, revision, ok := pptpRemoveUserIdentity(req.GetEmail())
