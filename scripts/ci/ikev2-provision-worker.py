@@ -17,7 +17,22 @@ subprocess.run(['mount', '--make-rprivate', '/'], check=True)
 # cannot replace a file that is itself a mountpoint (EBUSY).
 private_etc = root/'private-etc'
 private_etc.mkdir(exist_ok=True)
-subprocess.run(['cp', '-a', '/etc/.', str(private_etc)], check=True)
+# Copy only the configuration consumed by strongSwan and the test tools. A
+# recursive copy of all of /etc includes large mounted trees on CI and can
+# outlive the worker's startup window.
+for entry in ('strongswan.d', 'ssl', 'ca-certificates', 'default'):
+    source = pathlib.Path('/etc')/entry
+    if source.exists():
+        subprocess.run(['cp', '-a', str(source), str(private_etc)], check=True)
+for entry in ('hosts', 'resolv.conf', 'nsswitch.conf', 'passwd', 'group', 'services', 'protocols'):
+    source = pathlib.Path('/etc')/entry
+    if source.exists() or source.is_symlink():
+        target = private_etc/entry
+        if source.is_symlink():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.symlink_to(os.readlink(source))
+        else:
+            subprocess.run(['cp', '-a', str(source), str(target)], check=True)
 subprocess.run(['mount', '--bind', str(private_etc), '/etc'], check=True)
 (root/'private-ipsec.d').mkdir(exist_ok=True)
 subprocess.run(['mount', '--bind', str(root/'private-ipsec.d'), '/etc/ipsec.d'], check=True)
