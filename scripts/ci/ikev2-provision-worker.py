@@ -35,6 +35,23 @@ for entry in ('hosts', 'resolv.conf', 'nsswitch.conf', 'passwd', 'group', 'servi
             subprocess.run(['cp', '-a', str(source), str(target)], check=True)
 subprocess.run(['mount', '--bind', str(private_etc), '/etc'], check=True)
 (private_etc/'strongswan.d'/'charon').mkdir(parents=True, exist_ok=True)
+(private_etc/'strongswan.d'/'charon'/'antimage-native.conf').write_text('''charon {
+    plugins {
+        kernel-netlink { load = yes }
+        socket-default { load = yes }
+        vici { load = yes }\n        stroke { load = yes }
+        openssl { load = yes }
+        x509 { load = yes }
+        pubkey { load = yes }
+        pem { load = yes }
+        pkcs12 { load = yes }
+        random { load = yes }
+        nonce { load = yes }
+        eap-identity { load = yes }
+        eap-mschapv2 { load = yes }
+    }
+}
+''')
 private_ipsec_d = private_etc/'ipsec.d'
 private_ipsec_d.mkdir(parents=True, exist_ok=True)
 for source in (root/'ipsec.d').glob('*.p12'):
