@@ -12,6 +12,13 @@ if os.getpid() != 1:
 subprocess.run(['mount', '--make-rprivate', '/'], check=True)
 # The parent native driver already isolates /run from the host. Keep that
 # private filesystem shared here so VICI sockets remain reachable by the driver.
+# Build a private copy of /etc rather than bind-mounting the individual ipsec
+# files: the NodeAgent deliberately updates them with atomic rename, which
+# cannot replace a file that is itself a mountpoint (EBUSY).
+private_etc = root/'private-etc'
+private_etc.mkdir(exist_ok=True)
+subprocess.run(['cp', '-a', '/etc/.', str(private_etc)], check=True)
+subprocess.run(['mount', '--bind', str(private_etc), '/etc'], check=True)
 (root/'private-ipsec.d').mkdir(exist_ok=True)
 subprocess.run(['mount', '--bind', str(root/'private-ipsec.d'), '/etc/ipsec.d'], check=True)
 for source in (root/'ipsec.d').glob('*.p12'):
@@ -22,9 +29,7 @@ for source in (root/'ipsec.d').glob('*.p12'):
 # installing that config at the daemon's standard path inside this namespace.
 subprocess.run(['mount', '--bind', str(root/'server.conf'), '/etc/strongswan.conf'], check=True)
 for name,initial in [('ipsec.conf','config setup\n    uniqueids=no\n'), ('ipsec.secrets','')]:
-    source = root/('private-'+name)
-    source.write_text(initial)
-    subprocess.run(['mount','--bind',str(source),'/etc/'+name],check=True)
+    (private_etc/name).write_text(initial)
 pathlib.Path('/run/antimage-ikev2-isolated').write_text(str(root))
 env = {**os.environ, 'ANTIMAGE_IKEV2_PROVISION_ROOT':str(root)}
 subprocess.run([os.environ['ANTIMAGE_IKEV2_TEST_BINARY'],'-test.run=^TestIKEv2NativeProvision$','-test.v'],env=env,check=True)
