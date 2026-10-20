@@ -42,7 +42,7 @@ for source in (root/'ipsec.d').glob('*.p12'):
 # The production `ipsec start` launcher reads strongswan.conf for VICI and
 # plugin configuration; STRONGSWAN_CONF in the parent is not a substitute for
 # installing that config at the daemon's standard path inside this namespace.
-subprocess.run(['mount', '--bind', str(root/'server.conf'), '/etc/strongswan.conf'], check=True)
+(private_etc/'strongswan.conf').write_bytes((root/'server.conf').read_bytes())
 for name,initial in [('ipsec.conf','config setup\n    uniqueids=no\n'), ('ipsec.secrets','')]:
     (private_etc/name).write_text(initial)
 pathlib.Path('/run/antimage-ikev2-isolated').write_text(str(root))
