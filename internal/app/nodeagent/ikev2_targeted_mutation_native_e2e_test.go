@@ -96,6 +96,8 @@ func TestIKEv2TargetedMutationNativeE2E(t *testing.T) {
 	if res, e := rpc.AddUser(context.Background(), add); e != nil || !res.GetAccepted() {
 		t.Fatalf("AddUser response=%v err=%v", res, e)
 	}
+	assertNativeIKEv2SecretPresent(t, "bob", true)
+	reloadNativeIKEv2FixtureSecrets(t, "add bob")
 	if _, e := rpc.AddUser(context.Background(), add); e != nil {
 		t.Fatalf("retry: %v", e)
 	}
@@ -115,6 +117,8 @@ func TestIKEv2TargetedMutationNativeE2E(t *testing.T) {
 	if res, e := rpc.UpdateUser(context.Background(), up); e != nil || !res.GetAccepted() {
 		t.Fatalf("UpdateUser response=%v err=%v", res, e)
 	}
+	assertNativeIKEv2SecretPresent(t, "bob", true)
+	reloadNativeIKEv2FixtureSecrets(t, "update bob")
 	bob.stop()
 	waitNativeIKEv2EstablishedSACountAtMost(t, aliceSA, "bob v1 SA teardown")
 	old := startNativeIKEv2EAPClient(t, clientNS, "bob", "bob-native-v1", filepath.Join("/etc/ipsec.d", "client.p12"))
@@ -130,6 +134,8 @@ func TestIKEv2TargetedMutationNativeE2E(t *testing.T) {
 	if res, e := rpc.RemoveUser(context.Background(), rem); e != nil || !res.GetAccepted() {
 		t.Fatalf("RemoveUser response=%v err=%v", res, e)
 	}
+	assertNativeIKEv2SecretPresent(t, "bob", false)
+	reloadNativeIKEv2FixtureSecrets(t, "remove bob")
 	bob.stop()
 	waitNativeIKEv2EstablishedSACountAtMost(t, aliceSA, "bob v2 SA teardown")
 	old = startNativeIKEv2EAPClient(t, clientNS, "bob", "bob-native-v2", filepath.Join("/etc/ipsec.d", "client.p12"))
@@ -307,6 +313,33 @@ func nativeIKEv2ListSAs() ([]byte, error) {
 		uri = "unix:///run/charon.vici"
 	}
 	return exec.Command("swanctl", "--list-sas", "--uri", uri).CombinedOutput()
+}
+
+func reloadNativeIKEv2FixtureSecrets(t *testing.T, label string) {
+	t.Helper()
+	uri := strings.TrimSpace(os.Getenv("ANTIMAGE_IKEV2_SERVER_VICI_URI"))
+	if uri == "" {
+		uri = "unix:///run/charon.vici"
+	}
+	if out, err := exec.Command("swanctl", "--load-creds", "--uri", uri).CombinedOutput(); err != nil {
+		t.Fatalf("reload IKEv2 fixture credentials for %s: %v: %s", label, err, out)
+	}
+}
+
+func assertNativeIKEv2SecretPresent(t *testing.T, username string, want bool) {
+	t.Helper()
+	path := strings.TrimSpace(os.Getenv("ANTIMAGE_IKEV2_SECRETS_PATH"))
+	if path == "" {
+		path = "/etc/ipsec.secrets"
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read IKEv2 secrets %s: %v", path, err)
+	}
+	has := strings.Contains(string(raw), `"`+username+`"`)
+	if has != want {
+		t.Fatalf("IKEv2 secrets presence for %s = %v, want %v:\n%s", username, has, want, raw)
+	}
 }
 func assertNativeIKEv2Traffic(t *testing.T, ns string) {
 	t.Helper()
