@@ -158,12 +158,18 @@ func TestNodeRuntimeRemoveUserCallsXrayAndReportsSuccessOnlyAfterRPC(t *testing.
 
 func TestNodeRuntimeUserOperationsDoNotReportUnsupportedMutationsAsAccepted(t *testing.T) {
 	s := New(Config{})
-	unsupported := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "ikev2"}}
+	// IKEv2 has a targeted user RPC now, so use a protocol that still has no
+	// runtime mutation implementation when checking Unimplemented behavior.
+	unsupported := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "vmess"}}
 	if response, err := s.AddUser(context.Background(), unsupported); response != nil || status.Code(err) != codes.Unimplemented {
 		t.Fatalf("AddUser response=%v err=%v, want unimplemented", response, err)
 	}
 	if response, err := s.UpdateUser(context.Background(), unsupported); response != nil || status.Code(err) != codes.Unimplemented {
 		t.Fatalf("UpdateUser response=%v err=%v, want unimplemented", response, err)
+	}
+	malformedIKEv2 := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "ikev2"}}
+	if response, err := s.AddUser(context.Background(), malformedIKEv2); response != nil || status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("malformed IKEv2 AddUser response=%v err=%v, want invalid argument", response, err)
 	}
 	malformedPPTP := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "pptp"}}
 	if response, err := s.AddUser(context.Background(), malformedPPTP); response != nil || status.Code(err) != codes.InvalidArgument {

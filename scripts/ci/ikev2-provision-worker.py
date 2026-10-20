@@ -39,41 +39,25 @@ private_ipsec_d.mkdir(parents=True, exist_ok=True)
 for source in (root/'ipsec.d').glob('*.p12'):
     target = private_ipsec_d/source.name
     target.write_bytes(source.read_bytes())
-# Keep the native fixture's library/charon config separate from the driver's
-# swanctl client config.  Declare only the plugins required by this EAP native
-# gate directly, so host plugin fragments and their integrity settings cannot
-# leak into the private runtime.
-(private_etc/'strongswan.conf').write_text('''charon {
-    load_modular = yes
-    plugins {
-        kernel-netlink { load = yes }
-        socket-default { load = yes }
-        stroke { load = yes }
-        vici { socket = unix:///run/charon.vici }
-        openssl { load = yes }
-        aes { load = yes }
-        sha1 { load = yes }
-        sha2 { load = yes }
-        md5 { load = yes }
-        hmac { load = yes }
-        gmp { load = yes }
-        random { load = yes }
-        nonce { load = yes }
-        x509 { load = yes }
-        constraints { load = yes }
-        revocation { load = yes }
-        pubkey { load = yes }
-        pkcs1 { load = yes }
-        pkcs7 { load = yes }
-        pkcs8 { load = yes }
-        pkcs12 { load = yes }
-        pem { load = yes }
-        eap-identity { load = yes }
-        eap-mschapv2 { load = yes }
-    }
+# The NodeAgent writes the production strongswan.conf during provisioning; it
+# includes /etc/strongswan.d/charon/*.conf. Keep that config intact and provide
+# only the optional native-test plugins it needs, without importing host plugin
+# fragments or unrelated host settings.
+private_charon_plugins = private_etc/'strongswan.d'/'charon'
+private_charon_plugins.mkdir(parents=True, exist_ok=True)
+(private_charon_plugins/'vici.conf').write_text('''vici {
+    load = yes
+    socket = unix:///run/charon.vici
 }
 ''')
-os.environ['STRONGSWAN_CONF'] = '/etc/strongswan.conf'
+(private_charon_plugins/'eap-identity.conf').write_text('''eap-identity {
+    load = yes
+}
+''')
+(private_charon_plugins/'eap-mschapv2.conf').write_text('''eap-mschapv2 {
+    load = yes
+}
+''')
 for name,initial in [('ipsec.conf','config setup\n    uniqueids=no\n'), ('ipsec.secrets','')]:
     (private_etc/name).write_text(initial)
 pathlib.Path('/run/antimage-ikev2-isolated').write_text(str(root))
