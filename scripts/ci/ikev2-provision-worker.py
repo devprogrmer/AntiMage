@@ -57,7 +57,7 @@ starter = subprocess.Popen(['/usr/lib/ipsec/starter', '--daemon', 'charon', '--n
 for _ in range(100):
     if pathlib.Path('/run/charon.vici').exists():
         break
-    if starter.poll() is not None:
+    if starter.poll() is not None and starter.returncode != 0:
         raise SystemExit('starter exited with code '+str(starter.returncode))
     import time; time.sleep(0.1)
 else:
