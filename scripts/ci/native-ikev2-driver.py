@@ -125,7 +125,7 @@ charon-cmd {{
  plugins {{
   include /etc/strongswan.d/charon/*.conf
   vici {{
-   socket = unix://{vici_socket_path(side)}
+   socket = unix://{SOCKET_DIR}/{SOCKET_PREFIX}.{side}.cmd.vici
   }}
  }}
 }}
