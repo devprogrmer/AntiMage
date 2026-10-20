@@ -125,7 +125,7 @@ charon-cmd {{
  plugins {{
   include /etc/strongswan.d/charon/*.conf
   vici {{
-   socket = unix://{SOCKET_DIR}/{SOCKET_PREFIX}.{side}.cmd.vici
+   socket = unix://{vici_socket_path(side)}
   }}
  }}
 }}
@@ -250,7 +250,7 @@ pools {
         # The Go test enters the worker PID namespace and reads its private /proc.
         # Resolve charon's PID there; the host PID is not visible in that /proc.
         charon_pid=run(['nsenter','-t',str(srv.pid),'-m','-n','-p','--','pgrep','-n','charon']).strip()
-        env={**os.environ,'STRONGSWAN_CONF':'/etc/strongswan.conf','ANTIMAGE_IKEV2_TARGETED_E2E':'1','ANTIMAGE_IKEV2_TARGETED_ROOT':str(R),'ANTIMAGE_IKEV2_CLIENT_NS':C,'ANTIMAGE_IKEV2_CHARON_PID':charon_pid}
+        env={**os.environ,'STRONGSWAN_CONF':'/etc/strongswan.conf','ANTIMAGE_IKEV2_TARGETED_E2E':'1','ANTIMAGE_IKEV2_TARGETED_ROOT':str(R),'ANTIMAGE_IKEV2_CLIENT_NS':C,'ANTIMAGE_IKEV2_CHARON_PID':charon_pid,'ANTIMAGE_IKEV2_CLIENT_STRONGSWAN_CONF':str(R/'client.conf'),'ANTIMAGE_IKEV2_CLIENT_CONFIG_PREFIX':SOCKET_PREFIX+'.client'}
         command=['nsenter','-t',str(srv.pid),'-m','-n','-p','--',os.environ['ANTIMAGE_IKEV2_TEST_BINARY'],'-test.run=^TestIKEv2TargetedMutationNativeE2E$','-test.v']
         targeted=sp.run(command,env=env,text=True,stdout=sp.PIPE,stderr=sp.STDOUT,timeout=300)
         print(targeted.stdout,flush=True)
