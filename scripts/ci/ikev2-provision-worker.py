@@ -34,10 +34,10 @@ for entry in ('hosts', 'resolv.conf', 'nsswitch.conf', 'passwd', 'group', 'servi
         else:
             subprocess.run(['cp', '-a', str(source), str(target)], check=True)
 subprocess.run(['mount', '--bind', str(private_etc), '/etc'], check=True)
-(root/'private-ipsec.d').mkdir(exist_ok=True)
-subprocess.run(['mount', '--bind', str(root/'private-ipsec.d'), '/etc/ipsec.d'], check=True)
+private_ipsec_d = private_etc/'ipsec.d'
+private_ipsec_d.mkdir(parents=True, exist_ok=True)
 for source in (root/'ipsec.d').glob('*.p12'):
-    target = root/'private-ipsec.d'/source.name
+    target = private_ipsec_d/source.name
     target.write_bytes(source.read_bytes())
 # The production `ipsec start` launcher reads strongswan.conf for VICI and
 # plugin configuration; STRONGSWAN_CONF in the parent is not a substitute for
