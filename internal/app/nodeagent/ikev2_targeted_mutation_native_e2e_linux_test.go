@@ -5,7 +5,22 @@ package nodeagent
 import (
 	"os/exec"
 	"syscall"
+	"testing"
 )
+
+// TestRuntimeStateAdvertisesIKEv2TargetedMutationCapabilities pins the IKEv2
+// capability advertisement that the native targeted E2E gate enabled.
+func TestRuntimeStateAdvertisesIKEv2TargetedMutationCapabilities(t *testing.T) {
+	advertised := map[string]bool{}
+	for _, capability := range (&Server{cfg: Config{DataDir: t.TempDir()}}).runtimeState("test").GetCapabilities() {
+		advertised[capability] = true
+	}
+	for _, want := range []string{"targeted_user_update_ikev2", "targeted_user_add_remove_ikev2"} {
+		if !advertised[want] {
+			t.Fatalf("IKEv2 capability %q was not advertised", want)
+		}
+	}
+}
 
 // configureNativeIKEv2ClientProcess puts the client command in its own process
 // group so a single signal reaches charon-cmd even though it runs as a

@@ -1406,6 +1406,7 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 			"targeted_user_update_wireguard", "targeted_user_add_remove_wireguard",
 			"targeted_user_update_amneziawg", "targeted_user_add_remove_amneziawg",
 			"targeted_user_update_pptp", "targeted_user_add_remove_pptp",
+			"targeted_user_update_ikev2", "targeted_user_add_remove_ikev2",
 		)
 	}
 	if s.verifiedInstallerAvailable() {
