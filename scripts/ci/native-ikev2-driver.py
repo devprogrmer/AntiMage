@@ -124,8 +124,15 @@ charon-cmd {{
  load_modular = yes
  plugins {{
   include /etc/strongswan.d/charon/*.conf
+  # The responder owns the production control socket that
+  # "ipsec rereadsecrets"/"ipsec reload" resolve (/run/charon.ctl). Only the
+  # IKE *clients* run through this section, so they must never claim it, or a
+  # client would silently swallow the daemon's reload during user mutation.
+  stroke {{
+   socket = unix://{SOCKET_DIR}/{SOCKET_PREFIX}.{side}.cmd.ctl
+  }}
   vici {{
-   socket = unix://{vici_socket_path(side)}
+   socket = unix://{SOCKET_DIR}/{SOCKET_PREFIX}.{side}.cmd.vici
   }}
  }}
 }}

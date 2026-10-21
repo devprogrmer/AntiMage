@@ -91,13 +91,14 @@ func TestIKEv2TargetedMutationNativeE2E(t *testing.T) {
 	aliceSA := waitNativeIKEv2EstablishedSAs(t, aliceBase, "alice")
 	assertNativeIKEv2Traffic(t, clientNS)
 	pidBefore := pid
+	reloadBaseline := strings.Count(nativeIKEv2ServerLogText(t), "rereading secrets")
 	bobV1 := ikev2RuntimeUser{UserID: 2, Username: "bob", Password: "bob-native-v1", Status: "active"}
 	add := ikev2NativeMutationRequest("ike-add-bob", inbound.Tag, "add", 11, bobV1)
 	if res, e := rpc.AddUser(context.Background(), add); e != nil || !res.GetAccepted() {
 		t.Fatalf("AddUser response=%v err=%v", res, e)
 	}
 	assertNativeIKEv2SecretPresent(t, "bob", true)
-	reloadNativeIKEv2FixtureSecrets(t, "add bob")
+	reloadBaseline = waitNativeIKEv2DaemonReload(t, reloadBaseline, "bob", true, "add bob")
 	if _, e := rpc.AddUser(context.Background(), add); e != nil {
 		t.Fatalf("retry: %v", e)
 	}
@@ -118,7 +119,7 @@ func TestIKEv2TargetedMutationNativeE2E(t *testing.T) {
 		t.Fatalf("UpdateUser response=%v err=%v", res, e)
 	}
 	assertNativeIKEv2SecretPresent(t, "bob", true)
-	reloadNativeIKEv2FixtureSecrets(t, "update bob")
+	reloadBaseline = waitNativeIKEv2DaemonReload(t, reloadBaseline, "bob", true, "update bob")
 	bob.stop()
 	waitNativeIKEv2EstablishedSACountAtMost(t, aliceSA, "bob v1 SA teardown")
 	old := startNativeIKEv2EAPClient(t, clientNS, "bob", "bob-native-v1", filepath.Join("/etc/ipsec.d", "client.p12"))
@@ -135,7 +136,7 @@ func TestIKEv2TargetedMutationNativeE2E(t *testing.T) {
 		t.Fatalf("RemoveUser response=%v err=%v", res, e)
 	}
 	assertNativeIKEv2SecretPresent(t, "bob", false)
-	reloadNativeIKEv2FixtureSecrets(t, "remove bob")
+	reloadBaseline = waitNativeIKEv2DaemonReload(t, reloadBaseline, "bob", false, "remove bob")
 	bob.stop()
 	waitNativeIKEv2EstablishedSACountAtMost(t, aliceSA, "bob v2 SA teardown")
 	old = startNativeIKEv2EAPClient(t, clientNS, "bob", "bob-native-v2", filepath.Join("/etc/ipsec.d", "client.p12"))
@@ -315,14 +316,46 @@ func nativeIKEv2ListSAs() ([]byte, error) {
 	return exec.Command("swanctl", "--list-sas", "--uri", uri).CombinedOutput()
 }
 
-func reloadNativeIKEv2FixtureSecrets(t *testing.T, label string) {
+// nativeIKEv2ServerLogText returns the responder charon log. The native driver
+// configures the daemon to flush every line so reloads are observable here.
+func nativeIKEv2ServerLogText(t *testing.T) string {
 	t.Helper()
-	uri := strings.TrimSpace(os.Getenv("ANTIMAGE_IKEV2_SERVER_VICI_URI"))
-	if uri == "" {
-		uri = "unix:///run/charon.vici"
+	path := strings.TrimSpace(os.Getenv("ANTIMAGE_IKEV2_SERVER_LOG"))
+	if path == "" {
+		return ""
 	}
-	if out, err := exec.Command("swanctl", "--load-creds", "--uri", uri).CombinedOutput(); err != nil {
-		t.Fatalf("reload IKEv2 fixture credentials for %s: %v: %s", label, err, out)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+// waitNativeIKEv2DaemonReload blocks until the responder daemon itself has
+// processed a new "rereadsecrets" (ordered by strongSwan's own log line) and
+// the freshly loaded secret set matches want for username. This proves the
+// targeted mutation actually reached the running daemon instead of failing
+// silently because a control socket was owned by another process.
+func waitNativeIKEv2DaemonReload(t *testing.T, baseline int, username string, want bool, label string) int {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		text := nativeIKEv2ServerLogText(t)
+		count := strings.Count(text, "rereading secrets")
+		if count > baseline {
+			block := text[strings.LastIndex(text, "rereading secrets"):]
+			loaded := strings.Contains(block, `loaded EAP secret for "`+username+`"`)
+			if loaded == want {
+				return count
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf(
+				"strongSwan daemon did not reload %s credentials for %s (rereads baseline=%d now=%d, wantLoaded=%v); server log:\n%s",
+				label, username, baseline, count, want, text,
+			)
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 }
 

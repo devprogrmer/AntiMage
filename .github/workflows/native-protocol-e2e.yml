@@ -18,6 +18,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   native-runtime:
     name: native-${{ matrix.protocol }}
@@ -36,6 +40,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install native runtime dependencies
+        timeout-minutes: 15
         run: |
           set -euxo pipefail
           sudo apt-get update
@@ -63,9 +68,15 @@ jobs:
       - name: Run native L2TP and PPP lifecycle
         if: ${{ matrix.protocol == 'l2tp' }}
         shell: bash
+        timeout-minutes: 25
         run: |
           set -euo pipefail
-          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
+          # Some hosted runner kernels (for example the Azure kernels) publish
+          # no matching linux-modules-extra package. That only means the runner
+          # cannot load extra kernel modules; install it when available and
+          # never install an unrelated kernel's module tree.
+          sudo timeout --signal=TERM --kill-after=15s 8m apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)" \
+            || echo "linux-modules-extra for $(uname -r) is unavailable on this runner"
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           api_test="$RUNNER_TEMP/antimage-api.test"
@@ -104,6 +115,7 @@ jobs:
       - name: Run native WireGuard lifecycle
         if: ${{ matrix.protocol == 'wireguard' }}
         shell: bash
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
@@ -122,6 +134,7 @@ jobs:
       - name: Run native OpenVPN lifecycle
         if: ${{ matrix.protocol == 'openvpn' }}
         shell: bash
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
@@ -138,6 +151,7 @@ jobs:
       - name: Run native AmneziaWG lifecycle
         if: ${{ matrix.protocol == 'amneziawg' }}
         shell: bash
+        timeout-minutes: 25
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
@@ -155,6 +169,7 @@ jobs:
       - name: Run native PPTP lifecycle
         if: ${{ matrix.protocol == 'pptp' }}
         shell: bash
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
@@ -189,6 +204,7 @@ jobs:
       - name: Prepare IKEv2 race toolchain
         if: ${{ matrix.protocol == 'ikev2' }}
         shell: bash
+        timeout-minutes: 30
         run: |
           set -euo pipefail
           sudo apt-get update
@@ -200,6 +216,7 @@ jobs:
       - name: Run real strongSwan IKEv2 lifecycle
         if: ${{ matrix.protocol == 'ikev2' }}
         shell: bash
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
