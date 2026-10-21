@@ -97,6 +97,7 @@ func TestIKEv2TargetedMutationNativeE2E(t *testing.T) {
 		t.Fatalf("AddUser response=%v err=%v", res, e)
 	}
 	assertNativeIKEv2SecretPresent(t, "bob", true)
+	dumpNativeIKEv2ReloadDiagnostics(t, "after add bob")
 	reloadBaseline = waitNativeIKEv2DaemonReload(t, reloadBaseline, "bob", true, "add bob")
 	if _, e := rpc.AddUser(context.Background(), add); e != nil {
 		t.Fatalf("retry: %v", e)
@@ -359,6 +360,36 @@ func waitNativeIKEv2DaemonReload(t *testing.T, baseline int, username string, wa
 			)
 		}
 		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// dumpNativeIKEv2ReloadDiagnostics captures the daemon/pid-file state and the
+// credential reload path that live AddUser mutations rely on. The Debian ipsec
+// wrapper only forwards rereadsecrets to stroke when /var/run/charon.pid
+// exists, so the direct /usr/lib/ipsec/stroke invocation shows whether charon
+// still answers when the wrapper's gate hides it.
+func dumpNativeIKEv2ReloadDiagnostics(t *testing.T, label string) {
+	t.Helper()
+	pidFiles, _ := exec.Command("sh", "-c", "for f in /var/run/charon.pid /var/run/starter.pid /run/charon.pid /run/starter.pid; do if [ -e \"$f\" ]; then echo \"$f=$(cat \"$f\")\"; else echo \"$f=missing\"; fi; done; echo ---; pgrep -ax starter; pgrep -ax charon").CombinedOutput()
+	t.Logf("diag[%s] pid files/processes: %s", label, pidFiles)
+	if out, err := exec.Command("ipsec", "rereadsecrets").CombinedOutput(); err != nil || len(out) > 0 {
+		t.Logf("diag[%s] ipsec rereadsecrets: err=%v out=%s", label, err, out)
+	}
+	if out, err := exec.Command("/usr/lib/ipsec/stroke", "rereadsecrets").CombinedOutput(); err != nil || len(out) > 0 {
+		t.Logf("diag[%s] stroke rereadsecrets: err=%v out=%s", label, err, out)
+	}
+	if serverLog := strings.TrimSpace(os.Getenv("ANTIMAGE_IKEV2_SERVER_LOG")); serverLog != "" {
+		raw, err := os.ReadFile(serverLog)
+		if err != nil {
+			t.Logf("diag[%s] server log %s: %v", label, serverLog, err)
+		} else {
+			lines := strings.Split(string(raw), "\n")
+			start := len(lines) - 40
+			if start < 0 {
+				start = 0
+			}
+			t.Logf("diag[%s] server log tail:\n%s", label, strings.Join(lines[start:], "\n"))
+		}
 	}
 }
 
