@@ -75,7 +75,8 @@ jobs:
           # no matching linux-modules-extra package. That only means the runner
           # cannot load extra kernel modules; install it when available and
           # never install an unrelated kernel's module tree.
-          sudo timeout --signal=TERM --kill-after=15s 8m apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)" \
+          sudo DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=15s 8m \
+            apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)" \
             || echo "linux-modules-extra for $(uname -r) is unavailable on this runner"
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
@@ -92,6 +93,18 @@ jobs:
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
             timeout --signal=TERM --kill-after=30s 12m bash scripts/ci/native-l2tp-driver.sh \
             >"$RUNNER_TEMP/native-l2tp.log" 2>&1 || status=$?
+          # The driver re-execs into a private mount namespace. If any PPP or
+          # IPsec daemon it spawned survived the run, it would keep this step's
+          # process group alive and the runner would never mark the step done.
+          # Reap every known daemon so a wedged run still fails fast with
+          # evidence instead of hanging until the job timeout.
+          sudo timeout 30s bash -c '
+            pkill -TERM -x pppd || true
+            pkill -TERM -x xl2tpd || true
+            pkill -TERM -x charon || true
+            pkill -TERM -x starter || true
+            ipsec stop >/dev/null 2>&1 || true
+          ' || true
           cat "$RUNNER_TEMP/native-l2tp.log"
           exit "${status:-0}"
 
@@ -236,7 +249,7 @@ jobs:
             python3 scripts/ci/native-ikev2-driver.py
 
       - name: Capture runner networking state after failure
-        if: failure()
+        if: failure() || cancelled()
         timeout-minutes: 3
         shell: bash
         run: |
@@ -258,7 +271,7 @@ jobs:
           } > "$RUNNER_TEMP/native-runner-state.txt" 2>&1
 
       - name: Upload native runtime evidence
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.protocol }}-evidence-${{ github.run_id }}

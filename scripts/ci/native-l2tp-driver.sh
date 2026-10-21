@@ -7,7 +7,10 @@ set -euo pipefail
 
 if [ "${ANTIMAGE_L2TP_PRIVATE_MOUNT:-0}" != 1 ]; then
   export ANTIMAGE_L2TP_PRIVATE_MOUNT=1
-  exec unshare --mount --fork --propagation private bash "$0" "$@"
+  # --kill-child=SIGKILL guarantees the mount-namespace worker dies with this
+  # process even if the inner shell is slow or stuck in cleanup, so a step
+  # timeout cannot leave an orphaned driver holding the runner step open.
+  exec unshare --mount --fork --kill-child=SIGKILL --propagation private bash "$0" "$@"
 fi
 
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-l2tp-XXXXXX") }"
@@ -159,7 +162,7 @@ stage() {
     ANTIMAGE_L2TP_SESSION_CALLBACK_URL="$callback_url" \
     ANTIMAGE_L2TP_SESSION_CALLBACK_TOKEN="$callback_token" \
     ANTIMAGE_NODE_HELPER_BINARY="$ANTIMAGE_NODE_HELPER_BINARY" \
-    "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPNativeAccountingStage$' -test.v
+    "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPNativeAccountingStage$' -test.v -test.timeout=8m
 }
 mutation_stage() {
   local action="$1"
@@ -167,12 +170,12 @@ mutation_stage() {
     ANTIMAGE_L2TP_MUTATION_ACTION="$action" \
     ANTIMAGE_L2TP_XL2TPD_PID="$(cat "$ROOT/server.pid")" \
     ANTIMAGE_NODE_HELPER_BINARY="$ANTIMAGE_NODE_HELPER_BINARY" \
-    "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPTargetedMutationNativeStage$' -test.v
+    "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPTargetedMutationNativeStage$' -test.v -test.timeout=8m
 }
 panel_replay() {
   env ANTIMAGE_L2TP_NATIVE_STATE="$ROOT/l2tp-state" \
     ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL="${1:-0}" \
-    "$ANTIMAGE_L2TP_PANEL_TEST_BINARY" -test.run='^TestL2TPNativePanelDB$' -test.v
+    "$ANTIMAGE_L2TP_PANEL_TEST_BINARY" -test.run='^TestL2TPNativePanelDB$' -test.v -test.timeout=8m
 }
 set_session_panel_usage() {
   python3 - "$1" "$2" <<'PY'
@@ -383,7 +386,7 @@ EOF
   wait_for 'L2TP IPsec packet capture' sh -c 'test -s "$1"' _ "$ROOT/l2tp-ipsec.pcap"
 }
 client_ipsec() {
-  ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
+  ip netns exec "$NS" unshare --mount --fork --kill-child=SIGKILL --propagation private bash -c '
     mount --bind "$1" /run
     mount --bind "$2" /etc/strongswan.conf
     shift 2
@@ -395,7 +398,7 @@ client_ipsec() {
     DAEMON_NAME=charon ipsec "$@"
 }
 client_ipsec_daemon() {
-  ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
+  ip netns exec "$NS" unshare --mount --fork --kill-child=SIGKILL --propagation private bash -c '
     mount --bind "$1" /run
     mount --bind "$2" /etc/strongswan.conf
     shift 2
@@ -412,7 +415,7 @@ start_client() {
   snapshot_l2tp_sessions client-a
   rm -f "$ROOT/client.pid" "$ROOT/client.control"
   mkdir -p "$CLIENT_PPP_RUNDIR"
-  ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
+  ip netns exec "$NS" unshare --mount --fork --kill-child=SIGKILL --propagation private bash -c '
     mount --bind "$1" /run
     shift
     exec "$@"
@@ -475,7 +478,7 @@ conn l2tp-client-b
 EOF
 }
 client_ipsec_b() {
-  ip netns exec "$NS_B" unshare --mount --fork --propagation private bash -c '
+  ip netns exec "$NS_B" unshare --mount --fork --kill-child=SIGKILL --propagation private bash -c '
     mount --bind "$1" /run
     mount --bind "$2" /etc/strongswan.conf
     shift 2
@@ -487,7 +490,7 @@ client_ipsec_b() {
     DAEMON_NAME=charon ipsec "$@"
 }
 client_ipsec_daemon_b() {
-  ip netns exec "$NS_B" unshare --mount --fork --propagation private bash -c '
+  ip netns exec "$NS_B" unshare --mount --fork --kill-child=SIGKILL --propagation private bash -c '
     mount --bind "$1" /run
     mount --bind "$2" /etc/strongswan.conf
     shift 2
@@ -537,7 +540,7 @@ start_client_b() {
   snapshot_l2tp_sessions client-b
   rm -f "$ROOT/client-b.pid" "$ROOT/client-b.control"
   mkdir -p "$CLIENT_PPP_RUNDIR_B"
-  ip netns exec "$NS_B" unshare --mount --fork --propagation private bash -c '
+  ip netns exec "$NS_B" unshare --mount --fork --kill-child=SIGKILL --propagation private bash -c '
     mount --bind "$1" /run
     shift
     exec "$@"
