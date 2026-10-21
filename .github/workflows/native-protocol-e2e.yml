@@ -75,7 +75,7 @@ jobs:
           # no matching linux-modules-extra package. That only means the runner
           # cannot load extra kernel modules; install it when available and
           # never install an unrelated kernel's module tree.
-          sudo DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=15s 8m \
+          sudo DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=15s 6m \
             apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)" \
             || echo "linux-modules-extra for $(uname -r) is unavailable on this runner"
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
@@ -91,7 +91,7 @@ jobs:
             ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
-            timeout --signal=TERM --kill-after=30s 12m bash scripts/ci/native-l2tp-driver.sh \
+            timeout --signal=TERM --kill-after=30s 10m bash scripts/ci/native-l2tp-driver.sh \
             >"$RUNNER_TEMP/native-l2tp.log" 2>&1 || status=$?
           # The driver re-execs into a private mount namespace. If any PPP or
           # IPsec daemon it spawned survived the run, it would keep this step's
@@ -99,11 +99,14 @@ jobs:
           # Reap every known daemon so a wedged run still fails fast with
           # evidence instead of hanging until the job timeout.
           sudo timeout 30s bash -c '
-            pkill -TERM -x pppd || true
-            pkill -TERM -x xl2tpd || true
-            pkill -TERM -x charon || true
-            pkill -TERM -x starter || true
+            for name in pppd xl2tpd charon starter; do
+              pkill -TERM -x "$name" || true
+            done
             ipsec stop >/dev/null 2>&1 || true
+            sleep 3
+            for name in pppd xl2tpd charon starter; do
+              pkill -KILL -x "$name" || true
+            done
           ' || true
           cat "$RUNNER_TEMP/native-l2tp.log"
           exit "${status:-0}"
@@ -277,6 +280,7 @@ jobs:
           name: native-${{ matrix.protocol }}-evidence-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/antimage-*-failure/**
+            ${{ runner.temp }}/native-l2tp.log
             ${{ runner.temp }}/antimage-ikev2-*/server.stdout
             ${{ runner.temp }}/antimage-ikev2-*/server.conf
             ${{ runner.temp }}/antimage-ikev2-*/starter-diagnostics.txt

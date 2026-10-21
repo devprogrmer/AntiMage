@@ -55,59 +55,68 @@ cleanup() {
   set +e
   if [ "$rc" -ne 0 ]; then
     mkdir -p "$RUNNER_TEMP/antimage-l2tp-failure"
-    cp -a "$ROOT/." "$RUNNER_TEMP/antimage-l2tp-failure/" 2>/dev/null || true
-    chmod -R a+rX "$RUNNER_TEMP/antimage-l2tp-failure" 2>/dev/null || true
+    # xl2tpd control files are FIFOs. Copying them into the evidence tree makes
+    # the later artifact upload block reading a pipe that has no writer, which
+    # hangs the step. Drop every special file before snapshotting state.
+    find "$ROOT" -xdev \( -type p -o -type s \) -delete 2>/dev/null || true
+    timeout 45s cp -a "$ROOT/." "$RUNNER_TEMP/antimage-l2tp-failure/" 2>/dev/null || true
+    find "$RUNNER_TEMP/antimage-l2tp-failure" -xdev \( -type p -o -type s \) -delete 2>/dev/null || true
+    timeout 45s chmod -R a+rX "$RUNNER_TEMP/antimage-l2tp-failure" 2>/dev/null || true
     if [ -s "$ROOT/quota-watch.log" ]; then
       echo '=== captured L2TP quota worker output ===' >&2
       cat "$ROOT/quota-watch.log" >&2
     fi
-    { date -u; ip -details addr show; ip route show table all; ip netns list; ip netns exec "$NS" ip -details addr show; ps -ef; } \
-      >"$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>&1
-    {
-      echo '=== listening and established sockets ==='; ss -ntup; ss -nup;
-      echo '=== PPP daemon socket descriptors and socket tables ==='
+    timeout 15s sh -c '{ date -u; ip -details addr show; ip route show table all; ip netns list; ip netns exec "$1" ip -details addr show; ps -ef; }' _ "$NS" \
+      >"$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>&1 || true
+    timeout 15s sh -c '
+      echo "=== listening and established sockets ==="; ss -ntup; ss -nup;
+      echo "=== PPP daemon socket descriptors and socket tables ==="
       for pid in $(pgrep -x pppd || true); do
         echo "--- pppd pid=$pid ---"; ps -o pid,ppid,args -p "$pid";
-        for fd in /proc/"$pid"/fd/*; do printf '%s ' "$fd"; readlink "$fd" || true; done
+        for fd in /proc/"$pid"/fd/*; do printf "%s " "$fd"; readlink "$fd" || true; done
         cat /proc/"$pid"/net/tcp /proc/"$pid"/net/udp 2>/dev/null || true
       done
-      echo '=== L2TP policy, active sessions, and event queue ==='
-      find "$ROOT/l2tp-state" \( -name session-helper.json -o -path '*/ppp-accounting/active/*.json' -o -path '*/ppp-accounting/admission-denials/*.json' -o -path '*/native-session-outbox/*.json' -o -path '*/ppp-admission/pending/*.json' \) -type f -print -exec cat {} \;
-    } >"$RUNNER_TEMP/antimage-l2tp-failure/ppp-socket-session-state.txt" 2>&1
-    chmod a+r "$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>/dev/null || true
-    {
-      echo '=== host XFRM states (key-bearing lines omitted) ==='
-      ip -s xfrm state | sed -E '/^[[:space:]]+(auth|auth-trunc|enc|aead|comp) /d' || true
-      echo '=== host XFRM policies ==='
+      echo "=== L2TP policy, active sessions, and event queue ==="
+      find "$1" \( -name session-helper.json -o -path "*/ppp-accounting/active/*.json" -o -path "*/ppp-accounting/admission-denials/*.json" -o -path "*/native-session-outbox/*.json" -o -path "*/ppp-admission/pending/*.json" \) -type f -print -exec cat {} \;
+    ' _ "$ROOT/l2tp-state" >"$RUNNER_TEMP/antimage-l2tp-failure/ppp-socket-session-state.txt" 2>&1 || true
+    timeout 15s chmod a+r "$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>/dev/null || true
+    timeout 15s sh -c '
+      echo "=== host XFRM states (key-bearing lines omitted) ==="
+      ip -s xfrm state | sed -E "/^[[:space:]]+(auth|auth-trunc|enc|aead|comp) /d" || true
+      echo "=== host XFRM policies ==="
       ip -s xfrm policy || true
-      echo '=== client XFRM states (key-bearing lines omitted) ==='
-      ip netns exec "$NS" ip -s xfrm state | sed -E '/^[[:space:]]+(auth|auth-trunc|enc|aead|comp) /d' || true
-      echo '=== client XFRM policies ==='
-      ip netns exec "$NS" ip -s xfrm policy || true
-    } >"$RUNNER_TEMP/antimage-l2tp-failure/xfrm-state.txt" 2>&1
-    chmod a+r "$RUNNER_TEMP/antimage-l2tp-failure/xfrm-state.txt" 2>/dev/null || true
+      echo "=== client XFRM states (key-bearing lines omitted) ==="
+      ip netns exec "$1" ip -s xfrm state | sed -E "/^[[:space:]]+(auth|auth-trunc|enc|aead|comp) /d" || true
+      echo "=== client XFRM policies ==="
+      ip netns exec "$1" ip -s xfrm policy || true
+    ' _ "$NS" >"$RUNNER_TEMP/antimage-l2tp-failure/xfrm-state.txt" 2>&1 || true
+    timeout 15s chmod a+r "$RUNNER_TEMP/antimage-l2tp-failure/xfrm-state.txt" 2>/dev/null || true
     echo "L2TP native evidence retained at $RUNNER_TEMP/antimage-l2tp-failure" >&2
   fi
   for pid in "${PIDS[@]}"; do stop_pid "$pid"; done
   if ip netns list | grep -q "^$NS[[:space:]]"; then
     if [ -n "$CLIENT_IPSEC_RUNDIR" ] && [ -s "$CLIENT_STRONGSWAN_CONF" ]; then
-      client_ipsec stop >/dev/null 2>&1 || true
+      export NS CLIENT_IPSEC_RUNDIR CLIENT_STRONGSWAN_CONF CLIENT_CHARON
+      export -f client_ipsec
+      timeout 15s bash -c 'client_ipsec stop' >/dev/null 2>&1 || true
     fi
   fi
   if ip netns list | grep -q "^$NS_B[[:space:]]"; then
     if [ -n "${CLIENT_IPSEC_RUNDIR_B:-}" ] && [ -s "${CLIENT_STRONGSWAN_CONF_B:-}" ]; then
-      client_ipsec_b stop >/dev/null 2>&1 || true
+      export NS_B CLIENT_IPSEC_RUNDIR_B CLIENT_STRONGSWAN_CONF_B CLIENT_CHARON
+      export -f client_ipsec_b
+      timeout 15s bash -c 'client_ipsec_b stop' >/dev/null 2>&1 || true
     fi
   fi
-  ipsec stop >/dev/null 2>&1 || true
+  timeout 30s ipsec stop >/dev/null 2>&1 || true
   if [ -n "${ANTIMAGE_L2TP_TEST_BINARY:-}" ] && [ -d "$ROOT/l2tp-state" ]; then
-    env ANTIMAGE_L2TP_NATIVE_STATE="$ROOT/l2tp-state" ANTIMAGE_L2TP_NATIVE_ACTION=cleanup \
-      "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPNativeAccountingStage$' -test.v >/dev/null 2>&1 || true
+    timeout 60s env ANTIMAGE_L2TP_NATIVE_STATE="$ROOT/l2tp-state" ANTIMAGE_L2TP_NATIVE_ACTION=cleanup \
+      "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPNativeAccountingStage$' -test.v -test.timeout=50s >/dev/null 2>&1 || true
   fi
-  ip link del "$VETH_HOST" 2>/dev/null || true
-  ip link del "$VETH_HOST_B" 2>/dev/null || true
-  ip netns del "$NS" 2>/dev/null || true
-  ip netns del "$NS_B" 2>/dev/null || true
+  timeout 10s ip link del "$VETH_HOST" 2>/dev/null || true
+  timeout 10s ip link del "$VETH_HOST_B" 2>/dev/null || true
+  timeout 10s ip netns del "$NS" 2>/dev/null || true
+  timeout 10s ip netns del "$NS_B" 2>/dev/null || true
   if [ "$rc" -eq 0 ]; then rm -rf "$ROOT"; fi
 }
 trap cleanup EXIT
