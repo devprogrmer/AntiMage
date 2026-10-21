@@ -90,7 +90,10 @@ jobs:
             ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
-            timeout --signal=TERM --kill-after=30s 12m bash scripts/ci/native-l2tp-driver.sh
+            timeout --signal=TERM --kill-after=30s 12m bash scripts/ci/native-l2tp-driver.sh \
+            >"$RUNNER_TEMP/native-l2tp.log" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/native-l2tp.log"
+          exit "${status:-0}"
 
       - name: Run real Xray protocol E2E
         if: ${{ matrix.protocol == 'xray' }}
