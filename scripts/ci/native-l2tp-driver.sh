@@ -5,12 +5,16 @@ set -euo pipefail
 : "${ANTIMAGE_L2TP_API_TEST_BINARY:?missing compiled API test binary}"
 : "${ANTIMAGE_NODE_HELPER_BINARY:?missing compiled node helper binary}"
 
-if [ "${ANTIMAGE_L2TP_PRIVATE_MOUNT:-0}" != 1 ]; then
-  export ANTIMAGE_L2TP_PRIVATE_MOUNT=1
-  # --kill-child=SIGKILL guarantees the mount-namespace worker dies with this
-  # process even if the inner shell is slow or stuck in cleanup, so a step
-  # timeout cannot leave an orphaned driver holding the runner step open.
-  exec unshare --mount --fork --kill-child=SIGKILL --propagation private bash "$0" "$@"
+if [ "${ANTIMAGE_L2TP_PRIVATE_NS:-0}" != 1 ]; then
+  export ANTIMAGE_L2TP_PRIVATE_NS=1
+  # Own a dedicated mount AND PID namespace. --kill-child alone only reaps the
+  # direct child of unshare, so the driver shell and the pppd/xl2tpd/charon
+  # daemons it spawns could survive cancellation as orphans and keep the CI
+  # step's process group and stdio pipes open (the step then never finishes).
+  # A PID namespace makes that impossible: when this namespace's init dies the
+  # kernel destroys every process inside it, so no orphan can outlive the step.
+  # This mirrors the ownership model already used by the native IKEv2 driver.
+  exec unshare --mount --pid --fork --mount-proc --kill-child=SIGKILL --propagation private bash "$0" "$@"
 fi
 
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-l2tp-XXXXXX") }"

@@ -91,12 +91,13 @@ jobs:
           # timeout and the cancellation path. This is the exact earlier
           # "step hangs until the job timeout" failure mode.
           sudo env RUNNER_TEMP="$RUNNER_TEMP" bash scripts/ci/test-bounded-session-cleanup.sh
-          # The driver re-execs through "unshare --mount --fork", so a plain
-          # "timeout" would only signal the unshare monitor and leave the real
-          # driver shell plus its pppd/xl2tpd/charon daemons alive as orphans,
-          # pinning this step's process group and pipe descriptors open until
-          # the 45-minute job timeout. Run it under the session owner so the
-          # entire process tree is signalled on completion, timeout or cancel.
+          # The driver re-execs into its own mount + PID namespace. A plain
+          # "timeout" would only signal the unshare monitor, so the driver
+          # shell and its pppd/xl2tpd/charon daemons could survive as orphans
+          # and pin this step's process group and stdio pipes open until the
+          # 45-minute job timeout. Run it under run-bounded-session so the
+          # kernel tears down the whole namespace on completion, timeout or
+          # cancellation, which is also asserted by the regression test above.
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \

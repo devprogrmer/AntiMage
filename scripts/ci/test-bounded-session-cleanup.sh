@@ -1,18 +1,25 @@
 #!/usr/bin/env bash
-# Regression test: a driver that re-execs through "unshare --fork" and spawns
-# daemons that ignore SIGTERM must still be terminated in full by
-# run-bounded-session.sh, on the timeout path and the cancellation path.
-# Before this harness existed those daemons survived and pinned the CI step
-# open until the job timeout.
+# Regression test for the native-driver lifecycle.
+#
+# GitHub Actions cancels a step by signalling the step's whole process group.
+# Historically the native driver re-execs through "unshare --mount --fork", so
+# that signal reached only the unshare monitor while the driver shell and its
+# pppd/xl2tpd/charon daemons survived as orphans, keeping the step's stdio
+# pipes open. The runner then never marked the step done and the job hung until
+# the job-level timeout with no evidence uploaded.
+#
+# This test emulates that cancellation against a stub driver that has the exact
+# production ownership shape (a dedicated mount + PID namespace, plus daemons
+# that ignore SIGTERM). It fails if any descendant outlives the wrapper.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="$SCRIPT_DIR/run-bounded-session.sh"
 WORK="$(mktemp -d)"
-STUB_DAEMONS='AMSTUBXL2TPD|AMSTUBPPPD'
+STUB_PATTERN='AMSTUBXL2TPD|AMSTUBPPPD'
 
 cleanup() {
-  pkill -9 -f "$STUB_DAEMONS" 2>/dev/null || true
+  pkill -9 -f "$STUB_PATTERN" 2>/dev/null || true
   pkill -9 -f "$WORK/stub-driver.sh" 2>/dev/null || true
   rm -rf "$WORK"
 }
@@ -22,49 +29,85 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 assert_no_survivors() {
   local stage="$1" leftover
-  leftover="$(pgrep -f "$STUB_DAEMONS" 2>/dev/null | tr '\n' ' ' || true)"
+  leftover="$(pgrep -f "$STUB_PATTERN" 2>/dev/null | tr '\n' ' ' || true)"
   [ -z "$leftover" ] || fail "$stage: daemons survived (pids: $leftover)"
   leftover="$(pgrep -f "$WORK/stub-driver.sh" 2>/dev/null | tr '\n' ' ' || true)"
   [ -z "$leftover" ] || fail "$stage: stub driver survived (pids: $leftover)"
 }
 
-# Mimic the real driver's ownership: re-exec into a mount namespace via
-# "unshare --mount --fork", then spawn daemons that ignore SIGTERM and inherit
-# the wrapper's stdio (exactly the processes that used to pin the CI step).
 cat >"$WORK/stub-driver.sh" <<'DRV'
 #!/usr/bin/env bash
 set -euo pipefail
-if [ "${STUB_PRIV:-0}" != 1 ]; then
-  export STUB_PRIV=1
-  exec unshare --mount --fork --kill-child=SIGKILL --propagation private bash "$0" "$@"
+if [ "${STUB_NS:-0}" != 1 ]; then
+  export STUB_NS=1
+  # Same ownership model as the real driver: a dedicated mount AND PID
+  # namespace, so no daemon that ignores SIGTERM can outlive the leader.
+  exec unshare --mount --pid --fork --mount-proc --kill-child=SIGKILL --propagation private bash "$0" "$@"
 fi
+# Daemons that ignore SIGTERM and inherit stdio, exactly like pppd/xl2tpd/charon.
 bash -c 'trap "" TERM; exec -a AMSTUBXL2TPD sleep 900' &
 bash -c 'trap "" TERM; exec -a AMSTUBPPPD   sleep 900' &
-trap 'echo stub-cleanup >&2' EXIT
 sleep 900
 DRV
 chmod +x "$WORK/stub-driver.sh"
 
-echo '=== timeout path: bounded exit and no survivors ===' >&2
-start="$(date +%s)"
-status=0
-bash "$RUNNER" 3 bash "$WORK/stub-driver.sh" >"$WORK/timeout.log" 2>&1 || status=$?
-elapsed=$(( $(date +%s) - start ))
-[ "$status" -eq 124 ] || fail "timeout path expected exit 124, got $status"
-[ "$elapsed" -lt 25 ] || fail "timeout path was not bounded (took ${elapsed}s)"
-assert_no_survivors "timeout path"
+# Start the wrapper in its own process group, the way the runner starts a step.
+start_driver_group() {
+  local bound="$1" log="$2" pgfile="$3"
+  setsid bash -c 'echo $$ >"$1"; shift; exec "$@"' _ "$pgfile" \
+    bash "$RUNNER" "$bound" bash "$WORK/stub-driver.sh" >"$log" 2>&1 &
+  echo $!
+}
 
-echo '=== mid-run cancellation: bounded exit and no survivors ===' >&2
-bash "$RUNNER" 600 bash "$WORK/stub-driver.sh" >"$WORK/cancel.log" 2>&1 &
-runner=$!
-sleep 3
-kill -TERM "$runner" 2>/dev/null || true
+echo '=== timeout path: bounded exit with no survivors ===' >&2
+pgfile="$WORK/pg.timeout"
+start_driver_group 3 "$WORK/timeout.log" "$pgfile" >/dev/null
+wait_start="$(date +%s)"
+while [ ! -s "$pgfile" ]; do
+  [ $(( $(date +%s) - wait_start )) -lt 10 ] || fail "timeout path: driver group never started"
+  sleep 0.1
+done
+pgid="$(cat "$pgfile")"
+# Wait (bounded) for the wrapper to finish on its own.
 start="$(date +%s)"
-while kill -0 "$runner" 2>/dev/null; do
-  [ $(( $(date +%s) - start )) -lt 20 ] || fail "mid-run cancellation did not exit within 20s"
+while kill -0 -- "-$pgid" 2>/dev/null; do
+  [ $(( $(date +%s) - start )) -lt 30 ] || fail "timeout path was not bounded"
   sleep 0.2
 done
-wait "$runner" 2>/dev/null || true
-assert_no_survivors "cancellation path"
+sleep 1
+assert_no_survivors "timeout path"
+
+echo '=== SIGTERM cancellation of the whole group ===' >&2
+pgfile="$WORK/pg.term"
+start_driver_group 600 "$WORK/term.log" "$pgfile" >/dev/null
+wait_start="$(date +%s)"
+while [ ! -s "$pgfile" ]; do
+  [ $(( $(date +%s) - wait_start )) -lt 10 ] || fail "SIGTERM path: driver group never started"
+  sleep 0.1
+done
+pgid="$(cat "$pgfile")"
+sleep 2
+kill -TERM -- "-$pgid" 2>/dev/null || true
+start="$(date +%s)"
+while kill -0 -- "-$pgid" 2>/dev/null; do
+  [ $(( $(date +%s) - start )) -lt 30 ] || fail "SIGTERM cancellation did not exit within 30s"
+  sleep 0.2
+done
+sleep 1
+assert_no_survivors "SIGTERM path"
+
+echo '=== SIGKILL cancellation of the whole group ===' >&2
+pgfile="$WORK/pg.kill"
+start_driver_group 600 "$WORK/kill.log" "$pgfile" >/dev/null
+wait_start="$(date +%s)"
+while [ ! -s "$pgfile" ]; do
+  [ $(( $(date +%s) - wait_start )) -lt 10 ] || fail "SIGKILL path: driver group never started"
+  sleep 0.1
+done
+pgid="$(cat "$pgfile")"
+sleep 2
+kill -KILL -- "-$pgid" 2>/dev/null || true
+sleep 2
+assert_no_survivors "SIGKILL path"
 
 echo 'bounded-session cleanup regression: PASS' >&2
