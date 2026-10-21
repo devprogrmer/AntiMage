@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -186,6 +185,10 @@ func startNativeIKEv2EAPClient(t *testing.T, ns, user, password, p12 string) *na
 	cmd := exec.Command("ip", "netns", "exec", ns, "sh", "-c", fmt.Sprintf("printf '%%s\\n' %q | exec charon-cmd --host 10.80.0.1 --identity client --eap-identity %s --remote-identity server --p12 %s --profile ikev2-pub-eap --remote-ts 10.81.0.1/32 --ike-proposal aes256-sha256-modp2048 --esp-proposal aes256-sha256", password, user, p12))
 	cmd.Env = append(os.Environ(), "STRONGSWAN_CONF="+clientConfig)
 	cmd.Stdout, cmd.Stderr = log, log
+	// Run the client in its own process group. The command is "ip netns exec"
+	// which forks the real charon-cmd as a descendant, so signalling only the
+	// direct child would orphan a live IKE client that keeps answering DPD.
+	configureNativeIKEv2ClientProcess(cmd)
 	if err := cmd.Start(); err != nil {
 		_ = log.Close()
 		t.Fatal(err)
@@ -210,13 +213,13 @@ func (c *nativeIKEv2Client) stop() {
 		return
 	default:
 	}
-	_ = c.cmd.Process.Signal(syscall.SIGTERM)
+	signalNativeIKEv2Client(c.cmd, false)
 	select {
 	case <-c.exited:
 		return
 	case <-time.After(5 * time.Second):
 	}
-	_ = c.cmd.Process.Kill()
+	signalNativeIKEv2Client(c.cmd, true)
 	<-c.exited
 }
 
