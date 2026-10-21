@@ -7,6 +7,36 @@ set -euo pipefail
 
 if [ "${ANTIMAGE_L2TP_PRIVATE_NS:-0}" != 1 ]; then
   export ANTIMAGE_L2TP_PRIVATE_NS=1
+  # Hosted runner images auto-start strongSwan and xl2tpd when the packages
+  # are installed (strongswan-starter.service and xl2tpd are enabled by
+  # default). Those host daemons must be stopped here, in the host PID
+  # namespace, before we re-exec: once we own a PID namespace they are no
+  # longer visible or signalable, and "ipsec rereadsecrets"/"ipsec reload"
+  # would then talk to the host-owned /run/charon.ctl instead of a daemon we
+  # own. That produced "reload ipsec: exit status 7". A pre-started host
+  # xl2tpd would likewise hold UDP/1701 so the test's own LNS could not bind.
+  stop_prestarted_host_daemons() {
+    systemctl stop strongswan-starter.service >/dev/null 2>&1 || true
+    systemctl stop strongswan.service >/dev/null 2>&1 || true
+    timeout 30s ipsec stop >/dev/null 2>&1 || true
+    pkill -x charon >/dev/null 2>&1 || true
+    pkill -x starter >/dev/null 2>&1 || true
+    systemctl stop xl2tpd.service >/dev/null 2>&1 || true
+    systemctl stop xl2tpd >/dev/null 2>&1 || true
+    pkill -x xl2tpd >/dev/null 2>&1 || true
+    for _ in $(seq 1 50); do
+      if ! pgrep -x charon >/dev/null 2>&1 && ! pgrep -x xl2tpd >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.1
+    done
+    # Drop the stopped daemon's runtime control files so the inner
+    # "ipsec rereadsecrets" cannot reach a dead host-owned socket and take the
+    # reload path, and so the inner charon starts with a clean slate.
+    rm -f /run/charon.ctl /run/charon.pid /run/charon.vici /run/charon.enfy \
+      /run/charon.lkp /run/ipsec.starter.pid /run/starter.charon.pid 2>/dev/null || true
+  }
+  stop_prestarted_host_daemons
   # Own a dedicated mount AND PID namespace. --kill-child alone only reaps the
   # direct child of unshare, so the driver shell and the pppd/xl2tpd/charon
   # daemons it spawns could survive cancellation as orphans and keep the CI
@@ -20,6 +50,23 @@ fi
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-l2tp-XXXXXX") }"
 ROOT="${ROOT% }"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# We now own a PID namespace. Assert the host's auto-started daemons really are
+# out of reach, otherwise "ipsec reload" would silently drive a daemon we do
+# not own. This is the guard for the exact "reload ipsec: exit status 7"
+# regression that appeared once the driver started owning a PID namespace.
+# Match the strongSwan binaries by full path so an unrelated process such as
+# systemd's "chronyd-starter.sh" can never satisfy the check.
+assert_no_host_daemons() {
+  local pattern
+  for pattern in '^/usr/lib/ipsec/charon' '^/usr/lib/ipsec/starter' '^/usr/sbin/xl2tpd'; do
+    if pgrep -f "$pattern" >/dev/null 2>&1; then
+      echo "L2TP native driver: host daemon matching $pattern is still visible inside the private PID namespace" >&2
+      pgrep -a -f "$pattern" >&2 || true
+      exit 1
+    fi
+  done
+}
+assert_no_host_daemons
 python3 "$SCRIPT_DIR/test_native_l2tp_session_state.py"
 NS="antimage-l2tp-client"
 NS_B="antimage-l2tp-client-b"
