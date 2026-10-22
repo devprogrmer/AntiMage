@@ -2,7 +2,7 @@ name: Native Protocol E2E
 
 on:
   push:
-    branches: [codex/production-runtime-hardening]
+    branches: [codex/production-runtime-hardening, l2tp-known-good-recovery]
   pull_request:
     branches: ['**']
     paths:
