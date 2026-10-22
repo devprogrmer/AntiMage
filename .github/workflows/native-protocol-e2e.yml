@@ -98,17 +98,17 @@ jobs:
           # 45-minute job timeout. Run it under run-bounded-session so the
           # kernel tears down the whole namespace on completion, timeout or
           # cancellation, which is also asserted by the regression test above.
-          # 10 minutes is roughly triple the driver time of the last green
-          # native-l2tp run (~3-4 min), which leaves room for the graded quota
-          # stage without ever letting a wedged driver approach the job timeout.
-          # The bound is wall-clock, not loop iterations, so a loaded runner
-          # cannot stretch it.
+          # 15 minutes is well above the last green native-l2tp driver time
+          # (~3-4 min) so a loaded runner or the graded quota stage cannot trip
+          # a false timeout, while still leaving the 45-minute job timeout far
+          # out of reach. The bound is enforced in wall-clock seconds, not loop
+          # iterations, so load cannot stretch it.
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
-            bash scripts/ci/run-bounded-session.sh 600 bash scripts/ci/native-l2tp-driver.sh \
+            bash scripts/ci/run-bounded-session.sh 900 bash scripts/ci/native-l2tp-driver.sh \
             >"$RUNNER_TEMP/native-l2tp.log" 2>&1 || status=$?
           cat "$RUNNER_TEMP/native-l2tp.log"
           # The driver owns a private PID namespace, so when the wrapper stops
@@ -119,23 +119,30 @@ jobs:
           # copying those into the upload tree used to wedge the capture and
           # upload steps until the 45-minute job timeout.
           evidence_root="$RUNNER_TEMP/antimage-l2tp-failure"
-          mkdir -p "$evidence_root"
-          for root in "$RUNNER_TEMP"/antimage-l2tp-??????; do
-            [ -d "$root" ] || continue
-            case "$root" in "$evidence_root"|"$evidence_root"/*) continue ;; esac
-            for state in "$root"/l2tp-state; do
-              [ -d "$state" ] || continue
-              timeout 60s cp -a "$state" "$evidence_root/" 2>/dev/null || true
+          # The driver ran under sudo, so its tree is root-owned: stage with
+          # sudo, then hand the tree back to the runner user for the upload.
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" RUNNER_UID="$(id -u)" RUNNER_GID="$(id -g)" bash -c '
+            set -uo pipefail
+            evidence_root="$RUNNER_TEMP/antimage-l2tp-failure"
+            mkdir -p "$evidence_root"
+            for root in "$RUNNER_TEMP"/antimage-l2tp-??????; do
+              [ -d "$root" ] || continue
+              case "$root" in "$evidence_root"|"$evidence_root"/*) continue ;; esac
+              state="$root/l2tp-state"
+              if [ -d "$state" ]; then
+                timeout 90s cp -a "$state" "$evidence_root/" 2>/dev/null || true
+              fi
+              for item in "$root"/*.log "$root"/*.json "$root"/*.txt "$root"/*.pid \
+                "$root"/*.conf "$root"/*.options "$root"/*.ctrl; do
+                [ -f "$item" ] || continue
+                timeout 10s cp -a "$item" "$evidence_root/" 2>/dev/null || true
+              done
             done
-            for item in "$root"/*.log "$root"/*.json "$root"/*.txt "$root"/*.pid \
-              "$root"/*.conf "$root"/*.options "$root"/*.ctrl; do
-              [ -f "$item" ] || continue
-              timeout 10s cp -a "$item" "$evidence_root/" 2>/dev/null || true
-            done
-          done
-          # A pipe or socket with no writer blocks the artifact upload forever.
-          find "$evidence_root" -xdev \( -type p -o -type s \) -delete 2>/dev/null || true
-          timeout 60s chmod -R a+rX "$evidence_root" 2>/dev/null || true
+            # A pipe or socket with no writer blocks the artifact upload forever.
+            find "$evidence_root" -xdev \( -type p -o -type s \) -delete 2>/dev/null || true
+            timeout 60s chown -R "$RUNNER_UID:$RUNNER_GID" "$evidence_root" 2>/dev/null || true
+            timeout 60s chmod -R u+rwX,a+rX "$evidence_root" 2>/dev/null || true
+          '
           echo "staged L2TP evidence in $evidence_root"
           du -sh "$evidence_root" 2>/dev/null || true
           exit "${status:-0}"
