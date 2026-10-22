@@ -16,13 +16,15 @@ if [ "${ANTIMAGE_L2TP_PRIVATE_NS:-0}" != 1 ]; then
   # own. That produced "reload ipsec: exit status 7". A pre-started host
   # xl2tpd would likewise hold UDP/1701 so the test's own LNS could not bind.
   stop_prestarted_host_daemons() {
-    systemctl stop strongswan-starter.service >/dev/null 2>&1 || true
-    systemctl stop strongswan.service >/dev/null 2>&1 || true
+    # Every external stop is bounded: a wedged dbus/systemd on the runner must
+    # not stall the driver before it even enters its private namespace.
+    timeout 20s systemctl stop strongswan-starter.service >/dev/null 2>&1 || true
+    timeout 20s systemctl stop strongswan.service >/dev/null 2>&1 || true
     timeout 30s ipsec stop >/dev/null 2>&1 || true
     pkill -x charon >/dev/null 2>&1 || true
     pkill -x starter >/dev/null 2>&1 || true
-    systemctl stop xl2tpd.service >/dev/null 2>&1 || true
-    systemctl stop xl2tpd >/dev/null 2>&1 || true
+    timeout 20s systemctl stop xl2tpd.service >/dev/null 2>&1 || true
+    timeout 20s systemctl stop xl2tpd >/dev/null 2>&1 || true
     pkill -x xl2tpd >/dev/null 2>&1 || true
     for _ in $(seq 1 50); do
       if ! pgrep -x charon >/dev/null 2>&1 && ! pgrep -x xl2tpd >/dev/null 2>&1; then
@@ -105,14 +107,28 @@ cleanup() {
   local rc=$?
   set +e
   if [ "$rc" -ne 0 ]; then
+    # Stage a bounded evidence snapshot that contains only regular files.
+    #
+    # Deliberately NOT "cp -a $ROOT/.": $ROOT holds a full copy of the host
+    # /etc plus the xl2tpd control FIFOs and the client ipsec run directories.
+    # Copying that made the cleanup slow enough to run into the wrapper's bound,
+    # and the partially copied tree left the later "Capture runner networking
+    # state" step burning its whole 3-minute timeout on chown/chmod and then
+    # hung the artifact upload until the 45-minute job timeout. Copy only the
+    # state, logs and config we actually need, then strip any special file that
+    # slipped in so the upload can never block reading a pipe with no writer.
     mkdir -p "$RUNNER_TEMP/antimage-l2tp-failure"
-    # xl2tpd control files are FIFOs. Copying them into the evidence tree makes
-    # the later artifact upload block reading a pipe that has no writer, which
-    # hangs the step. Drop every special file before snapshotting state.
-    find "$ROOT" -xdev \( -type p -o -type s \) -delete 2>/dev/null || true
-    timeout 45s cp -a "$ROOT/." "$RUNNER_TEMP/antimage-l2tp-failure/" 2>/dev/null || true
-    find "$RUNNER_TEMP/antimage-l2tp-failure" -xdev \( -type p -o -type s \) -delete 2>/dev/null || true
-    timeout 45s chmod -R a+rX "$RUNNER_TEMP/antimage-l2tp-failure" 2>/dev/null || true
+    evidence_dir="$RUNNER_TEMP/antimage-l2tp-failure"
+    if [ -d "$ROOT/l2tp-state" ]; then
+      timeout 30s cp -a "$ROOT/l2tp-state" "$evidence_dir/" 2>/dev/null || true
+    fi
+    for item in "$ROOT"/*.log "$ROOT"/*.conf "$ROOT"/*.options \
+      "$ROOT"/*.pid "$ROOT"/*.json "$ROOT"/*.txt "$ROOT"/*.ctrl "$ROOT"/active-before-*.json; do
+      [ -f "$item" ] || continue
+      timeout 10s cp -a "$item" "$evidence_dir/" 2>/dev/null || true
+    done
+    find "$evidence_dir" -xdev \( -type p -o -type s \) -delete 2>/dev/null || true
+    timeout 20s chmod -R a+rX "$evidence_dir" 2>/dev/null || true
     if [ -s "$ROOT/quota-watch.log" ]; then
       echo '=== captured L2TP quota worker output ===' >&2
       cat "$ROOT/quota-watch.log" >&2
@@ -182,9 +198,13 @@ mkdir -p "$ROOT/etc/ppp/ip-pre-up.d" "$ROOT/etc/xl2tpd" "$ROOT/etc/run"
 # The package may auto-start a host strongSwan daemon before the test mount is
 # installed. Stop it so the production ipsec start command loads this test's
 # generated L2TP connection from the isolated /etc/ipsec.conf.
-systemctl stop strongswan-starter.service >/dev/null 2>&1 || true
-systemctl stop strongswan.service >/dev/null 2>&1 || true
-ipsec stop >/dev/null 2>&1 || true
+# The outer-namespace run already stopped the host's auto-started daemons
+# before re-exec; repeat it defensively with bounds so a wedged unit cannot
+# stall the driver, and rely on the assert_no_host_daemons guard below to
+# prove the host daemons really are unreachable.
+timeout 20s systemctl stop strongswan-starter.service >/dev/null 2>&1 || true
+timeout 20s systemctl stop strongswan.service >/dev/null 2>&1 || true
+timeout 30s ipsec stop >/dev/null 2>&1 || true
 # strongSwan's bypass-lan plugin otherwise installs higher-priority cleartext
 # policies for the directly connected test subnet, shadowing UDP/1701 ESP.
 SERVER_STRONGSWAN_CONF="$ROOT/etc/strongswan.conf"
