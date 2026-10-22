@@ -68,12 +68,18 @@ while [ ! -s "$pgfile" ]; do
   sleep 0.1
 done
 pgid="$(cat "$pgfile")"
-# Wait (bounded) for the wrapper to finish on its own.
+# The bound must be wall-clock, not "sleep 0.2" iterations: under CI load an
+# iteration-counted bound stretched a 900s limit into 35+ minutes and reached
+# the job timeout instead of failing fast. Assert the wrapper honours a 3s
+# bound within a small margin even while the stub driver ignores SIGTERM.
 start="$(date +%s)"
 while kill -0 -- "-$pgid" 2>/dev/null; do
-  [ $(( $(date +%s) - start )) -lt 30 ] || fail "timeout path was not bounded"
+  [ $(( $(date +%s) - start )) -lt 25 ] || fail "timeout path was not bounded in wall-clock time"
   sleep 0.2
 done
+elapsed=$(( $(date +%s) - start ))
+[ "$elapsed" -le 22 ] || fail "timeout path took ${elapsed}s for a 3s bound"
+echo "timed-out after ${elapsed}s for a 3s bound (wall-clock)" >&2
 sleep 1
 assert_no_survivors "timeout path"
 

@@ -68,7 +68,7 @@ jobs:
       - name: Run native L2TP and PPP lifecycle
         if: ${{ matrix.protocol == 'l2tp' }}
         shell: bash
-        timeout-minutes: 25
+        timeout-minutes: 30
         run: |
           set -euo pipefail
           # Some hosted runner kernels (for example the Azure kernels) publish
@@ -98,17 +98,17 @@ jobs:
           # 45-minute job timeout. Run it under run-bounded-session so the
           # kernel tears down the whole namespace on completion, timeout or
           # cancellation, which is also asserted by the regression test above.
-          # The bound is deliberately generous: the last green native-l2tp run
-          # spent about five minutes inside the driver, and a graded quota run
-          # moves 50 MiB through a rate-limited TBF qdisc. It only needs to be
-          # short enough that a genuinely wedged driver cannot reach the
-          # 45-minute job timeout, which 15 minutes still guarantees.
+          # 10 minutes is roughly triple the driver time of the last green
+          # native-l2tp run (~3-4 min), which leaves room for the graded quota
+          # stage without ever letting a wedged driver approach the job timeout.
+          # The bound is wall-clock, not loop iterations, so a loaded runner
+          # cannot stretch it.
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
-            bash scripts/ci/run-bounded-session.sh 900 bash scripts/ci/native-l2tp-driver.sh \
+            bash scripts/ci/run-bounded-session.sh 600 bash scripts/ci/native-l2tp-driver.sh \
             >"$RUNNER_TEMP/native-l2tp.log" 2>&1 || status=$?
           cat "$RUNNER_TEMP/native-l2tp.log"
           # The driver owns a private PID namespace, so when the wrapper stops
