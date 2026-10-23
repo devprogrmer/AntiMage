@@ -405,7 +405,12 @@ WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.servi
 	}
 	defer rows.Close()
 
-	result := make([]runtimeUserRow, 0, 256)
+	// The query returns one row per (user, proxy protocol), so panels with
+	// thousands of users build a slice with thousands of entries. Seed the
+	// slice large enough to avoid the repeated grow-and-copy churn that the
+	// profile shows dominating this hot path; small panels pay only the
+	// modest reservation cost.
+	result := make([]runtimeUserRow, 0, 1024)
 	// Many rows repeat the same proxy settings JSON (for example the default
 	// "{}" for users without per-proxy overrides). Decode each distinct payload
 	// once and share the read-only map across rows instead of re-parsing it per
