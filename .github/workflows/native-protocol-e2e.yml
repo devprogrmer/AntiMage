@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        protocol: ${{ github.event_name == 'push' && fromJSON('["openvpn","wireguard","amneziawg","l2tp","pptp","ikev2"]') || fromJSON('["xray","wireguard","amneziawg","openvpn","l2tp","pptp","anyconnect","ikev2"]') }}
+        protocol: ${{ github.event_name == 'push' && fromJSON('["openvpn","wireguard","amneziawg","l2tp","pptp","anyconnect","ikev2"]') || fromJSON('["xray","wireguard","amneziawg","openvpn","l2tp","pptp","anyconnect","ikev2"]') }}
     env:
       CGO_ENABLED: '1'
     steps:
@@ -202,6 +202,7 @@ jobs:
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_ANYCONNECT_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_ANYCONNECT_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_ANYCONNECT_CONTROLLER_TEST_BINARY="$nodecontroller_test" \
             bash scripts/ci/native-anyconnect-driver.sh
 
       - name: Prepare IKEv2 race toolchain
