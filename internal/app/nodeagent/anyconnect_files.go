@@ -1,6 +1,7 @@
 package nodeagent
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,6 +22,50 @@ type anyConnectUsageRuntimeConfig struct {
 	InboundTag string           `json:"inbound_tag"`
 	SocketPath string           `json:"socket_path"`
 	Users      map[string]int64 `json:"users"`
+}
+
+// ocserv creates AF_UNIX sockets. The kernel caps sun_path at 108 bytes
+// including the terminating NUL, and ocserv appends a per-worker suffix to
+// "socket-file", so sockets cannot live under a deep data directory without
+// making the daemon exit immediately. Keep sockets in a short, bounded
+// directory derived from the data dir so runtime state stays isolated.
+var (
+	anyConnectSocketRootOnce sync.Once
+	anyConnectSocketRootPath string
+)
+
+func anyConnectSocketRoot() string {
+	anyConnectSocketRootOnce.Do(func() {
+		for _, candidate := range []string{
+			"/run/antimage-anyconnect",
+			filepath.Join(os.TempDir(), "antimage-anyconnect"),
+		} {
+			if err := os.MkdirAll(candidate, 0700); err != nil {
+				continue
+			}
+			probe, err := os.MkdirTemp(candidate, ".write-probe-")
+			if err != nil {
+				continue
+			}
+			_ = os.Remove(probe)
+			anyConnectSocketRootPath = candidate
+			return
+		}
+		anyConnectSocketRootPath = filepath.Join(os.TempDir(), "antimage-anyconnect")
+	})
+	return anyConnectSocketRootPath
+}
+
+func anyConnectRuntimeSocketDir(dataDir, tag string) string {
+	sum := sha256.Sum256([]byte(filepath.Clean(dataDir)))
+	return filepath.Join(anyConnectSocketRoot(), fmt.Sprintf("%x", sum[:6]), openVPNRuntimeDirName(tag))
+}
+
+// AnyConnectControlSocketPath returns the short, bounded occtl socket path the
+// NodeAgent uses for an AnyConnect runtime tag. Controller-side native tooling
+// uses it to reach the live daemon without duplicating the socket-dir layout.
+func AnyConnectControlSocketPath(dataDir, tag string) string {
+	return filepath.Join(anyConnectRuntimeSocketDir(dataDir, tag), "ocserv.sock")
 }
 
 func (s *Server) prepareAnyConnectInbound(inbound anyConnectRuntimeInbound, callback nativeRuntimeSessionCallback) (preparedAnyConnectRuntime, error) {
@@ -37,6 +83,10 @@ func (s *Server) prepareAnyConnectInbound(inbound anyConnectRuntimeInbound, call
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return preparedAnyConnectRuntime{}, err
 	}
+	socketDir := anyConnectRuntimeSocketDir(s.cfg.DataDir, tag)
+	if err := os.MkdirAll(socketDir, 0700); err != nil {
+		return preparedAnyConnectRuntime{}, err
+	}
 	stageRoot, err := os.MkdirTemp(root, ".users-stage-")
 	if err != nil {
 		return preparedAnyConnectRuntime{}, err
@@ -46,7 +96,7 @@ func (s *Server) prepareAnyConnectInbound(inbound anyConnectRuntimeInbound, call
 		ConfigPath: filepath.Join(root, "ocserv.conf"), PasswordFile: filepath.Join(root, "ocpasswd"),
 		ServerCert: filepath.Join(root, "server.crt"), ServerKey: filepath.Join(root, "server.key"),
 		CACert: filepath.Join(root, "ca.crt"), UserConfigDir: usersDir,
-		ControlSocket: filepath.Join(root, "ocserv.sock"), WorkerSocket: filepath.Join(root, "ocserv-worker.sock"),
+		ControlSocket: filepath.Join(socketDir, "ocserv.sock"), WorkerSocket: filepath.Join(socketDir, "ocserv-worker.sock"),
 		PIDFile:     filepath.Join(root, "ocserv.pid"),
 		UsageConfig: filepath.Join(root, "usage-helper.json"),
 	}

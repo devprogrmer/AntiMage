@@ -180,3 +180,37 @@ func TestPublishAnyConnectUserStateRollsBackPartialRename(t *testing.T) {
 		t.Fatalf("CCD rollback = %q, err=%v", ccd, err)
 	}
 }
+
+// ocserv creates AF_UNIX sockets and appends a per-worker suffix to
+// "socket-file". The kernel caps sun_path at 108 bytes, so a deep data
+// directory makes the daemon exit immediately with status 0. AnyConnect
+// runtime sockets must therefore live under a short, bounded directory.
+func TestAnyConnectRuntimeSocketsStayWithinAFUnixPathLimit(t *testing.T) {
+	deep := filepath.Join(t.TempDir(), strings.Repeat("very-long-data-directory-segment/", 6))
+	server := New(Config{DataDir: deep})
+	oldCommand := anyConnectCommand
+	anyConnectCommand = func(_ string, args ...string) *exec.Cmd {
+		cmd := exec.Command(os.Args[0], append([]string{"-test.run=TestAnyConnectOcpasswdHelper", "--"}, args...)...)
+		cmd.Env = append(os.Environ(), "GO_WANT_ANYCONNECT_OCPASSWD_HELPER=1")
+		return cmd
+	}
+	t.Cleanup(func() { anyConnectCommand = oldCommand })
+	prepared, err := server.prepareAnyConnectInbound(anyConnectRuntimeInbound{Tag: "ac-socket-limit", Port: 443, Settings: map[string]any{"ipv4_pool_cidr": "10.71.0.0/24", "server_certificate": "CERT", "server_key": "PRIVATE"}, Users: []anyConnectRuntimeUser{{UserID: 1, Username: "alice", Password: "secret", Status: "active"}}}, nativeRuntimeSessionCallback{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ocserv adds a per-worker suffix (a dot plus eight hex digits plus a
+	// generation digit) to the worker socket path.
+	if len(prepared.Files.WorkerSocket)+len(".ffffffff.N") > 107 {
+		t.Fatalf("worker socket path %q leaves no room for ocserv's per-worker suffix", prepared.Files.WorkerSocket)
+	}
+	if len(prepared.Files.ControlSocket) > 107 {
+		t.Fatalf("control socket path %q exceeds the AF_UNIX limit", prepared.Files.ControlSocket)
+	}
+	if prepared.Files.ControlSocket != AnyConnectControlSocketPath(deep, "ac-socket-limit") {
+		t.Fatalf("control socket %q does not match the exported helper", prepared.Files.ControlSocket)
+	}
+	if dir := filepath.Dir(prepared.Files.ControlSocket); strings.HasPrefix(prepared.Files.ConfigPath, dir) {
+		t.Fatalf("runtime sockets must not live under the deep data directory: %q", dir)
+	}
+}

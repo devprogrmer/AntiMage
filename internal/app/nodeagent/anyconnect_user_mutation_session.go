@@ -29,7 +29,7 @@ func (s *Server) disconnectAnyConnectUser(tag, username string) error {
 	if err != nil {
 		return fmt.Errorf("occtl executable not installed: %w", err)
 	}
-	socket := filepath.Join(s.cfg.DataDir, "anyconnect", openVPNRuntimeDirName(tag), "ocserv.sock")
+	socket := filepath.Join(anyConnectRuntimeSocketDir(s.cfg.DataDir, tag), "ocserv.sock")
 	ctx, cancel := context.WithTimeout(context.Background(), anyConnectOcctlTimeout)
 	defer cancel()
 	cmd := anyConnectOcctlCommandContext(ctx, path, "-s", socket, "disconnect", "user", username)

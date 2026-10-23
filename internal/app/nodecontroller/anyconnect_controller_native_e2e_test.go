@@ -117,9 +117,9 @@ func TestControllerAnyConnectTargetedMutationNativeE2E(t *testing.T) {
 		initialRequest.Fence = fence
 		return client.Runtime().SyncConfig(worker, initialRequest)
 	}, nil); err != nil {
-		t.Fatalf("Controller initial native AnyConnect sync: %v", err)
+		t.Fatalf("Controller initial native AnyConnect sync: %v; NodeAgent logs:\n%s", err, anyConnectNativeControllerLogs(t, ctx, client))
 	}
-	controlSocket := filepath.Join(dataDir, "anyconnect", openVPNNativeDirName("ac-in"), "ocserv.sock")
+	controlSocket := nodeagent.AnyConnectControlSocketPath(dataDir, "ac-in")
 	if err := waitOpenVPNNativeController(func() bool { return anyConnectNativeControllerSocketReady(controlSocket) }); err != nil {
 		t.Fatalf("wait for ocserv control socket: %v", err)
 	}
@@ -491,6 +491,31 @@ func anyConnectNativeControllerReceipt(dataDir string, revision int64, operation
 	receiptPath := filepath.Join(dataDir, "anyconnect", "mutation-results", fmt.Sprintf("%x.json", receiptHash[:]))
 	receipt, _ := os.ReadFile(receiptPath)
 	return string(receipt)
+}
+
+// anyConnectNativeControllerLogs streams the NodeAgent's bounded runtime log
+// buffer so an ocserv startup failure surfaces its stderr instead of just the
+// gRPC status.
+func anyConnectNativeControllerLogs(t *testing.T, ctx context.Context, client *nodeclient.Client) string {
+	t.Helper()
+	streamCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	stream, err := client.Logs().StreamLogs(streamCtx, &nodev1.StreamLogsRequest{StreamId: "anyconnect-native", MaxLines: 200})
+	if err != nil {
+		return fmt.Sprintf("<log stream unavailable: %v>", err)
+	}
+	var lines []string
+	for {
+		line, err := stream.Recv()
+		if err != nil {
+			break
+		}
+		lines = append(lines, line.GetLine())
+	}
+	if len(lines) == 0 {
+		return "<no NodeAgent log lines captured>"
+	}
+	return strings.Join(lines, "\n")
 }
 
 func anyConnectNativeControllerPID(dataDir, tag string) (int, error) {
