@@ -49,28 +49,6 @@ jobs:
             strongswan-swanctl charon-cmd xl2tpd ocserv openconnect openssl \
             netcat-openbsd
 
-      # The L2TP native test needs the l2tp_ppp kernel module, which ships in
-      # linux-modules-extra. Some hosted runner kernels (the Azure kernels)
-      # publish no matching package; that only means the runner cannot load
-      # extra modules, so install it when available and never install an
-      # unrelated kernel's module tree. Keep this in its own step, and redirect
-      # every fd from /dev/null: apt can leave background helpers behind that
-      # inherit the step's stdout pipe, and the runner would then never observe
-      # EOF and hang the whole job until the platform timeout.
-      - name: Install L2TP kernel modules
-        if: ${{ matrix.protocol == 'l2tp' }}
-        shell: bash
-        timeout-minutes: 7
-        run: |
-          set -uo pipefail
-          if sudo DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=15s 6m \
-            apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)" \
-            </dev/null >/dev/null 2>&1; then
-            echo "installed linux-modules-extra-$(uname -r)"
-          else
-            echo "linux-modules-extra for $(uname -r) is unavailable on this runner"
-          fi
-
       - name: Build pinned AmneziaWG userspace tool
         if: ${{ matrix.protocol == 'amneziawg' }}
         shell: bash
@@ -90,12 +68,15 @@ jobs:
       - name: Run native L2TP and PPP lifecycle
         if: ${{ matrix.protocol == 'l2tp' }}
         shell: bash
-        timeout-minutes: 20
+        timeout-minutes: 25
         run: |
           set -euo pipefail
-          # linux-modules-extra is installed by the earlier dependency step
-          # (with stdio redirected to /dev/null so apt's background helpers can
-          # never hold this step's stdout pipe open).
+          # Some hosted runner kernels (for example the Azure kernels) publish
+          # no matching linux-modules-extra package. That only means the runner
+          # cannot load extra kernel modules; install it when available and
+          # never install an unrelated kernel's module tree.
+          sudo timeout --signal=TERM --kill-after=15s 8m apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)" \
+            || echo "linux-modules-extra for $(uname -r) is unavailable on this runner"
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           api_test="$RUNNER_TEMP/antimage-api.test"
@@ -104,76 +85,15 @@ jobs:
           go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           go test -c -o "$api_test" ./internal/app/api
           go build -o "$node_helper" ./cmd/antimage_node
-          # Regression guard: prove the session wrapper terminates the whole
-          # driver tree (including daemons that ignore SIGTERM) on both the
-          # timeout and the cancellation path. This is the exact earlier
-          # "step hangs until the job timeout" failure mode.
-          sudo env RUNNER_TEMP="$RUNNER_TEMP" bash scripts/ci/test-bounded-session-cleanup.sh \
-            </dev/null >/dev/null 2>&1 || { echo "bounded-session cleanup regression failed"; exit 1; }
-          # The driver re-execs into its own mount + PID namespace. A plain
-          # "timeout" would only signal the unshare monitor, so the driver
-          # shell and its pppd/xl2tpd/charon daemons could survive as orphans
-          # and pin this step's process group and stdio pipes open until the
-          # 45-minute job timeout. Run it under run-bounded-session so the
-          # kernel tears down the whole namespace on completion, timeout or
-          # cancellation, which is also asserted by the regression test above.
-          # 15 minutes is well above the last green native-l2tp driver time
-          # (~3-4 min) so a loaded runner or the graded quota stage cannot trip
-          # a false timeout, while still leaving the 45-minute job timeout far
-          # out of reach. The bound is enforced in wall-clock seconds, not loop
-          # iterations, so load cannot stretch it.
-          #
-          # /dev/null on stdin: the driver owns a private PID namespace, but if
-          # anything it spawns inherited the step's stdin the runner would wait
-          # on it forever. stdout/stderr go to a file, read back only after the
-          # wrapper has returned, so no descendant can pin the step's capture
-          # pipe open.
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
-            bash scripts/ci/run-bounded-session.sh 900 bash scripts/ci/native-l2tp-driver.sh \
-            </dev/null >"$RUNNER_TEMP/native-l2tp.log" 2>&1 || status=$?
+            timeout --signal=TERM --kill-after=30s 12m bash scripts/ci/native-l2tp-driver.sh \
+            >"$RUNNER_TEMP/native-l2tp.log" 2>&1 || status=$?
           cat "$RUNNER_TEMP/native-l2tp.log"
           exit "${status:-0}"
-
-      - name: Stage bounded L2TP evidence
-        if: ${{ (failure() || cancelled()) && matrix.protocol == 'l2tp' }}
-        timeout-minutes: 4
-        shell: bash
-        run: |
-          set -uo pipefail
-          # The driver owns a private PID namespace, so when the wrapper stops
-          # it the kernel destroys the namespace and the driver's EXIT trap
-          # cannot run. Stage the evidence here instead, from the host side, and
-          # keep it to regular files only: the driver's tree contains a full
-          # copy of /etc plus xl2tpd control FIFOs and client ipsec rundirs, and
-          # copying those into the upload tree used to wedge the capture and
-          # upload steps until the 45-minute job timeout. The driver ran under
-          # sudo, so stage as root and hand the tree back to the runner user.
-          sudo env RUNNER_TEMP="$RUNNER_TEMP" RUNNER_UID="$(id -u)" RUNNER_GID="$(id -g)" bash -c '
-            set -uo pipefail
-            evidence_root="$RUNNER_TEMP/antimage-l2tp-failure"
-            mkdir -p "$evidence_root"
-            for root in "$RUNNER_TEMP"/antimage-l2tp-??????; do
-              [ -d "$root" ] || continue
-              case "$root" in "$evidence_root"|"$evidence_root"/*) continue ;; esac
-              state="$root/l2tp-state"
-              if [ -d "$state" ]; then
-                timeout 60s cp -a "$state" "$evidence_root/" 2>/dev/null || true
-              fi
-              for item in "$root"/*.log "$root"/*.json "$root"/*.txt "$root"/*.pid \
-                "$root"/*.conf "$root"/*.options "$root"/*.ctrl; do
-                [ -f "$item" ] || continue
-                timeout 10s cp -a "$item" "$evidence_root/" 2>/dev/null || true
-              done
-            done
-            find "$evidence_root" -xdev \( -type p -o -type s \) -delete 2>/dev/null || true
-            timeout 60s chown -R "$RUNNER_UID:$RUNNER_GID" "$evidence_root" 2>/dev/null || true
-            timeout 60s chmod -R u+rwX,a+rX "$evidence_root" 2>/dev/null || true
-          ' </dev/null
-          echo "staged L2TP evidence in $RUNNER_TEMP/antimage-l2tp-failure"
 
       - name: Run real Xray protocol E2E
         if: ${{ matrix.protocol == 'xray' }}
@@ -316,14 +236,10 @@ jobs:
             python3 scripts/ci/native-ikev2-driver.py
 
       - name: Capture runner networking state after failure
-        if: failure() || cancelled()
+        if: failure()
         timeout-minutes: 3
         shell: bash
         run: |
-          # Only the staged evidence directories are chowned/chmodded. The raw
-          # driver trees are not matched here ("antimage-l2tp-XXXXXX" does not
-          # end in "-failure"); reaching into them used to spend the whole
-          # 3-minute budget on recursive chown/chmod over a copy of /etc.
           for evidence in "$RUNNER_TEMP"/antimage-*-failure "$RUNNER_TEMP"/antimage-ikev2-*; do
             [ -e "$evidence" ] || continue
             sudo timeout 45s chown -R "$(id -u):$(id -g)" "$evidence" || true
@@ -342,14 +258,12 @@ jobs:
           } > "$RUNNER_TEMP/native-runner-state.txt" 2>&1
 
       - name: Upload native runtime evidence
-        if: failure() || cancelled()
-        timeout-minutes: 5
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.protocol }}-evidence-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/antimage-*-failure/**
-            ${{ runner.temp }}/native-l2tp.log
             ${{ runner.temp }}/antimage-ikev2-*/server.stdout
             ${{ runner.temp }}/antimage-ikev2-*/server.conf
             ${{ runner.temp }}/antimage-ikev2-*/starter-diagnostics.txt

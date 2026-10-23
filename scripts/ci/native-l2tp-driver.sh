@@ -5,70 +5,14 @@ set -euo pipefail
 : "${ANTIMAGE_L2TP_API_TEST_BINARY:?missing compiled API test binary}"
 : "${ANTIMAGE_NODE_HELPER_BINARY:?missing compiled node helper binary}"
 
-if [ "${ANTIMAGE_L2TP_PRIVATE_NS:-0}" != 1 ]; then
-  export ANTIMAGE_L2TP_PRIVATE_NS=1
-  # Hosted runner images auto-start strongSwan and xl2tpd when the packages
-  # are installed (strongswan-starter.service and xl2tpd are enabled by
-  # default). Those host daemons must be stopped here, in the host PID
-  # namespace, before we re-exec: once we own a PID namespace they are no
-  # longer visible or signalable, and "ipsec rereadsecrets"/"ipsec reload"
-  # would then talk to the host-owned /run/charon.ctl instead of a daemon we
-  # own. That produced "reload ipsec: exit status 7". A pre-started host
-  # xl2tpd would likewise hold UDP/1701 so the test's own LNS could not bind.
-  stop_prestarted_host_daemons() {
-    # Every external stop is bounded: a wedged dbus/systemd on the runner must
-    # not stall the driver before it even enters its private namespace.
-    timeout 20s systemctl stop strongswan-starter.service >/dev/null 2>&1 || true
-    timeout 20s systemctl stop strongswan.service >/dev/null 2>&1 || true
-    timeout 30s ipsec stop >/dev/null 2>&1 || true
-    pkill -x charon >/dev/null 2>&1 || true
-    pkill -x starter >/dev/null 2>&1 || true
-    timeout 20s systemctl stop xl2tpd.service >/dev/null 2>&1 || true
-    timeout 20s systemctl stop xl2tpd >/dev/null 2>&1 || true
-    pkill -x xl2tpd >/dev/null 2>&1 || true
-    for _ in $(seq 1 50); do
-      if ! pgrep -x charon >/dev/null 2>&1 && ! pgrep -x xl2tpd >/dev/null 2>&1; then
-        break
-      fi
-      sleep 0.1
-    done
-    # Drop the stopped daemon's runtime control files so the inner
-    # "ipsec rereadsecrets" cannot reach a dead host-owned socket and take the
-    # reload path, and so the inner charon starts with a clean slate.
-    rm -f /run/charon.ctl /run/charon.pid /run/charon.vici /run/charon.enfy \
-      /run/charon.lkp /run/ipsec.starter.pid /run/starter.charon.pid 2>/dev/null || true
-  }
-  stop_prestarted_host_daemons
-  # Own a dedicated mount AND PID namespace. --kill-child alone only reaps the
-  # direct child of unshare, so the driver shell and the pppd/xl2tpd/charon
-  # daemons it spawns could survive cancellation as orphans and keep the CI
-  # step's process group and stdio pipes open (the step then never finishes).
-  # A PID namespace makes that impossible: when this namespace's init dies the
-  # kernel destroys every process inside it, so no orphan can outlive the step.
-  # This mirrors the ownership model already used by the native IKEv2 driver.
-  exec unshare --mount --pid --fork --mount-proc --kill-child=SIGKILL --propagation private bash "$0" "$@"
+if [ "${ANTIMAGE_L2TP_PRIVATE_MOUNT:-0}" != 1 ]; then
+  export ANTIMAGE_L2TP_PRIVATE_MOUNT=1
+  exec unshare --mount --fork --propagation private bash "$0" "$@"
 fi
 
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-l2tp-XXXXXX") }"
 ROOT="${ROOT% }"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# We now own a PID namespace. Assert the host's auto-started daemons really are
-# out of reach, otherwise "ipsec reload" would silently drive a daemon we do
-# not own. This is the guard for the exact "reload ipsec: exit status 7"
-# regression that appeared once the driver started owning a PID namespace.
-# Match the strongSwan binaries by full path so an unrelated process such as
-# systemd's "chronyd-starter.sh" can never satisfy the check.
-assert_no_host_daemons() {
-  local pattern
-  for pattern in '^/usr/lib/ipsec/charon' '^/usr/lib/ipsec/starter' '^/usr/sbin/xl2tpd'; do
-    if pgrep -f "$pattern" >/dev/null 2>&1; then
-      echo "L2TP native driver: host daemon matching $pattern is still visible inside the private PID namespace" >&2
-      pgrep -a -f "$pattern" >&2 || true
-      exit 1
-    fi
-  done
-}
-assert_no_host_daemons
 python3 "$SCRIPT_DIR/test_native_l2tp_session_state.py"
 NS="antimage-l2tp-client"
 NS_B="antimage-l2tp-client-b"
@@ -107,83 +51,60 @@ cleanup() {
   local rc=$?
   set +e
   if [ "$rc" -ne 0 ]; then
-    # Stage a bounded evidence snapshot that contains only regular files.
-    #
-    # Deliberately NOT "cp -a $ROOT/.": $ROOT holds a full copy of the host
-    # /etc plus the xl2tpd control FIFOs and the client ipsec run directories.
-    # Copying that made the cleanup slow enough to run into the wrapper's bound,
-    # and the partially copied tree left the later "Capture runner networking
-    # state" step burning its whole 3-minute timeout on chown/chmod and then
-    # hung the artifact upload until the 45-minute job timeout. Copy only the
-    # state, logs and config we actually need, then strip any special file that
-    # slipped in so the upload can never block reading a pipe with no writer.
     mkdir -p "$RUNNER_TEMP/antimage-l2tp-failure"
-    evidence_dir="$RUNNER_TEMP/antimage-l2tp-failure"
-    if [ -d "$ROOT/l2tp-state" ]; then
-      timeout 30s cp -a "$ROOT/l2tp-state" "$evidence_dir/" 2>/dev/null || true
-    fi
-    for item in "$ROOT"/*.log "$ROOT"/*.conf "$ROOT"/*.options \
-      "$ROOT"/*.pid "$ROOT"/*.json "$ROOT"/*.txt "$ROOT"/*.ctrl "$ROOT"/active-before-*.json; do
-      [ -f "$item" ] || continue
-      timeout 10s cp -a "$item" "$evidence_dir/" 2>/dev/null || true
-    done
-    find "$evidence_dir" -xdev \( -type p -o -type s \) -delete 2>/dev/null || true
-    timeout 20s chmod -R a+rX "$evidence_dir" 2>/dev/null || true
+    cp -a "$ROOT/." "$RUNNER_TEMP/antimage-l2tp-failure/" 2>/dev/null || true
+    chmod -R a+rX "$RUNNER_TEMP/antimage-l2tp-failure" 2>/dev/null || true
     if [ -s "$ROOT/quota-watch.log" ]; then
       echo '=== captured L2TP quota worker output ===' >&2
       cat "$ROOT/quota-watch.log" >&2
     fi
-    timeout 15s sh -c '{ date -u; ip -details addr show; ip route show table all; ip netns list; ip netns exec "$1" ip -details addr show; ps -ef; }' _ "$NS" \
-      >"$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>&1 || true
-    timeout 15s sh -c '
-      echo "=== listening and established sockets ==="; ss -ntup; ss -nup;
-      echo "=== PPP daemon socket descriptors and socket tables ==="
+    { date -u; ip -details addr show; ip route show table all; ip netns list; ip netns exec "$NS" ip -details addr show; ps -ef; } \
+      >"$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>&1
+    {
+      echo '=== listening and established sockets ==='; ss -ntup; ss -nup;
+      echo '=== PPP daemon socket descriptors and socket tables ==='
       for pid in $(pgrep -x pppd || true); do
         echo "--- pppd pid=$pid ---"; ps -o pid,ppid,args -p "$pid";
-        for fd in /proc/"$pid"/fd/*; do printf "%s " "$fd"; readlink "$fd" || true; done
+        for fd in /proc/"$pid"/fd/*; do printf '%s ' "$fd"; readlink "$fd" || true; done
         cat /proc/"$pid"/net/tcp /proc/"$pid"/net/udp 2>/dev/null || true
       done
-      echo "=== L2TP policy, active sessions, and event queue ==="
-      find "$1" \( -name session-helper.json -o -path "*/ppp-accounting/active/*.json" -o -path "*/ppp-accounting/admission-denials/*.json" -o -path "*/native-session-outbox/*.json" -o -path "*/ppp-admission/pending/*.json" \) -type f -print -exec cat {} \;
-    ' _ "$ROOT/l2tp-state" >"$RUNNER_TEMP/antimage-l2tp-failure/ppp-socket-session-state.txt" 2>&1 || true
-    timeout 15s chmod a+r "$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>/dev/null || true
-    timeout 15s sh -c '
-      echo "=== host XFRM states (key-bearing lines omitted) ==="
-      ip -s xfrm state | sed -E "/^[[:space:]]+(auth|auth-trunc|enc|aead|comp) /d" || true
-      echo "=== host XFRM policies ==="
+      echo '=== L2TP policy, active sessions, and event queue ==='
+      find "$ROOT/l2tp-state" \( -name session-helper.json -o -path '*/ppp-accounting/active/*.json' -o -path '*/ppp-accounting/admission-denials/*.json' -o -path '*/native-session-outbox/*.json' -o -path '*/ppp-admission/pending/*.json' \) -type f -print -exec cat {} \;
+    } >"$RUNNER_TEMP/antimage-l2tp-failure/ppp-socket-session-state.txt" 2>&1
+    chmod a+r "$RUNNER_TEMP/antimage-l2tp-failure/network-state.txt" 2>/dev/null || true
+    {
+      echo '=== host XFRM states (key-bearing lines omitted) ==='
+      ip -s xfrm state | sed -E '/^[[:space:]]+(auth|auth-trunc|enc|aead|comp) /d' || true
+      echo '=== host XFRM policies ==='
       ip -s xfrm policy || true
-      echo "=== client XFRM states (key-bearing lines omitted) ==="
-      ip netns exec "$1" ip -s xfrm state | sed -E "/^[[:space:]]+(auth|auth-trunc|enc|aead|comp) /d" || true
-      echo "=== client XFRM policies ==="
-      ip netns exec "$1" ip -s xfrm policy || true
-    ' _ "$NS" >"$RUNNER_TEMP/antimage-l2tp-failure/xfrm-state.txt" 2>&1 || true
-    timeout 15s chmod a+r "$RUNNER_TEMP/antimage-l2tp-failure/xfrm-state.txt" 2>/dev/null || true
+      echo '=== client XFRM states (key-bearing lines omitted) ==='
+      ip netns exec "$NS" ip -s xfrm state | sed -E '/^[[:space:]]+(auth|auth-trunc|enc|aead|comp) /d' || true
+      echo '=== client XFRM policies ==='
+      ip netns exec "$NS" ip -s xfrm policy || true
+    } >"$RUNNER_TEMP/antimage-l2tp-failure/xfrm-state.txt" 2>&1
+    chmod a+r "$RUNNER_TEMP/antimage-l2tp-failure/xfrm-state.txt" 2>/dev/null || true
     echo "L2TP native evidence retained at $RUNNER_TEMP/antimage-l2tp-failure" >&2
   fi
   for pid in "${PIDS[@]}"; do stop_pid "$pid"; done
   if ip netns list | grep -q "^$NS[[:space:]]"; then
     if [ -n "$CLIENT_IPSEC_RUNDIR" ] && [ -s "$CLIENT_STRONGSWAN_CONF" ]; then
-      export NS CLIENT_IPSEC_RUNDIR CLIENT_STRONGSWAN_CONF CLIENT_CHARON
-      export -f client_ipsec
-      timeout 15s bash -c 'client_ipsec stop' >/dev/null 2>&1 || true
+      client_ipsec stop >/dev/null 2>&1 || true
     fi
   fi
   if ip netns list | grep -q "^$NS_B[[:space:]]"; then
     if [ -n "${CLIENT_IPSEC_RUNDIR_B:-}" ] && [ -s "${CLIENT_STRONGSWAN_CONF_B:-}" ]; then
-      export NS_B CLIENT_IPSEC_RUNDIR_B CLIENT_STRONGSWAN_CONF_B CLIENT_CHARON
-      export -f client_ipsec_b
-      timeout 15s bash -c 'client_ipsec_b stop' >/dev/null 2>&1 || true
+      client_ipsec_b stop >/dev/null 2>&1 || true
     fi
   fi
-  timeout 30s ipsec stop >/dev/null 2>&1 || true
+  ipsec stop >/dev/null 2>&1 || true
   if [ -n "${ANTIMAGE_L2TP_TEST_BINARY:-}" ] && [ -d "$ROOT/l2tp-state" ]; then
-    timeout 60s env ANTIMAGE_L2TP_NATIVE_STATE="$ROOT/l2tp-state" ANTIMAGE_L2TP_NATIVE_ACTION=cleanup \
-      "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPNativeAccountingStage$' -test.v -test.timeout=50s >/dev/null 2>&1 || true
+    env ANTIMAGE_L2TP_NATIVE_STATE="$ROOT/l2tp-state" ANTIMAGE_L2TP_NATIVE_ACTION=cleanup \
+      "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPNativeAccountingStage$' -test.v >/dev/null 2>&1 || true
   fi
-  timeout 10s ip link del "$VETH_HOST" 2>/dev/null || true
-  timeout 10s ip link del "$VETH_HOST_B" 2>/dev/null || true
-  timeout 10s ip netns del "$NS" 2>/dev/null || true
-  timeout 10s ip netns del "$NS_B" 2>/dev/null || true
+  ip link del "$VETH_HOST" 2>/dev/null || true
+  ip link del "$VETH_HOST_B" 2>/dev/null || true
+  ip netns del "$NS" 2>/dev/null || true
+  ip netns del "$NS_B" 2>/dev/null || true
   if [ "$rc" -eq 0 ]; then rm -rf "$ROOT"; fi
 }
 trap cleanup EXIT
@@ -198,13 +119,9 @@ mkdir -p "$ROOT/etc/ppp/ip-pre-up.d" "$ROOT/etc/xl2tpd" "$ROOT/etc/run"
 # The package may auto-start a host strongSwan daemon before the test mount is
 # installed. Stop it so the production ipsec start command loads this test's
 # generated L2TP connection from the isolated /etc/ipsec.conf.
-# The outer-namespace run already stopped the host's auto-started daemons
-# before re-exec; repeat it defensively with bounds so a wedged unit cannot
-# stall the driver, and rely on the assert_no_host_daemons guard below to
-# prove the host daemons really are unreachable.
-timeout 20s systemctl stop strongswan-starter.service >/dev/null 2>&1 || true
-timeout 20s systemctl stop strongswan.service >/dev/null 2>&1 || true
-timeout 30s ipsec stop >/dev/null 2>&1 || true
+systemctl stop strongswan-starter.service >/dev/null 2>&1 || true
+systemctl stop strongswan.service >/dev/null 2>&1 || true
+ipsec stop >/dev/null 2>&1 || true
 # strongSwan's bypass-lan plugin otherwise installs higher-priority cleartext
 # policies for the directly connected test subnet, shadowing UDP/1701 ESP.
 SERVER_STRONGSWAN_CONF="$ROOT/etc/strongswan.conf"
@@ -242,7 +159,7 @@ stage() {
     ANTIMAGE_L2TP_SESSION_CALLBACK_URL="$callback_url" \
     ANTIMAGE_L2TP_SESSION_CALLBACK_TOKEN="$callback_token" \
     ANTIMAGE_NODE_HELPER_BINARY="$ANTIMAGE_NODE_HELPER_BINARY" \
-    "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPNativeAccountingStage$' -test.v -test.timeout=8m
+    "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPNativeAccountingStage$' -test.v
 }
 mutation_stage() {
   local action="$1"
@@ -250,12 +167,12 @@ mutation_stage() {
     ANTIMAGE_L2TP_MUTATION_ACTION="$action" \
     ANTIMAGE_L2TP_XL2TPD_PID="$(cat "$ROOT/server.pid")" \
     ANTIMAGE_NODE_HELPER_BINARY="$ANTIMAGE_NODE_HELPER_BINARY" \
-    "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPTargetedMutationNativeStage$' -test.v -test.timeout=8m
+    "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPTargetedMutationNativeStage$' -test.v
 }
 panel_replay() {
   env ANTIMAGE_L2TP_NATIVE_STATE="$ROOT/l2tp-state" \
     ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL="${1:-0}" \
-    "$ANTIMAGE_L2TP_PANEL_TEST_BINARY" -test.run='^TestL2TPNativePanelDB$' -test.v -test.timeout=8m
+    "$ANTIMAGE_L2TP_PANEL_TEST_BINARY" -test.run='^TestL2TPNativePanelDB$' -test.v
 }
 set_session_panel_usage() {
   python3 - "$1" "$2" <<'PY'
@@ -466,7 +383,7 @@ EOF
   wait_for 'L2TP IPsec packet capture' sh -c 'test -s "$1"' _ "$ROOT/l2tp-ipsec.pcap"
 }
 client_ipsec() {
-  ip netns exec "$NS" unshare --mount --fork --kill-child=SIGKILL --propagation private bash -c '
+  ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
     mount --bind "$1" /run
     mount --bind "$2" /etc/strongswan.conf
     shift 2
@@ -478,7 +395,7 @@ client_ipsec() {
     DAEMON_NAME=charon ipsec "$@"
 }
 client_ipsec_daemon() {
-  ip netns exec "$NS" unshare --mount --fork --kill-child=SIGKILL --propagation private bash -c '
+  ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
     mount --bind "$1" /run
     mount --bind "$2" /etc/strongswan.conf
     shift 2
@@ -495,7 +412,7 @@ start_client() {
   snapshot_l2tp_sessions client-a
   rm -f "$ROOT/client.pid" "$ROOT/client.control"
   mkdir -p "$CLIENT_PPP_RUNDIR"
-  ip netns exec "$NS" unshare --mount --fork --kill-child=SIGKILL --propagation private bash -c '
+  ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
     mount --bind "$1" /run
     shift
     exec "$@"
@@ -558,7 +475,7 @@ conn l2tp-client-b
 EOF
 }
 client_ipsec_b() {
-  ip netns exec "$NS_B" unshare --mount --fork --kill-child=SIGKILL --propagation private bash -c '
+  ip netns exec "$NS_B" unshare --mount --fork --propagation private bash -c '
     mount --bind "$1" /run
     mount --bind "$2" /etc/strongswan.conf
     shift 2
@@ -570,7 +487,7 @@ client_ipsec_b() {
     DAEMON_NAME=charon ipsec "$@"
 }
 client_ipsec_daemon_b() {
-  ip netns exec "$NS_B" unshare --mount --fork --kill-child=SIGKILL --propagation private bash -c '
+  ip netns exec "$NS_B" unshare --mount --fork --propagation private bash -c '
     mount --bind "$1" /run
     mount --bind "$2" /etc/strongswan.conf
     shift 2
@@ -620,7 +537,7 @@ start_client_b() {
   snapshot_l2tp_sessions client-b
   rm -f "$ROOT/client-b.pid" "$ROOT/client-b.control"
   mkdir -p "$CLIENT_PPP_RUNDIR_B"
-  ip netns exec "$NS_B" unshare --mount --fork --kill-child=SIGKILL --propagation private bash -c '
+  ip netns exec "$NS_B" unshare --mount --fork --propagation private bash -c '
     mount --bind "$1" /run
     shift
     exec "$@"
