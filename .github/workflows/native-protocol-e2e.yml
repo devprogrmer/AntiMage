@@ -71,27 +71,13 @@ jobs:
         timeout-minutes: 35
         run: |
           set -euo pipefail
-          # Some hosted runner kernels (for example the Azure kernels) publish
-          # no matching linux-modules-extra package. That only means the runner
-          # cannot load extra kernel modules; install it when available and
-          # never install an unrelated kernel's module tree. The Azure mirror
-          # intermittently throttles this 71MB package to a crawl, so retry the
-          # fetch in bounded attempts instead of relying on one long download.
-          # A genuinely unavailable package still fails the test below.
-          module_package="linux-modules-extra-$(uname -r)"
-          module_installed=0
-          for attempt in 1 2 3; do
-            if sudo timeout --signal=TERM --kill-after=15s 4m \
-              apt-get -o Acquire::Retries=3 install -y --no-install-recommends "$module_package"; then
-              module_installed=1
-              break
-            fi
-            echo "attempt ${attempt}: ${module_package} install did not complete; retrying"
-            sudo timeout --signal=TERM --kill-after=15s 60s apt-get clean || true
-          done
-          if [ "$module_installed" -ne 1 ]; then
-            echo "linux-modules-extra for $(uname -r) is unavailable on this runner"
-          fi
+          # scripts/ci/ensure-l2tp-kernel-module.sh installs the kernel package
+          # that ships l2tp_ppp. Hosted Azure runners intermittently throttle that
+          # 71MB download to ~39 kB/s, which makes apt-get stall until it is killed;
+          # the script falls back to a direct .deb fetch that aborts stalled mirrors.
+          # It never skips the test: the driver below still runs `modprobe l2tp_ppp`,
+          # so a genuinely unavailable package still fails this native job.
+          bash scripts/ci/ensure-l2tp-kernel-module.sh
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           api_test="$RUNNER_TEMP/antimage-api.test"
@@ -312,7 +298,8 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             iproute2 iptables nftables iputils-ping tcpdump ppp xl2tpd strongswan pptp-linux wireguard-tools openvpn openssl netcat-openbsd
           sudo apt-get install -y --no-install-recommends pptpd
-          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
+          # Same throttled-mirror guard as the push-event L2TP job.
+          bash scripts/ci/ensure-l2tp-kernel-module.sh
       - name: Run real combined native lifecycle and SQLite lost-ACK replay
         run: |
           set -euo pipefail
