@@ -23,6 +23,9 @@ type anyConnectProcess struct {
 	cmd        *exec.Cmd
 	done       chan struct{}
 	configHash [32]byte
+	tag        string
+	inbound    anyConnectRuntimeInbound
+	files      anyConnectRuntimeFiles
 	waitMu     sync.Mutex
 	waitErr    error
 }
@@ -115,7 +118,7 @@ func (s *Server) startAnyConnectInbound(runtime preparedAnyConnectRuntime) error
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("anyconnect %q: start: %w", tag, err)
 	}
-	p := &anyConnectProcess{cmd: cmd, done: make(chan struct{}), configHash: configHash}
+	p := &anyConnectProcess{cmd: cmd, done: make(chan struct{}), configHash: configHash, tag: tag, inbound: runtime.Inbound, files: runtime.Files}
 	go func() {
 		err := cmd.Wait()
 		p.setWaitError(err)

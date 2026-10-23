@@ -88,6 +88,13 @@ func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclie
 			}
 			return c.grpcApplyLegacyFullSyncForUserOperation(ctx, client, node, operation, prepared)
 		}
+		if len(userProtocols) == 1 && isAnyConnectProtocol(userProtocols[0]) {
+			capability := targetedUserCapability(userProtocols[0], operation.OperationType)
+			if capability != "" && client.Supports(capability) {
+				return c.grpcApplyAnyConnectUserOperation(ctx, client, node, operation)
+			}
+			return c.grpcApplyLegacyFullSyncForUserOperation(ctx, client, node, operation, prepared)
+		}
 	}
 	switch operation.OperationType {
 	case "remove_user", "disable_user":
