@@ -416,10 +416,13 @@ WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.servi
 	// once and share the read-only map across rows instead of re-parsing it per
 	// user, which dominates the config-build hot path.
 	decodedSettings := make(map[string]map[string]any)
+	// sql.NullString.Scan fully overwrites the destination on every row
+	// (including NULL), so the scan targets can be hoisted out of the loop
+	// instead of allocating a fresh NullString per row.
+	var credentialKey, flow sql.NullString
+	var settings any
 	for rows.Next() {
 		var row runtimeUserRow
-		var credentialKey, flow sql.NullString
-		var settings any
 		if err := rows.Scan(
 			&row.ID,
 			&row.Username,
