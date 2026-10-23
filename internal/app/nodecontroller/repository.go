@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	operationapp "github.com/antimage/antimage/internal/app/operations"
@@ -19,6 +20,15 @@ type Repository struct {
 	db              *sql.DB
 	dialect         string
 	certificateBase string
+	// schema caches positive table-existence checks. Migrations run before
+	// normal serving, so a table that exists stays present for the life of the
+	// process; caching only positives avoids stale negatives. A pointer keeps
+	// the cache shared across the value copies the Controller makes.
+	schema *schemaCache
+}
+
+type schemaCache struct {
+	tables sync.Map
 }
 
 type NodeRow struct {
@@ -71,7 +81,7 @@ func NewRepository(db *sql.DB, dialect string, certificateBase ...string) Reposi
 	if len(certificateBase) > 0 {
 		base = certificateBase[0]
 	}
-	return Repository{db: db, dialect: dialect, certificateBase: base}
+	return Repository{db: db, dialect: dialect, certificateBase: base, schema: &schemaCache{}}
 }
 
 func (r Repository) Node(ctx context.Context, nodeID int64) (NodeRow, error) {
@@ -395,7 +405,12 @@ WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.servi
 	}
 	defer rows.Close()
 
-	result := []runtimeUserRow{}
+	result := make([]runtimeUserRow, 0, 256)
+	// Many rows repeat the same proxy settings JSON (for example the default
+	// "{}" for users without per-proxy overrides). Decode each distinct payload
+	// once and share the read-only map across rows instead of re-parsing it per
+	// user, which dominates the config-build hot path.
+	decodedSettings := make(map[string]map[string]any)
 	for rows.Next() {
 		var row runtimeUserRow
 		var credentialKey, flow sql.NullString
@@ -418,10 +433,26 @@ WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.servi
 			row.Flow = flow.String
 		}
 		row.Protocol = strings.ToLower(row.Protocol)
-		row.Settings = jsonMap(settings)
+		row.Settings = internRuntimeUserSettings(settings, decodedSettings)
 		result = append(result, row)
 	}
 	return result, rows.Err()
+}
+
+func internRuntimeUserSettings(value any, cache map[string]map[string]any) map[string]any {
+	var key string
+	switch typed := value.(type) {
+	case string:
+		key = typed
+	default:
+		return jsonMap(value)
+	}
+	if cached, ok := cache[key]; ok {
+		return cached
+	}
+	decoded := jsonMap(key)
+	cache[key] = decoded
+	return decoded
 }
 
 func runtimeProtocolsQuery(protocols []string) string {
@@ -541,12 +572,23 @@ func (r Repository) tableExists(ctx context.Context, table string) (bool, error)
 	if table == "" {
 		return false, nil
 	}
+	if r.schema != nil {
+		if _, ok := r.schema.tables.Load(table); ok {
+			return true, nil
+		}
+	}
 	var count int
 	if r.dialect == "mysql" || r.dialect == "mariadb" {
 		err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?`, table).Scan(&count)
+		if err == nil && count > 0 && r.schema != nil {
+			r.schema.tables.Store(table, struct{}{})
+		}
 		return count > 0, err
 	}
 	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count)
+	if err == nil && count > 0 && r.schema != nil {
+		r.schema.tables.Store(table, struct{}{})
+	}
 	return count > 0, err
 }
 
