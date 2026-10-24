@@ -422,7 +422,11 @@ WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.servi
 	var credentialKey, flow sql.NullString
 	var settings any
 	for rows.Next() {
-		var row runtimeUserRow
+		// Scan straight into the slice slot instead of a loop-local struct.
+		// The row carries four strings plus a map, so the extra copy was a
+		// measurable share of this hot path's allocation.
+		result = append(result, runtimeUserRow{})
+		row := &result[len(result)-1]
 		if err := rows.Scan(
 			&row.ID,
 			&row.Username,
@@ -442,7 +446,6 @@ WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.servi
 		}
 		row.Protocol = strings.ToLower(row.Protocol)
 		row.Settings = internRuntimeUserSettings(settings, decodedSettings)
-		result = append(result, row)
 	}
 	return result, rows.Err()
 }
