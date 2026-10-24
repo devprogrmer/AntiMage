@@ -28,7 +28,12 @@ func (s *Server) checkpointXrayGenerationLocked(stats []xrayStat, generation str
 	if generation == "" {
 		generation = s.xrayAccountingGeneration
 	}
-	next, err := s.previewXrayAccountingCountersLocked(stats, generation)
+	// The result map is scratch: it is only kept when the counters actually
+	// changed, in which case the superseded map becomes the next scratch. An
+	// unchanged tick therefore stops paying for a fresh map sized by the whole
+	// counter series set.
+	scratch := s.xrayCounterScratch
+	next, err := s.previewXrayAccountingCountersLockedInto(stats, generation, scratch)
 	if err != nil {
 		return err
 	}
@@ -40,35 +45,37 @@ func (s *Server) checkpointXrayGenerationLocked(stats []xrayStat, generation str
 		}
 	}
 	if !changed {
+		s.xrayCounterScratch = next
 		return nil
 	}
 	previous, previousGeneration := s.xrayAccountingCounters, s.xrayAccountingGeneration
 	s.xrayAccountingCounters, s.xrayAccountingGeneration = next, generation
+	s.xrayCounterScratch = previous
 	if err := s.persistXrayUsageStateLocked(); err != nil {
 		s.xrayAccountingCounters, s.xrayAccountingGeneration = previous, previousGeneration
+		s.xrayCounterScratch = scratch
 		return err
 	}
 	return nil
 }
 
 func (s *Server) previewXrayAccountingCountersLocked(stats []xrayStat, generation string) (map[string]accountingCounter, error) {
+	return s.previewXrayAccountingCountersLockedInto(stats, generation, nil)
+}
+
+func (s *Server) previewXrayAccountingCountersLockedInto(stats []xrayStat, generation string, next map[string]accountingCounter) (map[string]accountingCounter, error) {
 	if generation == "" {
 		generation = s.xrayAccountingGeneration
 	}
-	native := make(map[string]uint64)
-	seeds := make(map[string]uint64, len(s.xrayUsageBaseline))
-	for key, value := range s.xrayUsageBaseline {
-		seeds[key] = value
+	// Reuse one scratch map for the native sample instead of allocating a fresh
+	// map sized by every counter series on each quota/checkpoint tick. The map
+	// never escapes this function, and both callers hold xrayUsageMu.
+	native := s.xrayNativeScratch
+	if native == nil {
+		native = make(map[string]uint64, len(s.xrayAccountingCounters))
+		s.xrayNativeScratch = native
 	}
-	// Existing pre-journal batches contain native counters. Seed from their
-	// snapshot so migration cannot count their pending bytes a second time.
-	if s.xrayUsagePending != nil {
-		for key, value := range s.xrayUsagePending.NextBaseline {
-			if value > seeds[key] {
-				seeds[key] = value
-			}
-		}
-	}
+	clear(native)
 	for _, stat := range stats {
 		name, ok := parseXrayStatName(stat.Name)
 		if !ok || name.Type != "user" || name.Metric != "traffic" || stat.Value < 0 {
@@ -80,6 +87,20 @@ func (s *Server) previewXrayAccountingCountersLocked(stats []xrayStat, generatio
 		}
 		native[name.Email+":"+name.Direction] = uint64(stat.Value)
 	}
+	// Existing pre-journal batches contain native counters. Seed from their
+	// snapshot so migration cannot count their pending bytes a second time.
+	// Resolved lazily so the seed map is not copied on every tick.
+	pendingSeeds := map[string]uint64(nil)
+	if s.xrayUsagePending != nil {
+		pendingSeeds = s.xrayUsagePending.NextBaseline
+	}
+	seed := func(key string) uint64 {
+		value := s.xrayUsageBaseline[key]
+		if pending := pendingSeeds[key]; pending > value {
+			value = pending
+		}
+		return value
+	}
 	previousCounters := s.xrayAccountingCounters
 	generationChanged := generation != "" && generation != s.xrayAccountingGeneration && len(s.xrayAccountingCounters) > 0
 	if generationChanged {
@@ -89,7 +110,7 @@ func (s *Server) previewXrayAccountingCountersLocked(stats []xrayStat, generatio
 			previousCounters[key] = counter
 		}
 	}
-	return advanceAccountingCounters(previousCounters, native, seeds)
+	return advanceAccountingCountersInto(next, previousCounters, native, seed)
 }
 
 func (s *Server) checkpointXrayAccounting(ctx context.Context) error {

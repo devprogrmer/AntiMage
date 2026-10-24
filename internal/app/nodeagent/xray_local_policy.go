@@ -273,10 +273,13 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 	if !unchanged {
 		return fmt.Errorf("xray changed during quota snapshot")
 	}
-	counters, err := s.previewXrayAccountingCountersLocked(stats, generation)
+	// Reuse the checkpoint scratch map: this path only needs the counter deltas
+	// to compute per-user totals and does not publish them.
+	counters, err := s.previewXrayAccountingCountersLockedInto(stats, generation, s.xrayCounterScratch)
 	if err != nil {
 		return err
 	}
+	s.xrayCounterScratch = counters
 	if err := xrayQuotaUsageTotalsInto(counters, s.xrayUsageBaseline, policyIndex); err != nil {
 		return err
 	}

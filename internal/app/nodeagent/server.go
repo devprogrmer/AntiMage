@@ -146,6 +146,8 @@ type Server struct {
 	xrayUsageBaseline                map[string]uint64
 	xrayUsagePending                 *xrayUsagePendingBatch
 	xrayAccountingCounters           map[string]accountingCounter
+	xrayNativeScratch                map[string]uint64
+	xrayCounterScratch               map[string]accountingCounter
 	xrayQuotaRevoked                 map[string]xrayQuotaRevocation
 	xrayAccountingGeneration         string
 	xrayUsageLoaded                  bool
