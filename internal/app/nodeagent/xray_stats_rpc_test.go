@@ -195,6 +195,17 @@ func TestRuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities(t *te
 			t.Fatalf("%s capability missing although its Xray VLESS RPC is implemented", capability)
 		}
 	}
+	// Every non-VLESS protocol the pinned core serves as an inbound is proven by
+	// TestXrayNonVLESSNativeTargetedMutationE2E against the real core, so each is
+	// advertised on every platform the same way VLESS is.
+	for _, protocol := range []string{"vmess", "trojan", "shadowsocks", "hysteria"} {
+		for _, prefix := range []string{"targeted_user_update_", "targeted_user_add_remove_"} {
+			capability := prefix + protocol
+			if !seen[capability] {
+				t.Fatalf("%s capability missing although its native E2E is green", capability)
+			}
+		}
+	}
 	for _, capability := range []string{"targeted_user_update_openvpn", "targeted_user_add_remove_openvpn"} {
 		if got, want := seen[capability], runtime.GOOS == "linux"; got != want {
 			t.Fatalf("%s advertised=%v, want %v for platform %s", capability, got, want, runtime.GOOS)
