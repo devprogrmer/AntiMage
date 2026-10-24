@@ -643,6 +643,37 @@ func targetedUserCapability(protocol, operation string) string {
 		case "add_user", "remove_user", "disable_user", "enable_user":
 			return "targeted_user_add_remove_vless"
 		}
+	case "vmess":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_vmess"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_vmess"
+		}
+	case "trojan":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_trojan"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_trojan"
+		}
+	case "shadowsocks":
+		// Both Shadowsocks AEAD and multi-user 2022 users carry proxies.type
+		// "shadowsocks"; the method decides which account message the nodeagent
+		// encodes, so one capability covers them.
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_shadowsocks"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_shadowsocks"
+		}
+	case "hysteria", "hysteria2":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_hysteria"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_hysteria"
+		}
 	case "wireguard":
 		switch operation {
 		case "update_user":

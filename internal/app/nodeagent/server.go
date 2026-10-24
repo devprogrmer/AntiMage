@@ -500,7 +500,7 @@ func (s *Server) AddUser(ctx context.Context, req *nodev1.InboundUserRequest) (*
 	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "anyconnect") {
 		return s.applyAnyConnectUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
 	}
-	user, err := xrayVLESSUserMessage(req.GetUser())
+	user, err := xrayUserMessage(req.GetUser())
 	if err != nil {
 		if errors.Is(err, errUnsupportedXrayUserProtocol) {
 			return nil, status.Error(codes.Unimplemented, err.Error())
@@ -512,16 +512,16 @@ func (s *Server) AddUser(ctx context.Context, req *nodev1.InboundUserRequest) (*
 		if clientErr != nil {
 			return clientErr
 		}
-		return client.ensureVLESSUserRPC(ctx, req.GetInboundTag(), user, false)
+		return client.ensureXrayUserRPC(ctx, req.GetInboundTag(), user, false)
 	})
 	if err != nil {
 		if status.Code(err) != codes.Unknown {
 			return nil, err
 		}
-		return nil, status.Errorf(codes.FailedPrecondition, "add VLESS user: %v", err)
+		return nil, status.Errorf(codes.FailedPrecondition, "add Xray user: %v", err)
 	}
 	s.wakeLocalQuota("xray")
-	return s.action(req.GetOperationId(), "VLESS user added or already present"), nil
+	return s.action(req.GetOperationId(), "Xray user added or already present"), nil
 }
 
 func (s *Server) UpdateUser(ctx context.Context, req *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
@@ -549,7 +549,7 @@ func (s *Server) UpdateUser(ctx context.Context, req *nodev1.InboundUserRequest)
 	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "anyconnect") {
 		return s.applyAnyConnectUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
 	}
-	user, err := xrayVLESSUserMessage(req.GetUser())
+	user, err := xrayUserMessage(req.GetUser())
 	if err != nil {
 		if errors.Is(err, errUnsupportedXrayUserProtocol) {
 			return nil, status.Error(codes.Unimplemented, err.Error())
@@ -561,16 +561,16 @@ func (s *Server) UpdateUser(ctx context.Context, req *nodev1.InboundUserRequest)
 		if clientErr != nil {
 			return clientErr
 		}
-		return client.ensureVLESSUserRPC(ctx, req.GetInboundTag(), user, true)
+		return client.ensureXrayUserRPC(ctx, req.GetInboundTag(), user, true)
 	})
 	if err != nil {
 		if status.Code(err) != codes.Unknown {
 			return nil, err
 		}
-		return nil, status.Errorf(codes.FailedPrecondition, "update VLESS user: %v", err)
+		return nil, status.Errorf(codes.FailedPrecondition, "update Xray user: %v", err)
 	}
 	s.wakeLocalQuota("xray")
-	return s.action(req.GetOperationId(), "VLESS user updated"), nil
+	return s.action(req.GetOperationId(), "Xray user updated"), nil
 }
 
 func (s *Server) applyWireGuardUserRPC(ctx context.Context, operationID, inboundTag string, user *nodev1.InboundUser, operation string) (*nodev1.RuntimeActionResponse, error) {

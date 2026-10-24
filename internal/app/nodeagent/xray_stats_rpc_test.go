@@ -158,9 +158,9 @@ func TestNodeRuntimeRemoveUserCallsXrayAndReportsSuccessOnlyAfterRPC(t *testing.
 
 func TestNodeRuntimeUserOperationsDoNotReportUnsupportedMutationsAsAccepted(t *testing.T) {
 	s := New(Config{})
-	// IKEv2 has a targeted user RPC now, so use a protocol that still has no
-	// runtime mutation implementation when checking Unimplemented behavior.
-	unsupported := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "vmess"}}
+	// Every pinned-core Xray protocol now has a targeted user RPC, so check the
+	// Unimplemented path with a protocol the core cannot serve a user for at all.
+	unsupported := &nodev1.InboundUserRequest{InboundTag: "inbound", User: &nodev1.InboundUser{Protocol: "socks", Email: "user@example.test"}}
 	if response, err := s.AddUser(context.Background(), unsupported); response != nil || status.Code(err) != codes.Unimplemented {
 		t.Fatalf("AddUser response=%v err=%v, want unimplemented", response, err)
 	}
@@ -290,14 +290,14 @@ func TestXrayVLESSUserOperationsAreIdempotentAndRollbackFailedUpdate(t *testing.
 	defer cancel()
 
 	user := &nodev1.InboundUser{Protocol: "vless", Email: "user@example.test", Fields: map[string]string{"id": "00000000-0000-4000-8000-000000000001", "level": "0"}}
-	message, err := xrayVLESSUserMessage(user)
+	message, err := xrayUserMessage(user)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.ensureVLESSUserRPC(ctx, "vless-main", message, false); err != nil {
+	if err := client.ensureXrayUserRPC(ctx, "vless-main", message, false); err != nil {
 		t.Fatalf("first add: %v", err)
 	}
-	if err := client.ensureVLESSUserRPC(ctx, "vless-main", message, false); err != nil {
+	if err := client.ensureXrayUserRPC(ctx, "vless-main", message, false); err != nil {
 		t.Fatalf("idempotent add: %v", err)
 	}
 	stateMu.Lock()
@@ -308,11 +308,11 @@ func TestXrayVLESSUserOperationsAreIdempotentAndRollbackFailedUpdate(t *testing.
 	}
 
 	user.Fields["id"] = "00000000-0000-4000-8000-000000000002"
-	updated, err := xrayVLESSUserMessage(user)
+	updated, err := xrayUserMessage(user)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.ensureVLESSUserRPC(ctx, "vless-main", updated, true); err != nil {
+	if err := client.ensureXrayUserRPC(ctx, "vless-main", updated, true); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	stateMu.Lock()
@@ -323,14 +323,14 @@ func TestXrayVLESSUserOperationsAreIdempotentAndRollbackFailedUpdate(t *testing.
 	}
 
 	user.Fields["id"] = "00000000-0000-4000-8000-000000000003"
-	failedUpdate, err := xrayVLESSUserMessage(user)
+	failedUpdate, err := xrayUserMessage(user)
 	if err != nil {
 		t.Fatal(err)
 	}
 	stateMu.Lock()
 	failNextAdd = true
 	stateMu.Unlock()
-	if err := client.ensureVLESSUserRPC(ctx, "vless-main", failedUpdate, true); status.Code(err) != codes.Unavailable {
+	if err := client.ensureXrayUserRPC(ctx, "vless-main", failedUpdate, true); status.Code(err) != codes.Unavailable {
 		t.Fatalf("failed update error=%v", err)
 	}
 	stateMu.Lock()

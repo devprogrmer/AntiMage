@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        protocol: ${{ github.event_name == 'push' && fromJSON('["openvpn","wireguard","amneziawg","l2tp","pptp","anyconnect","ikev2"]') || fromJSON('["xray","wireguard","amneziawg","openvpn","l2tp","pptp","anyconnect","ikev2"]') }}
+        protocol: ${{ github.event_name == 'push' && fromJSON('["xray","openvpn","wireguard","amneziawg","l2tp","pptp","anyconnect","ikev2"]') || fromJSON('["xray","wireguard","amneziawg","openvpn","l2tp","pptp","anyconnect","ikev2"]') }}
     env:
       CGO_ENABLED: '1'
     steps:
@@ -115,6 +115,8 @@ jobs:
           ANTIMAGE_XRAY_E2E_BINARY="$dir/xray" \
             ANTIMAGE_XRAY_PANEL_TEST_BINARY="$nodecontroller_test" \
             go test ./internal/app/nodeagent -run '^TestRealXrayOnlineAndStatsE2E$' -count=1 -v
+          ANTIMAGE_XRAY_E2E_BINARY="$dir/xray" \
+            go test ./internal/app/nodeagent -run '^TestXrayNonVLESSNativeTargetedMutationE2E$' -count=1 -v
 
       - name: Run native WireGuard lifecycle
         if: ${{ matrix.protocol == 'wireguard' }}
@@ -478,3 +480,18 @@ jobs:
         run: go test ./internal/app/nodecontroller -run 'Test(IKEv2MutationRequestCarriesDesiredStateAndRevision|IKEv2CapabilityMappingRemainsExplicitAndControllerFallbackIsConservative|IKEv2LegacyNodeUsesFallbackAndCapableNodeUsesTargetedOnly|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
       - name: Race test IKEv2 controller targeted and fallback paths
         run: go test -race ./internal/app/nodecontroller -run 'Test(IKEv2MutationRequestCarriesDesiredStateAndRevision|IKEv2CapabilityMappingRemainsExplicitAndControllerFallbackIsConservative|IKEv2LegacyNodeUsesFallbackAndCapableNodeUsesTargetedOnly|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
+
+  controller-xray-targeted:
+    name: controller-xray-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run Xray controller targeted capability and dispatch tests
+        run: go test ./internal/app/nodecontroller -run 'Test(TargetedUserCapabilityIsProtocolAndOperationSpecific|BulkVLESSUpdatesStayTargetedWhenNodeAdvertisesSupport|BulkVLESSAddRemoveStayTargetedOnlyWithExplicitCapability|RuntimeUserProtocolAndNodeCapabilityLookup)' -count=1
+      - name: Race test Xray controller targeted capability and dispatch paths
+        run: go test -race ./internal/app/nodecontroller -run 'Test(TargetedUserCapabilityIsProtocolAndOperationSpecific|BulkVLESSUpdatesStayTargetedWhenNodeAdvertisesSupport|BulkVLESSAddRemoveStayTargetedOnlyWithExplicitCapability|RuntimeUserProtocolAndNodeCapabilityLookup)' -count=1
