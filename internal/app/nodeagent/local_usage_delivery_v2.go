@@ -223,13 +223,11 @@ func (s *Server) recordLocalUsageDeliveryV2(root string) (map[int64]string, erro
 	if err != nil {
 		return nil, err
 	}
-	idx := map[localUsageOwnerKey]int{}
-	for i, o := range next.Owners {
-		idx[localUsageOwnerKey{o.Protocol, o.UserID, o.InboundTag}] = i
-	}
 	legacyBatches := map[localUsageOwnerKey]map[string]uint64{}
+	var index *localUsageV2Index
 	if s.localUsageV2 != nil {
-		legacyBatches = s.localUsageV2IndexLocked().LegacyBatches
+		index = s.localUsageV2IndexLocked()
+		legacyBatches = index.LegacyBatches
 	} else {
 		for _, delivery := range s.localUsageDeliveries {
 			for _, row := range delivery.Rows {
@@ -243,7 +241,18 @@ func (s *Server) recordLocalUsageDeliveryV2(root string) (map[int64]string, erro
 				legacyBatches[key][delivery.BatchID] += row.Raw
 			}
 		}
+		index = &localUsageV2Index{
+			Owners:        make(map[localUsageOwnerKey]int, len(next.Owners)),
+			Users:         make(map[int64][]int),
+			LegacyBatches: legacyBatches,
+		}
+		for i, owner := range next.Owners {
+			key := localUsageOwnerKey{owner.Protocol, owner.UserID, owner.InboundTag}
+			index.Owners[key] = i
+			index.Users[owner.UserID] = append(index.Users[owner.UserID], i)
+		}
 	}
+	addedOwners := make(map[localUsageOwnerKey]int)
 	// Aggregate duplicate samples before checking immutable child identity.
 	grouped := map[localUsageOwnerKey]localUsageDeliveryRow{}
 	for _, r := range rows {
@@ -262,11 +271,11 @@ func (s *Server) recordLocalUsageDeliveryV2(root string) (map[int64]string, erro
 		if r.Raw == 0 {
 			continue
 		}
-		pos, ok := idx[key]
+		pos, ok := index.Owners[key]
 		if !ok {
 			pos = len(next.Owners)
-			idx[key] = pos
 			next.Owners = append(next.Owners, localUsageOwnerV2{Protocol: r.Protocol, UserID: r.UserID, InboundTag: r.InboundTag})
+			addedOwners[key] = pos
 		}
 		o := &next.Owners[pos]
 		if o.LastChild == r.ChildID {
@@ -288,7 +297,10 @@ func (s *Server) recordLocalUsageDeliveryV2(root string) (map[int64]string, erro
 		if r.Raw == 0 {
 			continue
 		}
-		pos := idx[key]
+		pos := index.Owners[key]
+		if added, ok := addedOwners[key]; ok {
+			pos = added
+		}
 		o := next.Owners[pos]
 		w, ok := watermarks[r.UserID]
 		if !ok {
@@ -321,7 +333,13 @@ func (s *Server) recordLocalUsageDeliveryV2(root string) (map[int64]string, erro
 		s.localUsageV2 = old
 		return nil, err
 	}
-	s.localUsageV2Index = nil
+	// Publish new index positions only after the ledger is durable. Failed
+	// writes must leave both the old ledger and its cached indexes intact.
+	for key, pos := range addedOwners {
+		index.Owners[key] = pos
+		index.Users[key.UserID] = append(index.Users[key.UserID], pos)
+	}
+	s.localUsageV2Index = index
 	return cloneUsageReceipts(receipts), nil
 }
 func cloneUsageReceipts(receipts map[int64]string) map[int64]string {
