@@ -121,7 +121,7 @@ def parse_reflection_key(key):
 def runtime_inventory(data_dir):
     snap, status = read_json(Path(data_dir) / "accounting/runtime-policy.json")
     result = {"status": status, "rows": {}, "inbounds": {}, "native": {}, "node_id": 0,
-              "revision": None, "file_mtime_ns": None}
+              "revision": None, "file_mtime_ns": None, "xray_api_port": None}
     if snap is None:
         return result
     native = decoded_json(snap.get("native_json"))
@@ -134,6 +134,11 @@ def runtime_inventory(data_dir):
         pass
     for inbound in config.get("inbounds", []) or []:
         if isinstance(inbound, dict):
+            if str(inbound.get("tag", "")).strip() == "API_INBOUND":
+                port = uint(inbound.get("port"))
+                if 0 < port <= 65535:
+                    result["xray_api_port"] = port
+                continue
             result["inbounds"][str(inbound.get("tag", ""))] = protocol_name(inbound.get("protocol"))
     for policy in native.get("xray_policies", []) or []:
         if not isinstance(policy, dict):
@@ -408,7 +413,16 @@ def user_lookup(inventory, protocol, tag=None):
 
 
 def helper_configs(data_dir, protocol):
-    for path in sorted((Path(data_dir) / protocol).glob("*/usage-helper.json"))[:100]:
+    root = Path(data_dir) / protocol
+    # Match the actual managed layouts, including WG/AWG's intermediate
+    # directory. A one-level glob silently misses all their managed accounts.
+    patterns = ("*/usage-helper.json",)
+    if protocol == "wireguard":
+        patterns += ("inbounds/*/usage-helper.json",)
+    elif protocol == "amneziawg":
+        patterns += ("runtime/*/usage-helper.json",)
+    paths = {path for pattern in patterns for path in root.glob(pattern)}
+    for path in sorted(paths)[:100]:
         config, status = read_json(path)
         if status == "ok":
             yield path.parent, config
@@ -465,6 +479,12 @@ def live_wireguard(data_dir, inventory, protocol):
         if handshake and 0 <= time.time() - handshake <= 180:
             result["active"].add(key)
             result["sessions"] += 1
+    if not by_interface:
+        # The dump was readable, but no owner mapping was available. Zero
+        # matched accounts/sessions cannot be reported as an observed zero.
+        result["loaded"] = None
+        result["available"] = False
+        result["unavailable_reason"] = "managed_owner_mapping_unavailable"
     return result
 
 
@@ -663,9 +683,14 @@ def live_xray(data_dir, inventory, port):
     result = {p: live_result("Xray StatsService user counters; stats presence does not prove loaded/online users")
               for p in PROTOCOLS if p not in NATIVE_FIELDS.values()}
     binary = os.environ.get("XRAY_EXECUTABLE_PATH", str(Path(data_dir) / "xray-core/xray"))
+    # NodeAgent takes the actual runtime API_INBOUND port over its bootstrap
+    # default. Query that same port unless the operator explicitly overrides it.
+    port = port if port is not None else inventory.get("xray_api_port") or 10085
     reply = command([binary, "api", "statsquery", "-server=127.0.0.1:" + str(port),
                      "-pattern=user>>>", "-reset=false"], 5)
     if reply is None or reply.returncode:
+        for value in result.values():
+            value["unavailable_reason"] = "stats_command_unavailable" if reply is None else "stats_command_failed"
         return result
     # The pinned CLI can emit either JSON or protobuf text; do not infer zero
     # traffic from an unrecognized successful command response.
@@ -680,6 +705,8 @@ def live_xray(data_dir, inventory, port):
         rows = [(bytes(name, "utf-8").decode("unicode_escape"), uint(value))
                 for name, value in re.findall(r'name:\s*"([^"\n]+)"\s+value:\s*(\d+)', reply.stdout)]
     if rows is None:
+        for value in result.values():
+            value["unavailable_reason"] = "unsupported_stats_response"
         return result
     labels = xray_identity_index(inventory)
     for value in result.values():
@@ -803,6 +830,7 @@ def reconciliation(before, after, elapsed):
                         "active_users": len(uids(live1["active"])) if live1["available"] and protocol in NATIVE_FIELDS.values() else None,
                         "sessions_or_recent_handshake_peers": live1["sessions"] if live1["available"] and protocol in NATIVE_FIELDS.values() else None,
                         "source": live1["source"], "available": live1["available"],
+                        "unavailable_reason": live1.get("unavailable_reason"),
                         "unmapped_sessions": live1["unmapped_sessions"], "unmapped_accounts": live1["unmapped_accounts"],
                         "unattributed_xray_family_series": live1.get("unattributed_xray_family_series"),
                         "stale_session_records": live1["stale_records"],
@@ -1188,13 +1216,14 @@ def main():
     parser.add_argument("--node-id", type=int, default=0, help="panel node ID, used only to scope read-only accounting SELECTs")
     parser.add_argument("--pid", type=int, default=0, help="select one antimage-node process if multiple are running")
     parser.add_argument("--data-dir", default=os.environ.get("ANTIMAGE_NODE_DATA_DIR", "/var/lib/antimage-node"))
-    parser.add_argument("--xray-api-port", type=int, default=10085)
+    parser.add_argument("--xray-api-port", type=int, default=None,
+                        help="override local StatsService port; otherwise use runtime API_INBOUND, then 10085")
     parser.add_argument("--sample-seconds", type=int, default=60)
     parser.add_argument("--sample-interval", type=float, default=2)
     args = parser.parse_args()
     if not 60 <= args.sample_seconds <= 900 or not .5 <= args.sample_interval <= 10:
         parser.error("sampling requires 60..900 seconds and an interval of 0.5..10 seconds")
-    if args.pid < 0 or args.node_id < 0 or not 0 < args.xray_api_port <= 65535:
+    if args.pid < 0 or args.node_id < 0 or (args.xray_api_port is not None and not 0 < args.xray_api_port <= 65535):
         parser.error("invalid node ID or local Xray API port")
     if sys.platform != "linux":
         parser.error("Linux /proc collector only")

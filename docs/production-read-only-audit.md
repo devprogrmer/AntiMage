@@ -91,6 +91,41 @@ acceptance workload. Current external observations of approximately 650 users,
 baseline. Neither collector unit tests nor small accounting benchmarks establish
 production CPU/RAM acceptance.
 
+## First production observation: 2026-10-25
+
+The shared AntiMage-s3 report covers 120.149 seconds of process sampling, with
+sequential accounting snapshots spanning roughly 123 seconds. It establishes:
+
+- Two logical Xeon Platinum 8260 CPUs and 4,106,092,544 bytes of host RAM.
+- NodeAgent mean CPU 43.446% of one core, or 21.723% of the host's two-core
+  capacity. This does not establish an improvement from the historical 70%
+  observation: workload, binary revision and measurement method differ.
+- RSS starts at 45,735,936 bytes, ends at 45,039,616 bytes, and peaks at
+  57,823,232 bytes. A two-minute window does not prove long-run heap stability.
+- Runtime policy has two VLESS, two Shadowsocks and three WireGuard inbounds.
+  The per-protocol policy user counts are 170, 170 and 119 respectively; these
+  counts can overlap and must not be added to infer unique configured users.
+- The quota enforcement environment override is 2 seconds. File changes in
+  several protocol accounting states are activity, not proof of active sessions
+  or measurements of the quota/accounting scheduler's call frequency.
+- Xray is version 26.7.11. The NodeAgent binary hash is known, but its source
+  revision is not established by the report.
+
+DB sources and Xray live counters were unavailable, and policy changed during
+the observation. Hence no missing-user, native-to-DB conservation, reflection,
+or restart-safety acceptance conclusion is warranted. WG reported 232 unmapped
+peers: the original collector missed managed `wireguard/inbounds/*` helper
+paths, so its zero matched loaded/active count is not an observed zero. The
+collector now checks the actual WG and AWG managed layouts and reports unknown
+when no owner mapping exists. It also discovers the authoritative runtime
+`API_INBOUND` port instead of always assuming 10085; an explicit port override
+remains available. Live query failures expose only a redacted error category.
+
+A follow-up capture with these fixes and access to the actual panel DB is
+required to close cross-protocol reconciliation. Neither a reset nor a restart
+is needed for that capture. Until then, approximately 650 configured and 291
+active users remain external scale estimates, not collector-verified counts.
+
 ## Validation
 
 ```sh

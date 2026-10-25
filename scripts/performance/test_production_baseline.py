@@ -249,13 +249,45 @@ class CollectorTest(unittest.TestCase):
         self.assertEqual(sum(v[1] for v in live["hysteria"]["series"].values()), 99)
 
     def test_wireguard_all_dump_columns_are_parsed_with_interface_prefix(self):
-        self.write("wireguard/runtime1/usage-helper.json", {"inbound_tag": self.tags["wireguard"],
+        self.write("wireguard/inbounds/runtime1/usage-helper.json", {"inbound_tag": self.tags["wireguard"],
             "interface_name": "wg-test", "peers": {"SECRET-public-key": 871234567}})
         row = "wg-test\tSECRET-public-key\tSECRET-psk\tPRIVATE-endpoint\t10.0.0.2/32\t0\t123\t456\t0\n"
         with mock.patch.object(audit.shutil, "which", return_value="wg"), mock.patch.object(audit, "command", return_value=subprocess.CompletedProcess([], 0, row)):
             live = audit.live_wireguard(self.root, audit.runtime_inventory(self.root), "wireguard")
         self.assertEqual(len(live["loaded"]), 1)
         self.assertEqual(sum(value for _, value in live["series"].values()), 579)
+
+    def test_amneziawg_real_managed_helper_layout(self):
+        self.write("amneziawg/runtime/runtime1/usage-helper.json", {"inbound_tag": self.tags["amneziawg"],
+            "interface_name": "awg-test", "peers": {"SECRET-public-key": 871234567}})
+        row = "awg-test\tSECRET-public-key\tSECRET-psk\tPRIVATE-endpoint\t10.0.0.2/32\t0\t123\t456\t0\n"
+        with mock.patch.object(audit.shutil, "which", return_value="awg"), mock.patch.object(audit, "command", return_value=subprocess.CompletedProcess([], 0, row)):
+            live = audit.live_wireguard(self.root, audit.runtime_inventory(self.root), "amneziawg")
+        self.assertTrue(live["available"])
+        self.assertEqual(len(live["loaded"]), 1)
+        self.assertEqual(sum(value for _, value in live["series"].values()), 579)
+
+    def test_unmapped_wireguard_dump_does_not_claim_zero_loaded_users(self):
+        row = "wg-test\tSECRET-public-key\tSECRET-psk\tPRIVATE-endpoint\t10.0.0.2/32\t0\t123\t456\t0\n"
+        with mock.patch.object(audit.shutil, "which", return_value="wg"), mock.patch.object(audit, "command", return_value=subprocess.CompletedProcess([], 0, row)):
+            live = audit.live_wireguard(self.root, audit.runtime_inventory(self.root), "wireguard")
+        self.assertFalse(live["available"])
+        self.assertIsNone(live["loaded"])
+        self.assertEqual(live["unmapped_accounts"], 1)
+
+    def test_xray_uses_authoritative_runtime_port_unless_overridden(self):
+        snap, _ = audit.read_json(self.root / "accounting/runtime-policy.json")
+        config = json.loads(snap["config_json"])
+        config["inbounds"].append({"tag": "API_INBOUND", "port": "12345", "protocol": "dokodemo-door"})
+        snap["config_json"] = json.dumps(config)
+        self.write("accounting/runtime-policy.json", snap)
+        inventory = audit.runtime_inventory(self.root)
+        self.assertEqual(inventory["xray_api_port"], 12345)
+        with mock.patch.object(audit, "command", return_value=subprocess.CompletedProcess([], 0, '{"stat": []}')) as run:
+            audit.live_xray(self.root, inventory, None)
+            self.assertIn("-server=127.0.0.1:12345", run.call_args.args[0])
+            audit.live_xray(self.root, inventory, 23456)
+            self.assertIn("-server=127.0.0.1:23456", run.call_args.args[0])
 
     def test_ikev2_attributes_eap_identity_not_generic_client_id(self):
         raw = "list-sa event { conn { uniqueid=1 state=ESTABLISHED remote-id=client remote-eap-id=SECRET-username child-sas { child { bytes-in=100 bytes-out=200 } } } }"
