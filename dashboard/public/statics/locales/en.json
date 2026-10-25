@@ -727,6 +727,8 @@
 	"inbounds.usageCoefficient": "Inbound usage coefficient",
 	"inbounds.usageCoefficientHelp": "Billed usage equals raw traffic × inbound coefficient × node coefficient. Upgrade selected nodes before using a value other than 1.",
 	"inbounds.usageCoefficientNodeWarning": "Older nodes cannot identify which inbound produced user traffic and will apply 1×. Update every selected node before saving this coefficient.",
+	"inbounds.enforcedSpeedLimit": "Enforced per-user speed",
+	"inbounds.enforcedSpeedLimitHelp": "Maximum speed each user on this inbound may reach, in bits per second (0 means unlimited). The cap applies to every user independently, so with 8 Mbps each user can still reach 8 Mbps at the same time. A user's own lower limit always wins.",
 	"inbounds.upload": "Upload",
 	"inbounds.download": "Download",
 	"inbounds.totalTraffic": "Total",

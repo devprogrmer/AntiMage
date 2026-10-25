@@ -67,6 +67,10 @@ func (c Controller) grpcApplyL2TPUserOperation(ctx context.Context, client *node
 	if err != nil {
 		return err
 	}
+	inboundSpeedLimits, err := c.repo.inboundSpeedLimitsByTag(ctx)
+	if err != nil {
+		return err
+	}
 	type target struct {
 		tag  string
 		pool string
@@ -127,6 +131,7 @@ func (c Controller) grpcApplyL2TPUserOperation(ctx context.Context, client *node
 			coefficient := runtimeInboundUsageCoefficients(listOfMaps(raw["inbounds"]))[inbound.tag]
 			desired.UsageCoefficient = normalizeUsageFactor(node.UsageCoefficient)
 			desired.InboundCoefficient = coefficient
+			desired.UploadSpeedLimit, desired.DownloadSpeedLimit = applyInboundSpeedLimit(inboundSpeedLimits[inbound.tag], desired.UploadSpeedLimit, desired.DownloadSpeedLimit)
 			reflections, reflectionErr := c.repo.runtimeUsageReflections(ctx, node.ID, []int64{desired.UserID})
 			if reflectionErr != nil {
 				return fmt.Errorf("load L2TP usage reflection watermark: %w", reflectionErr)

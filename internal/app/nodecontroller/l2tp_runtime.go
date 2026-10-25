@@ -94,6 +94,12 @@ func (r Repository) l2tpRuntime(ctx context.Context, nodeID int64, inbounds []ma
 		if err != nil {
 			return L2TPRuntime{}, err
 		}
+		applyInboundSpeedLimitToUsers(
+			inboundSpeedLimitFromInbound(inbound),
+			users,
+			func(u *L2TPRuntimeUser) *int64 { return &u.UploadSpeedLimit },
+			func(u *L2TPRuntimeUser) *int64 { return &u.DownloadSpeedLimit },
+		)
 		tunnelPort := xrayconfig.L2TPTunnelPort
 		if !OVBoolValue(settings["tproxy_enabled"]) {
 			tunnelPort = 0

@@ -25,6 +25,11 @@ type XrayRuntimePolicy struct {
 	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
 	DeviceLimit           int64   `json:"device_limit"`
 	IPLimit               int64   `json:"ip_limit"`
+	// Enforced per-user inbound caps, carried so a consumer can reconcile the
+	// user limit against the inbound maximum. Xray itself does not apply
+	// per-user shaping (see docs/offline-accounting-continuity.md).
+	InboundUploadSpeedLimit   int64 `json:"inbound_upload_speed_limit,omitempty"`
+	InboundDownloadSpeedLimit int64 `json:"inbound_download_speed_limit,omitempty"`
 }
 
 func (r Repository) xrayRuntimePolicies(ctx context.Context, node NodeRow, configJSON string, inbounds []map[string]any) ([]XrayRuntimePolicy, error) {
@@ -46,6 +51,7 @@ func (r Repository) xrayRuntimePolicies(ctx context.Context, node NodeRow, confi
 	ids := []int64{}
 	seen := map[int64]bool{}
 	coefficients := runtimeInboundUsageCoefficients(inbounds)
+	speedLimits := runtimeInboundSpeedLimits(inbounds)
 	for _, inbound := range cfg.Inbounds {
 		for _, client := range inbound.Settings.Clients {
 			prefix, _, found := strings.Cut(client.Email, ".")
@@ -53,7 +59,7 @@ func (r Repository) xrayRuntimePolicies(ctx context.Context, node NodeRow, confi
 			if !found || err != nil || id <= 0 {
 				continue
 			}
-			policies = append(policies, XrayRuntimePolicy{UserID: id, Email: client.Email, InboundTag: inbound.Tag, Protocol: inbound.Protocol, UsageCoefficient: normalizeUsageFactor(node.UsageCoefficient), InboundCoefficient: normalizeUsageFactor(coefficients[inbound.Tag])})
+			policies = append(policies, XrayRuntimePolicy{UserID: id, Email: client.Email, InboundTag: inbound.Tag, Protocol: inbound.Protocol, UsageCoefficient: normalizeUsageFactor(node.UsageCoefficient), InboundCoefficient: normalizeUsageFactor(coefficients[inbound.Tag]), InboundUploadSpeedLimit: speedLimits[inbound.Tag].Upload, InboundDownloadSpeedLimit: speedLimits[inbound.Tag].Download})
 			if !seen[id] {
 				seen[id] = true
 				ids = append(ids, id)

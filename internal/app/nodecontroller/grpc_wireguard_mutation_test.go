@@ -152,7 +152,7 @@ CREATE TABLE proxies (user_id INTEGER, type TEXT);
 CREATE TABLE service_hosts (service_id INTEGER, host_id INTEGER);
 CREATE TABLE hosts (id INTEGER PRIMARY KEY, inbound_tag TEXT, is_disabled BOOLEAN DEFAULT 0);
 CREATE TABLE xray_config (id INTEGER PRIMARY KEY, data TEXT);
-CREATE TABLE inbounds (tag TEXT PRIMARY KEY, uplink INTEGER DEFAULT 0, downlink INTEGER DEFAULT 0, usage_coefficient REAL DEFAULT 1);
+CREATE TABLE inbounds (tag TEXT PRIMARY KEY, uplink INTEGER DEFAULT 0, downlink INTEGER DEFAULT 0, usage_coefficient REAL DEFAULT 1, upload_speed_limit INTEGER NOT NULL DEFAULT 0, download_speed_limit INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE nodes (id INTEGER PRIMARY KEY, name TEXT, address TEXT, port INTEGER, api_port INTEGER, status TEXT, xray_version TEXT, message TEXT, certificate TEXT, certificate_key TEXT, xray_config_mode TEXT, xray_config TEXT, usage_coefficient REAL DEFAULT 1);
 CREATE TABLE wireguard_devices (inbound_tag TEXT, user_id INTEGER, device_index INTEGER, private_key TEXT, public_key TEXT, address TEXT, generation INTEGER DEFAULT 1, PRIMARY KEY(inbound_tag,user_id,device_index));
 CREATE TABLE wireguard_device_revocations (inbound_tag TEXT, user_id INTEGER, device_index INTEGER, credential_fingerprint TEXT);
@@ -162,7 +162,7 @@ INSERT INTO proxies VALUES (7,'wireguard');
 INSERT INTO hosts VALUES (1,'wg-in',0);
 INSERT INTO service_hosts VALUES (10,1);
 INSERT INTO xray_config VALUES (1,'{"inbounds":[{"tag":"wg-in","protocol":"wireguard","port":51820,"targets":["node:7"],"settings":{"private_key":"DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=","address_pool":"10.69.0.0/24","server_address":"10.69.0.1"}}]}');
-INSERT INTO inbounds VALUES ('wg-in',0,0,1);
+INSERT INTO inbounds (tag,uplink,downlink,usage_coefficient) VALUES ('wg-in',0,0,1);
 INSERT INTO nodes VALUES (7,'wg-node','127.0.0.1',0,0,'connected','','','certificate','key','custom','{}',1);
 INSERT INTO wireguard_devices VALUES ('wg-in',7,0,'private','BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=','10.69.0.7',1);`); err != nil {
 		t.Fatal(err)

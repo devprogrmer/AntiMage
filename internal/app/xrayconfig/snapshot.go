@@ -48,11 +48,13 @@ type TargetState struct {
 }
 
 type InboundRecordSnapshot struct {
-	ID               int64   `json:"id"`
-	Tag              string  `json:"tag"`
-	Uplink           int64   `json:"uplink,omitempty"`
-	Downlink         int64   `json:"downlink,omitempty"`
-	UsageCoefficient float64 `json:"usage_coefficient,omitempty"`
+	ID                 int64   `json:"id"`
+	Tag                string  `json:"tag"`
+	Uplink             int64   `json:"uplink,omitempty"`
+	Downlink           int64   `json:"downlink,omitempty"`
+	UsageCoefficient   float64 `json:"usage_coefficient,omitempty"`
+	UploadSpeedLimit   int64   `json:"upload_speed_limit,omitempty"`
+	DownloadSpeedLimit int64   `json:"download_speed_limit,omitempty"`
 }
 
 type HostSnapshot struct {
@@ -136,7 +138,7 @@ func (r Repository) CaptureMutationSnapshotTx(ctx context.Context, tx *sql.Tx, s
 	}
 	if scope.InboundTag != "" {
 		var record InboundRecordSnapshot
-		err := tx.QueryRowContext(ctx, `SELECT id, tag, uplink, downlink, COALESCE(usage_coefficient, 1) FROM inbounds WHERE tag = ? LIMIT 1`, scope.InboundTag).Scan(&record.ID, &record.Tag, &record.Uplink, &record.Downlink, &record.UsageCoefficient)
+		err := tx.QueryRowContext(ctx, `SELECT id, tag, uplink, downlink, COALESCE(usage_coefficient, 1), COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0) FROM inbounds WHERE tag = ? LIMIT 1`, scope.InboundTag).Scan(&record.ID, &record.Tag, &record.Uplink, &record.Downlink, &record.UsageCoefficient, &record.UploadSpeedLimit, &record.DownloadSpeedLimit)
 		switch {
 		case err == nil:
 			snapshot.Inbound = &record
@@ -430,7 +432,9 @@ func restoreInboundHostsTx(ctx context.Context, tx *sql.Tx, snapshot MutationSna
 				uplink, downlink = current.Inbound.Uplink, current.Inbound.Downlink
 			}
 			coefficient := normalizedInboundUsageCoefficient(snapshot.Inbound.UsageCoefficient)
-			if _, err := tx.ExecContext(ctx, `INSERT INTO inbounds (id, tag, uplink, downlink, usage_coefficient) VALUES (?, ?, ?, ?, ?)`, snapshot.Inbound.ID, snapshot.Inbound.Tag, uplink, downlink, coefficient); err != nil {
+			uploadSpeedLimit := normalizeInboundSpeedLimit(snapshot.Inbound.UploadSpeedLimit)
+			downloadSpeedLimit := normalizeInboundSpeedLimit(snapshot.Inbound.DownloadSpeedLimit)
+			if _, err := tx.ExecContext(ctx, `INSERT INTO inbounds (id, tag, uplink, downlink, usage_coefficient, upload_speed_limit, download_speed_limit) VALUES (?, ?, ?, ?, ?, ?, ?)`, snapshot.Inbound.ID, snapshot.Inbound.Tag, uplink, downlink, coefficient, uploadSpeedLimit, downloadSpeedLimit); err != nil {
 				return err
 			}
 		}

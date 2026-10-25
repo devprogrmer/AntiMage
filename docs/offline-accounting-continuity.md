@@ -176,6 +176,16 @@ interval, command latency and disconnect completion; it cannot guarantee zero.
   Xray process and affect unrelated accounts; whole-inbound shaping has the same
   problem. No safe transparent per-user flow mapping is implemented, so hard
   cutoff and per-user speed enforcement remain `Not Technically Reliable`.
+- Inbound-enforced per-user speed (`inbounds.upload_speed_limit` /
+  `download_speed_limit`, bits per second, 0 unlimited) is resolved on the panel
+  and carried into every native runtime payload. The native shapers (WireGuard,
+  AmneziaWG, OpenVPN, L2TP, PPTP, IKEv2, AnyConnect) enforce the stricter non-zero
+  of the user limit and the inbound cap, so a user-level limit can never exceed an
+  enforced inbound maximum. Xray is the one exception: it shares the per-user speed
+  reliability limitation above, so the panel passes the resolved cap through
+  `xray_policies` but does not claim native per-user shaping for Xray-backed
+  inbounds. The inbound cap does not change the Xray config graph, so editing it
+  never triggers a debounced restart.
 - Local `go test ./... -count=1` passes, including nodeagent, nodecontroller, API,
   migrations, SQLite lost-ACK/coefficient/combined recovery and device/IP tests.
 - The real pinned Xray VLESS test passes positive native stats, actual online IP,

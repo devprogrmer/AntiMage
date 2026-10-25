@@ -88,6 +88,12 @@ func (r Repository) awgRuntime(ctx context.Context, nodeID int64, inbounds []map
 		if err != nil {
 			return AWGRuntime{}, err
 		}
+		applyInboundSpeedLimitToUsers(
+			inboundSpeedLimitFromInbound(inbound),
+			peers,
+			func(p *AWGRuntimePeer) *int64 { return &p.UploadSpeedLimit },
+			func(p *AWGRuntimePeer) *int64 { return &p.DownloadSpeedLimit },
+		)
 		tunnelPort := xrayconfig.RuntimeTunnelPortForInbound(inbound, usedPorts)
 		if tunnelPort > 0 {
 			usedPorts[tunnelPort] = struct{}{}

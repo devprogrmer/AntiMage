@@ -105,6 +105,10 @@ func (r Repository) CreateInbound(ctx context.Context, payload map[string]any) (
 	if err != nil {
 		return InboundMutationResult{}, err
 	}
+	uploadSpeedLimit, downloadSpeedLimit, cleanPayload, err := extractInboundSpeedLimits(cleanPayload, 0, 0)
+	if err != nil {
+		return InboundMutationResult{}, err
+	}
 	inbound, err := r.prepareInboundPayload(cleanPayload, "")
 	if err != nil {
 		return InboundMutationResult{}, err
@@ -157,6 +161,9 @@ func (r Repository) CreateInbound(ctx context.Context, payload map[string]any) (
 	if err := r.setInboundUsageCoefficientTx(ctx, tx, tag, usageCoefficient); err != nil {
 		return InboundMutationResult{}, err
 	}
+	if err := r.setInboundSpeedLimitsTx(ctx, tx, tag, uploadSpeedLimit, downloadSpeedLimit); err != nil {
+		return InboundMutationResult{}, err
+	}
 	if err := r.enqueueSyncForTargetsTx(ctx, tx, sortedTargetIDs(configs)); err != nil {
 		return InboundMutationResult{}, err
 	}
@@ -199,12 +206,20 @@ func (r Repository) UpdateInbound(ctx context.Context, tag string, payload map[s
 	if err != nil {
 		return InboundMutationResult{}, err
 	}
+	currentUploadSpeedLimit, currentDownloadSpeedLimit, err := r.inboundSpeedLimitsTx(ctx, tx, tag)
+	if err != nil {
+		return InboundMutationResult{}, err
+	}
 
 	targetIDs, cleanPayload, err := r.extractTargetIDs(payload, currentTargets)
 	if err != nil {
 		return InboundMutationResult{}, err
 	}
 	usageCoefficient, cleanPayload, err := extractInboundUsageCoefficient(cleanPayload, currentCoefficient)
+	if err != nil {
+		return InboundMutationResult{}, err
+	}
+	uploadSpeedLimit, downloadSpeedLimit, cleanPayload, err := extractInboundSpeedLimits(cleanPayload, currentUploadSpeedLimit, currentDownloadSpeedLimit)
 	if err != nil {
 		return InboundMutationResult{}, err
 	}
@@ -275,6 +290,9 @@ func (r Repository) UpdateInbound(ctx context.Context, tag string, payload map[s
 		}
 	}
 	if err := r.setInboundUsageCoefficientTx(ctx, tx, tag, usageCoefficient); err != nil {
+		return InboundMutationResult{}, err
+	}
+	if err := r.setInboundSpeedLimitsTx(ctx, tx, tag, uploadSpeedLimit, downloadSpeedLimit); err != nil {
 		return InboundMutationResult{}, err
 	}
 	if err := r.enqueueSyncForTargetsTx(ctx, tx, changedTargets); err != nil {
@@ -441,6 +459,8 @@ func (r Repository) manageableInboundsWithTargets(ctx context.Context) ([]map[st
 			sanitized["uplink"] = record.Uplink
 			sanitized["downlink"] = record.Downlink
 			sanitized["usage_coefficient"] = normalizedInboundUsageCoefficient(record.UsageCoefficient)
+			sanitized["upload_speed_limit"] = normalizeInboundSpeedLimit(record.UploadSpeedLimit)
+			sanitized["download_speed_limit"] = normalizeInboundSpeedLimit(record.DownloadSpeedLimit)
 			byTag[tag] = sanitized
 			order = append(order, tag)
 		}
@@ -454,13 +474,15 @@ func (r Repository) manageableInboundsWithTargets(ctx context.Context) ([]map[st
 }
 
 type inboundMetadata struct {
-	Uplink           int64
-	Downlink         int64
-	UsageCoefficient float64
+	Uplink             int64
+	Downlink           int64
+	UsageCoefficient   float64
+	UploadSpeedLimit   int64
+	DownloadSpeedLimit int64
 }
 
 func (r Repository) inboundMetadataByTag(ctx context.Context) (map[string]inboundMetadata, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT tag, COALESCE(uplink, 0), COALESCE(downlink, 0), COALESCE(usage_coefficient, 1) FROM inbounds`)
+	rows, err := r.db.QueryContext(ctx, `SELECT tag, COALESCE(uplink, 0), COALESCE(downlink, 0), COALESCE(usage_coefficient, 1), COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0) FROM inbounds`)
 	if err != nil {
 		return nil, err
 	}
@@ -469,7 +491,7 @@ func (r Repository) inboundMetadataByTag(ctx context.Context) (map[string]inboun
 	for rows.Next() {
 		var tag string
 		var record inboundMetadata
-		if err := rows.Scan(&tag, &record.Uplink, &record.Downlink, &record.UsageCoefficient); err != nil {
+		if err := rows.Scan(&tag, &record.Uplink, &record.Downlink, &record.UsageCoefficient, &record.UploadSpeedLimit, &record.DownloadSpeedLimit); err != nil {
 			return nil, err
 		}
 		metadata[tag] = record
@@ -496,6 +518,53 @@ func extractInboundUsageCoefficient(payload map[string]any, fallback float64) (f
 func normalizedInboundUsageCoefficient(value float64) float64 {
 	if math.IsNaN(value) || math.IsInf(value, 0) || value < minInboundUsageCoefficient || value > maxInboundUsageCoefficient {
 		return defaultInboundUsageCoefficient
+	}
+	return value
+}
+
+// The enforced per-user speed cap is expressed in bits per second, matching
+// users.upload_speed_limit / download_speed_limit, so an operator can compare
+// and combine the two without unit conversion in their head. 0 is unlimited.
+const maxInboundSpeedLimitBits = int64(1) << 43 // 8 Tbps, far beyond any line
+
+// extractInboundSpeedLimits pulls the enforced per-user cap out of the inbound
+// payload and returns it alongside the payload with those keys removed.
+//
+// These are deliberately NOT part of the Xray config the core reads: a rate
+// change must not mutate the config graph, because Config.Equals would then
+// report a change and the debounced restart would drop every live session.
+// They are promoted to structured inbound columns instead, exactly like
+// usage_coefficient.
+func extractInboundSpeedLimits(payload map[string]any, fallbackUp, fallbackDown int64) (int64, int64, map[string]any, error) {
+	clean := deepCopyMap(payload)
+	upload, err := inboundSpeedLimitValue(clean, "upload_speed_limit", fallbackUp)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	download, err := inboundSpeedLimitValue(clean, "download_speed_limit", fallbackDown)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	delete(clean, "upload_speed_limit")
+	delete(clean, "download_speed_limit")
+	return upload, download, clean, nil
+}
+
+func inboundSpeedLimitValue(payload map[string]any, key string, fallback int64) (int64, error) {
+	raw, ok := payload[key]
+	if !ok || raw == nil || strings.TrimSpace(fmt.Sprint(raw)) == "" {
+		return normalizeInboundSpeedLimit(fallback), nil
+	}
+	value, err := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(raw)), 10, 64)
+	if err != nil || value < 0 || value > maxInboundSpeedLimitBits {
+		return 0, fmt.Errorf("%w: %s must be between 0 and %d bits per second", ErrInvalidInbound, key, maxInboundSpeedLimitBits)
+	}
+	return value, nil
+}
+
+func normalizeInboundSpeedLimit(value int64) int64 {
+	if value < 0 || value > maxInboundSpeedLimitBits {
+		return 0
 	}
 	return value
 }
@@ -1247,6 +1316,23 @@ func (r Repository) inboundUsageCoefficientTx(ctx context.Context, tx *sql.Tx, t
 
 func (r Repository) setInboundUsageCoefficientTx(ctx context.Context, tx *sql.Tx, tag string, coefficient float64) error {
 	_, err := tx.ExecContext(ctx, `UPDATE inbounds SET usage_coefficient = ? WHERE tag = ?`, normalizedInboundUsageCoefficient(coefficient), tag)
+	return err
+}
+
+func (r Repository) inboundSpeedLimitsTx(ctx context.Context, tx *sql.Tx, tag string) (int64, int64, error) {
+	var upload, download int64
+	err := tx.QueryRowContext(ctx, `SELECT COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0) FROM inbounds WHERE tag = ? LIMIT 1`, tag).Scan(&upload, &download)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, 0, nil
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	return normalizeInboundSpeedLimit(upload), normalizeInboundSpeedLimit(download), nil
+}
+
+func (r Repository) setInboundSpeedLimitsTx(ctx context.Context, tx *sql.Tx, tag string, upload, download int64) error {
+	_, err := tx.ExecContext(ctx, `UPDATE inbounds SET upload_speed_limit = ?, download_speed_limit = ? WHERE tag = ?`, normalizeInboundSpeedLimit(upload), normalizeInboundSpeedLimit(download), tag)
 	return err
 }
 

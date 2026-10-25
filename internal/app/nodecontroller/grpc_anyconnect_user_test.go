@@ -73,7 +73,7 @@ CREATE TABLE proxies (user_id INTEGER, type TEXT);
 CREATE TABLE service_hosts (service_id INTEGER, host_id INTEGER);
 CREATE TABLE hosts (id INTEGER PRIMARY KEY, inbound_tag TEXT, is_disabled BOOLEAN DEFAULT 0);
 CREATE TABLE xray_config (id INTEGER PRIMARY KEY, data TEXT);
-CREATE TABLE inbounds (tag TEXT PRIMARY KEY, uplink INTEGER DEFAULT 0, downlink INTEGER DEFAULT 0, usage_coefficient REAL DEFAULT 1);
+CREATE TABLE inbounds (tag TEXT PRIMARY KEY, uplink INTEGER DEFAULT 0, downlink INTEGER DEFAULT 0, usage_coefficient REAL DEFAULT 1, upload_speed_limit INTEGER NOT NULL DEFAULT 0, download_speed_limit INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE nodes (id INTEGER PRIMARY KEY, name TEXT, address TEXT, port INTEGER, api_port INTEGER, status TEXT, xray_version TEXT, message TEXT, certificate TEXT, certificate_key TEXT, xray_config_mode TEXT, xray_config TEXT, usage_coefficient REAL DEFAULT 1, applied_revision INTEGER DEFAULT 0, desired_revision INTEGER DEFAULT 0, node_capabilities TEXT DEFAULT '["shared_fencing_v1","command_idempotency_v1"]', last_seen_at TEXT, agent_status TEXT DEFAULT '', xray_status TEXT DEFAULT '', last_status_change TEXT);
 CREATE TABLE wireguard_peer_addresses (inbound_tag TEXT NOT NULL, user_id INTEGER NOT NULL, pool TEXT NOT NULL, server_address TEXT NOT NULL, address TEXT NOT NULL, PRIMARY KEY (inbound_tag, user_id), UNIQUE (inbound_tag, address));
 CREATE TABLE node_wireguard_usage_reflection (node_id INTEGER, user_id INTEGER, batch_id TEXT, ledger_json TEXT NULL, updated_at DATETIME, PRIMARY KEY(node_id,user_id));
@@ -81,7 +81,7 @@ INSERT INTO users VALUES (7,'ac-user','0123456789abcdef0123456789abcdef',10,'act
 INSERT INTO proxies VALUES (7,'anyconnect');
 INSERT INTO hosts VALUES (1,'ac-in',0);
 INSERT INTO service_hosts VALUES (10,1);
-INSERT INTO inbounds VALUES ('ac-in',0,0,1);
+INSERT INTO inbounds (tag,uplink,downlink,usage_coefficient) VALUES ('ac-in',0,0,1);
 INSERT INTO xray_config VALUES (1,'{"inbounds":[{"tag":"ac-in","protocol":"anyconnect","port":443,"targets":["node:7"],"settings":{"ipv4_pool_cidr":"10.71.0.0/24"}}]}');
 INSERT INTO nodes (id,name,address,port,api_port,status,message,certificate,certificate_key,xray_config_mode,xray_config,usage_coefficient) VALUES (7,'ac-node','127.0.0.1',0,0,'connected','','native-cert','key','custom','{"inbounds":[{"tag":"ac-in","protocol":"anyconnect","port":443,"targets":["node:7"],"settings":{"ipv4_pool_cidr":"10.71.0.0/24"}}]}',1);`); err != nil {
 		t.Fatal(err)

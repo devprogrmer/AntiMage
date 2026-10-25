@@ -106,6 +106,12 @@ func (r Repository) remoteAccessRuntimeFromInbounds(ctx context.Context, nodeID 
 		if err != nil {
 			return RemoteAccessRuntime{}, err
 		}
+		applyInboundSpeedLimitToUsers(
+			inboundSpeedLimitFromInbound(inbound),
+			users,
+			func(u *RemoteAccessRuntimeUser) *int64 { return &u.UploadSpeedLimit },
+			func(u *RemoteAccessRuntimeUser) *int64 { return &u.DownloadSpeedLimit },
+		)
 		tunnelPort := xrayconfig.RuntimeTunnelPortForInbound(inbound, usedPorts)
 		if tunnelPort > 0 {
 			usedPorts[tunnelPort] = struct{}{}

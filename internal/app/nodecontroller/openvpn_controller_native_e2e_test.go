@@ -385,7 +385,7 @@ CREATE TABLE proxies (user_id INTEGER,type TEXT);
 CREATE TABLE hosts (id INTEGER PRIMARY KEY,inbound_tag TEXT,is_disabled BOOLEAN DEFAULT 0);
 CREATE TABLE service_hosts (service_id INTEGER,host_id INTEGER);
 CREATE TABLE xray_config (id INTEGER PRIMARY KEY,data TEXT,created_at DATETIME,updated_at DATETIME);
-CREATE TABLE inbounds (tag TEXT PRIMARY KEY,uplink INTEGER DEFAULT 0,downlink INTEGER DEFAULT 0,usage_coefficient REAL DEFAULT 1);
+CREATE TABLE inbounds (tag TEXT PRIMARY KEY,uplink INTEGER DEFAULT 0,downlink INTEGER DEFAULT 0,usage_coefficient REAL DEFAULT 1,upload_speed_limit INTEGER NOT NULL DEFAULT 0,download_speed_limit INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE wireguard_peer_addresses (inbound_tag TEXT,user_id INTEGER,pool TEXT,server_address TEXT,address TEXT,PRIMARY KEY(inbound_tag,user_id),UNIQUE(inbound_tag,address));
 CREATE TABLE operations (id TEXT PRIMARY KEY,operation_type TEXT,target_type TEXT,target_id TEXT,requested_by TEXT,request_id TEXT,state TEXT,phase TEXT,progress INTEGER,created_at BIGINT,started_at BIGINT,updated_at BIGINT,completed_at BIGINT,error TEXT,metadata_json TEXT);
 CREATE TABLE operation_locks (target_type TEXT,target_id TEXT,operation_id TEXT UNIQUE,PRIMARY KEY(target_type,target_id));
@@ -409,7 +409,7 @@ CREATE TABLE operation_events(operation_id TEXT,sequence INTEGER,state TEXT,phas
 		{`INSERT INTO proxies VALUES (7,'openvpn')`, nil},
 		{`INSERT INTO hosts VALUES (1,'ov-in',0)`, nil},
 		{`INSERT INTO service_hosts VALUES (10,1)`, nil},
-		{`INSERT INTO inbounds VALUES ('ov-in',0,0,1)`, nil},
+		{`INSERT INTO inbounds (tag,uplink,downlink,usage_coefficient) VALUES ('ov-in',0,0,1)`, nil},
 	} {
 		if _, err := db.ExecContext(ctx, seed.query, seed.args...); err != nil {
 			_ = db.Close()

@@ -104,6 +104,12 @@ func (r Repository) ovRuntime(ctx context.Context, nodeID int64, inbounds []map[
 		if err != nil {
 			return OVRuntime{}, err
 		}
+		applyInboundSpeedLimitToUsers(
+			inboundSpeedLimitFromInbound(inbound),
+			users,
+			func(u *OVRuntimeUser) *int64 { return &u.UploadSpeedLimit },
+			func(u *OVRuntimeUser) *int64 { return &u.DownloadSpeedLimit },
+		)
 		tunnelPort := xrayconfig.RuntimeTunnelPortForInbound(inbound, usedPorts)
 		if tunnelPort > 0 {
 			usedPorts[tunnelPort] = struct{}{}

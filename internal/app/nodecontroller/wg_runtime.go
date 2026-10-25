@@ -98,6 +98,12 @@ func (r Repository) wgRuntime(ctx context.Context, nodeID int64, inbounds []map[
 		if err != nil {
 			return WGRuntime{}, err
 		}
+		applyInboundSpeedLimitToUsers(
+			inboundSpeedLimitFromInbound(inbound),
+			peers,
+			func(p *WGRuntimePeer) *int64 { return &p.UploadSpeedLimit },
+			func(p *WGRuntimePeer) *int64 { return &p.DownloadSpeedLimit },
+		)
 		if len(peers) == 0 {
 			continue
 		}

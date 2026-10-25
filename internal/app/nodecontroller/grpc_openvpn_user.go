@@ -59,6 +59,10 @@ func (c Controller) grpcApplyOpenVPNUserOperation(ctx context.Context, client *n
 	if err != nil {
 		return err
 	}
+	inboundSpeedLimits, err := c.repo.inboundSpeedLimitsByTag(ctx)
+	if err != nil {
+		return err
+	}
 	type target struct {
 		tag      string
 		settings map[string]any
@@ -133,6 +137,7 @@ func (c Controller) grpcApplyOpenVPNUserOperation(ctx context.Context, client *n
 			if desired == nil {
 				return fmt.Errorf("active OpenVPN user %d is absent from inbound %s runtime policy", operation.UserID.Int64, inbound.tag)
 			}
+			desired.UploadSpeedLimit, desired.DownloadSpeedLimit = applyInboundSpeedLimit(inboundSpeedLimits[inbound.tag], desired.UploadSpeedLimit, desired.DownloadSpeedLimit)
 			user, userErr := grpcOpenVPNMutationUser(*desired, mutation, revision)
 			if userErr != nil {
 				return userErr

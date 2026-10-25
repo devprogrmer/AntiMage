@@ -88,6 +88,12 @@ func (r Repository) pptpRuntime(ctx context.Context, nodeID int64, inbounds []ma
 		if err != nil {
 			return PPTPRuntime{}, err
 		}
+		applyInboundSpeedLimitToUsers(
+			inboundSpeedLimitFromInbound(inbound),
+			users,
+			func(u *PPTPRuntimeUser) *int64 { return &u.UploadSpeedLimit },
+			func(u *PPTPRuntimeUser) *int64 { return &u.DownloadSpeedLimit },
+		)
 		tunnelPort := xrayconfig.RuntimeTunnelPortForInbound(inbound, usedPorts)
 		if tunnelPort > 0 {
 			usedPorts[tunnelPort] = struct{}{}

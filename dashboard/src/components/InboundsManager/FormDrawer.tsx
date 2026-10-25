@@ -1644,6 +1644,74 @@ export const InboundFormModal: FC<Props> = ({
 												)}
 											</FormControl>
 										</SimpleGrid>
+										<FormControl
+											isInvalid={
+												Boolean(fieldValidationErrors.uploadSpeedLimit) ||
+												Boolean(fieldValidationErrors.downloadSpeedLimit)
+											}
+										>
+											<FormLabel>{t("inbounds.enforcedSpeedLimit")}</FormLabel>
+											<SimpleGrid
+												columns={{ base: 1, md: 2 }}
+												spacing={4}
+											>
+												<FormControl
+													isInvalid={Boolean(
+														fieldValidationErrors.uploadSpeedLimit,
+													)}
+												>
+													<FormLabel fontSize="sm">
+														{t("userDialog.uploadSpeedLimit")}
+													</FormLabel>
+													<Controller
+														control={control}
+														name="uploadSpeedLimit"
+														render={({ field }) => (
+															<NumericInput
+																value={field.value ?? "0"}
+																onChange={(value) => field.onChange(value)}
+																min={0}
+																step={1000}
+															/>
+														)}
+													/>
+													{fieldValidationErrors.uploadSpeedLimit && (
+														<Text fontSize="xs" color="red.500" mt={1}>
+															{fieldValidationErrors.uploadSpeedLimit}
+														</Text>
+													)}
+												</FormControl>
+												<FormControl
+													isInvalid={Boolean(
+														fieldValidationErrors.downloadSpeedLimit,
+													)}
+												>
+													<FormLabel fontSize="sm">
+														{t("userDialog.downloadSpeedLimit")}
+													</FormLabel>
+													<Controller
+														control={control}
+														name="downloadSpeedLimit"
+														render={({ field }) => (
+															<NumericInput
+																value={field.value ?? "0"}
+																onChange={(value) => field.onChange(value)}
+																min={0}
+																step={1000}
+															/>
+														)}
+													/>
+													{fieldValidationErrors.downloadSpeedLimit && (
+														<Text fontSize="xs" color="red.500" mt={1}>
+															{fieldValidationErrors.downloadSpeedLimit}
+														</Text>
+													)}
+												</FormControl>
+											</SimpleGrid>
+											<Text fontSize="xs" color="gray.500" mt={1}>
+												{t("inbounds.enforcedSpeedLimitHelp")}
+											</Text>
+										</FormControl>
 										<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 											<FormControl
 												isRequired
