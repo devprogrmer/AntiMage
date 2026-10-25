@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -555,7 +556,56 @@ func inboundSpeedLimitValue(payload map[string]any, key string, fallback int64) 
 	if !ok || raw == nil || strings.TrimSpace(fmt.Sprint(raw)) == "" {
 		return normalizeInboundSpeedLimit(fallback), nil
 	}
-	value, err := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(raw)), 10, 64)
+	var value int64
+	var err error
+	switch number := raw.(type) {
+	case json.Number:
+		value, err = strconv.ParseInt(string(number), 10, 64)
+	case float64:
+		if math.IsNaN(number) || math.IsInf(number, 0) || math.Trunc(number) != number || number > float64(maxInboundSpeedLimitBits) {
+			err = fmt.Errorf("not an integer in range")
+		} else {
+			value = int64(number)
+		}
+	case float32:
+		if math.IsNaN(float64(number)) || math.IsInf(float64(number), 0) || math.Trunc(float64(number)) != float64(number) || float64(number) > float64(maxInboundSpeedLimitBits) {
+			err = fmt.Errorf("not an integer in range")
+		} else {
+			value = int64(number)
+		}
+	case int:
+		value = int64(number)
+	case int8:
+		value = int64(number)
+	case int16:
+		value = int64(number)
+	case int32:
+		value = int64(number)
+	case int64:
+		value = number
+	case uint:
+		if uint64(number) > uint64(maxInboundSpeedLimitBits) {
+			err = fmt.Errorf("not an integer in range")
+		} else {
+			value = int64(number)
+		}
+	case uint8:
+		value = int64(number)
+	case uint16:
+		value = int64(number)
+	case uint32:
+		value = int64(number)
+	case uint64:
+		if number > uint64(maxInboundSpeedLimitBits) {
+			err = fmt.Errorf("not an integer in range")
+		} else {
+			value = int64(number)
+		}
+	case string:
+		value, err = strconv.ParseInt(strings.TrimSpace(number), 10, 64)
+	default:
+		err = fmt.Errorf("unsupported numeric type %T", raw)
+	}
 	if err != nil || value < 0 || value > maxInboundSpeedLimitBits {
 		return 0, fmt.Errorf("%w: %s must be between 0 and %d bits per second", ErrInvalidInbound, key, maxInboundSpeedLimitBits)
 	}

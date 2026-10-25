@@ -107,14 +107,11 @@ func runtimeInboundSpeedLimits(inbounds []map[string]any) map[string]inboundSpee
 // carries these keys (they are stripped before persistence so a rate change
 // cannot perturb the config graph), so they read the columns directly.
 //
-// A pre-migration database (or a focused test schema) simply has no caps; the
-// query degrades to an empty map rather than failing the mutation.
+// Missing columns indicate migrations have not completed. Fail the targeted
+// mutation instead of treating an enforced cap as unlimited.
 func (r Repository) inboundSpeedLimitsByTag(ctx context.Context) (map[string]inboundSpeedLimit, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT tag, COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0) FROM inbounds`)
 	if err != nil {
-		if isMissingInboundSpeedLimitSchema(err) {
-			return map[string]inboundSpeedLimit{}, nil
-		}
 		return nil, err
 	}
 	defer rows.Close()
@@ -123,9 +120,6 @@ func (r Repository) inboundSpeedLimitsByTag(ctx context.Context) (map[string]inb
 		var tag string
 		var limit inboundSpeedLimit
 		if err := rows.Scan(&tag, &limit.Upload, &limit.Download); err != nil {
-			if isMissingInboundSpeedLimitSchema(err) {
-				return map[string]inboundSpeedLimit{}, nil
-			}
 			return nil, err
 		}
 		tag = strings.TrimSpace(tag)
@@ -135,23 +129,4 @@ func (r Repository) inboundSpeedLimitsByTag(ctx context.Context) (map[string]inb
 		result[tag] = limit
 	}
 	return result, rows.Err()
-}
-
-func isMissingInboundSpeedLimitSchema(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	for _, marker := range []string{
-		"no such table",
-		"no such column",
-		"doesn't exist",
-		"does not exist",
-		"unknown column",
-	} {
-		if strings.Contains(message, marker) {
-			return true
-		}
-	}
-	return false
 }

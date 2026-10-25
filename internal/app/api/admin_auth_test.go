@@ -153,7 +153,9 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			tag TEXT NOT NULL UNIQUE,
 			uplink INTEGER NOT NULL DEFAULT 0,
 			downlink INTEGER NOT NULL DEFAULT 0,
-			usage_coefficient REAL NOT NULL DEFAULT 1
+			usage_coefficient REAL NOT NULL DEFAULT 1,
+			upload_speed_limit INTEGER NOT NULL DEFAULT 0,
+			download_speed_limit INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE TABLE hosts (
 			id INTEGER PRIMARY KEY,

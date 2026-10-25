@@ -58,6 +58,7 @@ func openVPNControllerFixture(t *testing.T) (context.Context, *Controller, *node
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.ExecContext(ctx, `
 CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, credential_key TEXT, service_id INTEGER, status TEXT, used_traffic INTEGER DEFAULT 0, data_limit INTEGER, expire INTEGER, device_limit INTEGER DEFAULT 0, ip_limit INTEGER DEFAULT 0, upload_speed_limit INTEGER DEFAULT 0, download_speed_limit INTEGER DEFAULT 0);
+CREATE TABLE inbounds (tag TEXT PRIMARY KEY, upload_speed_limit INTEGER NOT NULL DEFAULT 0, download_speed_limit INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE nodes (id INTEGER PRIMARY KEY, node_capabilities TEXT DEFAULT '[]');
 CREATE TABLE proxies (user_id INTEGER, type TEXT);
 CREATE TABLE hosts (id INTEGER PRIMARY KEY, inbound_tag TEXT, is_disabled BOOLEAN DEFAULT 0);

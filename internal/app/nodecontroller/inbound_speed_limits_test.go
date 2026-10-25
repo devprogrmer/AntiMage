@@ -214,10 +214,9 @@ INSERT INTO inbounds (tag, uplink, downlink, usage_coefficient, upload_speed_lim
 	}
 }
 
-// TestInboundSpeedLimitsToleratePreMigrationSchema guards the upgrade path: an
-// old database without the new columns must degrade to "no cap" rather than
-// failing the mutation.
-func TestInboundSpeedLimitsToleratePreMigrationSchema(t *testing.T) {
+// TestInboundSpeedLimitsFailClosedBeforeMigration prevents a targeted mutation
+// from silently dropping an enforced cap when the migration has not completed.
+func TestInboundSpeedLimitsFailClosedBeforeMigration(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "legacy-inbounds.db"))
 	if err != nil {
@@ -229,10 +228,7 @@ INSERT INTO inbounds VALUES ('legacy', 0, 0, 1.0);`); err != nil {
 		t.Fatal(err)
 	}
 	limits, err := NewRepository(db, "sqlite").inboundSpeedLimitsByTag(ctx)
-	if err != nil {
-		t.Fatalf("pre-migration schema should not fail: %v", err)
-	}
-	if len(limits) != 0 {
-		t.Fatalf("expected empty limits, got %+v", limits)
+	if err == nil {
+		t.Fatalf("pre-migration schema silently allowed mutation with limits=%+v", limits)
 	}
 }

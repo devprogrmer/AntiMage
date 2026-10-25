@@ -67,6 +67,7 @@ func l2TPControllerFixture(t *testing.T) (context.Context, *Controller, *nodecli
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.ExecContext(ctx, `
 CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, credential_key TEXT, service_id INTEGER, status TEXT, used_traffic INTEGER DEFAULT 0, data_limit INTEGER, expire INTEGER, device_limit INTEGER DEFAULT 0, ip_limit INTEGER DEFAULT 0, upload_speed_limit INTEGER DEFAULT 0, download_speed_limit INTEGER DEFAULT 0);
+CREATE TABLE inbounds (tag TEXT PRIMARY KEY, upload_speed_limit INTEGER NOT NULL DEFAULT 0, download_speed_limit INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE nodes (id INTEGER PRIMARY KEY, status TEXT DEFAULT 'connected', last_status_change TEXT, message TEXT DEFAULT '', xray_version TEXT DEFAULT '', agent_status TEXT DEFAULT '', xray_status TEXT DEFAULT '', applied_revision INTEGER DEFAULT 0, desired_revision INTEGER DEFAULT 0, last_seen_at TEXT, node_capabilities TEXT DEFAULT '["shared_fencing_v1","command_idempotency_v1"]');
 CREATE TABLE proxies (user_id INTEGER, type TEXT);
 CREATE TABLE hosts (id INTEGER PRIMARY KEY, inbound_tag TEXT, is_disabled BOOLEAN DEFAULT 0);
