@@ -16,6 +16,40 @@ the production target. There is deliberately no synthetic adapter that can be
 mistaken for native acceptance. No production CPU/RAM acceptance result has been
 recorded with this harness yet.
 
+## Focused receipt-decoding measurement
+
+`BenchmarkReflection650UsersEightInbounds` isolates 650 configured users with
+eight cumulative receipt owners each. The inbound count is a synthetic comparison
+dimension, not a measured AntiMage-s3 protocol/inbound mix. Each owner retains
+100 unreflected bytes and all 5,200 results are checked by a regression test.
+
+On the same WSL Linux amd64 host (i5-13400F, Go benchmark parallelism 16), three
+one-second benchmark repetitions gave:
+
+| Measurement per batch | Before | After |
+| --- | ---: | ---: |
+| Time | 49.15–50.91 ms | 7.26–7.43 ms |
+| Allocated bytes | 56,219,769–56,219,796 | 7,389,881–7,389,888 |
+| Allocations | 733,200 | 96,217 |
+
+Queries follow Controller's actual inbound-major ordering. The baseline was
+compiled from the unchanged parent implementation using a Go file overlay;
+the same benchmark and tests were used for both implementations.
+
+The implementation reuses decoded receipts within one evaluation call, bounded
+by 1,024 entries and 1 MiB of encoded receipt bytes. Decoded object overhead is
+additional; this is not a claim that cache heap usage is capped at 1 MiB.
+It retains no receipt between calls, requires identical receipt bytes for reuse,
+and still checks epoch and each owner's cumulative total. Interleaved receipts,
+changed receipts, wrong epochs, missing receipts, oversized receipts, entry-limit
+overflow, and independent single-owner evaluation have regression coverage. Persistence,
+reflection authority, quota cadence, and anchor-retirement rules are unchanged.
+Receipts outside the cache bounds are decoded normally without dropping owners.
+
+This is a focused allocation/latency result, **not** isolated NodeAgent CPU,
+RSS/GC stability, native traffic reconciliation, or production acceptance. The
+real host report and mixed-runtime workload remain necessary.
+
 ## Build and capture
 
 On the same suitable Linux host/toolchain for both revisions:

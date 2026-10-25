@@ -426,6 +426,13 @@ func (s *Server) localPendingReflectedV2Locked(protocol string, uid int64, child
 func (s *Server) localUsageReflectionV2Locked(queries []localUsageReflectionQuery, results []localUsageReflectionResult) error {
 	idx := s.localUsageV2IndexLocked()
 	compactOwners := map[localUsageOwnerKey]bool{}
+	// Runtime policies are inbound-major: the same user's receipt recurs later
+	// in the batch. Bound the per-call cache by entries and encoded bytes; never
+	// retain decoded authority across calls. Larger batches remain correct and
+	// simply decode uncached receipts normally.
+	const maxCachedReceipts, maxCachedReceiptBytes = 1024, 1 << 20
+	var receipts map[string]usagereflection.Watermark
+	cachedBytes := 0
 	for i, q := range queries {
 		pos, ok := idx.Owners[localUsageOwnerKey{q.Protocol, q.UserID, q.InboundTag}]
 		if !ok {
@@ -448,9 +455,20 @@ func (s *Server) localUsageReflectionV2Locked(queries []localUsageReflectionQuer
 			}
 		}
 		if reflectedLedger != "" {
-			w, err := usagereflection.Decode(reflectedLedger)
-			if err != nil {
-				return err
+			w, cached := receipts[reflectedLedger]
+			if !cached {
+				var err error
+				w, err = usagereflection.Decode(reflectedLedger)
+				if err != nil {
+					return err
+				}
+				if len(receipts) < maxCachedReceipts && len(reflectedLedger) <= maxCachedReceiptBytes-cachedBytes {
+					if receipts == nil {
+						receipts = make(map[string]usagereflection.Watermark)
+					}
+					receipts[reflectedLedger] = w
+					cachedBytes += len(reflectedLedger)
+				}
 			}
 			if w.Epoch == s.localUsageV2.Epoch {
 				reflected, covered = w.Totals[usagereflection.Key(q.Protocol, q.InboundTag)]
