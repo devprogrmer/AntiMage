@@ -61,6 +61,8 @@ type Server struct {
 	localUsageLoaded                 bool
 	localUsageDeliveries             []localUsageDelivery
 	localUsageDeliveryIndex          *localUsageDeliveryIndex
+	accountingStateDedupMu           sync.Mutex
+	accountingStateDedupKnown        map[string]accountingStateFingerprint
 	localQuotaViews                  map[localQuotaOwner]localQuotaView
 	localQuotaAggregates             map[localQuotaAggregateKey]uint64
 	nativeQuotaPolicySchedules       map[string]nativeQuotaPolicySchedule

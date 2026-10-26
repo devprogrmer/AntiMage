@@ -903,9 +903,78 @@ def proc_stat(pid):
         return None
     try:
         fields = raw.rsplit(")", 1)[1].split()
-        return {"ticks": int(fields[11]) + int(fields[12]), "start_ticks": int(fields[19])}
+        # utime (14) and stime (15) are the user/kernel split; stime growth with
+        # flat utime points at syscall/fsync cost rather than user-space loops.
+        return {"ticks": int(fields[11]) + int(fields[12]), "start_ticks": int(fields[19]),
+                "utime_ticks": int(fields[11]), "stime_ticks": int(fields[12])}
     except (IndexError, ValueError):
         return None
+
+
+def proc_io_counters(pid):
+    # Read-only syscall/IO accounting. syscw counts write(2) calls, which is the
+    # cheapest way to confirm or refute repeated durable state rewrites without
+    # tracing or attaching to the process.
+    values = {}
+    raw = read_proc(pid, "io").decode(errors="replace")
+    for line in raw.splitlines():
+        key, sep, value = line.partition(":")
+        if sep:
+            values[key.strip()] = value.strip()
+    keys = ("rchar", "wchar", "syscr", "syscw", "read_bytes", "write_bytes")
+    if not any(key in values for key in keys):
+        return None
+    out = {}
+    for key in keys:
+        try:
+            out[key] = int(values.get(key, ""))
+        except ValueError:
+            if key in values:
+                return None
+    return out
+
+
+def proc_thread_cpu(pid):
+    # Per-thread CPU is the decisive read-only diagnostic when the aggregate
+    # process CPU is high but no single request path explains it: it shows
+    # whether the cost is spread across worker threads, concentrated in one
+    # loop, or dominated by runtime GC threads. No thread names or stacks are
+    # emitted, only thread id and CPU ticks.
+    threads = []
+    try:
+        entries = list(Path(f"/proc/{pid}/task").iterdir())
+    except OSError:
+        return None
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "stat").read_text()
+            fields = raw.rsplit(")", 1)[1].split()
+            threads.append({"tid": int(entry.name),
+                            "utime_ticks": int(fields[11]), "stime_ticks": int(fields[12])})
+        except (OSError, IndexError, ValueError):
+            continue
+    return threads or None
+
+
+def thread_cpu_delta(before, after, hz, top=8):
+    if not before or not after:
+        return None
+    previous = {row["tid"]: row for row in before}
+    deltas = []
+    for row in after:
+        old = previous.get(row["tid"])
+        if not old:
+            continue
+        ticks = (row["utime_ticks"] - old["utime_ticks"]) + (row["stime_ticks"] - old["stime_ticks"])
+        if ticks <= 0:
+            continue
+        deltas.append({"tid": row["tid"], "cpu_seconds": round(ticks / hz, 4),
+                       "user_seconds": round((row["utime_ticks"] - old["utime_ticks"]) / hz, 4),
+                       "system_seconds": round((row["stime_ticks"] - old["stime_ticks"]) / hz, 4)})
+    deltas.sort(key=lambda row: row["cpu_seconds"], reverse=True)
+    return deltas[:top]
 
 
 def process_info(pid):
@@ -1089,6 +1158,8 @@ def sample(args):
     cpu_before = cpu_ticks()
     net_before = disk_usage("/proc/net/dev")
     proc_before = proc_stat(node["pid"])
+    io_before = proc_io_counters(node["pid"])
+    threads_before = proc_thread_cpu(node["pid"])
     memory = total_ram_bytes()
     start_mono = time.monotonic()
     duration = max(60, args.sample_seconds)
@@ -1118,18 +1189,37 @@ def sample(args):
         samples.append({"elapsed_seconds": round(elapsed_now, 3),
                         "cpu_ticks": current["stat"]["ticks"], "rss_kib": current["rss_kib"],
                         "vsz_kib": current["vsz_kib"], "threads": current["threads"],
+                        "utime_ticks": current["stat"].get("utime_ticks"),
+                        "stime_ticks": current["stat"].get("stime_ticks"),
                         "cpu_percent_one_core_since_previous": interval_cpu,
                         "accounting_state_changed_protocols": changed})
         previous_sample = (elapsed_now, current["stat"]["ticks"])
         time.sleep(min(5, max(.5, args.sample_interval)))
     end_mono = time.monotonic()
     proc_after = proc_stat(node["pid"])
+    io_after = proc_io_counters(node["pid"])
+    threads_after = proc_thread_cpu(node["pid"])
     cpu_after = cpu_ticks()
     net_after = disk_usage("/proc/net/dev")
     elapsed = end_mono - start_mono
     process_cpu_seconds = ((proc_after["ticks"] - proc_before["ticks"]) / hz) if proc_after and proc_before else 0
     normalized_cpu = 100 * process_cpu_seconds / elapsed / logical
     one_core_cpu = 100 * process_cpu_seconds / elapsed
+    cpu_split = None
+    # Older or stubbed readers may not carry the user/system split; the split is
+    # additional diagnostic evidence and must never fail the whole collection.
+    if proc_after and proc_before and "utime_ticks" in proc_after and "utime_ticks" in proc_before:
+        utime_seconds = (proc_after["utime_ticks"] - proc_before["utime_ticks"]) / hz
+        stime_seconds = (proc_after["stime_ticks"] - proc_before["stime_ticks"]) / hz
+        cpu_split = {"user_seconds": round(utime_seconds, 3), "system_seconds": round(stime_seconds, 3),
+                     "user_percent_one_core": round(100 * utime_seconds / elapsed, 3),
+                     "system_percent_one_core": round(100 * stime_seconds / elapsed, 3)}
+    io_activity = None
+    if io_after and io_before:
+        io_activity = {key: io_after[key] - io_before[key] for key in io_after}
+        io_activity["write_calls_per_second"] = round(io_activity.get("syscw", 0) / elapsed, 3) if elapsed > 0 else None
+        io_activity["read_calls_per_second"] = round(io_activity.get("syscr", 0) / elapsed, 3) if elapsed > 0 else None
+    thread_cpu = thread_cpu_delta(threads_before, threads_after, hz)
     if cpu_before and cpu_after:
         total_delta = cpu_after[0] - cpu_before[0]
         idle_delta = cpu_after[1] - cpu_before[1]
@@ -1160,6 +1250,9 @@ def sample(args):
         "node_process": {"pid": node["pid"], "binary": binary_info("/proc/" + str(node["pid"]) + "/exe"),
                          "cpu_percent_one_core": round(one_core_cpu, 3),
                          "cpu_percent_normalized_by_logical_cpus": round(normalized_cpu, 3),
+                         "cpu_split": cpu_split,
+                         "io_activity": io_activity,
+                         "top_threads_by_cpu": thread_cpu,
                          "host_total_cpu_percent": host_cpu_percent,
                          "rss_bytes_start": samples[0]["rss_kib"] * 1024,
                          "rss_bytes_end": process_current["rss_kib"] * 1024,

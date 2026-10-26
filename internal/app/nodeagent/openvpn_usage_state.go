@@ -98,7 +98,7 @@ func (s *Server) persistOpenVPNUsageStateLocked() error {
 		)
 	}
 
-	return writeAccountingState(s.openVPNUsageStatePath(), raw)
+	return s.writeAccountingStateDeduped(s.openVPNUsageStatePath(), raw)
 }
 
 func readAllOpenVPNUsageState(
