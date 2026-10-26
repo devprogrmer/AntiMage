@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 type Watermark struct {
@@ -46,6 +47,9 @@ func StorageKey(key string) string {
 	return hex.EncodeToString(sum[:])
 }
 func ParseKey(key string) (string, string, error) {
+	if protocol, tag, ok := parsePlainOwnerKey(key); ok {
+		return protocol, tag, nil
+	}
 	var a, b string
 	decoder := json.NewDecoder(strings.NewReader(key))
 	if err := decoder.Decode(&a); err != nil {
@@ -59,6 +63,58 @@ func ParseKey(key string) (string, string, error) {
 		return "", "", err
 	}
 	return a, b, nil
+}
+
+// parsePlainOwnerKey recognizes the owner keys this package writes: two JSON
+// string literals joined by ':' with no escapes, no control bytes, no
+// surrounding whitespace, and valid UTF-8 contents. Keys of that shape decode
+// to plain substrings, so the zero-allocation path below is exactly equivalent
+// to the decoder fallback in ParseKey. Anything else returns ok=false and is
+// decoded by encoding/json so escape handling, whitespace tolerance and
+// invalid-byte replacement stay authoritative.
+func parsePlainOwnerKey(key string) (string, string, bool) {
+	protocol, afterProtocol, ok := plainQuotedAt(key, 0)
+	if !ok {
+		return "", "", false
+	}
+	if afterProtocol >= len(key) || key[afterProtocol] != ':' {
+		return "", "", false
+	}
+	tag, afterTag, ok := plainQuotedAt(key, afterProtocol+1)
+	if !ok || afterTag != len(key) {
+		return "", "", false
+	}
+	return protocol, tag, true
+}
+
+// plainQuotedAt reads a JSON string literal starting at key[start] and returns
+// its contents plus the index just past the closing quote. It reports ok=false
+// whenever the literal uses an escape, holds a control byte, is unterminated or
+// is not valid UTF-8; callers then defer to encoding/json, which owns escape
+// handling, control-character rules and invalid-byte replacement. A literal
+// that passes is byte-identical to its decoded value.
+func plainQuotedAt(key string, start int) (string, int, bool) {
+	if start >= len(key) || key[start] != '"' {
+		return "", 0, false
+	}
+	nonASCII := false
+	for i := start + 1; i < len(key); i++ {
+		switch c := key[i]; {
+		case c == '"':
+			segment := key[start+1 : i]
+			// Pure ASCII is always valid UTF-8; only pay for validation when a
+			// high byte was actually seen.
+			if nonASCII && !utf8.ValidString(segment) {
+				return "", 0, false
+			}
+			return segment, i + 1, true
+		case c == '\\' || c < 0x20:
+			return "", 0, false
+		case c >= utf8.RuneSelf:
+			nonASCII = true
+		}
+	}
+	return "", 0, false
 }
 
 func Decode(raw string) (Watermark, error) {

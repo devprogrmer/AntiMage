@@ -155,3 +155,15 @@ func BenchmarkXrayAccountingCheckpointProduction(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkXrayQuotaReceiptWidthScaling isolates the one cost that grows with
+// the whole deployment rather than with this node's user count: the controller
+// embeds every reflected owner in each user's receipt, so per-tick decode cost
+// scales with total owners across all nodes.
+func BenchmarkXrayQuotaReceiptWidthScaling(b *testing.B) {
+	for _, owners := range []int{1, 64, 256, 650, 1300} {
+		b.Run(fmt.Sprintf("receipt-owners-%d", owners), func(b *testing.B) {
+			benchmarkXrayQuotaProductionTick(b, 176, owners)
+		})
+	}
+}

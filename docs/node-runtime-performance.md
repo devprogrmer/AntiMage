@@ -273,3 +273,43 @@ any map. A recorded failure is still cleared by a later success, domains stay
 independent, and later failures are still recorded; `local_domain_health_test.go`
 covers those transitions. This is an isolated microbenchmark, not production
 CPU acceptance.
+
+## Owner-key parsing (measured)
+
+`usagereflection.ParseKey` is called once per cumulative owner while a NodeAgent
+decodes a reflection receipt, so its cost multiplies by both users and receipt
+width. It parsed each key with `json.NewDecoder(strings.NewReader(key))`, which
+allocated a reader and a buffered decoder per owner. Owner keys are written by
+`Key` as two `strconv.Quote` string literals joined by `:`, so the common shape
+needs no JSON decoding to recover its two plain substrings.
+
+`ParseKey` now recognizes that shape directly with a byte scan and falls back to
+the original decoder for anything else (escapes, control bytes, surrounding
+whitespace, invalid UTF-8, or trailing input). A verification test replays a
+corpus of escaped, whitespace, Unicode, empty and malformed keys through both
+the fast path and a verbatim copy of the previous decoder and requires identical
+values and error behavior.
+
+Isolated microbenchmarks, one host, one revision each:
+
+| Benchmark (`-benchtime=300000x`) | before | after |
+| --- | ---: | ---: |
+| `ParseKey`, production-shaped key | 690.3 ns/op, 1160 B/op, 13 allocs/op | 22.5 ns/op, 0 B/op, 0 allocs/op |
+
+End-to-end effect on a quota tick whose receipt holds one entry per reflected
+owner across the deployment (`BenchmarkXrayQuotaReceiptWidthScaling`, 176
+enforced users, `-benchtime=20x`):
+
+| Receipt owners | before | after |
+| ---: | ---: | ---: |
+| 1 | 1.17 ms | 0.76 ms |
+| 64 | 13.3 ms | 5.8 ms |
+| 256 | 67.3 ms | 28.9 ms |
+| 650 | 203.7 ms, 283 MB, 3,253,815 allocs | 86.6 ms, 45 MB, 617,778 allocs |
+| 1300 | 433.5 ms | 181.9 ms |
+
+Receipt validation semantics are unchanged: epoch, root, totals, baselines,
+legacy batches and pending children are still checked by `Decode`. This remains
+an isolated benchmark, not production CPU acceptance, and the production
+workspace should confirm the same receipt width before this is cited as the
+dominant live term.
