@@ -296,9 +296,14 @@ Isolated microbenchmarks, one host, one revision each:
 | --- | ---: | ---: |
 | `ParseKey`, production-shaped key | 690.3 ns/op, 1160 B/op, 13 allocs/op | 22.5 ns/op, 0 B/op, 0 allocs/op |
 
-End-to-end effect on a quota tick whose receipt holds one entry per reflected
-owner across the deployment (`BenchmarkXrayQuotaReceiptWidthScaling`, 176
-enforced users, `-benchtime=20x`):
+Effect on a quota tick as one user's receipt owner count grows
+(`BenchmarkXrayQuotaReceiptWidthScaling`, 176 enforced users, `-benchtime=20x`).
+**Caveat:** a production receipt carries only that one user's owners (its own
+protocol/inbound memberships, typically a handful); a direct probe of
+`recordLocalUsageDeliveryV2` confirmed three users produced receipts with two
+owners each. These rows are a width-scaling probe, not a claim that
+deployment-wide receipts exist, and the 650/1300 rows are not the deployed
+shape:
 
 | Receipt owners | before | after |
 | ---: | ---: | ---: |
@@ -310,6 +315,7 @@ enforced users, `-benchtime=20x`):
 
 Receipt validation semantics are unchanged: epoch, root, totals, baselines,
 legacy batches and pending children are still checked by `Decode`. This remains
-an isolated benchmark, not production CPU acceptance, and the production
-workspace should confirm the same receipt width before this is cited as the
-dominant live term.
+an isolated benchmark, not production CPU acceptance, and it is not established
+as the dominant term in the measured production CPU. The still-unknown driver is
+the 7 near-equal busy accounting threads seen in the AntiMage-s3 capture, which
+this microbenchmark does not reproduce.

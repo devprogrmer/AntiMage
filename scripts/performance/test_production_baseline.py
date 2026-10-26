@@ -143,6 +143,35 @@ class CollectorTest(unittest.TestCase):
         self.assertEqual(snap["accounting"]["invalid_counters"], 0)
         self.assertEqual(snap["accounting"]["legacy_deliveries"], 1)
 
+    def test_ledger_version_reports_on_disk_layout(self):
+        # v1 keeps inline deliveries; v2 carries the cumulative owner ledger.
+        # The reader must expose which one is on disk to pick the live path.
+        self.write("accounting/deliveries.json", {"version": 1, "deliveries": []})
+        self.assertEqual(self.snapshot()["accounting"]["ledger_version"], 1)
+        self.write("accounting/deliveries.json", {"version": 2, "ledger": {"epoch": "e", "owners": [], "latest": {}}, "deliveries": []})
+        self.assertEqual(self.snapshot()["accounting"]["ledger_version"], 2)
+
+    def test_receipt_width_distribution_counts_real_owners(self):
+        # A receipt with three owners must land in the 1-4 bucket, and the
+        # widest receipt must be reported so a wide-owner deployment is visible.
+        narrow = json.dumps({"version": 2, "epoch": "e", "totals": {
+            json.dumps("xray") + ":" + json.dumps("a"): 1,
+            json.dumps("xray") + ":" + json.dumps("b"): 2}})
+        wide = json.dumps({"version": 2, "epoch": "e", "totals": {
+            json.dumps("xray") + ":" + json.dumps("tag-%02d" % i): i for i in range(5)}})
+        db = sqlite3.connect(self.args.sqlite)
+        db.execute("INSERT INTO node_wireguard_usage_reflection VALUES(7,871234567,'ACK',?)", (narrow,))
+        db.execute("INSERT INTO node_wireguard_usage_reflection VALUES(7,871234568,'ACK',?)", (wide,))
+        db.commit()
+        db.close()
+        db_view = audit.db_inventory(self.args, audit.runtime_inventory(self.root))
+        distribution = audit.receipt_width_distribution(db_view)
+        self.assertEqual(distribution["receipts"], 2)
+        self.assertEqual(distribution["max_owners"], 5)
+        self.assertEqual(distribution["buckets"]["1-4"], 1)
+        self.assertEqual(distribution["buckets"]["5-16"], 1)
+        self.assertEqual(distribution["unreadable"], 0)
+
     def test_xray_family_ledger_and_reflection_resolve_to_actual_inbound_protocol(self):
         tag = self.tags["vmess"]
         self.write("accounting/deliveries.json", {"version": 2, "ledger": {"epoch": "e1", "owners": [

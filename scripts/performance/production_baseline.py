@@ -314,7 +314,7 @@ def accounting_inventory(data_dir, inventory):
     result = {"totals": {}, "native": {}, "pending": {}, "state_status": {}, "acked": {},
               "ledger": {}, "epoch": None, "duplicate_owners": 0, "duplicate_children": 0,
               "invalid_counters": 0, "anchor_status": "not_referenced", "anchor_bytes": 0,
-              "legacy_deliveries": 0, "state_bytes": 0, "files": {}}
+              "ledger_version": None, "legacy_deliveries": 0, "state_bytes": 0, "files": {}}
     emails = xray_identity_index(inventory)
     for dirname in ("xray",) + tuple(NATIVE_FIELDS.values()):
         path = Path(data_dir) / dirname / "usage-state.json"
@@ -353,6 +353,11 @@ def accounting_inventory(data_dir, inventory):
     state, result["ledger_status"] = read_json(Path(data_dir) / "accounting/deliveries.json")
     if state is None:
         return result
+    # The on-disk layout decides which NodeAgent reflection path is live: v1
+    # keeps inline deliveries and builds receipts from the bounded batch list,
+    # v2 carries a cumulative owner ledger. Without this the reader cannot tell
+    # a v2 ledger from a v1 file that happens to be small.
+    result["ledger_version"] = state.get("version")
     ledger = state.get("ledger") or {}
     result["epoch"] = ledger.get("epoch")
     deliveries = state.get("deliveries", []) or []
@@ -767,6 +772,43 @@ def receipt_totals(db, epoch, inventory):
                 protocol = resolved_protocol(owner[0], owner[1], inventory)
                 totals[(protocol, uid, owner[1])] = uint(total)
     return totals
+
+
+def receipt_width_distribution(db):
+    """Bucket stored reflection receipts by how many owners each one carries.
+
+    Each receipt is stored per (node, user), so this measures the real decoded
+    owner count per user rather than assuming one. It is read-only and reports
+    aggregate counts plus the widest receipt size, never identities.
+    """
+    widths = []
+    unreadable = 0
+    for row in db["receipts"].values():
+        watermark = decoded_json(row.get("ledger_json"))
+        if not watermark:
+            unreadable += 1
+            continue
+        widths.append(len(watermark.get("totals", {}) or {}))
+    buckets = {"0": 0, "1-4": 0, "5-16": 0, "17-64": 0, "65-256": 0, "257-1024": 0, "1025+": 0}
+    for width in widths:
+        if width == 0:
+            buckets["0"] += 1
+        elif width <= 4:
+            buckets["1-4"] += 1
+        elif width <= 16:
+            buckets["5-16"] += 1
+        elif width <= 64:
+            buckets["17-64"] += 1
+        elif width <= 256:
+            buckets["65-256"] += 1
+        elif width <= 1024:
+            buckets["257-1024"] += 1
+        else:
+            buckets["1025+"] += 1
+    return {"receipts": len(widths), "unreadable": unreadable,
+            "max_owners": max(widths) if widths else 0,
+            "mean_owners": round(sum(widths) / len(widths), 2) if widths else 0.0,
+            "buckets": buckets}
 
 
 def reconciliation(before, after, elapsed):
@@ -1276,6 +1318,10 @@ def sample(args):
                              "after_endpoint_budget_exhausted": audit_after.get("endpoint_budget_exhausted", False),
                              "note": "sources are sequential read-only snapshots, not a distributed atomic snapshot"},
         "durability_audit": {k: audit_after["accounting"][k] for k in ("ledger_status", "anchor_status", "anchor_bytes", "legacy_deliveries", "duplicate_owners", "duplicate_children", "invalid_counters", "state_bytes", "state_status")},
+        "reflection_ledger": {
+            "on_disk_version": audit_after["accounting"]["ledger_version"],
+            "receipt_width": receipt_width_distribution(audit_after["db"]),
+            "note": "on_disk_version selects the live NodeAgent reflection path; receipt_width is the real decoded owner count per stored user receipt"},
         "traffic": traffic,
         "configuration": interval_configuration(node["pid"]),
         "collector_net_namespace_matches_node": namespace_matches,

@@ -19,10 +19,12 @@ func xrayQuotaProductionFixture(tb testing.TB, users int, inbounds []string) (*S
 	return xrayQuotaProductionFixtureSized(tb, users, inbounds, 1)
 }
 
-// receiptOwners is the number of cumulative owners embedded in each user's
-// reflected watermark. The controller writes one ledger_json per user, and a
-// large deployment embeds every reflected owner in it, which is what makes the
-// per-tick receipt decoding expensive.
+// receiptOwners pads each user's reflected watermark with extra synthetic
+// owners. A production receipt carries only the owners of that one user (its
+// own protocol/inbound memberships, typically a handful), so this is a width
+// scaling probe rather than a production shape: it answers "how does per-tick
+// receipt decoding scale if a user's owner set grows", not "what is the
+// deployed receipt width".
 func xrayQuotaProductionFixtureSized(tb testing.TB, users int, inbounds []string, receiptOwners int) (*Server, []xrayStat, *xrayQuotaPolicyIndex) {
 	tb.Helper()
 	s := New(Config{DataDir: tb.TempDir()})
@@ -156,10 +158,11 @@ func BenchmarkXrayAccountingCheckpointProduction(b *testing.B) {
 	}
 }
 
-// BenchmarkXrayQuotaReceiptWidthScaling isolates the one cost that grows with
-// the whole deployment rather than with this node's user count: the controller
-// embeds every reflected owner in each user's receipt, so per-tick decode cost
-// scales with total owners across all nodes.
+// BenchmarkXrayQuotaReceiptWidthScaling isolates how one quota tick scales with
+// the number of cumulative owners in a decoded reflection receipt. Production
+// receipts hold only their own user's owners, so this bounds the cost of a
+// future wide-owner user; it is not evidence that deployment-wide receipts
+// exist, and the 650/1300 rows must not be read as the deployed shape.
 func BenchmarkXrayQuotaReceiptWidthScaling(b *testing.B) {
 	for _, owners := range []int{1, 64, 256, 650, 1300} {
 		b.Run(fmt.Sprintf("receipt-owners-%d", owners), func(b *testing.B) {
