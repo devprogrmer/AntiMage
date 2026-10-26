@@ -251,3 +251,25 @@ go test -race ./cmd/antimage_node_perf -count=1
 Xray's pinned core still lacks proven safe per-user active-stream termination and
 per-user speed enforcement. Keep these limitations documented; broad socket,
 conntrack or nftables termination is not a substitute.
+
+## Quota health-path allocation (measured)
+
+`recordLocalDomainHealth` runs once per user per inbound per tick. It used to
+concatenate a `domain:protocol` key and lazily allocate the failure map before
+checking whether anything was wrong, so the overwhelmingly common healthy case
+paid one allocation per quota evaluation.
+
+Isolated benchmark of one full quota pass over the observed production shape
+(650 configured users x 8 inbounds, `BenchmarkLocalQuotaAllowed650UsersEightInbounds`,
+`-benchtime=5x`, one host, one revision each):
+
+| Revision | ns/op | B/op | allocs/op |
+| --- | --- | --- | --- |
+| before | 1,111,185 | 363,452 | 5,213 |
+| after | 1,048,002 | 280,243 | 13 |
+
+The healthy path now returns under the lock without building a key or touching
+any map. A recorded failure is still cleared by a later success, domains stay
+independent, and later failures are still recorded; `local_domain_health_test.go`
+covers those transitions. This is an isolated microbenchmark, not production
+CPU acceptance.
