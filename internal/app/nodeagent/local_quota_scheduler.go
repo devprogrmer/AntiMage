@@ -533,36 +533,45 @@ func (s *Server) recordLocalWorkerHealth(protocol string, err error) {
 }
 
 func (s *Server) recordLocalDomainHealth(domain, protocol string, err error) {
-	protocol = domain + ":" + protocol
 	s.mu.Lock()
 	var failures map[string]string
 	switch domain {
 	case "policy":
-		if s.localPolicyFailures == nil {
-			s.localPolicyFailures = make(map[string]string)
-		}
 		failures = s.localPolicyFailures
 	case "runtime":
-		if s.localRuntimeFailures == nil {
-			s.localRuntimeFailures = make(map[string]string)
-		}
 		failures = s.localRuntimeFailures
 	default:
-		if s.localAccountingFailures == nil {
-			s.localAccountingFailures = make(map[string]string)
-		}
 		failures = s.localAccountingFailures
 	}
-	previous := failures[protocol]
+	// The healthy path runs once per user per inbound per tick, so it must not
+	// build a key or allocate: when nothing has been recorded for this domain
+	// there is no entry to clear and no state change to report.
+	if err == nil && len(failures) == 0 {
+		s.mu.Unlock()
+		return
+	}
+	key := domain + ":" + protocol
+	previous := failures[key]
 	message := ""
 	if err != nil {
 		message = err.Error()
-		failures[protocol] = message
+		if failures == nil {
+			failures = make(map[string]string)
+			switch domain {
+			case "policy":
+				s.localPolicyFailures = failures
+			case "runtime":
+				s.localRuntimeFailures = failures
+			default:
+				s.localAccountingFailures = failures
+			}
+		}
+		failures[key] = message
 	} else {
-		delete(failures, protocol)
+		delete(failures, key)
 	}
 	s.mu.Unlock()
 	if message != "" && message != previous {
-		s.appendLog("local " + protocol + " degraded: " + message)
+		s.appendLog("local " + key + " degraded: " + message)
 	}
 }
