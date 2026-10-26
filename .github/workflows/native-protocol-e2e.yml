@@ -77,6 +77,7 @@ jobs:
           # the script falls back to a direct .deb fetch that aborts stalled mirrors.
           # It never skips the test: the driver below still runs `modprobe l2tp_ppp`,
           # so a genuinely unavailable package still fails this native job.
+          python3 scripts/ci/l2tp-kernel-module-resolver-test.py
           bash scripts/ci/ensure-l2tp-kernel-module.sh
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
@@ -301,6 +302,7 @@ jobs:
             iproute2 iptables nftables iputils-ping tcpdump ppp xl2tpd strongswan pptp-linux wireguard-tools openvpn openssl netcat-openbsd
           sudo apt-get install -y --no-install-recommends pptpd
           # Same throttled-mirror guard as the push-event L2TP job.
+          python3 scripts/ci/l2tp-kernel-module-resolver-test.py
           bash scripts/ci/ensure-l2tp-kernel-module.sh
       - name: Run real combined native lifecycle and SQLite lost-ACK replay
         run: |
