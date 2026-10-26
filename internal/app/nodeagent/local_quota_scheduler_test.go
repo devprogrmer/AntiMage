@@ -300,17 +300,30 @@ func TestLocalWorkerSeparatesAccountingAndPolicyHealthAndKeepsEnforcementRunning
 		cancel()
 		t.Fatal("policy enforcement was skipped after checkpoint failure")
 	}
+	// The worker records worker health after the tick returns and only while its
+	// context is live, so cancelling here can race that bookkeeping and drop the
+	// record. Wait for both domains before cancelling; the maps stay behind
+	// s.mu, so read them under the lock.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		s.mu.Lock()
+		accounting := s.localAccountingFailures["accounting:xray"]
+		policy := s.localPolicyFailures["policy:xray"]
+		s.mu.Unlock()
+		if accounting != "" && policy != "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatalf("degradation was not recorded: accounting=%q policy=%q", accounting, policy)
+		}
+		time.Sleep(time.Millisecond)
+	}
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("worker did not stop")
-	}
-	if got := s.localAccountingFailures["accounting:xray"]; got == "" {
-		t.Fatalf("accounting degradation was not recorded: %v", s.localAccountingFailures)
-	}
-	if got := s.localPolicyFailures["policy:xray"]; got == "" {
-		t.Fatalf("policy degradation was not recorded: %v", s.localPolicyFailures)
 	}
 	response, err := s.Health(context.Background(), &nodev1.HealthRequest{})
 	if err != nil {
