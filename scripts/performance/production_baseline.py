@@ -116,7 +116,17 @@ def discover_database(args):
                 continue
             absolute = rest.startswith("//")
             relative = rest.lstrip("/")
-            path = Path("/" + relative) if absolute else Path(candidate).resolve().parent / relative
+            if absolute:
+                path = Path("/" + relative)
+            else:
+                # Some deployments write the three-slash form while still
+                # intending an absolute path. Prefer whichever interpretation
+                # names a real file, and fall back to the documented
+                # relative-to-.env meaning when neither exists. Read-only: this
+                # only stats candidates, it never creates or opens the database.
+                beside_env = Path(candidate).resolve().parent / relative
+                rooted = Path("/" + relative)
+                path = rooted if not beside_env.exists() and rooted.exists() else beside_env
             args.sqlite = str(path)
             return "ok", f"sqlite path resolved from {base}"
         if lower.startswith("mysql") or lower.startswith("mariadb"):

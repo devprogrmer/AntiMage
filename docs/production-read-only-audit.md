@@ -39,9 +39,12 @@ auto-discovers the panel database from the install `.env` written by the panel
 installer. It reads only `SQLALCHEMY_DATABASE_URL` (falling back to
 `DATABASE_URL`) from the first of `$ANTIMAGE_ENV_FILE`, `/opt/antimage/.env` and
 `/etc/antimage/antimage.env` that exists, and it never executes the file. A
-`sqlite:////absolute/path` value is used as an absolute path and a
-`sqlite:///relative/path` value is resolved next to the `.env`; a MySQL/MariaDB
-DSN supplies only the database name, never the credentials embedded in it. The
+`sqlite:////absolute/path` value is used as an absolute path. For the
+`sqlite:///path` form the collector stats both the rooted and the
+relative-to-`.env` interpretation and prefers whichever exists, falling back to
+the documented relative meaning, so a three-slash absolute path still resolves
+without creating or opening a database. A MySQL/MariaDB DSN supplies only the
+database name, never the credentials embedded in it. The
 resolved source is recorded in `database.discovery` (`ok`, `needs_credentials`,
 `not_found`, or `explicit` when a flag was passed) with a short
 `database.discovery_note`.

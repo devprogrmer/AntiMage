@@ -565,6 +565,29 @@ class DatabaseDiscoveryTest(unittest.TestCase):
         self.assertEqual(status, "ok")
         self.assertEqual(args.sqlite, str(self.root / "state" / "panel.db"))
 
+    def test_three_slash_form_prefers_the_rooted_path_only_when_it_exists(self):
+        # Some deployments write three slashes while meaning an absolute path.
+        # The resolution stats both candidates and prefers the rooted one only
+        # when it names a real file; it never creates or opens a database.
+        env = self.env_file("DATABASE_URL=sqlite:///srv/antimage/panel.db\n")
+        beside = self.root / "srv" / "antimage" / "panel.db"
+        rooted = Path("/srv/antimage/panel.db")
+        real_exists = Path.exists
+
+        def only_rooted(self):
+            if str(self) == str(rooted):
+                return True
+            return real_exists(self)
+
+        with mock.patch.object(Path, "exists", only_rooted):
+            status, _, args = self.discover(env)
+        self.assertEqual(status, "ok")
+        self.assertEqual(args.sqlite, str(rooted))
+
+        status, _, args = self.discover(env)
+        self.assertEqual(status, "ok")
+        self.assertEqual(args.sqlite, str(beside))
+
     def test_mysql_dsn_returns_credentials_hint_without_copying_the_password(self):
         secret = "p4ssw0rd-SECRET"
         env = self.env_file(f"SQLALCHEMY_DATABASE_URL=mysql://antimage:{secret}@127.0.0.1:3306/panel_db\n")
