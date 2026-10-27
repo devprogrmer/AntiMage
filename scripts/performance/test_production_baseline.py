@@ -539,7 +539,8 @@ class DatabaseDiscoveryTest(unittest.TestCase):
         environ = {"ANTIMAGE_ENV_FILE": str(env_path)} if env_path else {}
         with mock.patch.dict(audit.os.environ, environ, clear=True), \
                 mock.patch.object(audit, "ENV_CANDIDATES", ("ANTIMAGE_ENV_FILE",)), \
-                mock.patch.object(audit, "APP_DIR_CANDIDATES", ("ANTIMAGE_APP_DIR",)):
+                mock.patch.object(audit, "APP_DIR_CANDIDATES", ("ANTIMAGE_APP_DIR",)), \
+                mock.patch.object(audit, "UNIT_CANDIDATES", ()):
             status, note = audit.discover_database(args)
         return status, note, args
 
@@ -627,6 +628,96 @@ class DatabaseDiscoveryTest(unittest.TestCase):
         env = self.env_file(f"SQLALCHEMY_DATABASE_URL=mysql://root:{secret}@localhost/panel_db\n")
         _, note, _ = self.discover(env)
         self.assertNotIn(secret, note)
+
+    def test_not_found_note_lists_the_probed_paths(self):
+        status, note, args = self.discover(self.root / "absent.env")
+        self.assertEqual(status, "not_found")
+        self.assertIn("probed:", note)
+        self.assertIn("absent.env", note)
+        self.assertEqual(args.database_probes, [str(self.root / "absent.env")])
+
+    def unit(self, body, name="antimage.service"):
+        path = self.root / name
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def discover_via_unit(self, unit_path, *, env_dir=None):
+        """Discovery with no usable environment, only the systemd unit."""
+        args = argparse.Namespace(sqlite=None, mysql_defaults=None, database="antimage")
+        with mock.patch.dict(audit.os.environ, {}, clear=True), \
+                mock.patch.object(audit, "ENV_CANDIDATES", ("ANTIMAGE_ENV_FILE",)), \
+                mock.patch.object(audit, "APP_DIR_CANDIDATES", ("ANTIMAGE_APP_DIR",)), \
+                mock.patch.object(audit, "UNIT_CANDIDATES", (str(unit_path),)):
+            status, note = audit.discover_database(args)
+        return status, note, args
+
+    def test_systemd_unit_supplies_the_env_file_after_sudo_resets_environment(self):
+        # A real install's unit carries the installer's Environment= lines.
+        env_dir = self.root / "opt-antimage"
+        env_dir.mkdir()
+        env = env_dir / ".env"
+        env.write_text('SQLALCHEMY_DATABASE_URL = "sqlite:////var/lib/antimage/db.sqlite3"\n', encoding="utf-8")
+        unit = self.unit(
+            "[Unit]\n"
+            "Description=AntiMage panel\n"
+            "[Service]\n"
+            f'Environment=ANTIMAGE_APP_DIR={env_dir}\n'
+            f'Environment="ANTIMAGE_ENV_FILE={env}"\n'
+            "ExecStart=/opt/antimage/bin/antimage-server\n")
+        status, note, args = self.discover_via_unit(unit)
+        self.assertEqual(status, "ok")
+        self.assertEqual(args.sqlite, "/var/lib/antimage/db.sqlite3")
+        self.assertIn("sqlite", note)
+
+    def test_systemd_unit_app_dir_resolves_the_dot_env(self):
+        env_dir = self.root / "srv-antimage"
+        env_dir.mkdir()
+        (env_dir / ".env").write_text("DATABASE_URL=sqlite:////var/lib/antimage/db.sqlite3\n", encoding="utf-8")
+        unit = self.unit(f"[Service]\nEnvironment=ANTIMAGE_APP_DIR={env_dir}\n")
+        status, _, args = self.discover_via_unit(unit)
+        self.assertEqual(status, "ok")
+        self.assertEqual(args.sqlite, "/var/lib/antimage/db.sqlite3")
+
+    def test_unit_parser_ignores_unrelated_directives_and_keys(self):
+        env_dir = self.root / "opt-antimage"
+        env_dir.mkdir()
+        (env_dir / ".env").write_text("SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/antimage/db.sqlite3\n", encoding="utf-8")
+        unit = self.unit(
+            "[Service]\n"
+            "ExecStart=/opt/antimage/bin/antimage-server\n"
+            f"Environment=ANTIMAGE_APP_DIR={env_dir}\n"
+            "Environment=PANEL_ADMIN_PASSWORD=SECRET-untouched\n"
+            "EnvironmentFile=-/etc/antimage/extra.env\n")
+        values = audit.systemd_environment_assignments((str(unit),))
+        self.assertEqual(set(values), {"ANTIMAGE_APP_DIR"})
+        self.assertNotIn("SECRET-untouched", json.dumps(values))
+        status, _, args = self.discover_via_unit(unit)
+        self.assertEqual(status, "ok")
+        self.assertEqual(args.sqlite, "/var/lib/antimage/db.sqlite3")
+
+    def test_unit_without_antimage_environment_falls_back_to_not_found(self):
+        unit = self.unit("[Service]\nExecStart=/usr/bin/something-else\n")
+        status, note, _ = self.discover_via_unit(unit)
+        self.assertEqual(status, "not_found")
+        self.assertIn("probed:", note)
+
+    def test_node_service_unit_reports_not_applicable_not_missing_panel(self):
+        # The AntiMage-node unit records ANTIMAGE_NODE_APP_DIR and no panel .env.
+        node_dir = self.root / "opt-antimage-node"
+        node_dir.mkdir()
+        unit = self.unit(
+            "[Unit]\nDescription=AntiMage-node\n[Service]\n"
+            "Environment=ANTIMAGE_NODE_APP_NAME=antimage-node\n"
+            f"Environment=ANTIMAGE_NODE_APP_DIR={node_dir}\n"
+            f"Environment=ANTIMAGE_NODE_DATA_DIR={self.root / 'lib'}\n"
+            f"EnvironmentFile=-{node_dir}/.env\n",
+            name="antimage-node.service")
+        values = audit.systemd_environment_assignments((str(unit),))
+        self.assertEqual(values.get("ANTIMAGE_NODE_APP_NAME"), "antimage-node")
+        status, note, _ = self.discover_via_unit(unit)
+        self.assertEqual(status, "not_applicable")
+        self.assertIn("no panel database", note)
+        self.assertIn("panel host", note)
 
 
 class CollectorDiscoveryEntrypointTest(unittest.TestCase):

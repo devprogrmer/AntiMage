@@ -39,8 +39,16 @@ NATIVE_FIELDS = {"inbounds": "openvpn", "wg_inbounds": "wireguard",
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_DB_ROWS = 50000
 COMMAND_DEADLINE = None
-ENV_CANDIDATES = ("ANTIMAGE_ENV_FILE", "/opt/antimage/.env", "/etc/antimage/antimage.env")
-APP_DIR_CANDIDATES = ("ANTIMAGE_APP_DIR", "/opt/antimage")
+ENV_CANDIDATES = ("ANTIMAGE_ENV_FILE", "/opt/antimage/.env", "/etc/antimage/antimage.env",
+                  "/opt/antimage/.env.dist", "/app/.env", "/srv/antimage/.env")
+APP_DIR_CANDIDATES = ("ANTIMAGE_APP_DIR", "/opt/antimage", "/app", "/srv/antimage")
+# The panel installer exports both variables into the systemd unit. `sudo`
+# starts a fresh environment, so the variables are usually absent from a
+# collector run even though the unit still records the real install paths.
+UNIT_CANDIDATES = ("/etc/systemd/system/antimage.service",
+                   "/lib/systemd/system/antimage.service",
+                   "/etc/systemd/system/antimage-node.service",
+                   "/lib/systemd/system/antimage-node.service")
 
 
 class CollectorStageError(RuntimeError):
@@ -82,14 +90,57 @@ def dotenv_assignments(path):
     return values
 
 
+def systemd_environment_assignments(paths):
+    """Read Environment=/EnvironmentFile= style KEY=VALUE pairs from unit files.
+
+    Only ANTIMAGE_* values are returned, and only the app dir and env file are
+    ever used by the caller, so an unrelated unit directive can never leak into
+    the report. The unit is parsed as text; it is never executed.
+    """
+    values = {}
+    for path in paths:
+        try:
+            raw = Path(path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line.startswith("Environment="):
+                continue
+            payload = line[len("Environment="):].strip()
+            for assignment in re.findall(r'(?:^|\s)(ANTIMAGE_[A-Z_]+)=(?:"([^"]*)"|(\S+))', payload):
+                key, quoted, bare = assignment
+                value = quoted or bare
+                # The node installer uses ANTIMAGE_NODE_APP_DIR / _DATA_DIR and
+                # never writes a panel .env, so recognizing those keys lets the
+                # report explain "this is a node host" instead of implying a
+                # missing panel database.
+                if key in ("ANTIMAGE_APP_DIR", "ANTIMAGE_ENV_FILE",
+                           "ANTIMAGE_NODE_APP_DIR", "ANTIMAGE_NODE_APP_NAME") and value:
+                    values.setdefault(key, value)
+    return values
+
+
 def discover_database(args):
     """Resolve the panel database read-only from the install .env when not given.
 
     Returns (status, note). Never copies a DSN password into the caller's args or
     the report: only an absolute SQLite path or a MySQL database name is derived.
     """
-    env_paths = [os.environ.get(ENV_CANDIDATES[0])] + list(ENV_CANDIDATES[1:])
+    probes = []
+    env_paths = [os.environ.get(ENV_CANDIDATES[0])]
     app_dirs = [os.environ.get(APP_DIR_CANDIDATES[0])] + list(APP_DIR_CANDIDATES[1:])
+    # A systemd unit records the installer's Environment= lines, so the real
+    # app dir and env file survive the sudo environment reset. Read-only: the
+    # unit file is parsed as text and never executed.
+    unit_values = systemd_environment_assignments(UNIT_CANDIDATES)
+    if unit_values.get("ANTIMAGE_ENV_FILE"):
+        env_paths.append(unit_values["ANTIMAGE_ENV_FILE"])
+    for key in ("ANTIMAGE_APP_DIR", "ANTIMAGE_NODE_APP_DIR"):
+        if unit_values.get(key):
+            app_dirs.append(unit_values[key])
+    node_install = bool(unit_values.get("ANTIMAGE_NODE_APP_DIR") or unit_values.get("ANTIMAGE_NODE_APP_NAME"))
+    env_paths.extend(ENV_CANDIDATES[1:])
     for app_dir in app_dirs:
         if app_dir:
             env_paths.append(str(Path(app_dir) / ".env"))
@@ -98,6 +149,7 @@ def discover_database(args):
         if not candidate or candidate in seen:
             continue
         seen.add(candidate)
+        probes.append(candidate)
         values = dotenv_assignments(candidate)
         if not values:
             continue
@@ -136,8 +188,15 @@ def discover_database(args):
                 return "needs_credentials", (
                     f"MySQL database name {name} resolved from {base}; supply "
                     "--mysql-defaults <mode-0600 client cnf> to read table state")
-    return "not_found", ("no install .env with SQLALCHEMY_DATABASE_URL was found; pass --sqlite "
-                         "<absolute panel db path> or --mysql-defaults <mode-0600 cnf>")
+    probed = ", ".join(probes[:8]) if probes else "no candidate paths"
+    args.database_probes = probes
+    if node_install:
+        return "not_applicable", (
+            "this host runs the AntiMage-node service, which stores no panel database; "
+            f"all panel-derived counts stay null by design (probed: {probed}). "
+            "Run the collector on the panel host, or pass --sqlite <panel db path> on a combined host")
+    return "not_found", (f"no install .env with SQLALCHEMY_DATABASE_URL was found (probed: {probed}); "
+                         "pass --sqlite <absolute panel db path> or --mysql-defaults <mode-0600 cnf>")
 
 
 def safe_message(value, limit=240):
@@ -1507,8 +1566,9 @@ def sample(args):
                          "vsz_bytes_end": process_current["vsz_kib"] * 1024,
                          "threads_end": process_current["threads"], "samples": samples},
         "database": {"source_status": audit_after["db"]["status"],
-                     "discovery": getattr(args, "database_discovery", "explicit"),
-                     "discovery_note": getattr(args, "database_note", None),
+                    "discovery": getattr(args, "database_discovery", "explicit"),
+                    "discovery_note": getattr(args, "database_note", None),
+                     "discovery_probed_paths": getattr(args, "database_probes", None),
                      "node_scoped_accounting": audit_after["db"]["node_scoped"],
                      "node_identity_mismatch": audit_after["db"]["node_identity_mismatch"],
                      "collector_select_calls": audit_before["db"]["query_count"] + audit_after["db"]["query_count"],

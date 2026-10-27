@@ -46,8 +46,18 @@ the documented relative meaning, so a three-slash absolute path still resolves
 without creating or opening a database. A MySQL/MariaDB DSN supplies only the
 database name, never the credentials embedded in it. The
 resolved source is recorded in `database.discovery` (`ok`, `needs_credentials`,
-`not_found`, or `explicit` when a flag was passed) with a short
-`database.discovery_note`.
+`not_found`, `not_applicable`, or `explicit` when a flag was passed) with a short
+`database.discovery_note` and the exact `database.discovery_probed_paths` that
+were tried.
+
+Because `sudo` starts a fresh environment, the installer's `ANTIMAGE_ENV_FILE` /
+`ANTIMAGE_APP_DIR` exports are usually absent from a collector run. Discovery
+therefore also parses the `Environment=` lines of the `antimage.service` and
+`antimage-node.service` units (as text; a unit is never executed) to recover the
+real install paths. If the host runs the AntiMage-**node** service, discovery
+reports `not_applicable` and states that a node stores no panel database, rather
+than implying a missing panel: run the collector on the panel host, or pass
+`--sqlite` on a combined host. Panel-derived counts stay `null` in either case.
 
 Auto-discovery is read-only and never fails the run: if no install `.env` is
 present, or discovery finds only a MySQL DSN, the report is still a complete JSON
