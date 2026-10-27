@@ -9,8 +9,30 @@ changes configuration, resets counters, modifies database rows or installs tools
 From the checkout, capture a two-minute observation:
 
 ```sh
-sudo python3 scripts/performance/production_baseline.py --sample-seconds 120 > antimage-s3-audit.json
+sudo python3 scripts/performance/production_baseline.py --sample-seconds 120 \
+  --output /var/tmp/antimage-s3-audit.json > /dev/null
 ```
+
+`--output` writes the same document that goes to stdout, so a dropped SSH session,
+closed terminal or broken pipe cannot leave a zero-byte or partial report. Without
+`--output`, redirect stdout as before and add `--output` when running over a
+connection that may disconnect.
+
+Every run writes exactly one JSON document and exits 0 only when that document is a
+complete report. Argument errors, a missing or ambiguous NodeAgent process, a node
+identity change during sampling and unexpected exceptions all produce a valid JSON
+error object instead:
+
+```json
+{"status": "error", "stage": "find_node", "exception_type": "CollectorStageError",
+ "message": "antimage-node process not found; pass --pid <PID> if it runs under another name",
+ "diagnostics": {"requested_pid": null, "process_name_hints": []}}
+```
+
+`stage` names the failing phase (`arguments`, `find_node`, `sampling`, `report`), the
+message is the first line only and truncated, and credential-shaped tokens are masked.
+A one-line status goes to stderr, for example
+`status=ok stage=report report=/var/tmp/antimage-s3-audit.json observation_seconds=120.0`.
 
 If the panel SQLite database is accessible on that host, append
 `--sqlite /absolute/path/to/existing/panel.db`. The path must be the real panel

@@ -18,6 +18,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -34,6 +35,86 @@ NATIVE_FIELDS = {"inbounds": "openvpn", "wg_inbounds": "wireguard",
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_DB_ROWS = 50000
 COMMAND_DEADLINE = None
+
+
+class CollectorStageError(RuntimeError):
+    """Curated collector failure that always carries a secret-free stage name."""
+
+    def __init__(self, stage, message, diagnostics=None, hint=None):
+        super().__init__(message)
+        self.stage = stage
+        self.diagnostics = diagnostics
+        self.hint = hint
+
+
+class CollectorArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser whose usage errors are reported as collector JSON, not bare stderr."""
+
+    def error(self, message):
+        raise CollectorStageError("arguments", message)
+
+
+def safe_message(value, limit=240):
+    """First line only, truncated, with credential-shaped tokens masked."""
+    text = str(value or "").strip()
+    text = text.splitlines()[0] if text else ""
+    text = re.sub(r"(?i)\b(password|passwd|secret|token|apikey|api_key|authorization|uuid)\b\s*[:=]\s*\S+",
+                  r"\1=<redacted>", text)
+    text = re.sub(r"[0-9a-fA-F]{32,}", "<redacted>", text)
+    text = re.sub(r"[A-Za-z0-9+/=_]{28,}", "<redacted>", text)
+    return text[:limit]
+
+
+def error_payload(exc):
+    """Valid JSON error document. Never contains DB rows, credentials or daemon output."""
+    message = safe_message(exc)
+    return {
+        "schema_version": 2,
+        "collector": "production_baseline",
+        "status": "error",
+        "error": "collector could not complete",
+        "stage": getattr(exc, "stage", None) or "unknown",
+        "exception_type": type(exc).__name__,
+        "message": message,
+        "hint": safe_message(getattr(exc, "hint", None)) or None,
+        "diagnostics": getattr(exc, "diagnostics", None),
+        "captured_stderr": message or None,
+        "generated_utc": utc_now(),
+        "redaction": ("message is the first line only, truncated to 240 characters, with "
+                      "credential-shaped tokens masked; no DB rows, usernames, keys or raw daemon replies"),
+    }
+
+
+def write_json_file(path, text):
+    """Replace the target atomically so an interrupt cannot leave a partial report."""
+    temporary = f"{path}.tmp.{os.getpid()}"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        handle.write(text + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+
+
+def install_signal_handlers():
+    """Turn SIGHUP/SIGTERM/SIGINT into a caught failure so a JSON document is still written."""
+    def convert(signum, _frame):
+        try:
+            label = signal.Signals(signum).name
+        except ValueError:
+            label = f"signal {signum}"
+        raise CollectorStageError("interrupted",
+                                  f"collector interrupted by {label}; "
+                                  "partial observations are not a valid report",
+                                  hint="rerun under setsid/nohup if the SSH session may disconnect")
+
+    for name in ("SIGHUP", "SIGTERM", "SIGINT"):
+        number = getattr(signal, name, None)
+        if number is None:
+            continue
+        try:
+            signal.signal(number, convert)
+        except (OSError, ValueError, RuntimeError):
+            pass
 
 
 def protocol_name(value):
@@ -1039,9 +1120,37 @@ def process_info(pid):
             "threads": int(values.get("Threads", "0"))}
 
 
+def node_lookup_hints(pid=0, limit=10):
+    """Bounded, non-secret process-name hints used only when the node is not found."""
+    hints = []
+    try:
+        entries = sorted((int(p.name), p) for p in Path("/proc").iterdir() if p.name.isdigit())
+    except OSError:
+        return hints
+    for number, entry in entries:
+        if pid and number != pid:
+            continue
+        try:
+            comm = Path(f"/proc/{entry.name}/comm").read_text().strip()
+        except OSError:
+            continue
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,32}", comm):
+            continue
+        if "antimage" in comm.lower() or "node" in comm.lower():
+            hints.append({"pid": number, "comm": comm})
+            if len(hints) >= limit:
+                break
+    return hints
+
+
 def find_node(pid=0):
     candidates = []
-    for entry in Path("/proc").iterdir():
+    try:
+        entries = list(Path("/proc").iterdir())
+    except OSError as exc:
+        raise CollectorStageError("find_node", "cannot read /proc; rerun with root or read access to /proc",
+                                  diagnostics={"reason": safe_message(exc)}) from exc
+    for entry in entries:
         if not entry.name.isdigit():
             continue
         if pid and int(entry.name) != pid:
@@ -1053,7 +1162,10 @@ def find_node(pid=0):
         if exe in ("antimage-node", "antimage-node.exe"):
             candidates.append(info)
     if len(candidates) > 1:
-        raise SystemExit("multiple antimage-node processes; select the intended PID with --pid")
+        raise CollectorStageError(
+            "find_node", "multiple antimage-node processes; select the intended PID with --pid",
+            diagnostics={"matching_pids": [c["pid"] for c in candidates]},
+            hint="pass --pid <PID> for the node that serves the panel")
     return candidates[0] if candidates else None
 
 
@@ -1184,7 +1296,11 @@ def sample(args):
     started = utc_now()
     node = find_node(args.pid)
     if not node:
-        raise SystemExit("antimage-node process not found; run with read access to /proc")
+        raise CollectorStageError(
+            "find_node", "antimage-node process not found; pass --pid <PID> if it runs under another name",
+            diagnostics={"requested_pid": args.pid or None,
+                         "process_name_hints": node_lookup_hints(args.pid)},
+            hint="confirm the node binary path with: systemctl show -p ExecStart antimage-node")
     # Heavy read-only endpoint queries run at the two boundaries, never on
     # every CPU sample. Their source timestamps are retained in the report.
     audit_before = audit_snapshot(args)
@@ -1212,7 +1328,9 @@ def sample(args):
     while time.monotonic() - start_mono < duration:
         current = process_info(node["pid"])
         if not current or current["stat"]["start_ticks"] != node["stat"]["start_ticks"]:
-            raise SystemExit("antimage-node process identity changed during read-only sampling")
+            raise CollectorStageError(
+                "sampling", "antimage-node process identity changed during read-only sampling (restart or PID reuse)",
+                diagnostics={"pid": node["pid"]})
         elapsed_now = time.monotonic() - start_mono
         changed = []
         for protocol in metadata_changes:
@@ -1270,7 +1388,8 @@ def sample(args):
         host_cpu_percent = None
     process_current = process_info(node["pid"])
     if not process_current:
-        raise SystemExit("antimage-node exited before collection completed")
+        raise CollectorStageError("sampling", "antimage-node exited before collection completed",
+                                  diagnostics={"pid": node["pid"], "observed_seconds": round(elapsed, 3)})
     audit_after = audit_snapshot(args)
     if not namespace_matches:
         for value in audit_after["live"].values():
@@ -1344,10 +1463,12 @@ def sample(args):
                              "INCOMPLETE_OBSERVABILITY means some requested evidence is unavailable and must not be interpreted as PASS"],
     }
     print(json.dumps(report, indent=2, sort_keys=True))
+    return report
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def main(argv=None):
+    install_signal_handlers()
+    parser = CollectorArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--sqlite", help="SQLite DB file; opened with mode=ro")
     group.add_argument("--mysql-defaults", help="existing MySQL client defaults file, must be mode 0600")
@@ -1359,22 +1480,68 @@ def main():
                         help="override local StatsService port; otherwise use runtime API_INBOUND, then 10085")
     parser.add_argument("--sample-seconds", type=int, default=60)
     parser.add_argument("--sample-interval", type=float, default=2)
-    args = parser.parse_args()
-    if not 60 <= args.sample_seconds <= 900 or not .5 <= args.sample_interval <= 10:
-        parser.error("sampling requires 60..900 seconds and an interval of 0.5..10 seconds")
-    if args.pid < 0 or args.node_id < 0 or (args.xray_api_port is not None and not 0 < args.xray_api_port <= 65535):
-        parser.error("invalid node ID or local Xray API port")
-    if sys.platform != "linux":
-        parser.error("Linux /proc collector only")
+    parser.add_argument("--output", default=None,
+                        help="also write the JSON document to this path so a dropped SSH session cannot lose it")
+    args = None
     try:
-        sample(args)
-    except BrokenPipeError:
-        pass
-    except Exception:
-        # Never print exceptions containing database rows, usernames, keys or daemon replies.
-        print('{"error":"collector could not complete; no raw diagnostics emitted"}')
-        raise SystemExit(1)
+        args = parser.parse_args(argv)
+        if not 60 <= args.sample_seconds <= 900 or not .5 <= args.sample_interval <= 10:
+            raise CollectorStageError("arguments", "sampling requires 60..900 seconds and an interval of 0.5..10 seconds")
+        if args.pid < 0 or args.node_id < 0 or (args.xray_api_port is not None and not 0 < args.xray_api_port <= 65535):
+            raise CollectorStageError("arguments", "invalid node ID or local Xray API port")
+        if sys.platform != "linux":
+            raise CollectorStageError("arguments", "Linux /proc collector only")
+    except SystemExit as exc:
+        # argparse --help prints its own text and exits before any collection work.
+        return 0 if exc.code in (0, None) else int(exc.code or 1)
+    except CollectorStageError as exc:
+        payload, code = error_payload(exc), 2
+    else:
+        try:
+            report = sample(args)
+        except BrokenPipeError:
+            # The reader closed the pipe; the report JSON had nowhere to go.
+            print("collector: stdout closed before the report was written", file=sys.stderr)
+            return 0
+        except CollectorStageError as exc:
+            payload, code = error_payload(exc), 1
+        except BaseException as exc:  # noqa: BLE001 - no exit path may leave stdout empty
+            # SystemExit and KeyboardInterrupt are BaseExceptions: a bare SystemExit
+            # raised inside sample() used to escape the old handler and produce a 0-byte report.
+            stage = getattr(exc, "stage", None) or "sampling"
+            payload = error_payload(CollectorStageError(stage, exc))
+            payload["exception_type"] = type(exc).__name__
+            code = 1
+        else:
+            # sample() already emitted the single report document on stdout; mirror it
+            # to --output so an SSH disconnect cannot leave a 0-byte artifact.
+            output_path = getattr(args, "output", None)
+            if output_path:
+                try:
+                    write_json_file(output_path, json.dumps(report, indent=2, sort_keys=True))
+                except OSError as exc:
+                    print(f"collector: cannot write {output_path}: {safe_message(exc)}", file=sys.stderr)
+                    output_path = None
+            print(f"status=ok stage=report report={output_path or 'stdout'} "
+                  f"observation_seconds={report.get('observation_seconds')}", file=sys.stderr)
+            sys.stderr.flush()
+            return 0
+    # Never print raw exceptions: they can carry database rows, usernames, keys or daemon replies.
+    text = json.dumps(payload, indent=2, sort_keys=True)
+    output_path = getattr(args, "output", None)
+    if output_path:
+        try:
+            write_json_file(output_path, text)
+        except OSError as exc:
+            print(f"collector: cannot write {output_path}: {safe_message(exc)}", file=sys.stderr)
+            output_path = None
+    print(text)
+    sys.stdout.flush()
+    print(f"status={payload['status']} stage={payload['stage']} report={output_path or 'stdout'} "
+          f"observation_seconds={payload.get('observation_seconds')}", file=sys.stderr)
+    sys.stderr.flush()
+    return code
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

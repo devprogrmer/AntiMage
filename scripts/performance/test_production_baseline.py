@@ -364,6 +364,162 @@ class CollectorTest(unittest.TestCase):
         for secret in self.secrets + list(self.tags.values()) + ["871234567", "871234568"]:
             self.assertNotIn(secret, stream.getvalue())
 
+    # The entrypoint must never exit without writing one parseable JSON document.
+    # The original bug: bare SystemExit inside sample() is a BaseException, so the
+    # old ``except Exception`` handler was skipped and the redirected report file
+    # stayed empty (0 bytes).
+
+    def entrypoint(self, argv, patches=None):
+        """Run main() with stdout/stderr captured and sys.platform forced to Linux."""
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(contextlib.redirect_stdout(out))
+            stack.enter_context(contextlib.redirect_stderr(err))
+            stack.enter_context(mock.patch.object(audit.sys, "platform", "linux"))
+            for name, value in (patches or {}).items():
+                stack.enter_context(mock.patch.object(audit, name, value))
+            code = audit.main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def assert_error_document(self, stream, stage, code):
+        payload = json.loads(stream)  # must be valid JSON, never an empty string
+        self.assertEqual(payload["status"], "error")
+        self.assertEqual(payload["stage"], stage)
+        self.assertEqual(payload["error"], "collector could not complete")
+        self.assertTrue(payload["message"])
+        self.assertNotEqual(code, 0)
+        for secret in self.secrets:
+            self.assertNotIn(secret, stream)
+        self.assertNotIn("PRIVATE KEY", stream)
+        self.assertNotIn("BEGIN CERTIFICATE", stream)
+        return payload
+
+    def test_entrypoint_missing_node_writes_json_error_instead_of_empty_report(self):
+        code, out, err = self.entrypoint(["--sqlite", self.args.sqlite, "--sample-seconds", "60"],
+                                         {"find_node": mock.Mock(return_value=None)})
+        payload = self.assert_error_document(out, "find_node", code)
+        self.assertIn("not found", payload["message"])
+        self.assertEqual(payload["diagnostics"]["requested_pid"], None)
+        self.assertIn("status=error", err)
+
+    def test_entrypoint_multiple_nodes_writes_json_error(self):
+        code, out, _ = self.entrypoint(["--sqlite", self.args.sqlite, "--sample-seconds", "60"],
+                                       {"find_node": mock.Mock(
+                                           side_effect=audit.CollectorStageError(
+                                               "find_node", "multiple antimage-node processes; select the intended PID with --pid",
+                                               diagnostics={"matching_pids": [11, 22]},
+                                               hint="pass --pid <PID> for the node that serves the panel"))})
+        payload = self.assert_error_document(out, "find_node", code)
+        self.assertEqual(payload["diagnostics"]["matching_pids"], [11, 22])
+        self.assertIn("--pid", payload["hint"])
+
+    def test_entrypoint_bare_system_exit_still_writes_json_error(self):
+        # The exact production failure mode: nothing but a bare SystemExit escapes sample().
+        code, out, _ = self.entrypoint(["--sqlite", self.args.sqlite, "--sample-seconds", "60"],
+                                       {"sample": mock.Mock(side_effect=SystemExit("boom"))})
+        payload = self.assert_error_document(out, "sampling", code)
+        self.assertEqual(payload["exception_type"], "SystemExit")
+        self.assertIn("boom", payload["message"])
+
+    def test_entrypoint_identity_change_writes_json_error(self):
+        exc = audit.CollectorStageError("sampling", "antimage-node process identity changed during read-only sampling")
+        code, out, _ = self.entrypoint(["--sqlite", self.args.sqlite, "--sample-seconds", "60"],
+                                       {"sample": mock.Mock(side_effect=exc)})
+        self.assertEqual(self.assert_error_document(out, "sampling", code)["exception_type"],
+                         "CollectorStageError")
+
+    def test_entrypoint_unexpected_exception_is_redacted_json_error(self):
+        leak = "secret=SECRET-password token=SECRET-token " + "a" * 400
+        code, out, _ = self.entrypoint(["--sqlite", self.args.sqlite, "--sample-seconds", "60"],
+                                       {"sample": mock.Mock(side_effect=RuntimeError(leak))})
+        payload = self.assert_error_document(out, "sampling", code)
+        self.assertLessEqual(len(payload["message"]), 240)
+        self.assertNotIn("SECRET-password", out)
+        self.assertNotIn("SECRET-token", out)
+
+    def test_entrypoint_argument_errors_are_json_without_touching_the_node(self):
+        for argv, fragment in ((["--sqlite", "x", "--sample-seconds", "5"], "60..900"),
+                               (["--sqlite", "x", "--sample-seconds", "60", "--pid", "-1"], "invalid node ID"),
+                               (["--sqlite", "x", "--nope"], "unrecognized arguments")):
+            code, out, _ = self.entrypoint(argv, {"find_node": mock.Mock(side_effect=AssertionError("ran too early"))})
+            payload = self.assert_error_document(out, "arguments", code)
+            self.assertIn(fragment, payload["message"])
+
+    def test_entrypoint_success_report_is_one_document(self):
+        report = {"schema_version": 2, "observation_seconds": 60}
+
+        def fake_sample(args):
+            # sample() owns the single stdout document; main() only adds status.
+            print(json.dumps(report, indent=2, sort_keys=True))
+            return report
+
+        code, out, err = self.entrypoint(["--sqlite", self.args.sqlite, "--sample-seconds", "60"],
+                                         {"sample": mock.Mock(side_effect=fake_sample)})
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out), report)
+        self.assertEqual(out.count('"schema_version"'), 1)
+        self.assertIn("status=ok", err)
+        self.assertIn("stage=report", err)
+
+    def test_entrypoint_output_flag_mirrors_report_to_file(self):
+        target = self.root / "report.json"
+        report = {"schema_version": 2, "observation_seconds": 300}
+        code, out, err = self.entrypoint(
+            ["--sqlite", self.args.sqlite, "--sample-seconds", "300", "--output", str(target)],
+            {"find_node": mock.Mock(return_value=None)})
+        self.assertNotEqual(code, 0)
+        self.assertGreater(target.stat().st_size, 0)
+        self.assertEqual(json.loads(target.read_text(encoding="utf-8")), json.loads(out))
+        self.assertIn(str(target), err)
+
+    def test_entrypoint_signal_interrupt_writes_json_error_not_partial_report(self):
+        target = self.root / "report.json"
+
+        def interrupted(_args):
+            raise audit.CollectorStageError(
+                "interrupted", "collector interrupted by signal SIGHUP; partial observations are not a valid report")
+
+        code, out, err = self.entrypoint(
+            ["--sqlite", self.args.sqlite, "--sample-seconds", "300", "--output", str(target)],
+            {"sample": mock.Mock(side_effect=interrupted)})
+        payload = self.assert_error_document(out, "interrupted", code)
+        self.assertEqual(payload["status"], "error")
+        self.assertEqual(json.loads(target.read_text(encoding="utf-8")), payload)
+        self.assertIn("status=error", err)
+
+    def test_output_write_is_atomic_and_leaves_no_partial_file(self):
+        target = self.root / "atomic.json"
+        with mock.patch.object(audit.os, "replace", side_effect=OSError("disk full")):
+            code, out, err = self.entrypoint(
+                ["--sqlite", self.args.sqlite, "--sample-seconds", "60", "--output", str(target)],
+                {"find_node": mock.Mock(return_value=None)})
+        self.assertNotEqual(code, 0)
+        self.assertFalse(target.exists())  # never a truncated/partial document
+        self.assertGreater(len(out), 0)    # the JSON document still reached stdout
+        self.assertIn("cannot write", err)
+
+    def test_signal_handler_converts_to_stage_error(self):
+        calls = {}
+
+        def record(signum, handler):
+            calls[signum] = handler
+
+        sigterm = audit.signal.SIGTERM  # SIGHUP does not exist on every platform
+        with mock.patch.object(audit.signal, "signal", side_effect=record):
+            audit.install_signal_handlers()
+        self.assertIn(sigterm, calls)
+        with self.assertRaises(audit.CollectorStageError) as caught:
+            calls[sigterm](sigterm, None)
+        self.assertEqual(caught.exception.stage, "interrupted")
+        self.assertIn("interrupted", str(caught.exception))
+        self.assertIn("valid report", str(caught.exception))
+
+    def test_safe_message_masks_credential_shaped_tokens(self):
+        self.assertEqual(audit.safe_message("token=abc123 password=hunter2"), "token=<redacted> password=<redacted>")
+        self.assertIn("<redacted>", audit.safe_message("key " + "f" * 64))
+        self.assertLessEqual(len(audit.safe_message("x" * 500)), 240)
+        self.assertEqual(audit.safe_message("first\nsecond"), "first")
+
 
 if __name__ == "__main__":
     unittest.main()
