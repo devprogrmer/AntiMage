@@ -103,7 +103,6 @@ async function openAs(page: Page, language: "en" | "fa", path = "/") {
 	await page.addInitScript((lng) => {
 		localStorage.setItem("i18nextLng", lng);
 		localStorage.setItem("chakra-ui-color-mode", "dark");
-		localStorage.setItem("antimage.navigation-mode.v1.smoke-owner", "advanced");
 	}, language);
 	await mockAPI(page);
 	const pageErrors: string[] = [];
