@@ -36,15 +36,29 @@ Queries follow Controller's actual inbound-major ordering. The baseline was
 compiled from the unchanged parent implementation using a Go file overlay;
 the same benchmark and tests were used for both implementations.
 
-The implementation reuses decoded receipts within one evaluation call, bounded
-by 1,024 entries and 1 MiB of encoded receipt bytes. Decoded object overhead is
-additional; this is not a claim that cache heap usage is capped at 1 MiB.
-It retains no receipt between calls, requires identical receipt bytes for reuse,
-and still checks epoch and each owner's cumulative total. Interleaved receipts,
-changed receipts, wrong epochs, missing receipts, oversized receipts, entry-limit
-overflow, and independent single-owner evaluation have regression coverage. Persistence,
+The implementation reuses decoded receipts across calls through a server-scoped
+cache keyed by the exact encoded receipt, bounded by 4,096 entries, 4 MiB of
+encoded receipt bytes and a 64 KiB per-receipt cap. Decoded object overhead is
+additional; this is not a claim that cache heap usage is capped at those byte
+counts. A served entry is always the decode of the bytes the caller passed, and
+every cached value was validated at decode time, so reuse still enforces the
+epoch and each owner's cumulative total. The cache is bound to one ledger
+object: replacing the ledger rebinds it, so no entry is applied to a superseded
+ledger revision. Interleaved receipts, changed receipts, wrong epochs, missing
+receipts, oversized receipts, entry-limit overflow, ledger replacement, and
+independent single-owner evaluation have regression coverage. Persistence,
 reflection authority, quota cadence, and anchor-retirement rules are unchanged.
 Receipts outside the cache bounds are decoded normally without dropping owners.
+
+At the AntiMage-s3 scale reported by the production collector (176 configured
+Xray users across a VLESS and a Shadowsocks inbound, every enforced user holding
+a reflected watermark), `BenchmarkXrayQuotaProductionTick` on the WSL Linux
+amd64 host measured the quota tick at 705 us/op, 264,596 B/op and 4,765
+allocs/op before the cross-call cache and 261 us/op, 22,456 B/op and 1,056
+allocs/op after it: roughly -63% time, -92% allocated bytes and -78%
+allocations per tick, with identical evaluated totals. This is still a focused
+tick measurement and is not isolated NodeAgent CPU, RSS/GC stability or
+production acceptance.
 
 This is a focused allocation/latency result, **not** isolated NodeAgent CPU,
 RSS/GC stability, native traffic reconciliation, or production acceptance. The
