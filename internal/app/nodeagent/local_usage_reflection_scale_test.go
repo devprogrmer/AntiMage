@@ -125,3 +125,46 @@ func BenchmarkReflection650UsersEightInbounds(b *testing.B) {
 		}
 	}
 }
+
+// The reflection hot path resolves one cumulative receipt key per query on
+// every tick. The key is cached per owner in the index, so a warm steady-state
+// tick must not allocate for it. This bounds the production-repeatable cost
+// without touching accounting semantics.
+func TestReflectionSteadyStateTickDoesNotAllocate(t *testing.T) {
+	s, queries := reflectionScaleFixture(t, 650, 8)
+	results := make([]localUsageReflectionResult, len(queries))
+	if err := s.localUsageReflectionV2Locked(queries, results); err != nil {
+		t.Fatal(err)
+	}
+	allocations := testing.AllocsPerRun(20, func() {
+		if err := s.localUsageReflectionV2Locked(queries, results); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if allocations != 0 {
+		t.Fatalf("warm reflection tick allocated %v times; want 0", allocations)
+	}
+}
+
+// Every cached owner key must match the uncached encoding, so the cache can
+// never attribute usage to a different owner.
+func TestReflectionUsageKeyCacheMatchesUncachedEncoding(t *testing.T) {
+	s, _ := reflectionScaleFixture(t, 24, 3)
+	idx := s.localUsageV2IndexLocked()
+	if len(idx.UsageKeys) != len(idx.Owners) {
+		t.Fatalf("cache holds %d keys for %d owners", len(idx.UsageKeys), len(idx.Owners))
+	}
+	for key := range idx.Owners {
+		if got, want := idx.usageKey(key), usageKeyForOwner(key); got != want {
+			t.Fatalf("owner %+v cached key %q want %q", key, got, want)
+		}
+	}
+	// A miss must still encode the right key rather than return "".
+	missing := localUsageOwnerKey{Protocol: "xray", UserID: 9999, InboundTag: "inbound-9"}
+	if _, ok := idx.Owners[missing]; ok {
+		t.Fatal("fixture unexpectedly contains the probe owner")
+	}
+	if got, want := idx.usageKey(missing), usageKeyForOwner(missing); got != want {
+		t.Fatalf("cache miss key %q want %q", got, want)
+	}
+}

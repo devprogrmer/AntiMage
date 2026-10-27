@@ -47,6 +47,11 @@ type localUsageV2Index struct {
 	Owners        map[localUsageOwnerKey]int
 	Users         map[int64][]int
 	LegacyBatches map[localUsageOwnerKey]map[string]uint64
+	// UsageKeys caches usagereflection.Key for every owner identity. The
+	// reflection hot path resolves the receipt key once per query per tick and
+	// usagereflection.Key allocates on every call, so the value is computed
+	// once per owner while the index is built or extended.
+	UsageKeys map[localUsageOwnerKey]string
 }
 
 func firstReflectionLedger(values []string) string {
@@ -55,6 +60,22 @@ func firstReflectionLedger(values []string) string {
 	}
 	return ""
 }
+
+// usageKeyForOwner encodes one owner identity as a cumulative receipt key.
+func usageKeyForOwner(key localUsageOwnerKey) string {
+	return usagereflection.Key(key.Protocol, key.InboundTag)
+}
+
+// usageKey returns the cached receipt key for an owner. The cache is filled
+// while the index is built, but a lookup falls back to computing the key so an
+// index assembled without the cache still resolves the same owner.
+func (idx *localUsageV2Index) usageKey(key localUsageOwnerKey) string {
+	if cached, ok := idx.UsageKeys[key]; ok {
+		return cached
+	}
+	return usageKeyForOwner(key)
+}
+
 func usageRootFamily(root string) string { family, _, _ := strings.Cut(root, "-"); return family }
 func validateLocalUsageV2(v *localUsageLedgerV2) error {
 	if v == nil || v.Epoch == "" || v.Latest == nil || len(v.Latest) > 10 {
@@ -88,9 +109,11 @@ func (s *Server) localUsageV2IndexLocked() *localUsageV2Index {
 	if s.localUsageV2Index != nil {
 		return s.localUsageV2Index
 	}
-	idx := &localUsageV2Index{Owners: map[localUsageOwnerKey]int{}, Users: map[int64][]int{}, LegacyBatches: map[localUsageOwnerKey]map[string]uint64{}}
+	idx := &localUsageV2Index{Owners: map[localUsageOwnerKey]int{}, Users: map[int64][]int{}, LegacyBatches: map[localUsageOwnerKey]map[string]uint64{}, UsageKeys: map[localUsageOwnerKey]string{}}
 	for i, o := range s.localUsageV2.Owners {
-		idx.Owners[localUsageOwnerKey{o.Protocol, o.UserID, o.InboundTag}] = i
+		key := localUsageOwnerKey{o.Protocol, o.UserID, o.InboundTag}
+		idx.Owners[key] = i
+		idx.UsageKeys[key] = usageKeyForOwner(key)
 		idx.Users[o.UserID] = append(idx.Users[o.UserID], i)
 	}
 	for _, delivery := range s.localUsageDeliveries {
@@ -245,10 +268,12 @@ func (s *Server) recordLocalUsageDeliveryV2(root string) (map[int64]string, erro
 			Owners:        make(map[localUsageOwnerKey]int, len(next.Owners)),
 			Users:         make(map[int64][]int),
 			LegacyBatches: legacyBatches,
+			UsageKeys:     make(map[localUsageOwnerKey]string, len(next.Owners)),
 		}
 		for i, owner := range next.Owners {
 			key := localUsageOwnerKey{owner.Protocol, owner.UserID, owner.InboundTag}
 			index.Owners[key] = i
+			index.UsageKeys[key] = usageKeyForOwner(key)
 			index.Users[owner.UserID] = append(index.Users[owner.UserID], i)
 		}
 	}
@@ -306,7 +331,9 @@ func (s *Server) recordLocalUsageDeliveryV2(root string) (map[int64]string, erro
 		if !ok {
 			w = usagereflection.Watermark{Version: 2, Epoch: next.Epoch, Root: root, Totals: map[string]uint64{}, Baselines: map[string]uint64{}, LegacyRoots: map[string]string{}, LegacyBatches: map[string]map[string]uint64{}, PendingChildren: map[string]usagereflection.PendingChild{}}
 		}
-		ownerKey := usagereflection.Key(o.Protocol, o.InboundTag)
+		// index.usageKey falls back to computing the key for an owner added in
+		// this call, whose cache entry is published after the durable write.
+		ownerKey := index.usageKey(key)
 		w.Totals[ownerKey] = o.Total
 		w.Baselines[ownerKey] = 0
 		w.PendingChildren[ownerKey] = usagereflection.PendingChild{BatchID: r.ChildID, Raw: r.Raw}
@@ -337,6 +364,7 @@ func (s *Server) recordLocalUsageDeliveryV2(root string) (map[int64]string, erro
 	// writes must leave both the old ledger and its cached indexes intact.
 	for key, pos := range addedOwners {
 		index.Owners[key] = pos
+		index.UsageKeys[key] = usageKeyForOwner(key)
 		index.Users[key.UserID] = append(index.Users[key.UserID], pos)
 	}
 	s.localUsageV2Index = index
@@ -407,13 +435,14 @@ func (s *Server) localPendingReflectedV2Locked(protocol string, uid int64, child
 		return false, nil
 	}
 	matched := false
-	for _, pos := range s.localUsageV2IndexLocked().Users[uid] {
+	idx := s.localUsageV2IndexLocked()
+	for _, pos := range idx.Users[uid] {
 		o := s.localUsageV2.Owners[pos]
 		if o.Protocol != protocol || o.LastChild != child {
 			continue
 		}
 		matched = true
-		total, ok := w.Totals[usagereflection.Key(o.Protocol, o.InboundTag)]
+		total, ok := w.Totals[idx.usageKey(localUsageOwnerKey{o.Protocol, o.UserID, o.InboundTag})]
 		if !ok || total < o.Total {
 			return false, nil
 		}
@@ -427,10 +456,14 @@ func (s *Server) localUsageReflectionV2Locked(queries []localUsageReflectionQuer
 	idx := s.localUsageV2IndexLocked()
 	compactOwners := map[localUsageOwnerKey]bool{}
 	for i, q := range queries {
-		pos, ok := idx.Owners[localUsageOwnerKey{q.Protocol, q.UserID, q.InboundTag}]
+		ownerKey := localUsageOwnerKey{q.Protocol, q.UserID, q.InboundTag}
+		pos, ok := idx.Owners[ownerKey]
 		if !ok {
 			continue
 		}
+		// Resolved from the index cache so the receipt lookup does not allocate
+		// per query on every tick.
+		usageKey := idx.usageKey(ownerKey)
 		o := s.localUsageV2.Owners[pos]
 		var reflected uint64
 		covered := false
@@ -455,7 +488,7 @@ func (s *Server) localUsageReflectionV2Locked(queries []localUsageReflectionQuer
 				return err
 			}
 			if w.Epoch == s.localUsageV2.Epoch {
-				reflected, covered = w.Totals[usagereflection.Key(q.Protocol, q.InboundTag)]
+				reflected, covered = w.Totals[usageKey]
 				legacyRoot = w.LegacyRoot
 				if reflected > o.Total {
 					return fmt.Errorf("reflection exceeds durable accounting total")
@@ -465,7 +498,7 @@ func (s *Server) localUsageReflectionV2Locked(queries []localUsageReflectionQuer
 				// about panel persistence, so raw transport ACK must not retire
 				// legacy anchors; only an explicit retirement proof may.
 				if panelWatermark && o.LegacyTotal > 0 && reflected >= o.LegacyTotal {
-					compactOwners[localUsageOwnerKey{q.Protocol, q.UserID, q.InboundTag}] = true
+					compactOwners[ownerKey] = true
 				}
 				results[i].PendingReflected = q.PendingChildID != "" && o.LastChild == q.PendingChildID && reflected >= o.Total
 			}
