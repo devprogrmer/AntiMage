@@ -521,5 +521,165 @@ class CollectorTest(unittest.TestCase):
         self.assertEqual(audit.safe_message("first\nsecond"), "first")
 
 
+class DatabaseDiscoveryTest(unittest.TestCase):
+    """The collector must resolve the panel DB from the install .env, read-only."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def env_file(self, body, name="install.env"):
+        path = self.root / name
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def discover(self, env_path, *, database="antimage"):
+        args = argparse.Namespace(sqlite=None, mysql_defaults=None, database=database)
+        environ = {"ANTIMAGE_ENV_FILE": str(env_path)} if env_path else {}
+        with mock.patch.dict(audit.os.environ, environ, clear=True), \
+                mock.patch.object(audit, "ENV_CANDIDATES", ("ANTIMAGE_ENV_FILE",)), \
+                mock.patch.object(audit, "APP_DIR_CANDIDATES", ("ANTIMAGE_APP_DIR",)):
+            status, note = audit.discover_database(args)
+        return status, note, args
+
+    def test_absolute_sqlite_dsn_resolves_to_absolute_path(self):
+        env = self.env_file('SQLALCHEMY_DATABASE_URL = "sqlite:////var/lib/antimage/db.sqlite3"\n')
+        status, note, args = self.discover(env)
+        self.assertEqual(status, "ok")
+        self.assertEqual(args.sqlite, "/var/lib/antimage/db.sqlite3")
+        self.assertIn("sqlite", note)
+
+    def test_relative_sqlite_dsn_resolves_beside_the_env_file(self):
+        env = self.env_file(
+            "# comment line\n"
+            "export SQLALCHEMY_DATABASE_URL='sqlite:///db.sqlite3'\n",
+            name=".env")
+        status, note, args = self.discover(env)
+        self.assertEqual(status, "ok")
+        self.assertEqual(args.sqlite, str(self.root / "db.sqlite3"))
+
+    def test_relative_sqlite_subdirectory_dsn_is_not_flattened(self):
+        env = self.env_file("DATABASE_URL=sqlite:///state/panel.db\n")
+        status, _, args = self.discover(env)
+        self.assertEqual(status, "ok")
+        self.assertEqual(args.sqlite, str(self.root / "state" / "panel.db"))
+
+    def test_mysql_dsn_returns_credentials_hint_without_copying_the_password(self):
+        secret = "p4ssw0rd-SECRET"
+        env = self.env_file(f"SQLALCHEMY_DATABASE_URL=mysql://antimage:{secret}@127.0.0.1:3306/panel_db\n")
+        status, note, args = self.discover(env)
+        self.assertEqual(status, "needs_credentials")
+        self.assertEqual(args.database, "panel_db")
+        self.assertIsNone(args.sqlite)
+        self.assertNotIn(secret, note)
+        self.assertNotIn("antimage:" + secret, note)
+        self.assertIn("--mysql-defaults", note)
+
+    def test_mariadb_dsn_is_treated_as_mysql(self):
+        env = self.env_file("SQLALCHEMY_DATABASE_URL=mariadb://u:p@localhost/panel_db?charset=utf8mb4\n")
+        status, note, args = self.discover(env)
+        self.assertEqual(status, "needs_credentials")
+        self.assertEqual(args.database, "panel_db")
+        self.assertNotIn(":p@", note)
+
+    def test_missing_env_file_reports_not_found(self):
+        status, note, args = self.discover(self.root / "absent.env")
+        self.assertEqual(status, "not_found")
+        self.assertIsNone(args.sqlite)
+        self.assertIn("--sqlite", note)
+
+    def test_env_without_a_database_url_is_not_treated_as_discovery(self):
+        env = self.env_file("SECRET_KEY=abc\nDEBUG=False\n")
+        status, _, _ = self.discover(env)
+        self.assertEqual(status, "not_found")
+
+    def test_memory_and_empty_sqlite_dsn_are_skipped(self):
+        env = self.env_file("SQLALCHEMY_DATABASE_URL=sqlite:///:memory:\n")
+        status, _, _ = self.discover(env)
+        self.assertEqual(status, "not_found")
+
+    def test_discovery_note_never_contains_credential_shaped_tokens(self):
+        secret = "SECRET-token"
+        env = self.env_file(f"SQLALCHEMY_DATABASE_URL=mysql://root:{secret}@localhost/panel_db\n")
+        _, note, _ = self.discover(env)
+        self.assertNotIn(secret, note)
+
+
+class CollectorDiscoveryEntrypointTest(unittest.TestCase):
+    """Discovery wiring through main() must stay read-only and reportable."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def entrypoint(self, argv, env=None, patches=None):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(contextlib.redirect_stdout(out))
+            stack.enter_context(contextlib.redirect_stderr(err))
+            stack.enter_context(mock.patch.object(audit.sys, "platform", "linux"))
+            stack.enter_context(mock.patch.dict(audit.os.environ, env or {}, clear=True))
+            stack.enter_context(mock.patch.object(audit, "ENV_CANDIDATES", ("ANTIMAGE_ENV_FILE",)))
+            stack.enter_context(mock.patch.object(audit, "APP_DIR_CANDIDATES", ("ANTIMAGE_APP_DIR",)))
+            for name, value in (patches or {}).items():
+                stack.enter_context(mock.patch.object(audit, name, value))
+            code = audit.main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def fake_sample(self, report):
+        def run(args):
+            report["database"] = {"discovery": args.database_discovery,
+                                  "discovery_note": args.database_note}
+            print(json.dumps(report, indent=2, sort_keys=True))
+            return report
+        return mock.Mock(side_effect=run)
+
+    def test_absent_env_and_flags_still_exit_zero_with_a_full_report(self):
+        report = {"schema_version": 2, "observation_seconds": 60}
+        code, out, err = self.entrypoint(["--sample-seconds", "60"],
+                                         patches={"sample": self.fake_sample(report)})
+        self.assertEqual(code, 0)
+        payload = json.loads(out)
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(payload["database"]["discovery"], "not_found")
+        self.assertTrue(payload["database"]["discovery_note"])
+        self.assertIn("status=ok", err)
+
+    def test_env_file_sqlite_dsn_is_auto_discovered_and_recorded(self):
+        env = self.root / ".env"
+        env.write_text("SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/antimage/db.sqlite3\n", encoding="utf-8")
+        report = {"schema_version": 2, "observation_seconds": 60}
+        code, out, _ = self.entrypoint(["--sample-seconds", "60"],
+                                       env={"ANTIMAGE_ENV_FILE": str(env)},
+                                       patches={"sample": self.fake_sample(report)})
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["database"]["discovery"], "ok")
+
+    def test_explicit_sqlite_flag_wins_over_auto_discovery(self):
+        env = self.root / ".env"
+        env.write_text("SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/antimage/db.sqlite3\n", encoding="utf-8")
+        report = {"schema_version": 2, "observation_seconds": 60}
+        code, out, _ = self.entrypoint(["--sqlite", str(self.root / "panel.db"), "--sample-seconds", "60"],
+                                       env={"ANTIMAGE_ENV_FILE": str(env)},
+                                       patches={"sample": self.fake_sample(report)})
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["database"]["discovery"], "explicit")
+
+    def test_placeholder_sqlite_path_is_discovered_literally_and_never_crashes(self):
+        env = self.root / ".env"
+        env.write_text("SQLALCHEMY_DATABASE_URL=sqlite:////path/to/panel.db\n", encoding="utf-8")
+        report = {"schema_version": 2, "observation_seconds": 60}
+        code, out, _ = self.entrypoint(["--sample-seconds", "60"],
+                                       env={"ANTIMAGE_ENV_FILE": str(env)},
+                                       patches={"sample": self.fake_sample(report)})
+        self.assertEqual(code, 0)
+        # Discovery is literal; a placeholder path simply yields a real absolute
+        # path that db_inventory then reports as unavailable. No crash, no null report.
+        payload = json.loads(out)
+        self.assertEqual(payload["database"]["discovery"], "ok")
+
+
 if __name__ == "__main__":
     unittest.main()

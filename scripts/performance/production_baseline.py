@@ -3,11 +3,15 @@
 
 Example (SQLite):
   sudo python3 production_baseline.py --sqlite /var/lib/antimage/db.sqlite3 --sample-seconds 60
+Example (auto-discover the panel database from the install .env):
+  sudo python3 production_baseline.py --sample-seconds 60
 Example (MySQL):
   sudo python3 production_baseline.py --mysql-defaults /root/.my.cnf --database antimage
 
 MySQL credentials remain in the existing mode-0600 defaults file. No config,
 process environment, usernames, identifiers, or raw daemon output is emitted.
+Discovery reads only SQLALCHEMY_DATABASE_URL and the database-name portion of it;
+a password embedded in a DSN is never copied into the report.
 """
 
 import argparse
@@ -35,6 +39,8 @@ NATIVE_FIELDS = {"inbounds": "openvpn", "wg_inbounds": "wireguard",
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_DB_ROWS = 50000
 COMMAND_DEADLINE = None
+ENV_CANDIDATES = ("ANTIMAGE_ENV_FILE", "/opt/antimage/.env", "/etc/antimage/antimage.env")
+APP_DIR_CANDIDATES = ("ANTIMAGE_APP_DIR", "/opt/antimage")
 
 
 class CollectorStageError(RuntimeError):
@@ -52,6 +58,76 @@ class CollectorArgumentParser(argparse.ArgumentParser):
 
     def error(self, message):
         raise CollectorStageError("arguments", message)
+
+
+def dotenv_assignments(path):
+    """Parse KEY = value / KEY=value lines from an install .env without executing it."""
+    try:
+        raw = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    values = {}
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if key.startswith("export "):
+            key = key[len("export "):].strip()
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            continue
+        value = value.strip().strip('"').strip("'")
+        values.setdefault(key, value)
+    return values
+
+
+def discover_database(args):
+    """Resolve the panel database read-only from the install .env when not given.
+
+    Returns (status, note). Never copies a DSN password into the caller's args or
+    the report: only an absolute SQLite path or a MySQL database name is derived.
+    """
+    env_paths = [os.environ.get(ENV_CANDIDATES[0])] + list(ENV_CANDIDATES[1:])
+    app_dirs = [os.environ.get(APP_DIR_CANDIDATES[0])] + list(APP_DIR_CANDIDATES[1:])
+    for app_dir in app_dirs:
+        if app_dir:
+            env_paths.append(str(Path(app_dir) / ".env"))
+    seen = set()
+    for candidate in env_paths:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        values = dotenv_assignments(candidate)
+        if not values:
+            continue
+        url = values.get("SQLALCHEMY_DATABASE_URL") or values.get("DATABASE_URL") or ""
+        url = url.strip()
+        lower = url.lower()
+        base = str(Path(candidate).resolve())
+        if lower.startswith("sqlite"):
+            # Django convention: sqlite:////abs/path (4 slashes) is absolute;
+            # sqlite:///relative/path (3 slashes) is relative to the app dir.
+            if "://" not in url:
+                continue
+            rest = url.split("://", 1)[1]
+            rest = rest.split("?", 1)[0]
+            if not rest or rest.lstrip("/") in ("", ":memory:"):
+                continue
+            absolute = rest.startswith("//")
+            relative = rest.lstrip("/")
+            path = Path("/" + relative) if absolute else Path(candidate).resolve().parent / relative
+            args.sqlite = str(path)
+            return "ok", f"sqlite path resolved from {base}"
+        if lower.startswith("mysql") or lower.startswith("mariadb"):
+            name = url.rsplit("/", 1)[-1].split("?", 1)[0].strip()
+            if re.fullmatch(r"[A-Za-z0-9_]{1,64}", name):
+                args.database = name
+                return "needs_credentials", (
+                    f"MySQL database name {name} resolved from {base}; supply "
+                    "--mysql-defaults <mode-0600 client cnf> to read table state")
+    return "not_found", ("no install .env with SQLALCHEMY_DATABASE_URL was found; pass --sqlite "
+                         "<absolute panel db path> or --mysql-defaults <mode-0600 cnf>")
 
 
 def safe_message(value, limit=240):
@@ -1421,6 +1497,8 @@ def sample(args):
                          "vsz_bytes_end": process_current["vsz_kib"] * 1024,
                          "threads_end": process_current["threads"], "samples": samples},
         "database": {"source_status": audit_after["db"]["status"],
+                     "discovery": getattr(args, "database_discovery", "explicit"),
+                     "discovery_note": getattr(args, "database_note", None),
                      "node_scoped_accounting": audit_after["db"]["node_scoped"],
                      "node_identity_mismatch": audit_after["db"]["node_identity_mismatch"],
                      "collector_select_calls": audit_before["db"]["query_count"] + audit_after["db"]["query_count"],
@@ -1491,6 +1569,11 @@ def main(argv=None):
             raise CollectorStageError("arguments", "invalid node ID or local Xray API port")
         if sys.platform != "linux":
             raise CollectorStageError("arguments", "Linux /proc collector only")
+        if args.sqlite or args.mysql_defaults:
+            args.database_discovery = "explicit"
+            args.database_note = None
+        else:
+            args.database_discovery, args.database_note = discover_database(args)
     except SystemExit as exc:
         # argparse --help prints its own text and exits before any collection work.
         return 0 if exc.code in (0, None) else int(exc.code or 1)

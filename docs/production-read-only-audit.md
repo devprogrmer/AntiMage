@@ -34,7 +34,26 @@ message is the first line only and truncated, and credential-shaped tokens are m
 A one-line status goes to stderr, for example
 `status=ok stage=report report=/var/tmp/antimage-s3-audit.json observation_seconds=120.0`.
 
-If the panel SQLite database is accessible on that host, append
+When neither `--sqlite` nor `--mysql-defaults` is given, the collector
+auto-discovers the panel database from the install `.env` written by the panel
+installer. It reads only `SQLALCHEMY_DATABASE_URL` (falling back to
+`DATABASE_URL`) from the first of `$ANTIMAGE_ENV_FILE`, `/opt/antimage/.env` and
+`/etc/antimage/antimage.env` that exists, and it never executes the file. A
+`sqlite:////absolute/path` value is used as an absolute path and a
+`sqlite:///relative/path` value is resolved next to the `.env`; a MySQL/MariaDB
+DSN supplies only the database name, never the credentials embedded in it. The
+resolved source is recorded in `database.discovery` (`ok`, `needs_credentials`,
+`not_found`, or `explicit` when a flag was passed) with a short
+`database.discovery_note`.
+
+Auto-discovery is read-only and never fails the run: if no install `.env` is
+present, or discovery finds only a MySQL DSN, the report is still a complete JSON
+document with every database field marked `unavailable`/`null` and a note
+explaining what to pass instead. Do not pass a placeholder path such as
+`/absolute/path/to/panel.db`; a placeholder is treated literally and yields
+all-null database state without an error.
+
+To point the collector at a database explicitly, append
 `--sqlite /absolute/path/to/existing/panel.db`. The path must be the real panel
 database; no database is created. SQLite uses `mode=ro` and `query_only=ON`.
 For MySQL/MariaDB, append `--mysql-defaults /root/existing-client.cnf --database antimage`.
