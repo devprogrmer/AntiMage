@@ -19,9 +19,11 @@ import gzip
 import os
 import pathlib
 import shutil
+import signal
 import stat
 import subprocess
 import tempfile
+import time
 import unittest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -207,6 +209,161 @@ class ProvisioningTest(unittest.TestCase):
         result = self._run([])
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("could not install", result.stderr)
+
+
+class WorkflowIsolationTest(unittest.TestCase):
+    """Guards the native-l2tp step against a leaked-stdio wedge.
+
+    The runner only finalizes a workflow step once the step's captured stdout
+    pipe reaches EOF. `sudo timeout ... apt-get` (and the `dpkg` it drives) can
+    leave privileged method children (http/gpgv) alive after the parent is
+    killed; if those children inherit the step's pipe they hold it open, so the
+    step body finishes but the step never completes. That is exactly how the
+    native-l2tp job hung ~55 minutes on two attempts of a SHA whose third
+    attempt passed, and why the step's own timeout could not end it.
+
+    The provisioning helpers must therefore write to a file, never to the step's
+    captured stdout.
+    """
+
+    WORKFLOW = (
+        pathlib.Path(__file__).resolve().parents[2]
+        / ".github"
+        / "workflows"
+        / "native-protocol-e2e.yml"
+    )
+
+    def _l2tp_step(self):
+        text = self.WORKFLOW.read_text(encoding="utf-8")
+        marker = "Run native L2TP and PPP lifecycle"
+        start = text.index(marker)
+        # The step ends at the next step definition at the same indentation.
+        rest = text[start:]
+        end = rest.index("\n      - name: ")
+        return rest[:end]
+
+    def test_provisioning_output_is_redirected_off_the_captured_stdout(self):
+        step = self._l2tp_step()
+        self.assertIn(
+            'python3 scripts/ci/l2tp-kernel-module-resolver-test.py </dev/null >"$provision_log" 2>&1',
+            step,
+            "provisioning must not write to the captured step stdout",
+        )
+        self.assertIn(
+            'bash scripts/ci/ensure-l2tp-kernel-module.sh </dev/null >>"$provision_log" 2>&1',
+            step,
+            "kernel-module provisioning must not write to the captured step stdout",
+        )
+        # The log is still surfaced so failures remain diagnosable.
+        self.assertIn('cat "$provision_log"', step)
+        self.assertIn('[ "$provision_status" -eq 0 ] || exit "$provision_status"', step)
+
+    def test_driver_and_evidence_are_safe_under_cancellation(self):
+        step = self._l2tp_step()
+        self.assertIn("bash scripts/ci/native-l2tp-driver.sh \\\n", step)
+        self.assertIn('</dev/null >"$RUNNER_TEMP/native-l2tp.log" 2>&1', step)
+        workflow = self.WORKFLOW.read_text(encoding="utf-8")
+        # Evidence must survive a cancelled run (a wedged step is cancelled).
+        self.assertEqual(workflow.count("if: failure() || cancelled()"), 2)
+
+
+class CapturedPipeWedgeTest(unittest.TestCase):
+    """Proves, at process level, why the provisioning stdout had to move.
+
+    The runner finalizes a step only when the step's captured stdout pipe hits
+    EOF. A bounded wrapper such as `timeout .. sudo apt-get install ..` kills
+    apt-get, but a privileged child it spawned (http/gpgv/dpkg) can survive and
+    still hold the inherited pipe write end. The shell then returns while the
+    pipe stays open, so the step never finishes and any step-level timeout is
+    powerless - it is waiting on a pipe, not on a process. Sending the helper's
+    output to a file instead closes that path.
+
+    The parent is SIGKILLed directly (rather than through `timeout`) so the test
+    exercises the orphaned-child mechanism itself and does not depend on a
+    particular timeout implementation's process-group behaviour.
+    """
+
+    LEAKER = """#!/usr/bin/env bash
+# Stands in for a privileged apt/dpkg parent: it spawns a child that inherits
+# stdout and outlives this shell when the bounded wrapper kills it.
+( exec sleep 120 ) &
+echo "leaker spawned an inherited-stdout child"
+sleep 120
+"""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="l2tp-pipe-"))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.leaker = self.tmp / "leaker.sh"
+        self.leaker.write_text(self.LEAKER)
+        self.leaker.chmod(0o755)
+
+    def _pipe_stays_open(self, capture_helper_to_pipe):
+        """Kill the helper's parent and report whether the pipe ever EOFs."""
+        fifo = self.tmp / "capture.pipe"
+        os.mkfifo(fifo)
+        captured = self.tmp / "captured.log"
+        reader = subprocess.Popen(
+            ["bash", "-c", f"cat {fifo} > {captured}"],
+            start_new_session=True,
+        )
+        writer = None
+        child = None
+        helper_log = None
+        try:
+            writer = os.open(fifo, os.O_WRONLY)
+            if capture_helper_to_pipe:
+                child = subprocess.Popen(["bash", str(self.leaker)], stdout=writer, stderr=writer)
+            else:
+                helper_log = (self.tmp / "helper.log").open("wb")
+                child = subprocess.Popen(
+                    ["bash", str(self.leaker)], stdout=helper_log, stderr=helper_log
+                )
+            time.sleep(0.7)  # let the helper spawn its inherited-stdout child
+            os.kill(child.pid, signal.SIGKILL)  # the bounded wrapper killing the parent
+            child.wait(timeout=10)
+            child = None
+            os.close(writer)
+            writer = None
+            # Give the reader a bounded window to observe EOF.
+            for _ in range(40):
+                if reader.poll() is not None:
+                    return False
+                time.sleep(0.1)
+            return reader.poll() is None
+        finally:
+            if child is not None:
+                child.kill()
+                child.wait(timeout=10)
+            if helper_log is not None:
+                helper_log.close()
+            if writer is not None:
+                os.close(writer)
+            if reader.poll() is None:
+                reader.kill()
+            reader.wait(timeout=10)
+            subprocess.run(
+                ["pkill", "-9", "-f", str(self.leaker)],
+                check=False,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["pkill", "-9", "-f", "sleep 120"],
+                check=False,
+                capture_output=True,
+            )
+
+    def test_captured_pipe_is_pinned_when_helper_writes_to_it(self):
+        self.assertTrue(
+            self._pipe_stays_open(capture_helper_to_pipe=True),
+            "expected the leaked child to keep the captured pipe open",
+        )
+
+    def test_captured_pipe_closes_when_helper_writes_to_a_file(self):
+        self.assertFalse(
+            self._pipe_stays_open(capture_helper_to_pipe=False),
+            "redirecting the helper to a file must let the captured pipe close",
+        )
 
 
 if __name__ == "__main__":

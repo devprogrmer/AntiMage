@@ -77,8 +77,25 @@ jobs:
           # the script falls back to a direct .deb fetch that aborts stalled mirrors.
           # It never skips the test: the driver below still runs `modprobe l2tp_ppp`,
           # so a genuinely unavailable package still fails this native job.
-          python3 scripts/ci/l2tp-kernel-module-resolver-test.py
-          bash scripts/ci/ensure-l2tp-kernel-module.sh
+          #
+          # The provisioning helpers must not write to this step's captured
+          # stdout. The runner only considers a step finished once that pipe
+          # reaches EOF, and `sudo timeout apt-get`/`dpkg` spawn privileged
+          # method/child processes (http, gpgv, dpkg) that can outlive the killed
+          # parent while still holding the inherited pipe. When that happened the
+          # step body would exit but the pipe stayed open, so neither the step's
+          # own 35-minute timeout nor the bounded wrappers could end it and the
+          # job only stopped at the 45-minute job timeout with no log and no
+          # artifact - exactly the native-l2tp hang seen on two attempts of the
+          # same SHA whose third attempt passed. Detaching stdin and sending the
+          # helper output to a file keeps every descendant off the capture pipe,
+          # and the file is printed afterwards so the logs are still visible.
+          provision_log="$RUNNER_TEMP/native-l2tp-provision.log"
+          provision_status=0
+          python3 scripts/ci/l2tp-kernel-module-resolver-test.py </dev/null >"$provision_log" 2>&1 || provision_status=$?
+          bash scripts/ci/ensure-l2tp-kernel-module.sh </dev/null >>"$provision_log" 2>&1 || provision_status=$?
+          cat "$provision_log"
+          [ "$provision_status" -eq 0 ] || exit "$provision_status"
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           api_test="$RUNNER_TEMP/antimage-api.test"
@@ -93,7 +110,7 @@ jobs:
             ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
             timeout --signal=TERM --kill-after=30s 12m bash scripts/ci/native-l2tp-driver.sh \
-            >"$RUNNER_TEMP/native-l2tp.log" 2>&1 || status=$?
+            </dev/null >"$RUNNER_TEMP/native-l2tp.log" 2>&1 || status=$?
           cat "$RUNNER_TEMP/native-l2tp.log"
           exit "${status:-0}"
 
@@ -241,7 +258,7 @@ jobs:
             python3 scripts/ci/native-ikev2-driver.py
 
       - name: Capture runner networking state after failure
-        if: failure()
+        if: failure() || cancelled()
         timeout-minutes: 3
         shell: bash
         run: |
@@ -263,7 +280,7 @@ jobs:
           } > "$RUNNER_TEMP/native-runner-state.txt" 2>&1
 
       - name: Upload native runtime evidence
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.protocol }}-evidence-${{ github.run_id }}
