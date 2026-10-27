@@ -56,6 +56,7 @@ type Server struct {
 	localRuntimeFailures             map[string]string
 	localUsageV2                     *localUsageLedgerV2
 	localUsageV2Index                *localUsageV2Index
+	localUsageReceiptCache           *localUsageReceiptCache
 	localUsageLegacyHash             string
 	localUsageMu                     sync.Mutex
 	localUsageLoaded                 bool
