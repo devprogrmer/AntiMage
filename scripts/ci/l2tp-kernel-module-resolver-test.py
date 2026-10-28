@@ -232,6 +232,13 @@ class WorkflowIsolationTest(unittest.TestCase):
         / "workflows"
         / "native-protocol-e2e.yml"
     )
+    STEP_SCRIPT = (
+        pathlib.Path(__file__).resolve().parents[2]
+        / "scripts"
+        / "ci"
+        / "native-l2tp-lifecycle-step.sh"
+    )
+
 
     def _l2tp_step(self):
         text = self.WORKFLOW.read_text(encoding="utf-8")
@@ -242,31 +249,33 @@ class WorkflowIsolationTest(unittest.TestCase):
         end = rest.index("\n      - name: ")
         return rest[:end]
 
-    def test_provisioning_output_is_redirected_off_the_captured_stdout(self):
+    def test_step_delegates_to_a_self_bounding_script(self):
         step = self._l2tp_step()
+        # The body was extracted so a hanging phase still reaches its own reap,
+        # log dump and annotation. When the runner fires a step timeout it kills
+        # the body instantly, and once the job passes its 45-minute cap GitHub
+        # discards the job log and every artifact as well.
         self.assertIn(
-            'python3 scripts/ci/l2tp-kernel-module-resolver-test.py </dev/null >"$provision_log" 2>&1',
+            'bash scripts/ci/native-l2tp-lifecycle-step.sh </dev/null 2>&1 | tee "$step_log" || status=$?',
             step,
-            "provisioning must not write to the captured step stdout",
+            "the step must delegate to the self-bounding script",
         )
-        self.assertIn(
-            'bash scripts/ci/ensure-l2tp-kernel-module.sh </dev/null >>"$provision_log" 2>&1',
-            step,
-            "kernel-module provisioning must not write to the captured step stdout",
-        )
-        # The log is still surfaced so failures remain diagnosable.
-        self.assertIn('cat "$provision_log"', step)
-        self.assertIn('if [ "$provision_status" -ne 0 ]; then', step)
-        self.assertIn('exit "$provision_status"', step)
+        # The step has to keep going after the script fails, so it must not run
+        # under `set -e` before it has reaped, printed and annotated.
+        self.assertIn("set -uo pipefail", step)
+        self.assertNotIn("set -euo pipefail", step)
+        # The step's bound must sit between the script's own 25-minute bound and
+        # the 45-minute job cap, leaving room for the capture and upload steps.
+        self.assertIn("timeout-minutes: 30", step)
+        self.assertNotIn("timeout-minutes: 35", step)
+        self.assertIn("timeout --signal=TERM --kill-after=30s 26m", step)
 
     def test_driver_and_evidence_are_safe_under_cancellation(self):
         step = self._l2tp_step()
-        self.assertIn("bash scripts/ci/native-l2tp-driver.sh \\\n", step)
-        # The driver's own output still goes to a file rather than the captured
-        # step stdout, so its descendants cannot hold the step pipe open.
-        self.assertIn('driver_log="$RUNNER_TEMP/native-l2tp.log"', step)
-        self.assertIn('</dev/null >"$driver_log" 2>&1', step)
-        self.assertIn('cat "$driver_log"', step)
+        # The logs are still surfaced so failures remain diagnosable even though
+        # every producer writes to a file rather than the captured step stdout.
+        for log in ("native-l2tp-provision.log", "native-l2tp.log"):
+            self.assertIn(log, step)
         workflow = self.WORKFLOW.read_text(encoding="utf-8")
         # Evidence must survive a cancelled run (a wedged step is cancelled).
         self.assertEqual(workflow.count("if: failure() || cancelled()"), 2)
@@ -276,21 +285,55 @@ class WorkflowIsolationTest(unittest.TestCase):
         # `timeout` only signals the direct child; the privileged grandchildren
         # (xl2tpd/pppd/charon) have to be reaped explicitly or the runner stays
         # wedged and the job never ends, so no log or artifact is ever produced.
-        self.assertIn("bash scripts/ci/l2tp-reap-driver-tree.sh", step)
-        self.assertGreaterEqual(
-            step.count("bash scripts/ci/l2tp-reap-driver-tree.sh"),
-            1,
-        )
+        self.assertIn("bash scripts/ci/l2tp-reap-driver-tree.sh || true", step)
         # The failure reason must be surfaced as a check-run annotation, which
         # survives cancellation when the job logs do not.
-        self.assertIn('emit_failure_annotation "$driver_log" "native L2TP driver failed"', step)
+        self.assertIn("::error title=native L2TP lifecycle step failed::", step)
+        self.assertIn('exit "$status"', step)
+
+    def test_extracted_script_bounds_every_phase(self):
+        script = self.STEP_SCRIPT.read_text(encoding="utf-8")
+        # One shared step budget, with a reserve kept back so the script can
+        # always print its logs and annotate before its own bound is reached.
+        self.assertIn('step_budget="${ANTIMAGE_L2TP_STEP_SECONDS:-1500}"', script)
+        self.assertIn('reserve_seconds="${ANTIMAGE_L2TP_STEP_RESERVE_SECONDS:-120}"', script)
+        # 25 minutes of script budget must stay inside the step's 30 minutes.
+        self.assertIn("1500", script)
+        # Privileged phases keep `timeout` on the root side of sudo: wrapping
+        # sudo from the outside would leave the root-owned driver and its
+        # grandchildren with nothing left to bound or reap them.
         self.assertIn(
-            'emit_failure_annotation "$provision_log" "native L2TP kernel provisioning failed"',
-            step,
+            'sudo timeout --signal=TERM --kill-after=30s "${allowed}s" "$@"',
+            script,
         )
-        self.assertIn("::error title=", step)
+        self.assertIn('if [ "$privilege" = "root" ]; then', script)
+        # The driver and its privileged self-test are the two phases that must
+        # run this way.
+        self.assertIn('run_phase "native-lifecycle-driver" "$driver_budget" root', script)
+        self.assertIn('run_phase "reap-driver-tree-self-test" 300 root', script)
+
+    def test_extracted_script_keeps_producers_off_the_captured_pipe(self):
+        script = self.STEP_SCRIPT.read_text(encoding="utf-8")
+        # Each helper detaches stdin and writes to a file, never to the step's
+        # captured stdout, so a surviving privileged child cannot pin the pipe.
+        for helper in (
+            'python3 scripts/ci/l2tp-kernel-module-resolver-test.py </dev/null >>"$provision_log" 2>&1',
+            'python3 scripts/ci/l2tp-reap-driver-tree-test.py </dev/null >>"$provision_log" 2>&1',
+            'bash scripts/ci/ensure-l2tp-kernel-module.sh </dev/null >>"$provision_log" 2>&1',
+            'bash scripts/ci/native-l2tp-driver.sh </dev/null >"$driver_log" 2>&1',
+        ):
+            self.assertIn(helper, script)
+        # The logs are printed afterwards so the step output stays diagnostic.
+        self.assertIn('cat "$provision_log"', script)
+        self.assertIn('cat "$driver_log"', script)
+        self.assertIn('emit_failure_annotation "$provision_log" "native L2TP kernel provisioning failed"', script)
+        self.assertIn('emit_failure_annotation "$driver_log" "native L2TP driver failed"', script)
+        # The tree is always reaped and the real status is always propagated.
+        self.assertIn("bash scripts/ci/l2tp-reap-driver-tree.sh || true", script)
+        self.assertIn('exit "$status"', script)
+        self.assertIn('exit "$provision_status"', script)
         # The reaper is regression-tested from this same step.
-        self.assertIn("sudo python3 scripts/ci/l2tp-reap-driver-tree-test.py", step)
+        self.assertIn("python3 scripts/ci/l2tp-reap-driver-tree-test.py", script)
 
 
 class CapturedPipeWedgeTest(unittest.TestCase):
@@ -391,6 +434,51 @@ sleep 120
             "redirecting the helper to a file must let the captured pipe close",
         )
 
+
+class ExtractedStepBoundingTest(unittest.TestCase):
+    """The extracted step must bound itself and always return.
+
+    A step that hands its lifetime to the runner produces no log, no artifact and
+    no annotation: once the job passes its cap GitHub discards both. The script
+    therefore gives every phase its own limit out of one shared step budget, so a
+    wedged phase ends the script with a real status instead of the runner.
+    """
+
+    def test_a_wedged_phase_is_bounded_and_the_script_exits(self):
+        script = (
+            pathlib.Path(__file__).resolve().parents[2]
+            / "scripts"
+            / "ci"
+            / "native-l2tp-lifecycle-step.sh"
+        )
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="l2tp-bound-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        stub = tmp / "bin"
+        stub.mkdir()
+        # Stands in for a wedged provisioning helper: it never returns, so only
+        # the phase's own bound can end it.
+        wedged = stub / "python3"
+        wedged.write_text("#!/usr/bin/env bash\nsleep 600\n")
+        wedged.chmod(0o755)
+        env = dict(os.environ)
+        env["PATH"] = f"{stub}:/usr/bin:/bin"
+        env["RUNNER_TEMP"] = str(tmp)
+        env["ANTIMAGE_L2TP_STEP_SECONDS"] = "12"
+        env["ANTIMAGE_L2TP_STEP_RESERVE_SECONDS"] = "0"
+        started = time.monotonic()
+        result = subprocess.run(
+            ["bash", str(script)],
+            cwd=str(script.parents[2]),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 45, "the script must bound a wedged phase itself")
+        self.assertEqual(result.returncode, 124, result.stdout + result.stderr)
+        self.assertIn("=== phase kernel-index-resolver", result.stdout)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
