@@ -1,6 +1,9 @@
 package nodeagent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -58,7 +61,7 @@ func TestAnyConnectOcpasswdHelper(t *testing.T) {
 	if os.Getenv("GO_WANT_ANYCONNECT_OCPASSWD_HELPER") != "1" {
 		return
 	}
-	_, _ = io.ReadAll(os.Stdin)
+	passwordInput, _ := io.ReadAll(os.Stdin)
 	args := os.Args
 	separator := 0
 	for i, arg := range args {
@@ -76,7 +79,138 @@ func TestAnyConnectOcpasswdHelper(t *testing.T) {
 	if err != nil {
 		os.Exit(3)
 	}
-	_, _ = file.WriteString(args[4] + ":antimage:hashed\n")
+	digest := sha256.Sum256(passwordInput)
+	_, _ = file.WriteString(args[4] + ":antimage:" + hex.EncodeToString(digest[:]) + "\n")
 	_ = file.Close()
 	os.Exit(0)
+}
+
+func TestPrepareAnyConnectFailureKeepsPreviouslyPublishedUserState(t *testing.T) {
+	oldCommand := anyConnectCommand
+	anyConnectCommand = func(_ string, args ...string) *exec.Cmd {
+		cmd := exec.Command(os.Args[0], append([]string{"-test.run=TestAnyConnectOcpasswdHelper", "--"}, args...)...)
+		cmd.Env = append(os.Environ(), "GO_WANT_ANYCONNECT_OCPASSWD_HELPER=1")
+		return cmd
+	}
+	t.Cleanup(func() { anyConnectCommand = oldCommand })
+	server := New(Config{DataDir: t.TempDir()})
+	base := anyConnectRuntimeInbound{
+		Tag: "ac-atomic", Port: 443,
+		Settings: map[string]any{"ipv4_pool_cidr": "10.71.0.0/24", "server_certificate": "CERT", "server_key": "PRIVATE"},
+		Users:    []anyConnectRuntimeUser{{UserID: 1, Username: "alice", Password: "a1", Status: "active", IPv4Address: "10.71.0.8", DeviceLimit: 1}},
+	}
+	previous, err := server.prepareAnyConnectInbound(base, nativeRuntimeSessionCallback{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousPassword, err := os.ReadFile(previous.Files.PasswordFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousCCD, err := os.ReadFile(filepath.Join(previous.Files.UserConfigDir, "alice"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base.Users = append(base.Users, anyConnectRuntimeUser{UserID: 2, Username: "bob", Password: "b1", Status: "active"})
+	previousCommand := anyConnectCommand
+	calls := 0
+	anyConnectCommand = func(name string, args ...string) *exec.Cmd {
+		calls++
+		if calls == 2 {
+			return exec.Command(filepath.Join(t.TempDir(), "missing-ocpasswd"), args...)
+		}
+		return previousCommand(name, args...)
+	}
+	if _, err := server.prepareAnyConnectInbound(base, nativeRuntimeSessionCallback{}); err == nil {
+		t.Fatal("password helper failure unexpectedly published the new state")
+	}
+	currentPassword, err := os.ReadFile(previous.Files.PasswordFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentCCD, err := os.ReadFile(filepath.Join(previous.Files.UserConfigDir, "alice"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(currentPassword) != string(previousPassword) || string(currentCCD) != string(previousCCD) {
+		t.Fatalf("failed user build changed existing state: password=%q ccd=%q", currentPassword, currentCCD)
+	}
+	if _, err := os.Stat(filepath.Join(previous.Files.UserConfigDir, "bob")); !os.IsNotExist(err) {
+		t.Fatalf("failed user build published bob's CCD: %v", err)
+	}
+}
+
+func TestPublishAnyConnectUserStateRollsBackPartialRename(t *testing.T) {
+	root := t.TempDir()
+	usersPath := filepath.Join(root, "users")
+	passwordPath := filepath.Join(root, "ocpasswd")
+	stagedUsers := filepath.Join(root, ".stage", "users")
+	stagedPassword := filepath.Join(root, ".stage", "ocpasswd")
+	for path, content := range map[string]string{
+		filepath.Join(usersPath, "alice"):   "old-ccd",
+		passwordPath:                        "old-passwords",
+		filepath.Join(stagedUsers, "alice"): "new-ccd",
+		stagedPassword:                      "new-passwords",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	oldRename := anyConnectRename
+	anyConnectRename = func(oldPath, newPath string) error {
+		if oldPath == stagedPassword && newPath == passwordPath {
+			return errors.New("injected password publish failure")
+		}
+		return os.Rename(oldPath, newPath)
+	}
+	t.Cleanup(func() { anyConnectRename = oldRename })
+	if err := publishAnyConnectUserState(root, passwordPath, usersPath, stagedPassword, stagedUsers); err == nil {
+		t.Fatal("injected publish failure was ignored")
+	}
+	password, err := os.ReadFile(passwordPath)
+	if err != nil || string(password) != "old-passwords" {
+		t.Fatalf("password rollback = %q, err=%v", password, err)
+	}
+	ccd, err := os.ReadFile(filepath.Join(usersPath, "alice"))
+	if err != nil || string(ccd) != "old-ccd" {
+		t.Fatalf("CCD rollback = %q, err=%v", ccd, err)
+	}
+}
+
+// ocserv creates AF_UNIX sockets and appends a per-worker suffix to
+// "socket-file". The kernel caps sun_path at 108 bytes, so a deep data
+// directory makes the daemon exit immediately with status 0. AnyConnect
+// runtime sockets must therefore live under a short, bounded directory.
+func TestAnyConnectRuntimeSocketsStayWithinAFUnixPathLimit(t *testing.T) {
+	deep := filepath.Join(t.TempDir(), strings.Repeat("very-long-data-directory-segment/", 6))
+	server := New(Config{DataDir: deep})
+	oldCommand := anyConnectCommand
+	anyConnectCommand = func(_ string, args ...string) *exec.Cmd {
+		cmd := exec.Command(os.Args[0], append([]string{"-test.run=TestAnyConnectOcpasswdHelper", "--"}, args...)...)
+		cmd.Env = append(os.Environ(), "GO_WANT_ANYCONNECT_OCPASSWD_HELPER=1")
+		return cmd
+	}
+	t.Cleanup(func() { anyConnectCommand = oldCommand })
+	prepared, err := server.prepareAnyConnectInbound(anyConnectRuntimeInbound{Tag: "ac-socket-limit", Port: 443, Settings: map[string]any{"ipv4_pool_cidr": "10.71.0.0/24", "server_certificate": "CERT", "server_key": "PRIVATE"}, Users: []anyConnectRuntimeUser{{UserID: 1, Username: "alice", Password: "secret", Status: "active"}}}, nativeRuntimeSessionCallback{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ocserv adds a per-worker suffix (a dot plus eight hex digits plus a
+	// generation digit) to the worker socket path.
+	if len(prepared.Files.WorkerSocket)+len(".ffffffff.N") > 107 {
+		t.Fatalf("worker socket path %q leaves no room for ocserv's per-worker suffix", prepared.Files.WorkerSocket)
+	}
+	if len(prepared.Files.ControlSocket) > 107 {
+		t.Fatalf("control socket path %q exceeds the AF_UNIX limit", prepared.Files.ControlSocket)
+	}
+	if prepared.Files.ControlSocket != AnyConnectControlSocketPath(deep, "ac-socket-limit") {
+		t.Fatalf("control socket %q does not match the exported helper", prepared.Files.ControlSocket)
+	}
+	if dir := filepath.Dir(prepared.Files.ControlSocket); strings.HasPrefix(prepared.Files.ConfigPath, dir) {
+		t.Fatalf("runtime sockets must not live under the deep data directory: %q", dir)
+	}
 }

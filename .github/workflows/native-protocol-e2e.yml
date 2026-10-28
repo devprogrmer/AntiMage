@@ -1,6 +1,8 @@
 name: Native Protocol E2E
 
 on:
+  push:
+    branches: [codex/production-runtime-hardening]
   pull_request:
     branches: ['**']
     paths:
@@ -16,15 +18,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   native-runtime:
     name: native-${{ matrix.protocol }}
-    runs-on: ${{ matrix.protocol == 'pptp' && 'ubuntu-22.04' || 'ubuntu-latest' }}
+    runs-on: ${{ (matrix.protocol == 'pptp' || matrix.protocol == 'l2tp' || matrix.protocol == 'amneziawg') && 'ubuntu-22.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        protocol: [xray, wireguard, amneziawg, openvpn, l2tp, pptp, anyconnect, ikev2]
+        protocol: ${{ github.event_name == 'push' && fromJSON('["xray","openvpn","wireguard","amneziawg","l2tp","pptp","anyconnect","ikev2"]') || fromJSON('["xray","wireguard","amneziawg","openvpn","l2tp","pptp","anyconnect","ikev2"]') }}
     env:
       CGO_ENABLED: '1'
     steps:
@@ -34,6 +40,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install native runtime dependencies
+        timeout-minutes: 15
         run: |
           set -euxo pipefail
           sudo apt-get update
@@ -61,23 +68,89 @@ jobs:
       - name: Run native L2TP and PPP lifecycle
         if: ${{ matrix.protocol == 'l2tp' }}
         shell: bash
+        # The lifecycle runs in its own session with stdout and stderr on a
+        # file, and this step waits for it with its own deadline. Nothing the
+        # lifecycle leaks - apt method children, xl2tpd/pppd/charon, namespace
+        # helpers - can then hold this step's captured pipe or keep this step
+        # from returning. The previous attempts did hand the step's lifetime to
+        # the lifecycle: a wedged run went straight to the 45-minute job cap,
+        # GitHub cancelled the job, and the log and every artifact were
+        # discarded, so three consecutive failures produced no diagnosable
+        # output at all. The step body itself is scripts/ci/native-l2tp-lifecycle-step.sh,
+        # which bounds every phase out of one shared budget.
+        #
+        # 30 minutes is larger than the lifecycle's own bound and smaller than
+        # the job's 45-minute cap, which keeps room for the capture and upload
+        # steps even when the lifecycle fails.
+        timeout-minutes: 30
         run: |
-          set -euo pipefail
-          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
-          nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
-          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
-          api_test="$RUNNER_TEMP/antimage-api.test"
-          node_helper="$RUNNER_TEMP/antimage-node-helper"
-          go test -c -o "$nodeagent_test" ./internal/app/nodeagent
-          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
-          go test -c -o "$api_test" ./internal/app/api
-          go build -o "$node_helper" ./cmd/antimage_node
-          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
-            ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
-            ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
-            ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
-            ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
-            bash scripts/ci/native-l2tp-driver.sh
+          set -uo pipefail
+          # scripts/ci/ensure-l2tp-kernel-module.sh installs the kernel package
+          # that ships l2tp_ppp. Hosted Azure runners intermittently throttle that
+          # 71MB download to ~39 kB/s, which makes apt-get stall until it is killed;
+          # the script falls back to a direct .deb fetch that aborts stalled mirrors.
+          # It never skips the test: the driver still runs `modprobe l2tp_ppp`,
+          # so a genuinely unavailable package still fails this native job.
+          #
+          # The driver starts private xl2tpd/pppd/charon daemons, veth pairs and
+          # client namespaces. `timeout` only signals the direct child, so the
+          # privileged grandchildren outlive it and leave the host networking
+          # torn down mid-flight; scripts/ci/l2tp-reap-driver-tree.sh reaps the
+          # whole tree after every run and is covered by its own process-level
+          # test.
+          step_log="$RUNNER_TEMP/native-l2tp-lifecycle-step.log"
+          status_file="$RUNNER_TEMP/native-l2tp-lifecycle-step.status"
+          rm -f "$status_file"
+          : >"$step_log"
+
+          setsid bash -c '
+            rc=0
+            bash scripts/ci/native-l2tp-lifecycle-step.sh </dev/null || rc=$?
+            printf "%s" "$rc" > "$1"
+          ' native-l2tp-lifecycle "$status_file" >"$step_log" 2>&1 </dev/null &
+          lifecycle_pid=$!
+
+          # Never wait on the lifecycle itself: a process stuck in an
+          # uninterruptible kernel path cannot be signalled away, so the only
+          # reliable way to keep this step finite is to stop waiting for it.
+          deadline=$(( $(date +%s) + ${ANTIMAGE_L2TP_STEP_DEADLINE_SECONDS:-1440} ))
+          while [ ! -s "$status_file" ]; do
+            kill -0 "$lifecycle_pid" 2>/dev/null || break
+            [ "$(date +%s)" -lt "$deadline" ] || break
+            sleep 5
+          done
+
+          # Reap before reading the logs so no daemon still holds them open.
+          bash scripts/ci/l2tp-reap-driver-tree.sh || true
+
+          status=0
+          if [ -s "$status_file" ]; then
+            status="$(command head -c 16 "$status_file" | command tr -dc '0-9')"
+            [ -n "$status" ] || status=1
+          else
+            # Still running past the deadline: stop the whole session and fail
+            # with the conventional timeout status. The test is not skipped or
+            # weakened by this - it is reported as a timeout.
+            sudo kill -KILL -- "-$lifecycle_pid" 2>/dev/null || true
+            kill -KILL "$lifecycle_pid" 2>/dev/null || true
+            status=124
+          fi
+
+          for log in "$RUNNER_TEMP/native-l2tp-provision.log" "$RUNNER_TEMP/native-l2tp.log"; do
+            [ -s "$log" ] || continue
+            printf '=== tail of %s ===\n' "$log"
+            command tail -c 20000 "$log" || true
+          done
+          printf '=== lifecycle step log ===\n'
+          command tail -c 200000 "$step_log" || true
+          if [ "$status" -ne 0 ]; then
+            # Surface the tail as a check-run annotation: annotations are
+            # recorded when emitted, so they survive a later cancellation that
+            # would otherwise drop the job log.
+            body="$(command tail -c 2500 "$step_log" | command sed -e 's/%/%25/g' -e 's/\r/%0D/g' | command awk 'BEGIN{ORS="%0A"}{print}')"
+            printf '::error title=native L2TP lifecycle step failed::%s\n' "$body"
+          fi
+          exit "$status"
 
       - name: Run real Xray protocol E2E
         if: ${{ matrix.protocol == 'xray' }}
@@ -98,37 +171,49 @@ jobs:
           ANTIMAGE_XRAY_E2E_BINARY="$dir/xray" \
             ANTIMAGE_XRAY_PANEL_TEST_BINARY="$nodecontroller_test" \
             go test ./internal/app/nodeagent -run '^TestRealXrayOnlineAndStatsE2E$' -count=1 -v
+          ANTIMAGE_XRAY_E2E_BINARY="$dir/xray" \
+            go test ./internal/app/nodeagent -run '^TestXrayNonVLESSNativeTargetedMutationE2E$' -count=1 -v
 
       - name: Run native WireGuard lifecycle
         if: ${{ matrix.protocol == 'wireguard' }}
         shell: bash
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           api_test="$RUNNER_TEMP/antimage-api.test"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           go test -c -o "$api_test" ./internal/app/api
           sudo env ANTIMAGE_NATIVE_RUN_OPENVPN=0 ANTIMAGE_NATIVE_RUN_PANEL=0 \
             RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_WIREGUARD_CONTROLLER_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_VPN_API_TEST_BINARY="$api_test" \
             bash scripts/ci/native-vpn-drivers.sh
 
       - name: Run native OpenVPN lifecycle
         if: ${{ matrix.protocol == 'openvpn' }}
         shell: bash
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
+          nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           go test -c -o "$nodeagent_test" ./internal/app/nodeagent
+          go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           sudo env ANTIMAGE_NATIVE_RUN_WIREGUARD=0 ANTIMAGE_NATIVE_RUN_PANEL=0 \
+            ANTIMAGE_OPENVPN_MUTATION_E2E=1 \
             RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
+            ANTIMAGE_OPENVPN_CONTROLLER_TEST_BINARY="$nodecontroller_test" \
             bash scripts/ci/native-vpn-drivers.sh
 
       - name: Run native AmneziaWG lifecycle
         if: ${{ matrix.protocol == 'amneziawg' }}
         shell: bash
+        timeout-minutes: 25
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
@@ -146,6 +231,7 @@ jobs:
       - name: Run native PPTP lifecycle
         if: ${{ matrix.protocol == 'pptp' }}
         shell: bash
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
@@ -175,11 +261,25 @@ jobs:
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_ANYCONNECT_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_ANYCONNECT_PANEL_TEST_BINARY="$nodecontroller_test" \
+            ANTIMAGE_ANYCONNECT_CONTROLLER_TEST_BINARY="$nodecontroller_test" \
             bash scripts/ci/native-anyconnect-driver.sh
+
+      - name: Prepare IKEv2 race toolchain
+        if: ${{ matrix.protocol == 'ikev2' }}
+        shell: bash
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc libcharon-extra-plugins libcharon-extauth-plugins libstrongswan-standard-plugins
+          gcc --version
+          CGO_ENABLED=1 go test -race ./internal/app/nodeagent -run '^TestIKEv2' -count=1 -timeout=45m
+          CGO_ENABLED=1 go test -race ./internal/app/nodecontroller -run 'IKEv2|Targeted' -count=1 -timeout=45m
 
       - name: Run real strongSwan IKEv2 lifecycle
         if: ${{ matrix.protocol == 'ikev2' }}
         shell: bash
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
@@ -191,44 +291,62 @@ jobs:
             ANTIMAGE_IKEV2_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_IKEV2_PANEL_BINARY="$nodecontroller_test" \
             ANTIMAGE_IKEV2_TEMP_DIR="$RUNNER_TEMP" \
+            ANTIMAGE_IKEV2_PROVISION=1 \
+            ANTIMAGE_IKEV2_TARGETED_E2E=1 \
             python3 scripts/ci/native-ikev2-driver.py
 
       - name: Capture runner networking state after failure
-        if: failure()
+        if: failure() || cancelled()
+        # Every probe below is individually bounded, but the sum (ten
+        # `timeout 10s` commands plus the chown/chmod sweeps) can exceed a
+        # 3-minute budget on a busy runner, which is why this step kept failing
+        # instead of recording the evidence it had already collected.
+        timeout-minutes: 6
         shell: bash
         run: |
           for evidence in "$RUNNER_TEMP"/antimage-*-failure "$RUNNER_TEMP"/antimage-ikev2-*; do
             [ -e "$evidence" ] || continue
-            sudo chown -R "$(id -u):$(id -g)" "$evidence"
-            sudo chmod -R u+rwX "$evidence"
+            sudo timeout 45s chown -R "$(id -u):$(id -g)" "$evidence" || true
+            sudo timeout 45s chmod -R u+rwX "$evidence" || true
           done
           {
             date -u
-            sudo ip -details addr show || true
-            sudo ip route show table all || true
-            sudo ip netns list || true
-            sudo nft list ruleset || true
-            sudo tc -s qdisc show || true
-            sudo wg show all dump || true
-            sudo occtl --socket-file="$RUNNER_TEMP/ocserv.sock" show users || true
+            sudo timeout 10s ip -details addr show || true
+            sudo timeout 10s ip route show table all || true
+            sudo timeout 10s ip netns list || true
+            sudo timeout 10s nft list ruleset || true
+            sudo timeout 10s tc -s qdisc show || true
+            sudo timeout 10s wg show all dump || true
+            sudo timeout 10s occtl --socket-file="$RUNNER_TEMP/ocserv.sock" show users || true
             ps -ef || true
           } > "$RUNNER_TEMP/native-runner-state.txt" 2>&1
 
       - name: Upload native runtime evidence
-        if: failure()
+        if: failure() || cancelled()
+        timeout-minutes: 6
         uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.protocol }}-evidence-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/antimage-*-failure/**
-            ${{ runner.temp }}/antimage-ikev2-*/**
+            ${{ runner.temp }}/antimage-ikev2-*/server.stdout
+            ${{ runner.temp }}/antimage-ikev2-*/server.conf
+            ${{ runner.temp }}/antimage-ikev2-*/starter-diagnostics.txt
+            ${{ runner.temp }}/antimage-ikev2-*/targeted-evidence.json
+            ${{ runner.temp }}/antimage-ikev2-*/targeted-server.log
+            ${{ runner.temp }}/antimage-ikev2-*/targeted-client-*.log
             ${{ runner.temp }}/antimage-anyconnect-failure/**
             ${{ runner.temp }}/native-runner-state.txt
+            ${{ runner.temp }}/native-l2tp-lifecycle-step.log
+            ${{ runner.temp }}/native-l2tp-lifecycle-step.status
+            ${{ runner.temp }}/native-l2tp-provision.log
+            ${{ runner.temp }}/native-l2tp.log
           if-no-files-found: ignore
           retention-days: 7
 
   protocol-lifecycle-exact-once:
     name: protocol-lifecycle-exact-once
+    if: github.event_name == 'pull_request'
     # Ubuntu 24.04 no longer publishes pptpd; keep this combined legacy-PPP
     # lifecycle on the same supported image used by the native PPTP job.
     runs-on: ubuntu-22.04
@@ -247,7 +365,21 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             iproute2 iptables nftables iputils-ping tcpdump ppp xl2tpd strongswan pptp-linux wireguard-tools openvpn openssl netcat-openbsd
           sudo apt-get install -y --no-install-recommends pptpd
-          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
+          # Same throttled-mirror guard as the push-event L2TP job. Its helpers
+          # write to a file instead of this step's captured stdout: `sudo
+          # timeout apt-get`/`dpkg` can leave privileged method children alive
+          # holding the inherited pipe, which finishes the body but never ends
+          # the step - the wedge that produced the native-l2tp hangs. Detaching
+          # stdin and printing the log afterwards keeps the output readable.
+          provision_log="$RUNNER_TEMP/exact-once-provision.log"
+          provision_status=0
+          python3 scripts/ci/l2tp-kernel-module-resolver-test.py </dev/null >"$provision_log" 2>&1 || provision_status=$?
+          sudo python3 scripts/ci/l2tp-reap-driver-tree-test.py </dev/null >>"$provision_log" 2>&1 || provision_status=$?
+          bash scripts/ci/ensure-l2tp-kernel-module.sh </dev/null >>"$provision_log" 2>&1 || provision_status=$?
+          cat "$provision_log"
+          if [ "$provision_status" -ne 0 ]; then
+            exit "$provision_status"
+          fi
       - name: Run real combined native lifecycle and SQLite lost-ACK replay
         run: |
           set -euo pipefail
@@ -266,12 +398,21 @@ jobs:
             ANTIMAGE_VPN_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_VPN_API_TEST_BINARY="$api_test" \
             bash scripts/ci/native-vpn-drivers.sh
-          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
-            ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
-            ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
-            ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
-            ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
-            bash scripts/ci/native-l2tp-driver.sh
+          # `timeout` only signals the direct child and a process parked in an
+          # uninterruptible kernel path cannot be signalled away at all, so the
+          # driver runs detached with its output on a file and is waited for
+          # with a bounded deadline. Without that, a wedged driver keeps this
+          # step alive until the job cap, and the cancelled job loses its log
+          # and artifacts. The helper reaps the driver tree before it returns.
+          bash scripts/ci/l2tp-bounded-run.sh \
+            "$RUNNER_TEMP/exact-once-l2tp.log" \
+            "$RUNNER_TEMP/exact-once-l2tp.status" 780 \
+            sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+              ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
+              ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
+              ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
+              ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
+              timeout --signal=TERM --kill-after=30s 12m bash scripts/ci/native-l2tp-driver.sh
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_PPTP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_PPTP_PANEL_TEST_BINARY="$nodecontroller_test" \
@@ -287,11 +428,15 @@ jobs:
             ${{ runner.temp }}/antimage-native-vpn-failure/**
             ${{ runner.temp }}/antimage-l2tp-failure/**
             ${{ runner.temp }}/antimage-pptp-failure/**
+            ${{ runner.temp }}/exact-once-provision.log
+            ${{ runner.temp }}/exact-once-l2tp.log
+            ${{ runner.temp }}/exact-once-l2tp.status
           if-no-files-found: ignore
           retention-days: 7
 
   protocol-policy:
     name: protocol-policy-and-durable-state
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -305,6 +450,7 @@ jobs:
 
   native-race:
     name: native-race
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -314,3 +460,128 @@ jobs:
           go-version-file: go.mod
       - name: Run Linux race verification
         run: go test -race -timeout 30m ./internal/... -count=1
+
+  controller-openvpn-targeted:
+    name: controller-openvpn-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run OpenVPN controller capability, RPC, and fallback tests
+        run: go test ./internal/app/nodecontroller -run 'Test(OpenVPNMutationRequest|ControllerOpenVPNSendsTargeted|ControllerLegacyOpenVPN|OpenVPNTargetedMutationCapabilitiesAreOperationSpecific|OpenVPNTargetedCapabilityRequiresAdvertisedAssignedSingleProtocol|TargetedUserCapability|BulkOpenVPN|ControllerRejectsMissingNegativeAndMismatchedOpenVPNAcknowledgements|OpenVPNNativeControllerFixtureAllowsGatedTargetedPreparation)' -count=1
+      - name: Race test OpenVPN controller capability, RPC, and fallback paths
+        run: go test -race ./internal/app/nodecontroller -run 'Test(OpenVPNMutationRequest|ControllerOpenVPNSendsTargeted|ControllerLegacyOpenVPN|OpenVPNTargetedMutationCapabilitiesAreOperationSpecific|OpenVPNTargetedCapabilityRequiresAdvertisedAssignedSingleProtocol|TargetedUserCapability|BulkOpenVPN|ControllerRejectsMissingNegativeAndMismatchedOpenVPNAcknowledgements|OpenVPNNativeControllerFixtureAllowsGatedTargetedPreparation)' -count=1
+      - name: Run OpenVPN NodeAgent mutation and lifecycle tests
+        run: go test ./internal/app/nodeagent -run 'Test(OpenVPNTargetedRPCAddUpdateRemoveKeepsManagedProcessAndReplaysACK|DecodeOpenVPNMutationRequiresOperationAndRevision|OpenVPNMutationReceiptIsDurableAndRejectsOperationIDReuse|OpenVPNMutationLockWaitHonorsCancellation|StartOpenVPNInboundPreservesProcessForIdenticalConfig|OpenVPNUserOnlyMutationUpdatesAuthWithoutRestart|ApplyNativeRuntimePreservesOpenVPNProcessForUserOnlySync|StopReceiptSurvivesLostACKWithoutProcessReplay)' -count=1
+      - name: Race test OpenVPN NodeAgent mutation and lifecycle
+        run: go test -race ./internal/app/nodeagent -run 'Test(OpenVPNTargetedRPCAddUpdateRemoveKeepsManagedProcessAndReplaysACK|DecodeOpenVPNMutationRequiresOperationAndRevision|OpenVPNMutationReceiptIsDurableAndRejectsOperationIDReuse|OpenVPNMutationLockWaitHonorsCancellation|StartOpenVPNInboundPreservesProcessForIdenticalConfig|OpenVPNUserOnlyMutationUpdatesAuthWithoutRestart|ApplyNativeRuntimePreservesOpenVPNProcessForUserOnlySync|StopReceiptSurvivesLostACKWithoutProcessReplay)' -count=1
+
+  controller-wireguard-targeted:
+    name: controller-wireguard-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run WireGuard Controller RPC and NodeAgent mutation tests
+        run: |
+          go test ./internal/app/nodecontroller -run 'Test(ControllerWireGuard(AddAndUpdateUseTargetedRPC|RemoveUsesTargetedRPCAndStableIdentity)|WireGuardTargetedCapabilityRequiresAdvertisedAssignedSingleProtocol)' -count=1
+          go test ./internal/app/nodeagent -run 'Test(WireGuardMutationRPC(AddUpdateRemovePreservesInterfaceAndUnrelatedPeer|RejectsOperationEnvelopeMismatch)|WireGuardMutationReceipt(RejectsConflictingOperationID|FailureRetriesWithoutReapplyingKernelMutation)|RuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities)' -count=1
+      - name: Race test WireGuard Controller RPC and NodeAgent mutation tests
+        run: |
+          go test -race ./internal/app/nodecontroller -run 'Test(ControllerWireGuard(AddAndUpdateUseTargetedRPC|RemoveUsesTargetedRPCAndStableIdentity)|WireGuardTargetedCapabilityRequiresAdvertisedAssignedSingleProtocol)' -count=1
+          go test -race ./internal/app/nodeagent -run 'Test(WireGuardMutationRPC(AddUpdateRemovePreservesInterfaceAndUnrelatedPeer|RejectsOperationEnvelopeMismatch)|WireGuardMutationReceipt(RejectsConflictingOperationID|FailureRetriesWithoutReapplyingKernelMutation)|RuntimeStateAdvertisesOnlyImplementedProtocolMutationCapabilities)' -count=1
+
+  controller-amneziawg-targeted:
+    name: controller-amneziawg-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run AmneziaWG Controller RPC and NodeAgent mutation tests
+        run: |
+          go test ./internal/app/nodecontroller -run 'Test(ControllerAmneziaWGOperationsUseAdvertisedTargetedRPC|ControllerAmneziaWGTargetedMutationNativeE2E|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
+          go test ./internal/app/nodeagent -run 'Test(AmneziaWGTargetedRPCIsIdempotentAndRejectsConflictingOperationID|ApplyAmneziaWGUserMutation|ApplyAmneziaWGIdenticalUpdateIsKernelNoop)' -count=1
+      - name: Race test AmneziaWG Controller RPC and NodeAgent mutation tests
+        run: |
+          go test -race ./internal/app/nodecontroller -run 'Test(ControllerAmneziaWGOperationsUseAdvertisedTargetedRPC|ControllerAmneziaWGTargetedMutationNativeE2E|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
+          go test -race ./internal/app/nodeagent -run 'Test(AmneziaWGTargetedRPCIsIdempotentAndRejectsConflictingOperationID|ApplyAmneziaWGUserMutation|ApplyAmneziaWGIdenticalUpdateIsKernelNoop)' -count=1
+
+  controller-l2tp-targeted:
+    name: controller-l2tp-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run L2TP Controller RPC and NodeAgent mutation tests
+        run: |
+          go test ./internal/app/nodecontroller -run 'Test(ControllerL2TP(UsesTargetedRPCsAndAcknowledgements|RejectsInvalidAcknowledgement)|LegacyL2TPNodeUsesFencedFullSyncFallback|L2TPTargetedCapabilityIsOperationSpecificAndConservative|L2TPMutationRequestCarriesDesiredStateAndRevision)' -count=1
+          go test ./internal/app/nodeagent -run 'Test(L2TPTargetedMutationUpdatesPolicyWithoutRestartAndIsIdempotent|L2TPTargetedUpdateKeepsExistingPPPInterfaceAndChangesCredentialPolicy|L2TPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack)' -count=1
+      - name: Race test L2TP Controller RPC and NodeAgent mutation tests
+        run: |
+          go test -race ./internal/app/nodecontroller -run 'Test(ControllerL2TP(UsesTargetedRPCsAndAcknowledgements|RejectsInvalidAcknowledgement)|LegacyL2TPNodeUsesFencedFullSyncFallback|L2TPTargetedCapabilityIsOperationSpecificAndConservative|L2TPMutationRequestCarriesDesiredStateAndRevision)' -count=1
+          go test -race ./internal/app/nodeagent -run 'Test(L2TPTargetedMutationUpdatesPolicyWithoutRestartAndIsIdempotent|L2TPTargetedUpdateKeepsExistingPPPInterfaceAndChangesCredentialPolicy|L2TPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack)' -count=1
+
+  controller-pptp-targeted:
+    name: controller-pptp-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run PPTP Controller RPC and NodeAgent mutation tests
+        run: |
+          go test ./internal/app/nodecontroller -run 'Test(ControllerPPTP(UsesTargetedRPCsAndAcknowledgements|RejectsInvalidAcknowledgement)|LegacyPPTPNodeUsesFencedFullSyncFallback|PPTPTargetedCapabilityIsOperationSpecificAndConservative|PPTPMutationRequestCarriesDesiredStateAndRevision)' -count=1
+          go test ./internal/app/nodeagent -run 'Test(PPTPTargetedMutationUpdatesPolicyWithoutRestartAndIsIdempotent|PPTPTargetedUpdateKeepsExistingPPPSessionAndChangesCredentialPolicy|PPTPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack|PPTPRemoveUserIdentityRejectsMalformedInput)' -count=1
+      - name: Race test PPTP Controller RPC and NodeAgent mutation tests
+        run: |
+          go test -race ./internal/app/nodecontroller -run 'Test(ControllerPPTP(UsesTargetedRPCsAndAcknowledgements|RejectsInvalidAcknowledgement)|LegacyPPTPNodeUsesFencedFullSyncFallback|PPTPTargetedCapabilityIsOperationSpecificAndConservative|PPTPMutationRequestCarriesDesiredStateAndRevision)' -count=1
+          go test -race ./internal/app/nodeagent -run 'Test(PPTPTargetedMutationUpdatesPolicyWithoutRestartAndIsIdempotent|PPTPTargetedUpdateKeepsExistingPPPSessionAndChangesCredentialPolicy|PPTPTargetedRemoveTerminatesOnlyTargetAndPersistenceFailureRollsBack|PPTPRemoveUserIdentityRejectsMalformedInput)' -count=1
+
+  controller-ikev2-targeted:
+    name: controller-ikev2-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run IKEv2 controller targeted and fallback tests
+        run: go test ./internal/app/nodecontroller -run 'Test(IKEv2MutationRequestCarriesDesiredStateAndRevision|IKEv2CapabilityMappingRemainsExplicitAndControllerFallbackIsConservative|IKEv2LegacyNodeUsesFallbackAndCapableNodeUsesTargetedOnly|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
+      - name: Race test IKEv2 controller targeted and fallback paths
+        run: go test -race ./internal/app/nodecontroller -run 'Test(IKEv2MutationRequestCarriesDesiredStateAndRevision|IKEv2CapabilityMappingRemainsExplicitAndControllerFallbackIsConservative|IKEv2LegacyNodeUsesFallbackAndCapableNodeUsesTargetedOnly|TargetedUserCapabilityIsProtocolAndOperationSpecific)' -count=1
+
+  controller-xray-targeted:
+    name: controller-xray-targeted
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run Xray controller targeted capability and dispatch tests
+        run: go test ./internal/app/nodecontroller -run 'Test(TargetedUserCapabilityIsProtocolAndOperationSpecific|BulkVLESSUpdatesStayTargetedWhenNodeAdvertisesSupport|BulkVLESSAddRemoveStayTargetedOnlyWithExplicitCapability|RuntimeUserProtocolAndNodeCapabilityLookup)' -count=1
+      - name: Race test Xray controller targeted capability and dispatch paths
+        run: go test -race ./internal/app/nodecontroller -run 'Test(TargetedUserCapabilityIsProtocolAndOperationSpecific|BulkVLESSUpdatesStayTargetedWhenNodeAdvertisesSupport|BulkVLESSAddRemoveStayTargetedOnlyWithExplicitCapability|RuntimeUserProtocolAndNodeCapabilityLookup)' -count=1

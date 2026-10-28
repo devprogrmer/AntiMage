@@ -39,6 +39,7 @@ type pptpRuntimeUser struct {
 	DeviceLimit           int64   `json:"device_limit,omitempty"`
 	IPLimit               int64   `json:"ip_limit,omitempty"`
 	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	ReflectedUsageLedger  string  `json:"reflected_usage_ledger,omitempty"`
 	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
 	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
 	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
@@ -62,15 +63,6 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 	if inbound.Port != 0 && inbound.Port != defaultPPTPPort {
 		return "", fmt.Errorf("pptp %q: port must be %d", tag, defaultPPTPPort)
 	}
-	prefix, err := pptpPoolPrefix(inbound)
-	if err != nil {
-		return "", err
-	}
-	localIP := prefix.Addr().Next().String()
-	remoteRange, err := pptpRemoteIPRange(prefix)
-	if err != nil {
-		return "", fmt.Errorf("pptp %q: %w", tag, err)
-	}
 
 	root := filepath.Join(s.cfg.DataDir, "pptp", pptpRuntimeDirName(tag))
 	if err := os.MkdirAll(root, 0700); err != nil {
@@ -84,6 +76,71 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 		SessionConfig: filepath.Join(root, "session-helper.json"),
 		UsageConfig:   filepath.Join(root, "usage-helper.json"),
 	}
+
+	rendered, err := s.renderPPTPInboundFiles(inbound, files, callback)
+	if err != nil {
+		return "", err
+	}
+	for _, file := range []struct {
+		path string
+		data []byte
+		mode os.FileMode
+	}{
+		{files.UsageConfig, rendered.UsageConfig, 0600},
+		{files.PPPOptions, rendered.PPPOptions, 0600},
+		{files.Config, rendered.Config, 0600},
+	} {
+		if err := os.WriteFile(file.path, file.data, file.mode); err != nil {
+			return "", err
+		}
+	}
+	if rendered.SessionConfig != nil {
+		if err := os.MkdirAll(rendered.StateDir, 0700); err != nil {
+			return "", fmt.Errorf("pptp %q: create session state directory: %w", tag, err)
+		}
+		if err := os.WriteFile(files.SessionConfig, rendered.SessionConfig, 0600); err != nil {
+			return "", fmt.Errorf("pptp %q: write session helper config: %w", tag, err)
+		}
+		if err := os.WriteFile(files.IPUpScript, []byte(rendered.IPUpScript), 0700); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(files.IPDownScript, []byte(rendered.IPDownScript), 0700); err != nil {
+			return "", err
+		}
+	}
+	return files.Config, nil
+}
+
+// pptpRenderedFiles is the deterministic file content for a PPTP inbound. It is
+// rendered without touching the filesystem so a targeted user mutation can
+// stage every admission/session/accounting input atomically and write only the
+// files that actually changed.
+type pptpRenderedFiles struct {
+	Config        []byte
+	PPPOptions    []byte
+	UsageConfig   []byte
+	SessionConfig []byte
+	IPUpScript    string
+	IPDownScript  string
+	StateDir      string
+	CHAPSecrets   string
+}
+
+func (s *Server) renderPPTPInboundFiles(inbound pptpRuntimeInbound, files pptpRuntimeFiles, callback nativeRuntimeSessionCallback) (pptpRenderedFiles, error) {
+	tag := strings.TrimSpace(inbound.Tag)
+	if tag == "" {
+		return pptpRenderedFiles{}, fmt.Errorf("pptp inbound tag is required")
+	}
+	prefix, err := pptpPoolPrefix(inbound)
+	if err != nil {
+		return pptpRenderedFiles{}, err
+	}
+	localIP := prefix.Addr().Next().String()
+	remoteRange, err := pptpRemoteIPRange(prefix)
+	if err != nil {
+		return pptpRenderedFiles{}, fmt.Errorf("pptp %q: %w", tag, err)
+	}
+	root := filepath.Join(s.cfg.DataDir, "pptp", pptpRuntimeDirName(tag))
 
 	usageUsers := make(map[string]int64)
 	for _, user := range inbound.Users {
@@ -106,15 +163,8 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 	}
 	rawUsageConfig, err := json.Marshal(usageConfig)
 	if err != nil {
-		return "", fmt.Errorf(
+		return pptpRenderedFiles{}, fmt.Errorf(
 			"pptp %q: marshal usage config: %w",
-			tag,
-			err,
-		)
-	}
-	if err := os.WriteFile(files.UsageConfig, rawUsageConfig, 0600); err != nil {
-		return "", fmt.Errorf(
-			"pptp %q: write usage config: %w",
 			tag,
 			err,
 		)
@@ -130,30 +180,30 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 		files.SessionConfig = ""
 	}
 
-	if err := os.WriteFile(files.PPPOptions, []byte(renderPPTPPPPOptions(inbound, files, localIP)), 0600); err != nil {
-		return "", err
+	rendered := pptpRenderedFiles{
+		Config:      []byte(renderPPTPDConfig(files, localIP, remoteRange)),
+		PPPOptions:  []byte(renderPPTPPPPOptions(inbound, files, localIP)),
+		UsageConfig: rawUsageConfig,
+		StateDir:    filepath.Join(root, "sessions"),
+		CHAPSecrets: renderPPTPCHAPSecrets(inbound.Users),
 	}
-	if err := os.WriteFile(files.Config, []byte(renderPPTPDConfig(files, localIP, remoteRange)), 0600); err != nil {
-		return "", err
-	}
-
 	if needsSessionHelper {
 		executable, err := pppSessionHelperExecutable()
 		if err != nil {
-			return "", fmt.Errorf("pptp %q: resolve node executable: %w", tag, err)
+			return pptpRenderedFiles{}, fmt.Errorf("pptp %q: resolve node executable: %w", tag, err)
 		}
 		executable, err = filepath.Abs(executable)
 		if err != nil {
-			return "", fmt.Errorf("pptp %q: resolve absolute node executable: %w", tag, err)
+			return pptpRenderedFiles{}, fmt.Errorf("pptp %q: resolve absolute node executable: %w", tag, err)
 		}
 		sessionUsers := map[string]int64{}
 		for _, user := range inbound.Users {
 			username := pptpRuntimeUsername(user)
 			if username == "" {
-				return "", fmt.Errorf("pptp %q: invalid credentials for user %d", tag, user.UserID)
+				return pptpRenderedFiles{}, fmt.Errorf("pptp %q: invalid credentials for user %d", tag, user.UserID)
 			}
 			if user.UserID <= 0 {
-				return "", fmt.Errorf("pptp %q: invalid user id %d for session callback", tag, user.UserID)
+				return pptpRenderedFiles{}, fmt.Errorf("pptp %q: invalid user id %d for session callback", tag, user.UserID)
 			}
 			sessionUsers[username] = user.UserID
 		}
@@ -163,29 +213,17 @@ func (s *Server) preparePPTPInbound(inbound pptpRuntimeInbound, callback nativeR
 			Protocol:   "pptp",
 			Users:      sessionUsers,
 			Policies:   buildNativeSessionUserPolicies(pptpUsersAsOpenVPNUsers(inbound.Users)),
-			StateDir:   filepath.Join(root, "sessions"),
+			StateDir:   rendered.StateDir,
 		}
 		rawConfig, err := json.Marshal(config)
 		if err != nil {
-			return "", fmt.Errorf("pptp %q: marshal session helper config: %w", tag, err)
+			return pptpRenderedFiles{}, fmt.Errorf("pptp %q: marshal session helper config: %w", tag, err)
 		}
-		if err := os.MkdirAll(config.StateDir, 0700); err != nil {
-			return "", fmt.Errorf("pptp %q: create session state directory: %w", tag, err)
-		}
-		if err := os.WriteFile(files.SessionConfig, rawConfig, 0600); err != nil {
-			return "", fmt.Errorf("pptp %q: write session helper config: %w", tag, err)
-		}
-		connect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " start \"${6:-}\"\n"
-		disconnect := "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " stop \"${6:-}\"\n"
-		if err := os.WriteFile(files.IPUpScript, []byte(connect), 0700); err != nil {
-			return "", err
-		}
-		if err := os.WriteFile(files.IPDownScript, []byte(disconnect), 0700); err != nil {
-			return "", err
-		}
+		rendered.SessionConfig = rawConfig
+		rendered.IPUpScript = "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " start \"${6:-}\"\n"
+		rendered.IPDownScript = "#!/bin/sh\nset -eu\nexec " + shellSingleQuote(executable) + " session-event " + shellSingleQuote(files.SessionConfig) + " stop \"${6:-}\"\n"
 	}
-
-	return files.Config, nil
+	return rendered, nil
 }
 
 func renderPPTPDConfig(files pptpRuntimeFiles, localIP, remoteRange string) string {
@@ -334,11 +372,11 @@ func pptpUsersAsOpenVPNUsers(users []pptpRuntimeUser) []openVPNRuntimeUser {
 			Expire:                user.Expire,
 			DeviceLimit:           user.DeviceLimit,
 			IPLimit:               user.IPLimit,
-			ReflectedUsageBatchID: user.ReflectedUsageBatchID,
-			UploadSpeedLimit:      user.UploadSpeedLimit,
-			DownloadSpeedLimit:    user.DownloadSpeedLimit,
-			UsageCoefficient:      user.UsageCoefficient,
-			InboundCoefficient:    user.InboundCoefficient,
+			ReflectedUsageBatchID: user.ReflectedUsageBatchID, ReflectedUsageLedger: user.ReflectedUsageLedger,
+			UploadSpeedLimit:   user.UploadSpeedLimit,
+			DownloadSpeedLimit: user.DownloadSpeedLimit,
+			UsageCoefficient:   user.UsageCoefficient,
+			InboundCoefficient: user.InboundCoefficient,
 		})
 	}
 	return result

@@ -115,7 +115,15 @@ func NewMaintenanceService() *MaintenanceService {
 }
 
 func NewMaintenanceServiceWithDB(db *sql.DB, dialect string) *MaintenanceService {
-	service := NewMaintenanceService()
+	return NewMaintenanceServiceWithDepsDB(db, dialect, DefaultRuntimeDetector{}, NewGitHubUpdateChecker(), DefaultCommandScheduler{})
+}
+
+// NewMaintenanceServiceWithDepsDB wires the fenced, audited operation store to a
+// database while letting callers supply the runtime detector and command
+// scheduler. The local root CLI uses it so host actions taken from the terminal
+// share the exact same locking, audits and preconditions as the panel.
+func NewMaintenanceServiceWithDepsDB(db *sql.DB, dialect string, runtimeDetector RuntimeDetector, updateChecker UpdateChecker, scheduler CommandScheduler) *MaintenanceService {
+	service := NewMaintenanceServiceWithDeps(runtimeDetector, updateChecker, scheduler)
 	service.ops = NewMaintenanceOperationStoreWithDB(db, dialect)
 	service.recoveryPending = service.ops.Latest().Running
 	service.reconcilePersistedOperation()
@@ -213,6 +221,25 @@ func (s *MaintenanceService) SoftReload(ctx context.Context) (MaintenanceOperati
 	return s.startOperation(ctx, "soft-reload", []string{"restart", "-n"}, "Preparing panel reload", runtimeInfo.RunningVersion, runtimeInfo.ProcessStartedAt)
 }
 
+// Start and Stop drive the same fenced, audited operation store the panel uses
+// for restart/update, so local root CLI commands and authenticated panel
+// commands share one safe underlying layer instead of shelling out unchecked.
+func (s *MaintenanceService) Start(ctx context.Context) (MaintenanceOperationSnapshot, error) {
+	runtimeInfo := s.Runtime.Info()
+	if err := requireBinaryRuntime(runtimeInfo); err != nil {
+		return MaintenanceOperationSnapshot{}, err
+	}
+	return s.startOperation(ctx, "start", []string{"start", "-n"}, "Preparing panel start", runtimeInfo.RunningVersion, runtimeInfo.ProcessStartedAt)
+}
+
+func (s *MaintenanceService) Stop(ctx context.Context) (MaintenanceOperationSnapshot, error) {
+	runtimeInfo := s.Runtime.Info()
+	if err := requireBinaryRuntime(runtimeInfo); err != nil {
+		return MaintenanceOperationSnapshot{}, err
+	}
+	return s.startOperation(ctx, "stop", []string{"stop"}, "Preparing panel stop", runtimeInfo.RunningVersion, runtimeInfo.ProcessStartedAt)
+}
+
 func (s *MaintenanceService) Status() MaintenanceOperationSnapshot {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
@@ -292,6 +319,17 @@ func (s *MaintenanceService) startOperation(ctx context.Context, action string, 
 			return s.ops.Get(op.ID), err
 		}
 		s.ops.MarkRestarting(op.ID, "Command accepted. Waiting for AntiMage to restart.")
+		return s.ops.Get(op.ID), nil
+	}
+	if action == "start" || action == "stop" {
+		// Start/stop are host actions whose runtime evidence lives outside this
+		// process. Record the accepted command and let reconciliation observe the
+		// resulting runtime; there is no in-process restart to wait for.
+		if err := s.Commands.Schedule(args); err != nil {
+			s.ops.Finish(op.ID, err)
+			return s.ops.Get(op.ID), err
+		}
+		s.ops.Finish(op.ID, nil)
 		return s.ops.Get(op.ID), nil
 	}
 	if scheduler, ok := s.Commands.(ContextProgressCommandScheduler); ok {

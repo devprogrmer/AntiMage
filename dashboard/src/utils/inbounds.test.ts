@@ -70,6 +70,51 @@ describe("inbound usage coefficient", () => {
 	});
 });
 
+describe("inbound enforced per-user speed", () => {
+	it("defaults to unlimited and round-trips through the form", () => {
+		const defaults = createDefaultInboundForm();
+		expect(defaults.uploadSpeedLimit).toBe("0");
+		expect(defaults.downloadSpeedLimit).toBe("0");
+
+		const raw: RawInbound = {
+			tag: "capped",
+			port: 443,
+			protocol: "vless",
+			settings: { decryption: "none" },
+			upload_speed_limit: 8000000,
+			download_speed_limit: 4000000,
+		};
+		const values = rawInboundToFormValues(raw);
+		expect(values.uploadSpeedLimit).toBe("8000000");
+		expect(values.downloadSpeedLimit).toBe("4000000");
+
+		const payload = buildInboundPayload(values);
+		expect(payload.upload_speed_limit).toBe(8000000);
+		expect(payload.download_speed_limit).toBe(4000000);
+	});
+
+	it("sends an explicit zero when the operator clears the cap", () => {
+		const values = createDefaultInboundForm();
+		values.tag = "uncapped";
+		const payload = buildInboundPayload(values);
+		expect(payload.upload_speed_limit).toBe(0);
+		expect(payload.download_speed_limit).toBe(0);
+	});
+
+	it("rejects negative or fractional caps", () => {
+		const values = createDefaultInboundForm();
+		values.uploadSpeedLimit = "-1";
+		expect(validateInboundFormFields(values).uploadSpeedLimit).toBeTruthy();
+		values.uploadSpeedLimit = "0";
+		values.downloadSpeedLimit = "1.5";
+		expect(validateInboundFormFields(values).downloadSpeedLimit).toBeTruthy();
+		values.downloadSpeedLimit = "0";
+		const errors = validateInboundFormFields(values);
+		expect(errors.uploadSpeedLimit).toBeUndefined();
+		expect(errors.downloadSpeedLimit).toBeUndefined();
+	});
+});
+
 describe("AmneziaWG inbound form", () => {
 	it("round-trips independent AWG 1.0 settings without becoming WireGuard", () => {
 		const values = createDefaultInboundForm("amneziawg");

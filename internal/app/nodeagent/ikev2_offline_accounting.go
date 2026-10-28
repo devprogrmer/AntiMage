@@ -433,13 +433,13 @@ func offlineUnackedUsage(baseline map[string]uint64, owner offlineUsageOwner, ca
 	return raw, nil
 }
 
-func (s *Server) offlineQuotaRaw(protocol string, owner offlineUsageOwner, baseline, captured map[string]uint64, samples []ikev2UsageSample, pendingID, reflectedID string) (uint64, error) {
+func (s *Server) offlineQuotaRaw(protocol string, owner offlineUsageOwner, baseline, captured map[string]uint64, samples []ikev2UsageSample, pendingID, reflectedID string, ledger ...string) (uint64, error) {
 	raw, err := offlineUnackedUsage(baseline, owner, captured, samples)
 	if err != nil {
 		return 0, err
 	}
 	if pendingID != "" {
-		reflected, err := s.localPendingUsageReflected(protocol, owner.UserID, pendingID, reflectedID)
+		reflected, err := s.localPendingUsageReflected(protocol, owner.UserID, pendingID, reflectedID, ledger...)
 		if err != nil {
 			return 0, err
 		}
@@ -454,7 +454,7 @@ func (s *Server) offlineQuotaRaw(protocol string, owner offlineUsageOwner, basel
 			}
 		}
 	}
-	credit, err := s.localAwaitingReflectionUsage(protocol, owner.UserID, owner.Tag, pendingID, reflectedID)
+	credit, err := s.localAwaitingReflectionUsage(protocol, owner.UserID, owner.Tag, pendingID, reflectedID, ledger...)
 	if err != nil {
 		return 0, err
 	}
@@ -541,7 +541,7 @@ func (s *Server) quotaCheckIKEv2Offline(ctx context.Context) error {
 			samples = p.Samples
 			pendingID = p.BatchID
 		}
-		raw, err := s.offlineQuotaRaw("ikev2", offlineUsageOwner{user.UserID, inbound.Tag}, next, captured, samples, pendingID, user.ReflectedUsageBatchID)
+		raw, err := s.offlineQuotaRaw("ikev2", offlineUsageOwner{user.UserID, inbound.Tag}, next, captured, samples, pendingID, user.ReflectedUsageBatchID, user.ReflectedUsageLedger)
 		if err != nil {
 			return err
 		}
@@ -549,7 +549,7 @@ func (s *Server) quotaCheckIKEv2Offline(ctx context.Context) error {
 			denials = append(denials, ikev2OfflineDenial{sa, reason})
 			continue
 		}
-		policy := nativeSessionUserPolicy{Status: user.Status, UsedTraffic: user.UsedTraffic, UsageCoefficient: user.UsageCoefficient, InboundCoefficient: user.InboundCoefficient, ReflectedUsageBatchID: user.ReflectedUsageBatchID}
+		policy := nativeSessionUserPolicy{Status: user.Status, UsedTraffic: user.UsedTraffic, UsageCoefficient: user.UsageCoefficient, InboundCoefficient: user.InboundCoefficient, ReflectedUsageBatchID: user.ReflectedUsageBatchID, ReflectedUsageLedger: user.ReflectedUsageLedger}
 		if policy.Status == "" {
 			policy.Status = "active"
 		}

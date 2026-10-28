@@ -6,8 +6,6 @@ import {
 } from "types/Admin";
 import type { UserApi } from "types/User";
 
-export type NavigationMode = "simple" | "advanced";
-
 export type AMNavigationItem = {
 	id: string;
 	labelKey: string;
@@ -32,39 +30,12 @@ const hasSelf = (admin: NavigationAdmin, permission: SelfPermissionToggle) =>
 	admin.role === AdminRole.FullAccess ||
 	Boolean(admin.permissions.self_permissions?.[permission]);
 
-const hasMaintenance = (admin: NavigationAdmin) =>
-	admin.role === AdminRole.FullAccess ||
-	(admin.role === AdminRole.Sudo && Boolean(admin.permissions.sudo?.[AdminSudoScope.Maintenance]));
-
 const item = (id: string, labelKey: string, path: string): AMNavigationItem =>
 	({ id, labelKey, path });
 
-const simpleGroups = (admin: NavigationAdmin): AMNavigationGroup[] => {
-	const items = [
-		item("overview", "am.nav.overview", "/"),
-		item("users", "am.nav.users", "/users"),
-		hasSection(admin, AdminSection.Services)
-			? item("services", "am.nav.services", "/services")
-			: null,
-		hasSection(admin, AdminSection.Nodes)
-			? item("nodes", "am.nav.nodes", "/node-settings")
-			: null,
-		hasMaintenance(admin)
-			? item("health", "am.nav.health", "/diagnostics")
-			: null,
-		hasSection(admin, AdminSection.Integrations)
-			? item("settings", "am.nav.settings", "/settings")
-			: null,
-	].filter((entry): entry is AMNavigationItem => entry !== null);
-	return [{ id: "simple", labelKey: "am.nav.simpleGroup", items }];
-};
-
 export const buildAMNavigation = (
 	admin: NavigationAdmin,
-	mode: NavigationMode,
 ): AMNavigationGroup[] => {
-	if (mode === "simple") return simpleGroups(admin);
-
 	const fullAccess = admin.role === AdminRole.FullAccess;
 	const elevated = isElevated(admin);
 	const canRecentActions =
@@ -180,31 +151,4 @@ export const buildAMNavigation = (
 		},
 	];
 	return groups.filter((group) => group.items.length > 0);
-};
-
-export const navigationPreferenceKey = (username: string) =>
-	`antimage.navigation-mode.v1.${encodeURIComponent(username.trim().toLowerCase())}`;
-
-export const readNavigationMode = (username: string): NavigationMode => {
-	if (typeof window === "undefined") return "simple";
-	try {
-		return window.localStorage.getItem(navigationPreferenceKey(username)) ===
-			"advanced"
-			? "advanced"
-			: "simple";
-	} catch {
-		return "simple";
-	}
-};
-
-export const writeNavigationMode = (
-	username: string,
-	mode: NavigationMode,
-) => {
-	if (typeof window === "undefined") return;
-	try {
-		window.localStorage.setItem(navigationPreferenceKey(username), mode);
-	} catch {
-		// Navigation preference is non-critical and must not block navigation.
-	}
 };

@@ -18,7 +18,7 @@ import {
 	WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { NavLink, useLocation } from "react-router-dom";
-import { buildAMNavigation, type NavigationMode } from "./navigationModel";
+import { buildAMNavigation } from "./navigationModel";
 import type { UserApi } from "types/User";
 import { useTranslation } from "react-i18next";
 
@@ -48,15 +48,14 @@ const iconFor: Record<string, typeof HomeIcon> = {
 
 type Props = {
 	admin: UserApi;
-	mode: NavigationMode;
 	onNavigate?: () => void;
 	compact?: boolean;
 };
 
-export function AMNavigation({ admin, mode, onNavigate, compact = false }: Props) {
+export function AMNavigation({ admin, onNavigate, compact = false }: Props) {
 	const { t } = useTranslation();
 	const { pathname } = useLocation();
-	const groups = buildAMNavigation(admin, mode);
+	const groups = buildAMNavigation(admin);
 	const muted = "var(--am-native-muted)";
 	const border = "var(--am-native-border)";
 	const active = "var(--am-native-active)";

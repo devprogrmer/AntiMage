@@ -77,7 +77,7 @@ func pppOfflineAdmissionLimit(root string, uid int64, clientIP, excludeProcess s
 		if len(parts) != 3 {
 			continue
 		}
-		identity, err := pppOfflineReadProcess(parts[1])
+		identity, err := pppOfflineReadLiveProcess(parts[1])
 		if err != nil || identity != verified.Process {
 			continue
 		}
@@ -107,7 +107,7 @@ func pppOfflineAdmissionLimit(root string, uid int64, clientIP, excludeProcess s
 		if len(parts) != 3 {
 			return false, "", fmt.Errorf("invalid pending PPP process identity")
 		}
-		identity, identityErr := pppOfflineReadProcess(parts[1])
+		identity, identityErr := pppOfflineReadLiveProcess(parts[1])
 		if identityErr != nil || identity != record.Process {
 			if removeErr := os.Remove(path); removeErr != nil && !os.IsNotExist(removeErr) {
 				return false, "", removeErr

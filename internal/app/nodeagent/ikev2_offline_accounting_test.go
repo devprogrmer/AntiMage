@@ -154,6 +154,8 @@ func TestOfflineQuotaReflectedPendingKeepsOnlyNewerRaw(t *testing.T) {
 				t.Fatal("premature quota from reflected bytes")
 			}
 			s.localUsageDeliveries = []localUsageDelivery{{BatchID: "root-b", Rows: []localUsageDeliveryRow{{Protocol: protocol, UserID: 7, InboundTag: "vpn", ChildID: "child-b", Raw: 100 * mib}}}}
+			// Replacing the private fixture bypasses normal durable-write invalidation.
+			s.localUsageDeliveryIndex = nil
 			raw, err = s.offlineQuotaRaw(protocol, owner, map[string]uint64{offlineOwnerKey(owner): 20 * mib}, nil, nil, "", "")
 			if err != nil || raw != 120*mib {
 				t.Fatalf("ACK credit missing: %d %v", raw, err)

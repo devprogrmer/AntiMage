@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	adminapp "github.com/antimage/antimage/internal/app/admin"
@@ -265,6 +266,9 @@ func TestSettingsPanelRoutes(t *testing.T) {
 func TestRuntimeSettingsRoutes(t *testing.T) {
 	server, db := testAdminServer(t)
 	createSettingsTables(t, db)
+	if _, err := db.Exec(`INSERT INTO settings (id, phpmyadmin_password) VALUES (1, 'db-secret-never-return')`); err != nil {
+		t.Fatal(err)
+	}
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	insertMasterAPIAdmin(t, db, 2, "seller", "pass123", adminapp.RoleStandard, adminapp.StatusActive)
 
@@ -279,6 +283,9 @@ func TestRuntimeSettingsRoutes(t *testing.T) {
 	}
 	if settings["dashboard_path"] != "/dashboard/" || settings["record_node_usage"] != true || settings["record_node_user_usages"] != true {
 		t.Fatalf("unexpected default runtime settings: %#v", settings)
+	}
+	if _, exists := settings["phpmyadmin_password"]; exists || settings["phpmyadmin_password_configured"] != true || strings.Contains(rec.Body.String(), "db-secret-never-return") {
+		t.Fatalf("runtime settings leaked phpMyAdmin credential: %s", rec.Body.String())
 	}
 
 	rec = adminJSONRequest(t, server, http.MethodPut, "/api/settings", fullToken, `{
@@ -297,11 +304,25 @@ func TestRuntimeSettingsRoutes(t *testing.T) {
 	if settings["dashboard_path"] != "/panel/" || settings["record_node_usage"] != false || settings["record_node_user_usages"] != false || settings["subscription_read_only"] != true || settings["api_docs_enabled"] != true {
 		t.Fatalf("unexpected updated runtime settings: %#v", settings)
 	}
+	var storedPassword string
+	if err := db.QueryRow(`SELECT phpmyadmin_password FROM settings WHERE id = 1`).Scan(&storedPassword); err != nil {
+		t.Fatal(err)
+	}
+	if storedPassword != "db-secret-never-return" {
+		t.Fatalf("unrelated settings update changed stored phpMyAdmin password: %q", storedPassword)
+	}
 	if server.cfg.RecordNodeUsage || server.cfg.RecordNodeUserUsages || !server.cfg.SubscriptionReadOnly || !server.cfg.APIDocsEnabled {
 		t.Fatalf("server config was not updated: %#v", server.cfg)
 	}
 
 	standardToken := adminBearerToken(t, server, "seller", "pass123")
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/settings", standardToken, `{}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("standard runtime settings status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "db-secret-never-return") || strings.Contains(rec.Body.String(), `"phpmyadmin_password"`) {
+		t.Fatalf("standard admin received phpMyAdmin password: %s", rec.Body.String())
+	}
 	rec = adminJSONRequest(t, server, http.MethodPut, "/api/settings", standardToken, `{"api_docs_enabled":false}`)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("standard update status = %d body=%s", rec.Code, rec.Body.String())
@@ -469,6 +490,28 @@ func TestAllSettingsRoute(t *testing.T) {
 		t.Fatalf("unexpected all settings response: %#v", response)
 	}
 
+}
+
+func TestAllSettingsRouteRollsBackEarlierWritesWhenLaterSectionIsInvalid(t *testing.T) {
+	server, db := testAdminServer(t)
+	createSettingsTables(t, db)
+	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+	token := adminBearerToken(t, server, "pouria", "pass123")
+
+	rec := adminJSONRequest(t, server, http.MethodPut, "/api/settings/all", token, `{
+		"panel":{"default_subscription_type":"token"},
+		"telegram":{"backup_scope":"invalid"}
+	}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid settings status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var persisted string
+	if err := db.QueryRow(`SELECT default_subscription_type FROM panel_settings ORDER BY id DESC LIMIT 1`).Scan(&persisted); err != nil {
+		t.Fatal(err)
+	}
+	if persisted != "key" {
+		t.Fatalf("panel setting persisted despite later section failure: got %q, want rolled-back default key", persisted)
+	}
 }
 
 func TestCertificateRoutesValidateRequests(t *testing.T) {

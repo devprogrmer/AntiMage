@@ -213,6 +213,16 @@ func (c *cli) run(args []string) error {
 	switch args[0] {
 	case "maintenance":
 		return c.runMaintenance(args[1:])
+	case "status":
+		return c.runLocalStatus()
+	case "diagnostics":
+		return c.runLocalDiagnostics()
+	case "start", "up":
+		return c.runLocalLifecycle("start")
+	case "stop", "down":
+		return c.runLocalLifecycle("stop")
+	case "restart":
+		return c.runLocalLifecycle("restart")
 	case "admin":
 		return c.runAdmin(args[1:])
 	case "user":

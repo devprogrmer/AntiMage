@@ -1,5 +1,4 @@
 import {
-	Badge,
 	Box,
 	Button,
 	Drawer,
@@ -17,7 +16,7 @@ import {
 } from "@chakra-ui/react";
 import { Bars3Icon, MoonIcon, SunIcon } from "@heroicons/react/24/outline";
 import useGetUser from "hooks/useGetUser";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -25,11 +24,6 @@ import { logout } from "service/auth";
 import { clearClientSession } from "utils/session";
 import { updateThemeColor } from "utils/themeColor";
 import { AMNavigation } from "./AMNavigation";
-import {
-	readNavigationMode,
-	type NavigationMode,
-	writeNavigationMode,
-} from "./navigationModel";
 
 const pageTitleKeys: Record<string, string> = {
 	"/": "am.nav.overview",
@@ -64,8 +58,6 @@ export function AMShell() {
 	const isMobile = useBreakpointValue({ base: true, lg: false }) ?? false;
 	const drawer = useDisclosure();
 	const { colorMode, toggleColorMode } = useColorMode();
-	const [mode, setMode] = useState<NavigationMode>(() => readNavigationMode(""));
-	const [modeReady, setModeReady] = useState(false);
 	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const username = userData.username || "admin";
 	const titleKey = pageTitleKeys[pathname] ?? "am.nav.overview";
@@ -78,22 +70,8 @@ export function AMShell() {
 	const borderColor = "var(--am-native-border)";
 
 	useEffect(() => {
-		setMode(readNavigationMode(username));
-		setModeReady(true);
-	}, [username]);
-
-	useEffect(() => {
-		if (modeReady) writeNavigationMode(username, mode);
-	}, [mode, modeReady, username]);
-
-	useEffect(() => {
 		updateThemeColor(colorMode === "light" ? "light" : "dark");
 	}, [colorMode]);
-
-	const modeLabel = useMemo(
-		() => t(mode === "simple" ? "am.nav.simpleMode" : "am.nav.advancedMode"),
-		[mode, t],
-	);
 
 	const handleLogout = async () => {
 		try {
@@ -107,7 +85,6 @@ export function AMShell() {
 	const navigation = (
 		<AMNavigation
 			admin={userData}
-			mode={mode}
 			onNavigate={isMobile ? drawer.onClose : undefined}
 		/>
 	);
@@ -179,16 +156,6 @@ export function AMShell() {
 						</Box>
 					</HStack>
 					<HStack spacing={{ base: 1, md: 2 }} flexShrink={0}>
-						<Button
-							size="sm"
-							variant="outline"
-							aria-label={t("am.nav.toggleMode")}
-							title={t("am.nav.toggleMode")}
-							onClick={() => setMode(mode === "simple" ? "advanced" : "simple")}
-						>
-							<Badge colorScheme={mode === "advanced" ? "purple" : "gray"} mr={2}>{modeLabel}</Badge>
-							{t("am.nav.mode")}
-						</Button>
 						<IconButton
 							aria-label={t(colorMode === "light" ? "am.shell.darkMode" : "am.shell.lightMode")}
 							icon={<Icon as={colorMode === "light" ? MoonIcon : SunIcon} boxSize={5} />}

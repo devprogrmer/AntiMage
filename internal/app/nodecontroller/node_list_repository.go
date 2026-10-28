@@ -24,18 +24,18 @@ func (r Repository) ListNodeItems(ctx context.Context, nodeID int64) ([]NodeList
 	id,
 	COALESCE(name, ''),
 	note,
-	address,
-	port,
-	api_port,
-	usage_coefficient,
+	COALESCE(address, ''),
+	COALESCE(port, 0),
+	COALESCE(api_port, 0),
+	COALESCE(usage_coefficient, 1),
 	data_limit,
-	proxy_enabled,
+	COALESCE(proxy_enabled, 0),
 	proxy_type,
 	proxy_host,
 	proxy_port,
 	proxy_username,
 	proxy_password,
-	status,
+	COALESCE(status, ''),
 	COALESCE(agent_status, 'unknown'),
 	COALESCE(xray_status, 'unknown'),
 	COALESCE(desired_revision, 0),
@@ -70,7 +70,7 @@ WHERE LOWER(COALESCE(status, '')) <> 'deleted'`
 		var item NodeListItem
 		var dataLimit, proxyPort sql.NullInt64
 		var note, proxyType, proxyHost, proxyUsername, proxyPassword, capabilities, message, xrayVersion, nodeBinaryTag, certificate, certificateKey sql.NullString
-		var proxyEnabled bool
+		var proxyEnabled sql.NullBool
 		if err := rows.Scan(
 			&item.ID,
 			&item.Name,
@@ -106,7 +106,7 @@ WHERE LOWER(COALESCE(status, '')) <> 'deleted'`
 		}
 		item.DataLimit = int64PtrFromNull(dataLimit)
 		item.Note = stringPtrFromNull(note)
-		item.ProxyEnabled = proxyEnabled
+		item.ProxyEnabled = proxyEnabled.Valid && proxyEnabled.Bool
 		item.ProxyType = stringPtrFromNull(proxyType)
 		item.ProxyHost = stringPtrFromNull(proxyHost)
 		item.ProxyPort = int64PtrFromNull(proxyPort)

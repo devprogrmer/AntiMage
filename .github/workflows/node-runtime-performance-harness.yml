@@ -1,0 +1,36 @@
+name: Node Runtime Performance Harness Checks
+
+on:
+  push:
+    branches: [codex/production-runtime-hardening]
+    paths:
+      - 'cmd/antimage_node_perf/**'
+      - 'scripts/performance/**'
+      - '.github/workflows/node-runtime-performance-harness.yml'
+  pull_request:
+    paths:
+      - 'cmd/antimage_node_perf/**'
+      - 'scripts/performance/**'
+      - '.github/workflows/node-runtime-performance-harness.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  capture-and-verifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CGO_ENABLED: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Verify Linux process capture and conservation rejection cases
+        run: python3 -m unittest discover -s scripts/performance -p 'test_*.py' -v
+      - name: Verify standalone capture binary with race detector
+        run: go test -race ./cmd/antimage_node_perf -count=1 -timeout=2m
+      - name: Vet capture binary
+        run: go vet ./cmd/antimage_node_perf

@@ -44,9 +44,6 @@ func (s *Server) prepareOpenVPNInbound(inbound openVPNRuntimeInbound, callbacks 
 		return "", err
 	}
 
-	if err := os.RemoveAll(ccdDir); err != nil {
-		return "", err
-	}
 	if err := os.MkdirAll(ccdDir, 0700); err != nil {
 		return "", err
 	}
@@ -105,6 +102,7 @@ func (s *Server) prepareOpenVPNInbound(inbound openVPNRuntimeInbound, callbacks 
 
 	sessionUsers := map[string]int64{}
 	sessionPolicies := buildNativeSessionUserPolicies(inbound.Users)
+	ccdFiles := make(map[string][]byte)
 
 	for _, user := range inbound.Users {
 		username := strings.TrimSpace(user.VPNUsername)
@@ -165,17 +163,35 @@ func (s *Server) prepareOpenVPNInbound(inbound openVPNRuntimeInbound, callbacks 
 				strings.TrimSpace(user.IPv4Address) +
 				" " + mask + "\n"
 
-			if err := os.WriteFile(
-				filepath.Join(ccdDir, username),
-				[]byte(ccd),
-				0600,
-			); err != nil {
-				return "", err
-			}
+			ccdFiles[username] = []byte(ccd)
 		}
 	}
 
-	if err := os.WriteFile(
+	// OpenVPN reads client-config-dir files while accepting connections. Keep
+	// the directory stable, atomically replace desired entries, then remove
+	// stale entries so a config refresh never exposes a missing directory.
+	for username, contents := range ccdFiles {
+		if err := atomicWriteFile(filepath.Join(ccdDir, username), contents, 0600); err != nil {
+			return "", err
+		}
+	}
+	entries, err := os.ReadDir(ccdDir)
+	if err != nil {
+		return "", err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if _, desired := ccdFiles[entry.Name()]; desired {
+			continue
+		}
+		if err := os.Remove(filepath.Join(ccdDir, entry.Name())); err != nil && !os.IsNotExist(err) {
+			return "", err
+		}
+	}
+
+	if err := atomicWriteFile(
 		credentialsFile,
 		[]byte(credentialRecords.String()),
 		0600,
@@ -256,7 +272,7 @@ END {
 			)
 		}
 
-		if err := os.WriteFile(
+		if err := atomicWriteFile(
 			usageConfigPath,
 			rawUsageConfig,
 			0600,
@@ -326,7 +342,7 @@ END {
 			)
 		}
 
-		if err := os.WriteFile(
+		if err := atomicWriteFile(
 			sessionConfigPath,
 			rawSessionConfig,
 			0600,

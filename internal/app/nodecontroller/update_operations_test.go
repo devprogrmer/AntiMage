@@ -10,13 +10,14 @@ import (
 
 	"github.com/antimage/antimage/internal/platform/requestctx"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"google.golang.org/protobuf/proto"
 	_ "modernc.org/sqlite"
 )
 
 func TestNodeUpdateRuntimeMatchRejectsOldOrUnhealthyState(t *testing.T) {
 	began := time.Now().Add(-time.Minute)
-	healthy := nodev1.RuntimeState{Connected: true, Started: true, NodeVersion: "dev-abcdef1", ProcessStartedAtUnixNano: began.Add(time.Second).UnixNano(), SampledAtUnixNano: began.Add(2 * time.Second).UnixNano()}
-	if !nodeUpdateRuntimeMatches(&healthy, "dev-abcdef1", began) {
+	healthy := &nodev1.RuntimeState{Connected: true, Started: true, NodeVersion: "dev-abcdef1", ProcessStartedAtUnixNano: began.Add(time.Second).UnixNano(), SampledAtUnixNano: began.Add(2 * time.Second).UnixNano()}
+	if !nodeUpdateRuntimeMatches(healthy, "dev-abcdef1", began) {
 		t.Fatal("fresh healthy restarted runtime rejected")
 	}
 	for _, mutate := range []func(*nodev1.RuntimeState){
@@ -27,9 +28,9 @@ func TestNodeUpdateRuntimeMatchRejectsOldOrUnhealthyState(t *testing.T) {
 		func(s *nodev1.RuntimeState) { s.ProcessStartedAtUnixNano = 0; s.SampledAtUnixNano = 0 },
 		func(s *nodev1.RuntimeState) { s.SampledAtUnixNano = began.UnixNano() },
 	} {
-		state := healthy
-		mutate(&state)
-		if nodeUpdateRuntimeMatches(&state, "dev-abcdef1", began) {
+		state := proto.Clone(healthy).(*nodev1.RuntimeState)
+		mutate(state)
+		if nodeUpdateRuntimeMatches(state, "dev-abcdef1", began) {
 			t.Fatalf("accepted stale or unhealthy runtime: %+v", state)
 		}
 	}

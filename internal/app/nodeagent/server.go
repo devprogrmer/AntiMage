@@ -3,7 +3,6 @@ package nodeagent
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -29,6 +28,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type Server struct {
@@ -40,18 +40,54 @@ type Server struct {
 	cfg                              Config
 	xrayAPIPortFallback              int
 	mu                               sync.Mutex
+	runtimeLifecycle                 *runtimeLifecycle
 	maintenanceMu                    sync.Mutex
+	metricsMu                        sync.Mutex
+	metricsSystemCache               *nodev1.SystemMetrics
+	metricsSystemCacheAt             time.Time
+	metricsSystemSampler             func() *nodev1.SystemMetrics
+	runtimeMetricsCounters           runtimeMetricsCounters
 	startedAt                        time.Time
 	lastConfig                       string
 	lastRuntime                      *exec.Cmd
 	xrayRuntimeGeneration            string
 	xrayStatsClient                  *xrayStatsClient
 	localAccountingFailures          map[string]string
+	localPolicyFailures              map[string]string
+	localRuntimeFailures             map[string]string
+	localUsageV2                     *localUsageLedgerV2
+	localUsageV2Index                *localUsageV2Index
+	localUsageReceiptCache           *localUsageReceiptCache
+	localUsageLegacyHash             string
+	localUsageAnchorCache            *localUsageAnchorCache
 	localUsageMu                     sync.Mutex
 	localUsageLoaded                 bool
 	localUsageDeliveries             []localUsageDelivery
+	localUsageDeliveryIndex          *localUsageDeliveryIndex
+	accountingStateDedupMu           sync.Mutex
+	accountingStateDedupKnown        map[string]accountingStateFingerprint
 	localQuotaViews                  map[localQuotaOwner]localQuotaView
+	localQuotaAggregates             map[localQuotaAggregateKey]uint64
+	nativeQuotaPolicySchedules       map[string]nativeQuotaPolicySchedule
+	localQuotaWakeups                map[string]chan struct{}
+	nativeSessionOutboxMu            sync.Mutex
+	nativeSessionOutboxFlushMu       sync.Mutex
+	nativeSessionOutboxLoadedDir     string
+	nativeSessionOutboxLoaded        bool
+	nativeSessionOutboxFiles         []string
+	nativeSessionOutboxKeys          map[string]struct{}
+	nativeSessionOutboxEntryCount    int
+	nativeSessionSeenMu              sync.Mutex
+	nativeSessionSeenSent            map[nativeSessionHeartbeatKey]nativeSessionSeenState
 	runtimePolicy                    *runtimePolicySnapshot
+	runtimePolicyMu                  sync.Mutex
+	openVPNMutationLocks             [32]chan struct{}
+	anyConnectMutationLocks          [32]chan struct{}
+	xrayQuotaPolicyIndex             *xrayQuotaPolicyIndex
+	xrayQuotaSamples                 map[xrayQuotaSampleKey]xrayQuotaUsageSample
+	xrayQuotaSampleRevision          uint64
+	xrayQuotaSampleChecksum          string
+	xrayQuotaNextInterval            time.Duration
 	runtimeExited                    <-chan struct{}
 	activeConfigSHA256               string
 	runningCoreVersion               string
@@ -115,6 +151,9 @@ type Server struct {
 	xrayUsageBaseline                map[string]uint64
 	xrayUsagePending                 *xrayUsagePendingBatch
 	xrayAccountingCounters           map[string]accountingCounter
+	xrayNativeScratch                map[string]uint64
+	xrayCounterScratch               map[string]accountingCounter
+	xrayStatKeyCache                 map[string]xrayStatNativeKey
 	xrayQuotaRevoked                 map[string]xrayQuotaRevocation
 	xrayAccountingGeneration         string
 	xrayUsageLoaded                  bool
@@ -181,6 +220,8 @@ func New(cfg Config) *Server {
 		wireGuardUsageCarry:             make(map[string]wireGuardUsageCarry),
 		amneziaWGUsageBaseline:          make(map[string]uint64),
 		xrayUsageBaseline:               make(map[string]uint64),
+		xrayQuotaSamples:                make(map[xrayQuotaSampleKey]xrayQuotaUsageSample),
+		xrayQuotaNextInterval:           100 * time.Millisecond,
 		xrayOutboundUsageBaseline:       make(map[string]uint64),
 		torProxies:                      make(map[uint32]*exec.Cmd),
 		logs:                            []string{"AntiMage-node agent initialized"},
@@ -246,9 +287,15 @@ func (s *Server) Run(ctx context.Context) error {
 		defer close(quotaDone)
 		s.runLocalQuotaScheduler(accountingCtx, quotaInterval, checkpointInterval)
 	}()
+	metricsDone := make(chan struct{})
+	go func() {
+		defer close(metricsDone)
+		s.runRuntimeMetricsWriter(accountingCtx)
+	}()
 	defer func() {
 		stopAccounting()
 		<-quotaDone
+		<-metricsDone
 	}()
 
 	errCh := make(chan error, 1)
@@ -289,16 +336,29 @@ func (s *Server) Connect(context.Context, *nodev1.ConnectRequest) (*nodev1.Conne
 
 func (s *Server) Health(ctx context.Context, req *nodev1.HealthRequest) (*nodev1.HealthResponse, error) {
 	s.mu.Lock()
-	var accountingFailure string
-	for protocol, failure := range s.localAccountingFailures {
-		accountingFailure = protocol + ": " + failure
-		break
-	}
+	accountingDegraded := len(s.localAccountingFailures) > 0
+	policyDegraded := len(s.localPolicyFailures) > 0
+	runtimeDegraded := len(s.localRuntimeFailures) > 0
 	s.mu.Unlock()
-	if accountingFailure != "" {
-		return nil, status.Error(codes.FailedPrecondition, "local accounting degraded: "+accountingFailure)
-	}
 	state := s.runtimeState("healthy")
+	var degraded []string
+	if accountingDegraded {
+		state.Capabilities = append(state.Capabilities, "accounting_degraded")
+		degraded = append(degraded, "accounting")
+	}
+	if policyDegraded {
+		state.Capabilities = append(state.Capabilities, "policy_degraded")
+		degraded = append(degraded, "policy enforcement")
+	}
+	if runtimeDegraded {
+		state.Capabilities = append(state.Capabilities, "vpn_runtime_degraded")
+		degraded = append(degraded, "VPN runtime")
+	}
+	if len(degraded) > 0 {
+		// These are worker-domain conditions, not control-plane connection
+		// failures. They remain observable without reconnect/full-sync recovery.
+		state.Message = "healthy; " + strings.Join(degraded, "; ") + " degraded"
+	}
 	if req.GetCommandId() != "" {
 		if err := readNativeCommandEvidence(ctx, req, state); err != nil {
 			return nil, status.Errorf(codes.FailedPrecondition, "command evidence unavailable: %v", err)
@@ -331,6 +391,26 @@ func (s *Server) restartRuntime(
 	ctx context.Context,
 	req *nodev1.RuntimeConfigRequest,
 ) (*nodev1.RuntimeActionResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "runtime config is required")
+	}
+	tags, err := s.lifecycleTagsForConfig(req.GetConfigJson(), req.GetOvRuntimeJson())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "runtime config tags: "+err.Error())
+	}
+	var response *nodev1.RuntimeActionResponse
+	err = s.runtimeLifecycleCoordinator().runApply(ctx, tags, func() error {
+		var innerErr error
+		response, innerErr = s.restartRuntimeInner(ctx, req)
+		return innerErr
+	})
+	return response, err
+}
+
+func (s *Server) restartRuntimeInner(
+	ctx context.Context,
+	req *nodev1.RuntimeConfigRequest,
+) (*nodev1.RuntimeActionResponse, error) {
 	if err := s.checkpointBeforeRuntimeTransition(ctx); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
@@ -352,10 +432,23 @@ func (s *Server) restartRuntime(
 	s.clearNativeSpeedLimitsLogged()
 	_ = s.stopRuntime()
 
-	return s.applyConfig(ctx, req, "restarted")
+	return s.applyConfigInner(ctx, req, "restarted")
 }
 
 func (s *Server) stopRuntimeAction(
+	ctx context.Context,
+	req *nodev1.StopRuntimeRequest,
+) (*nodev1.RuntimeActionResponse, error) {
+	var response *nodev1.RuntimeActionResponse
+	err := s.runtimeLifecycleCoordinator().runStop(ctx, func() error {
+		var innerErr error
+		response, innerErr = s.stopRuntimeActionInner(ctx, req)
+		return innerErr
+	})
+	return response, err
+}
+
+func (s *Server) stopRuntimeActionInner(
 	ctx context.Context,
 	_ *nodev1.StopRuntimeRequest,
 ) (*nodev1.RuntimeActionResponse, error) {
@@ -365,12 +458,13 @@ func (s *Server) stopRuntimeAction(
 	if err := s.persistStoppedRuntimePolicy(); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, "persist stopped policy: "+err.Error())
 	}
-	// Native stop helpers do not yet return verified kernel/process evidence.
-	// Never turn their cleared bookkeeping into a durable stop assertion.
+	// OpenVPN teardown has a process Wait channel, so it can provide positive
+	// exit evidence. Other native runtimes still lack equivalent verified
+	// teardown evidence and must keep the overall stop result conservative.
 	s.mu.Lock()
-	nativePresent := len(s.openVPNRuntimes)+len(s.anyConnectRuntimes)+len(s.l2TPRuntimes)+len(s.pptpRuntimes)+len(s.ikev2Runtimes)+len(s.wireGuardRuntimes)+len(s.amneziaWGRuntimes) > 0
+	otherNativePresent := len(s.anyConnectRuntimes)+len(s.l2TPRuntimes)+len(s.pptpRuntimes)+len(s.ikev2Runtimes)+len(s.wireGuardRuntimes)+len(s.amneziaWGRuntimes) > 0
 	s.mu.Unlock()
-	s.stopAllOpenVPNRuntimes()
+	openVPNStopErr := s.stopAllOpenVPNRuntimesVerified()
 	s.stopAllAnyConnectRuntimes()
 	s.stopAllOpenVPNTProxySpecs()
 	s.stopAllOpenVPNNATSpecs()
@@ -391,20 +485,387 @@ func (s *Server) stopRuntimeAction(
 	}
 
 	response := s.action("", "stopped")
-	response.Runtime.RuntimeStopVerified = !nativePresent && !response.Runtime.Started
+	response.Runtime.RuntimeStopVerified = openVPNStopErr == nil && !otherNativePresent && !response.Runtime.Started
 	return response, nil
 }
 
-func (s *Server) AddUser(context.Context, *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
-	return s.action("", "user operation queued through full config sync"), nil
+func (s *Server) AddUser(ctx context.Context, req *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
+	if req == nil || strings.TrimSpace(req.GetInboundTag()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "inbound_tag and user are required")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "wireguard") {
+		return s.applyWireGuardUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "amneziawg") {
+		return s.applyAmneziaWGUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "openvpn") {
+		return s.applyOpenVPNUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "l2tp") {
+		return s.applyL2TPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "pptp") {
+		return s.applyPPTPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "ikev2") {
+		return s.applyIKEv2UserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "anyconnect") {
+		return s.applyAnyConnectUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "add")
+	}
+	user, err := xrayUserMessage(req.GetUser())
+	if err != nil {
+		if errors.Is(err, errUnsupportedXrayUserProtocol) {
+			return nil, status.Error(codes.Unimplemented, err.Error())
+		}
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, req.GetInboundTag(), func() error {
+		client, clientErr := s.targetedXrayUserClient()
+		if clientErr != nil {
+			return clientErr
+		}
+		return client.ensureXrayUserRPC(ctx, req.GetInboundTag(), user, false)
+	})
+	if err != nil {
+		if status.Code(err) != codes.Unknown {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "add Xray user: %v", err)
+	}
+	s.wakeLocalQuota("xray")
+	return s.action(req.GetOperationId(), "Xray user added or already present"), nil
 }
 
-func (s *Server) UpdateUser(context.Context, *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
-	return s.action("", "user operation queued through full config sync"), nil
+func (s *Server) UpdateUser(ctx context.Context, req *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
+	if req == nil || strings.TrimSpace(req.GetInboundTag()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "inbound_tag and user are required")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "wireguard") {
+		return s.applyWireGuardUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "amneziawg") {
+		return s.applyAmneziaWGUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "openvpn") {
+		return s.applyOpenVPNUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "l2tp") {
+		return s.applyL2TPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "pptp") {
+		return s.applyPPTPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "ikev2") {
+		return s.applyIKEv2UserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
+	}
+	if req.GetUser() != nil && strings.EqualFold(strings.TrimSpace(req.GetUser().GetProtocol()), "anyconnect") {
+		return s.applyAnyConnectUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), req.GetUser(), "update")
+	}
+	user, err := xrayUserMessage(req.GetUser())
+	if err != nil {
+		if errors.Is(err, errUnsupportedXrayUserProtocol) {
+			return nil, status.Error(codes.Unimplemented, err.Error())
+		}
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, req.GetInboundTag(), func() error {
+		client, clientErr := s.targetedXrayUserClient()
+		if clientErr != nil {
+			return clientErr
+		}
+		return client.ensureXrayUserRPC(ctx, req.GetInboundTag(), user, true)
+	})
+	if err != nil {
+		if status.Code(err) != codes.Unknown {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "update Xray user: %v", err)
+	}
+	s.wakeLocalQuota("xray")
+	return s.action(req.GetOperationId(), "Xray user updated"), nil
 }
 
-func (s *Server) RemoveUser(context.Context, *nodev1.RemoveInboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
-	return s.action("", "user operation queued through full config sync"), nil
+func (s *Server) applyWireGuardUserRPC(ctx context.Context, operationID, inboundTag string, user *nodev1.InboundUser, operation string) (*nodev1.RuntimeActionResponse, error) {
+	_, encodedOperation, _, err := decodeWireGuardMutationUser(user)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if encodedOperation != operation || strings.TrimSpace(operationID) == "" {
+		return nil, status.Error(codes.InvalidArgument, "WireGuard operation envelope mismatch")
+	}
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, inboundTag, func() error {
+		return s.applyWireGuardUserMutationOperation(ctx, operationID, inboundTag, user, operation)
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		if errors.Is(err, errRuntimeStopping) || errors.Is(err, errRuntimeStopped) || status.Code(err) != codes.Unknown {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "%s WireGuard user: %v", operation, err)
+	}
+	s.wakeLocalQuota("wireguard")
+	return s.action(operationID, "WireGuard user "+operation+" completed"), nil
+}
+
+func (s *Server) applyAmneziaWGUserRPC(ctx context.Context, operationID, inboundTag string, user *nodev1.InboundUser, operation string) (*nodev1.RuntimeActionResponse, error) {
+	_, encodedOperation, _, err := decodeAmneziaWGMutationUser(user)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if encodedOperation != operation || strings.TrimSpace(operationID) == "" {
+		return nil, status.Error(codes.InvalidArgument, "AmneziaWG operation envelope mismatch")
+	}
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, inboundTag, func() error {
+		return s.applyAmneziaWGUserMutationOperation(ctx, operationID, inboundTag, user, operation)
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		if errors.Is(err, errRuntimeStopping) || errors.Is(err, errRuntimeStopped) || status.Code(err) != codes.Unknown {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "%s AmneziaWG user: %v", operation, err)
+	}
+	s.wakeLocalQuota("amneziawg")
+	return s.action(operationID, "AmneziaWG user "+operation+" completed"), nil
+}
+
+func (s *Server) applyOpenVPNUserRPC(ctx context.Context, operationID, inboundTag string, user *nodev1.InboundUser, operation string) (*nodev1.RuntimeActionResponse, error) {
+	_, _, encodedOperation, _, _, err := decodeOpenVPNMutationUser(user, operation)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if encodedOperation != operation || strings.TrimSpace(operationID) == "" {
+		return nil, status.Error(codes.InvalidArgument, "OpenVPN operation envelope mismatch")
+	}
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, inboundTag, func() error {
+		return s.applyOpenVPNUserMutation(ctx, operationID, inboundTag, user, operation)
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		if errors.Is(err, errRuntimeStopping) || errors.Is(err, errRuntimeStopped) || status.Code(err) != codes.Unknown {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "%s OpenVPN user: %v", operation, err)
+	}
+	s.mu.Lock()
+	if revision, parseErr := strconv.ParseUint(strings.TrimSpace(user.GetFields()[openVPNMutationRevisionField]), 10, 64); parseErr == nil && revision > s.appliedRev {
+		s.appliedRev = revision
+	}
+	s.mu.Unlock()
+	s.wakeLocalQuota("openvpn")
+	return s.action(operationID, "OpenVPN user "+operation+" completed"), nil
+}
+
+func (s *Server) applyL2TPUserRPC(ctx context.Context, operationID, inboundTag string, user *nodev1.InboundUser, operation string) (*nodev1.RuntimeActionResponse, error) {
+	_, _, encodedOperation, _, err := decodeL2TPMutationUser(user, operation)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if encodedOperation != operation || strings.TrimSpace(operationID) == "" {
+		return nil, status.Error(codes.InvalidArgument, "L2TP operation envelope mismatch")
+	}
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, inboundTag, func() error {
+		return s.applyL2TPUserMutationOperation(ctx, operationID, inboundTag, user, operation)
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		if errors.Is(err, errRuntimeStopping) || errors.Is(err, errRuntimeStopped) || status.Code(err) != codes.Unknown {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "%s L2TP user: %v", operation, err)
+	}
+	s.wakeLocalQuota("l2tp")
+	return s.action(operationID, "L2TP user "+operation+" completed"), nil
+}
+
+func (s *Server) applyIKEv2UserRPC(ctx context.Context, operationID, inboundTag string, user *nodev1.InboundUser, operation string) (*nodev1.RuntimeActionResponse, error) {
+	_, _, encoded, _, err := decodeIKEv2MutationUser(user, operation)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if encoded != operation || strings.TrimSpace(operationID) == "" {
+		return nil, status.Error(codes.InvalidArgument, "IKEv2 operation envelope mismatch")
+	}
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, inboundTag, func() error { return s.applyIKEv2UserMutation(ctx, operationID, inboundTag, user, operation) })
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "%s IKEv2 user: %v", operation, err)
+	}
+	s.wakeLocalQuota("ikev2")
+	return s.action(operationID, "IKEv2 user "+operation+" completed"), nil
+}
+
+func (s *Server) applyPPTPUserRPC(ctx context.Context, operationID, inboundTag string, user *nodev1.InboundUser, operation string) (*nodev1.RuntimeActionResponse, error) {
+	_, _, encodedOperation, _, err := decodePPTPMutationUser(user, operation)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if encodedOperation != operation || strings.TrimSpace(operationID) == "" {
+		return nil, status.Error(codes.InvalidArgument, "PPTP operation envelope mismatch")
+	}
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, inboundTag, func() error {
+		return s.applyPPTPUserMutationOperation(ctx, operationID, inboundTag, user, operation)
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		if errors.Is(err, errRuntimeStopping) || errors.Is(err, errRuntimeStopped) || status.Code(err) != codes.Unknown {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "%s PPTP user: %v", operation, err)
+	}
+	s.wakeLocalQuota("pptp")
+	return s.action(operationID, "PPTP user "+operation+" completed"), nil
+}
+
+func (s *Server) applyAnyConnectUserRPC(ctx context.Context, operationID, inboundTag string, user *nodev1.InboundUser, operation string) (*nodev1.RuntimeActionResponse, error) {
+	_, _, encodedOperation, _, _, err := decodeAnyConnectMutationUser(user, operation)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if encodedOperation != operation || strings.TrimSpace(operationID) == "" {
+		return nil, status.Error(codes.InvalidArgument, "AnyConnect operation envelope mismatch")
+	}
+	err = s.runtimeLifecycleCoordinator().runMutation(ctx, inboundTag, func() error {
+		return s.applyAnyConnectUserMutation(ctx, operationID, inboundTag, user, operation)
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		if errors.Is(err, errRuntimeStopping) || errors.Is(err, errRuntimeStopped) || status.Code(err) != codes.Unknown {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "%s AnyConnect user: %v", operation, err)
+	}
+	s.wakeLocalQuota("anyconnect")
+	return s.action(operationID, "AnyConnect user "+operation+" completed"), nil
+}
+
+func (s *Server) targetedXrayUserClient() (*xrayStatsClient, error) {
+	s.mu.Lock()
+	apiPort, xrayPath := s.cfg.XrayAPIPort, s.cfg.XrayPath
+	s.mu.Unlock()
+	if apiPort <= 0 {
+		return nil, status.Error(codes.FailedPrecondition, "Xray API is not configured")
+	}
+	return s.cachedXrayStatsClient(xrayPath, apiPort), nil
+}
+
+func (s *Server) RemoveUser(ctx context.Context, req *nodev1.RemoveInboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
+	if req == nil || strings.TrimSpace(req.GetInboundTag()) == "" || strings.TrimSpace(req.GetEmail()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "inbound_tag and email are required")
+	}
+	if strings.HasPrefix(strings.TrimSpace(req.GetEmail()), wireGuardRemoveUserPrefix) {
+		userID, ok := wireGuardRemoveUserID(req.GetEmail())
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "WireGuard remove user id is invalid")
+		}
+		user := &nodev1.InboundUser{Protocol: "wireguard", Fields: map[string]string{
+			wireGuardMutationUserIDField: fmt.Sprint(userID),
+			wireGuardMutationOpField:     "remove",
+			wireGuardMutationPeersField:  "[]",
+		}}
+		return s.applyWireGuardUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
+	}
+	if strings.HasPrefix(strings.TrimSpace(req.GetEmail()), amneziaWGRemoveUserPrefix) {
+		userID, ok := amneziaWGRemoveUserID(req.GetEmail())
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "AmneziaWG remove user identity is invalid")
+		}
+		user := &nodev1.InboundUser{Protocol: "amneziawg", Fields: map[string]string{
+			amneziaWGMutationUserIDField: fmt.Sprint(userID),
+			amneziaWGMutationOpField:     "remove",
+			amneziaWGMutationPeersField:  "[]",
+		}}
+		return s.applyAmneziaWGUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
+	}
+	if strings.HasPrefix(strings.TrimSpace(req.GetEmail()), openVPNRemoveUserPrefix) {
+		userID, revision, username, ok := openVPNRemoveUserIdentity(req.GetEmail())
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "OpenVPN remove user identity is invalid")
+		}
+		user := &nodev1.InboundUser{Protocol: "openvpn", Fields: map[string]string{
+			openVPNMutationUserIDField:   strconv.FormatInt(userID, 10),
+			openVPNMutationOpField:       "remove",
+			openVPNMutationRevisionField: strconv.FormatUint(revision, 10),
+			openVPNMutationNameField:     username,
+		}}
+		return s.applyOpenVPNUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
+	}
+	if strings.HasPrefix(strings.TrimSpace(req.GetEmail()), l2TPRemoveUserPrefix) {
+		userID, revision, ok := l2TPRemoveUserIdentity(req.GetEmail())
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "L2TP remove user identity is invalid")
+		}
+		user := &nodev1.InboundUser{Protocol: "l2tp", Fields: map[string]string{
+			l2TPMutationUserIDField: strconv.FormatInt(userID, 10),
+			l2TPMutationOperation:   "remove",
+			l2TPMutationRevision:    strconv.FormatUint(revision, 10),
+		}}
+		return s.applyL2TPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
+	}
+	if strings.HasPrefix(strings.TrimSpace(req.GetEmail()), ikev2RemoveUserPrefix) {
+		id, rev, ok := ikev2RemoveUserIdentity(req.GetEmail())
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "IKEv2 remove user identity is invalid")
+		}
+		user := &nodev1.InboundUser{Protocol: "ikev2", Fields: map[string]string{ikev2MutationUserIDField: strconv.FormatInt(id, 10), ikev2MutationOperation: "remove", ikev2MutationRevision: strconv.FormatUint(rev, 10)}}
+		return s.applyIKEv2UserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
+	}
+	if strings.HasPrefix(strings.TrimSpace(req.GetEmail()), pptpRemoveUserPrefix) {
+		userID, revision, ok := pptpRemoveUserIdentity(req.GetEmail())
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "PPTP remove user identity is invalid")
+		}
+		user := &nodev1.InboundUser{Protocol: "pptp", Fields: map[string]string{
+			pptpMutationUserIDField: strconv.FormatInt(userID, 10),
+			pptpMutationOperation:   "remove",
+			pptpMutationRevision:    strconv.FormatUint(revision, 10),
+		}}
+		return s.applyPPTPUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
+	}
+	if strings.HasPrefix(strings.TrimSpace(req.GetEmail()), anyConnectRemoveUserPrefix) {
+		userID, revision, username, ok := anyConnectRemoveUserIdentity(req.GetEmail())
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "AnyConnect remove user identity is invalid")
+		}
+		user := &nodev1.InboundUser{Protocol: "anyconnect", Fields: map[string]string{
+			anyConnectMutationUserIDField:   strconv.FormatInt(userID, 10),
+			anyConnectMutationOpField:       "remove",
+			anyConnectMutationRevisionField: strconv.FormatUint(revision, 10),
+			anyConnectMutationNameField:     username,
+		}}
+		return s.applyAnyConnectUserRPC(ctx, req.GetOperationId(), req.GetInboundTag(), user, "remove")
+	}
+	err := s.runtimeLifecycleCoordinator().runMutation(ctx, req.GetInboundTag(), func() error {
+		client, clientErr := s.targetedXrayUserClient()
+		if clientErr != nil {
+			return clientErr
+		}
+		return client.removeUserRPC(ctx, req.GetInboundTag(), req.GetEmail())
+	})
+	if err != nil {
+		if status.Code(err) != codes.Unknown {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "remove Xray inbound user: %v", err)
+	}
+	s.wakeLocalQuota("xray")
+	return s.action(req.GetOperationId(), "Xray inbound user removed"), nil
 }
 
 func (s *Server) Metrics(context.Context, *nodev1.MetricsRequest) (*nodev1.MetricsResponse, error) {
@@ -498,9 +959,17 @@ func (s *Server) CollectUserUsage(
 	if err != nil {
 		return nil, err
 	}
-	if err := s.recordLocalUsageDelivery(batch.GetBatchId()); err != nil {
+	// Persist every collection in the bounded cumulative ledger, even when an
+	// older controller does not understand reflection receipts. The response
+	// stays wire-compatible; receipt delivery is opt-in, while durable node-side
+	// accounting must not fall back to the capacity-limited v1 batch list.
+	receipts, err := s.recordLocalUsageDeliveryV2(batch.GetBatchId())
+	if err != nil {
 		s.recordLocalAccountingHealth("delivery", err)
 		return nil, err
+	}
+	if req.GetReflectionVersion() >= 2 {
+		batch.ReflectionReceipts = receipts
 	}
 	s.recordLocalAccountingHealth("delivery", nil)
 	return batch, nil
@@ -741,9 +1210,35 @@ func (s *Server) StreamLogs(req *nodev1.StreamLogsRequest, stream grpc.ServerStr
 }
 
 func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigRequest, message string) (*nodev1.RuntimeActionResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "runtime config is required")
+	}
+	tags, err := s.lifecycleTagsForConfig(req.GetConfigJson(), req.GetOvRuntimeJson())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "runtime config tags: "+err.Error())
+	}
+	var response *nodev1.RuntimeActionResponse
+	err = s.runtimeLifecycleCoordinator().runApply(ctx, tags, func() error {
+		var innerErr error
+		response, innerErr = s.applyConfigInner(ctx, req, message)
+		return innerErr
+	})
+	return response, err
+}
+
+func (s *Server) applyConfigInner(ctx context.Context, req *nodev1.RuntimeConfigRequest, message string) (*nodev1.RuntimeActionResponse, error) {
 	configJSON := req.GetConfigJson()
 	if strings.TrimSpace(configJSON) == "" {
 		return nil, status.Error(codes.InvalidArgument, "config_json is required")
+	}
+	currentPolicy, err := s.currentRuntimePolicy()
+	if err != nil {
+		return nil, status.Error(codes.FailedPrecondition, "load current runtime revision: "+err.Error())
+	}
+	if currentPolicy != nil {
+		if err := validateRuntimePolicyRevision(currentPolicy.Revision, req.GetDesiredRevision()); err != nil {
+			return nil, status.Error(codes.Aborted, err.Error())
+		}
 	}
 
 	// Validate the API endpoint in the incoming runtime config before touching
@@ -762,19 +1257,29 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	}
 	guarded, err := s.guardOfflineRuntimePolicy(req)
 	if err != nil {
-		s.recordLocalAccountingHealth("policy", err)
+		s.recordLocalDomainHealth("policy", "config", err)
 		return nil, status.Error(codes.FailedPrecondition, "evaluate durable offline quota: "+err.Error())
 	}
 	req = guarded
 	configJSON = req.GetConfigJson()
+	configDigest, err := canonicalRuntimeConfigDigest([]byte(configJSON))
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "canonicalize runtime config: "+err.Error())
+	}
+	s.mu.Lock()
+	previousNativeRuntime := ""
+	if s.runtimePolicy != nil {
+		previousNativeRuntime = s.runtimePolicy.NativeJSON
+	}
+	s.mu.Unlock()
 	// Persist the exact guarded policy that will be activated. Persisting the
 	// unguarded panel policy first would let a node restart offline and restore
 	// credentials that the durable quota guard had just denied.
 	if err := s.persistRuntimePolicy(req); err != nil {
-		s.recordLocalAccountingHealth("policy", err)
+		s.recordLocalDomainHealth("policy", "config", err)
 		return nil, status.Error(codes.FailedPrecondition, "persist offline policy: "+err.Error())
 	}
-	s.recordLocalAccountingHealth("policy", nil)
+	s.recordLocalDomainHealth("policy", "config", nil)
 
 	if err := os.MkdirAll(s.cfg.DataDir, 0755); err != nil {
 		return nil, err
@@ -796,7 +1301,7 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	s.mu.Unlock()
 
 	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
-		if err := s.startXray(ctx, configPath); err != nil {
+		if err := s.startXrayIfConfigChanged(ctx, configPath); err != nil {
 			return nil, status.Error(codes.Internal, "start xray: "+err.Error())
 		}
 		if err := s.markRestoredXrayRevocations(req.GetOvRuntimeJson(), configJSON); err != nil {
@@ -815,12 +1320,36 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	if req.GetDesiredRevision() > s.appliedRev {
 		s.appliedRev = req.GetDesiredRevision()
 	}
-	digest := sha256.Sum256([]byte(configJSON))
-	s.activeConfigSHA256 = fmt.Sprintf("%x", digest)
+	s.activeConfigSHA256 = configDigest
 	s.mu.Unlock()
+	s.wakeLocalQuotaForRuntime(previousNativeRuntime, req.GetOvRuntimeJson())
 
 	return s.action(req.GetOperationId(), message), nil
 }
+
+func (s *Server) startXrayIfConfigChanged(ctx context.Context, configPath string) error {
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	wantHash, err := canonicalRuntimeConfigDigest(config)
+	if err != nil {
+		return fmt.Errorf("canonicalize Xray config: %w", err)
+	}
+	s.mu.Lock()
+	runtime, activeHash, exited := s.lastRuntime, s.activeConfigSHA256, s.runtimeExited
+	s.mu.Unlock()
+	if runtime != nil && runtime.Process != nil && activeHash == wantHash && exited != nil {
+		select {
+		case <-exited:
+			// The process exited after the last successful apply; restart it.
+		default:
+			return nil
+		}
+	}
+	return s.startXray(ctx, configPath)
+}
+
 func (s *Server) startXray(ctx context.Context, configPath string) error {
 	var identity [16]byte
 	if _, err := rand.Read(identity[:]); err != nil {
@@ -833,7 +1362,10 @@ func (s *Server) startXray(ctx context.Context, configPath string) error {
 	if err != nil {
 		return err
 	}
-	configDigest := sha256.Sum256(configBytes)
+	configDigest, err := canonicalRuntimeConfigDigest(configBytes)
+	if err != nil {
+		return fmt.Errorf("canonicalize Xray config: %w", err)
+	}
 	version := xrayVersionContext(ctx, s.cfg.XrayPath)
 	cmd := xrayCommandContext(context.Background(), s.cfg.XrayPath, "run", "-config", configPath)
 	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+s.cfg.XrayAssetsDir)
@@ -850,7 +1382,7 @@ func (s *Server) startXray(ctx context.Context, configPath string) error {
 	s.runtimeExited = exited
 	s.runningCoreVersion = version
 	s.coreStartedAt = time.Now().UTC()
-	s.activeConfigSHA256 = fmt.Sprintf("%x", configDigest)
+	s.activeConfigSHA256 = configDigest
 	s.mu.Unlock()
 	s.appendLog("xray runtime started")
 	go func() {
@@ -924,7 +1456,28 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 	configHash, coreVersion, coreStartedAt := s.activeConfigSHA256, s.runningCoreVersion, s.coreStartedAt
 	torProxyCount := len(s.torProxies)
 	s.mu.Unlock()
-	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "runtime_evidence_v1"}
+	// The Xray targeted user path is pure core RPC, so these are advertised on
+	// every platform. Each is gated on the native E2E that drives real
+	// Add/Update/Remove through the pinned core for that protocol.
+	capabilities := []string{
+		"config_revision", "logs", "metrics", "full_config_sync", "runtime_evidence_v1", "accounting_retirement_proof_v1",
+		"targeted_user_update_vless", "targeted_user_add_remove_vless",
+		"targeted_user_update_vmess", "targeted_user_add_remove_vmess",
+		"targeted_user_update_trojan", "targeted_user_add_remove_trojan",
+		"targeted_user_update_shadowsocks", "targeted_user_add_remove_shadowsocks",
+		"targeted_user_update_hysteria", "targeted_user_add_remove_hysteria",
+	}
+	if runtime.GOOS == "linux" {
+		capabilities = append(capabilities,
+			"targeted_user_update_openvpn", "targeted_user_add_remove_openvpn",
+			"targeted_user_update_l2tp", "targeted_user_add_remove_l2tp",
+			"targeted_user_update_wireguard", "targeted_user_add_remove_wireguard",
+			"targeted_user_update_amneziawg", "targeted_user_add_remove_amneziawg",
+			"targeted_user_update_pptp", "targeted_user_add_remove_pptp",
+			"targeted_user_update_ikev2", "targeted_user_add_remove_ikev2",
+			"targeted_user_update_anyconnect", "targeted_user_add_remove_anyconnect",
+		)
+	}
 	if s.verifiedInstallerAvailable() {
 		capabilities = append(capabilities, "verified_updates_v1", "shared_fencing_v1", "command_idempotency_v1", "config_identity_v1")
 	} else if !strings.EqualFold(s.cfg.InstallMode, "binary") && nativeFencingAvailable() {
@@ -1002,6 +1555,33 @@ func torConfig(port uint32, country string, strict bool, dataDir string) string 
 }
 
 func (s *Server) metrics(includeRuntime bool) *nodev1.MetricsResponse {
+	system, sampledAt := s.cachedSystemMetrics()
+	res := &nodev1.MetricsResponse{System: system, Transfer: s.transferMetrics(), SampledAtUnix: sampledAt.Unix()}
+	if includeRuntime {
+		res.Runtime = s.runtimeState("metrics collected")
+	}
+	return res
+}
+
+const metricsSystemCacheTTL = time.Second
+
+func (s *Server) cachedSystemMetrics() (*nodev1.SystemMetrics, time.Time) {
+	s.metricsMu.Lock()
+	defer s.metricsMu.Unlock()
+	now := time.Now()
+	if s.metricsSystemCache != nil && now.Sub(s.metricsSystemCacheAt) < metricsSystemCacheTTL {
+		return proto.Clone(s.metricsSystemCache).(*nodev1.SystemMetrics), s.metricsSystemCacheAt
+	}
+	sampler := s.metricsSystemSampler
+	if sampler == nil {
+		sampler = s.sampleSystemMetrics
+	}
+	s.metricsSystemCache = proto.Clone(sampler()).(*nodev1.SystemMetrics)
+	s.metricsSystemCacheAt = now
+	return proto.Clone(s.metricsSystemCache).(*nodev1.SystemMetrics), now
+}
+
+func (s *Server) sampleSystemMetrics() *nodev1.SystemMetrics {
 	system := &nodev1.SystemMetrics{CpuCores: int32(runtime.NumCPU()), UptimeSeconds: uint64(time.Since(s.startedAt).Seconds())}
 	if infos, err := cpu.Info(); err == nil && len(infos) > 0 {
 		system.CpuFrequencyHz = infos[0].Mhz * 1000 * 1000
@@ -1017,11 +1597,7 @@ func (s *Server) metrics(includeRuntime bool) *nodev1.MetricsResponse {
 	if uptime, err := host.Uptime(); err == nil {
 		system.UptimeSeconds = uptime
 	}
-	res := &nodev1.MetricsResponse{System: system, Transfer: s.transferMetrics(), SampledAtUnix: time.Now().Unix()}
-	if includeRuntime {
-		res.Runtime = s.runtimeState("metrics collected")
-	}
-	return res
+	return system
 }
 
 func (s *Server) transferMetrics() *nodev1.TransferMetrics {

@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,11 @@ import (
 	"sync"
 	"time"
 )
+
+type nativeQuotaPolicySchedule struct {
+	checksum    string
+	enforceable bool
+}
 
 func localQuotaInterval(value string) (time.Duration, error) {
 	value = strings.ToLower(strings.TrimSpace(value))
@@ -112,7 +118,6 @@ func (s *Server) runLocalQuotaScheduler(ctx context.Context, quotaInterval, chec
 		quota      func(context.Context) error
 	}
 	workers := []worker{
-		{"xray", s.checkpointXrayAccounting, s.quotaCheckXrayOffline},
 		{"amneziawg", s.checkpointAmneziaWGOffline, s.quotaCheckAmneziaWGOffline},
 		{"openvpn", s.checkpointOpenVPNOffline, s.quotaCheckOpenVPNOffline},
 		{"ppp", s.checkpointPPPOffline, s.quotaCheckPPPOffline},
@@ -120,15 +125,26 @@ func (s *Server) runLocalQuotaScheduler(ctx context.Context, quotaInterval, chec
 		{"anyconnect", s.checkpointAnyConnectOffline, s.quotaCheckAnyConnectOffline},
 	}
 	var group sync.WaitGroup
+	group.Add(1)
+	go func() {
+		defer group.Done()
+		s.runLocalAccountingWorkerWithWakeAdaptive(ctx, "xray", quotaInterval, checkpointInterval, s.localQuotaWakeChannel("xray"), s.xrayQuotaAdaptiveInterval,
+			func(sampleCtx context.Context, enforce, checkpoint bool) error {
+				return s.xrayLocalAccountingTick(sampleCtx, checkpoint, enforce)
+			})
+	}()
 	for _, w := range workers {
 		group.Add(1)
 		go func(w worker) {
 			defer group.Done()
-			s.runLocalAccountingWorker(ctx, w.name, quotaInterval, checkpointInterval, w.checkpoint, w.quota)
+			s.runLocalAccountingWorkerWithAdaptive(ctx, w.name, quotaInterval, checkpointInterval,
+				func() time.Duration { return s.nativeQuotaAdaptiveInterval(w.name, quotaInterval) },
+				w.checkpoint, w.quota)
 		}(w)
 	}
 	defer group.Wait()
-	s.runLocalAccountingWorker(ctx, "wireguard", quotaInterval, checkpointInterval,
+	s.runLocalAccountingWorkerWithAdaptive(ctx, "wireguard", quotaInterval, checkpointInterval,
+		func() time.Duration { return s.nativeQuotaAdaptiveInterval("wireguard", quotaInterval) },
 		func(ctx context.Context) error { return s.wireGuardOfflineTick(ctx, false, true) },
 		func(ctx context.Context) error { return s.wireGuardOfflineTick(ctx, true, false) })
 }
@@ -136,68 +152,437 @@ func (s *Server) runLocalQuotaScheduler(ctx context.Context, quotaInterval, chec
 // One serial worker per native runtime coalesces overdue ticks: slow daemons do
 // not block other protocols and never accumulate overlapping commands.
 func (s *Server) runLocalAccountingWorker(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, checkpointFn, quotaFn func(context.Context) error) {
-	interval := checkpointInterval
-	if quotaInterval > 0 && quotaInterval < interval {
-		interval = quotaInterval
+	s.runLocalAccountingWorkerWithAdaptive(ctx, name, quotaInterval, checkpointInterval, nil, checkpointFn, quotaFn)
+}
+
+func (s *Server) runLocalAccountingWorkerWithAdaptive(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, adaptiveInterval func() time.Duration, checkpointFn, quotaFn func(context.Context) error) {
+	s.runLocalAccountingWorkerWithWakeAdaptive(ctx, name, quotaInterval, checkpointInterval, s.localQuotaWakeChannel(name), adaptiveInterval, func(sampleCtx context.Context, enforce, checkpoint bool) error {
+		var errs []error
+		if checkpoint {
+			if err := checkpointFn(sampleCtx); err != nil {
+				errs = append(errs, localHealthError("accounting", err))
+			} else {
+				s.recordLocalDomainHealth("accounting", name, nil)
+			}
+		}
+		if enforce {
+			if err := quotaFn(sampleCtx); err != nil {
+				errs = append(errs, localHealthError("policy", err))
+			} else {
+				s.recordLocalDomainHealth("policy", name, nil)
+			}
+		}
+		return errors.Join(errs...)
+	})
+}
+
+// nativeQuotaAdaptiveInterval disables periodic policy scans when the cached
+// runtime snapshot has no user whose status, quota, expiry, IP, or device
+// policy can terminate an existing session. Runtime/config changes still wake
+// the worker, and accounting checkpoints keep their independent cadence.
+func (s *Server) nativeQuotaAdaptiveInterval(protocol string, minimum time.Duration) time.Duration {
+	snapshot, err := s.currentRuntimePolicy()
+	if err != nil || snapshot == nil {
+		return minimum
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	nextQuota, nextCheckpoint := time.Now(), time.Now()
+	checksum := snapshot.Checksum
+	if checksum == "" {
+		checksum, err = runtimePolicyChecksum(*snapshot)
+		if err != nil {
+			return minimum
+		}
+	}
+	s.mu.Lock()
+	if cached, ok := s.nativeQuotaPolicySchedules[protocol]; ok && cached.checksum == checksum {
+		s.mu.Unlock()
+		if cached.enforceable {
+			return minimum
+		}
+		return 0
+	}
+	s.mu.Unlock()
+	payload, err := parseNativeRuntimePayload(snapshot.NativeJSON)
+	if err != nil {
+		return minimum
+	}
+	enforceable := nativeQuotaPayloadHasEnforceableUser(payload, protocol)
+	s.mu.Lock()
+	if current := s.runtimePolicy; current == nil || (current.Revision == snapshot.Revision && current.Checksum == snapshot.Checksum && current.NativeJSON == snapshot.NativeJSON) {
+		if s.nativeQuotaPolicySchedules == nil {
+			s.nativeQuotaPolicySchedules = make(map[string]nativeQuotaPolicySchedule)
+		}
+		s.nativeQuotaPolicySchedules[protocol] = nativeQuotaPolicySchedule{checksum: checksum, enforceable: enforceable}
+	}
+	s.mu.Unlock()
+	if enforceable {
+		return minimum
+	}
+	return 0
+}
+
+func nativeQuotaPayloadHasEnforceableUser(payload nativeRuntimePayload, protocol string) bool {
+	needsPolling := func(status string, dataLimit, expiry *int64, ipLimit, deviceLimit int64) bool {
+		status = strings.ToLower(strings.TrimSpace(status))
+		if status == "" || (status != "active" && status != "on_hold") {
+			return true
+		}
+		return (status == "active" && ((dataLimit != nil && *dataLimit > 0) || (expiry != nil && *expiry > 0))) || ipLimit > 0 || deviceLimit > 0
+	}
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "openvpn":
+		for _, inbound := range payload.OpenVPNInbounds {
+			for _, user := range inbound.Users {
+				if needsPolling(user.Status, user.DataLimit, user.Expire, user.IPLimit, user.DeviceLimit) {
+					return true
+				}
+			}
+		}
+	case "ppp":
+		for _, inbound := range payload.L2TPInbounds {
+			for _, user := range inbound.Users {
+				if needsPolling(user.Status, user.DataLimit, user.Expire, user.IPLimit, user.DeviceLimit) {
+					return true
+				}
+			}
+		}
+		for _, inbound := range payload.PPTPInbounds {
+			for _, user := range inbound.Users {
+				if needsPolling(user.Status, user.DataLimit, user.Expire, user.IPLimit, user.DeviceLimit) {
+					return true
+				}
+			}
+		}
+	case "amneziawg":
+		for _, inbound := range payload.AmneziaWGInbounds {
+			for _, peer := range inbound.Peers {
+				if needsPolling(peer.Status, peer.DataLimit, peer.Expire, peer.IPLimit, peer.DeviceLimit) {
+					return true
+				}
+			}
+		}
+	case "wireguard":
+		for _, inbound := range payload.WireGuardInbounds {
+			for _, peer := range inbound.Peers {
+				if needsPolling(peer.Status, peer.DataLimit, peer.Expire, peer.IPLimit, peer.DeviceLimit) {
+					return true
+				}
+			}
+		}
+	case "ikev2":
+		for _, inbound := range payload.IKEv2Inbounds {
+			for _, user := range inbound.Users {
+				if needsPolling(user.Status, user.DataLimit, user.Expire, user.IPLimit, user.DeviceLimit) {
+					return true
+				}
+			}
+		}
+	case "anyconnect":
+		for _, inbound := range payload.AnyConnectInbounds {
+			for _, user := range inbound.Users {
+				if needsPolling(user.Status, user.DataLimit, user.Expire, user.IPLimit, user.DeviceLimit) {
+					return true
+				}
+			}
+		}
+	default:
+		// Unknown workers remain fail-safe and keep their configured cadence.
+		return true
+	}
+	return false
+}
+
+func (s *Server) runLocalAccountingWorkerWithTick(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, tick func(context.Context, bool, bool) error) {
+	s.runLocalAccountingWorkerWithWakeAdaptive(ctx, name, quotaInterval, checkpointInterval, nil, nil, tick)
+}
+
+func (s *Server) localQuotaWakeChannel(name string) chan struct{} {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	s.mu.Lock()
+	if s.localQuotaWakeups == nil {
+		s.localQuotaWakeups = make(map[string]chan struct{})
+	}
+	wake := s.localQuotaWakeups[name]
+	if wake == nil {
+		wake = make(chan struct{}, 1)
+		s.localQuotaWakeups[name] = wake
+	}
+	s.mu.Unlock()
+	return wake
+}
+
+func (s *Server) wakeLocalQuota(name string) {
+	wake := s.localQuotaWakeChannel(name)
+	select {
+	case wake <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Server) wakeLocalQuotaForRuntime(rawValues ...string) {
+	var xray, wireguard, amneziaWG, openVPN, ppp, ikev2, anyconnect bool
+	for _, raw := range rawValues {
+		payload, err := parseNativeRuntimePayload(raw)
+		if err != nil {
+			continue
+		}
+		xray = xray || len(payload.XrayPolicies) > 0
+		wireguard = wireguard || len(payload.WireGuardInbounds) > 0
+		amneziaWG = amneziaWG || len(payload.AmneziaWGInbounds) > 0
+		openVPN = openVPN || len(payload.OpenVPNInbounds) > 0
+		ppp = ppp || len(payload.L2TPInbounds) > 0 || len(payload.PPTPInbounds) > 0
+		ikev2 = ikev2 || len(payload.IKEv2Inbounds) > 0
+		anyconnect = anyconnect || len(payload.AnyConnectInbounds) > 0
+	}
+	if xray {
+		s.wakeLocalQuota("xray")
+	}
+	if wireguard {
+		s.wakeLocalQuota("wireguard")
+	}
+	if amneziaWG {
+		s.wakeLocalQuota("amneziawg")
+	}
+	if openVPN {
+		s.wakeLocalQuota("openvpn")
+	}
+	if ppp {
+		s.wakeLocalQuota("ppp")
+	}
+	if ikev2 {
+		s.wakeLocalQuota("ikev2")
+	}
+	if anyconnect {
+		s.wakeLocalQuota("anyconnect")
+	}
+}
+
+func (s *Server) runLocalAccountingWorkerWithWakeAdaptive(ctx context.Context, name string, quotaInterval, checkpointInterval time.Duration, wake <-chan struct{}, adaptiveInterval func() time.Duration, tick func(context.Context, bool, bool) error) {
+	now := time.Now()
+	nextQuota, nextCheckpoint := time.Time{}, time.Time{}
+	timer := time.NewTimer(time.Hour)
+	stopQuotaTimer(timer)
+	defer timer.Stop()
+	var timerC <-chan time.Time
+	if quotaInterval > 0 {
+		nextQuota = now
+		if adaptiveInterval != nil && adaptiveInterval() <= 0 {
+			nextQuota = time.Time{}
+		}
+	}
+	if checkpointInterval > 0 {
+		nextCheckpoint = now
+	}
 	for {
+		next := nearestQuotaDeadline(nextQuota, nextCheckpoint)
+		stopQuotaTimer(timer)
+		timerC = nil
+		if !next.IsZero() {
+			wait := time.Until(next)
+			if wait < 0 {
+				wait = 0
+			}
+			timer.Reset(wait)
+			timerC = timer.C
+		}
 		select {
 		case <-ctx.Done():
+			stopQuotaTimer(timer)
 			return
-		case now := <-ticker.C:
-			enforce := quotaInterval > 0 && !now.Before(nextQuota)
-			checkpoint := !now.Before(nextCheckpoint)
+		case <-wake:
+			stopQuotaTimer(timer)
+			if quotaInterval > 0 {
+				now := time.Now()
+				checkpoint := checkpointInterval > 0 && !now.Before(nextCheckpoint)
+				err := s.runWokenQuotaTick(ctx, checkpointInterval, checkpoint, tick)
+				if ctx.Err() == nil {
+					s.recordLocalWorkerHealth(name, err)
+				}
+				now = time.Now()
+				nextQuota = quotaDeadlineAfter(now, nextQuotaDelay(quotaInterval, adaptiveInterval, err))
+				if checkpoint {
+					nextCheckpoint = now.Add(checkpointInterval)
+				}
+			}
+		case firedAt := <-timerC:
+			timerC = nil
+			enforce := quotaInterval > 0 && !firedAt.Before(nextQuota)
+			checkpoint := checkpointInterval > 0 && !firedAt.Before(nextCheckpoint)
 			if !enforce && !checkpoint {
 				continue
 			}
-			if enforce {
-				for !nextQuota.After(now) {
-					nextQuota = nextQuota.Add(quotaInterval)
-				}
-			}
-			if checkpoint {
-				for !nextCheckpoint.After(now) {
-					nextCheckpoint = nextCheckpoint.Add(checkpointInterval)
-				}
-			}
 			timeout := checkpointInterval
-			if timeout > 2*time.Second {
+			if timeout <= 0 || timeout > 2*time.Second {
 				timeout = 2 * time.Second
 			}
 			sampleCtx, cancel := context.WithTimeout(ctx, timeout)
-			var err error
-			if checkpoint {
-				err = checkpointFn(sampleCtx)
-			}
-			if enforce && err == nil {
-				err = quotaFn(sampleCtx)
-			}
+			err := tick(sampleCtx, enforce, checkpoint)
 			cancel()
+			if checkpoint {
+				s.runtimeMetricsCounters.accountingTicks.Add(1)
+			}
+			if enforce {
+				s.runtimeMetricsCounters.quotaEvaluations.Add(1)
+			}
 			if ctx.Err() == nil {
-				s.recordLocalAccountingHealth(name, err)
+				s.recordLocalWorkerHealth(name, err)
+			}
+			now = time.Now()
+			if enforce {
+				nextQuota = quotaDeadlineAfter(now, nextQuotaDelay(quotaInterval, adaptiveInterval, err))
+			}
+			if checkpoint {
+				nextCheckpoint = now.Add(checkpointInterval)
 			}
 		}
 	}
 }
 
-func (s *Server) recordLocalAccountingHealth(protocol string, err error) {
-	s.mu.Lock()
-	if s.localAccountingFailures == nil {
-		s.localAccountingFailures = make(map[string]string)
+func stopQuotaTimer(timer *time.Timer) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
 	}
-	previous := s.localAccountingFailures[protocol]
+}
+
+func (s *Server) runWokenQuotaTick(ctx context.Context, checkpointInterval time.Duration, checkpoint bool, tick func(context.Context, bool, bool) error) error {
+	timeout := checkpointInterval
+	if timeout <= 0 || timeout > 2*time.Second {
+		timeout = 2 * time.Second
+	}
+	sampleCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	err := tick(sampleCtx, true, checkpoint)
+	if checkpoint {
+		s.runtimeMetricsCounters.accountingTicks.Add(1)
+	}
+	s.runtimeMetricsCounters.quotaEvaluations.Add(1)
+	return err
+}
+
+func nextQuotaDelay(minimum time.Duration, adaptiveInterval func() time.Duration, tickErr error) time.Duration {
+	if adaptiveInterval == nil {
+		return minimum
+	}
+	interval := adaptiveInterval()
+	if interval <= 0 {
+		return 0
+	}
+	if tickErr != nil {
+		return minimum
+	}
+	if interval < minimum {
+		return minimum
+	}
+	return interval
+}
+
+func quotaDeadlineAfter(now time.Time, interval time.Duration) time.Time {
+	if interval <= 0 {
+		return time.Time{}
+	}
+	return now.Add(interval)
+}
+
+func nearestQuotaDeadline(quota, checkpoint time.Time) time.Time {
+	if quota.IsZero() {
+		return checkpoint
+	}
+	if checkpoint.IsZero() || quota.Before(checkpoint) {
+		return quota
+	}
+	return checkpoint
+}
+
+func (s *Server) recordLocalAccountingHealth(protocol string, err error) {
+	s.recordLocalDomainHealth("accounting", protocol, err)
+}
+
+type localHealthErrorValue struct {
+	domain string
+	err    error
+}
+
+func (e localHealthErrorValue) Error() string { return e.err.Error() }
+func (e localHealthErrorValue) Unwrap() error { return e.err }
+
+func localHealthError(domain string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return localHealthErrorValue{domain: domain, err: err}
+}
+
+func (s *Server) recordLocalWorkerHealth(protocol string, err error) {
+	var visit func(error)
+	visit = func(current error) {
+		if current == nil {
+			return
+		}
+		if joined, ok := current.(interface{ Unwrap() []error }); ok {
+			for _, child := range joined.Unwrap() {
+				visit(child)
+			}
+			return
+		}
+		if domainErr, ok := current.(localHealthErrorValue); ok {
+			s.recordLocalDomainHealth(domainErr.domain, protocol, domainErr.err)
+			return
+		}
+		s.recordLocalAccountingHealth(protocol, current)
+	}
+	visit(err)
+	if err == nil {
+		s.recordLocalDomainHealth("accounting", protocol, nil)
+		s.recordLocalDomainHealth("policy", protocol, nil)
+		s.recordLocalDomainHealth("runtime", protocol, nil)
+	}
+}
+
+func (s *Server) recordLocalDomainHealth(domain, protocol string, err error) {
+	s.mu.Lock()
+	var failures map[string]string
+	switch domain {
+	case "policy":
+		failures = s.localPolicyFailures
+	case "runtime":
+		failures = s.localRuntimeFailures
+	default:
+		failures = s.localAccountingFailures
+	}
+	// The healthy path runs once per user per inbound per tick, so it must not
+	// build a key or allocate: when nothing has been recorded for this domain
+	// there is no entry to clear and no state change to report.
+	if err == nil && len(failures) == 0 {
+		s.mu.Unlock()
+		return
+	}
+	key := domain + ":" + protocol
+	previous := failures[key]
 	message := ""
 	if err != nil {
 		message = err.Error()
-		s.localAccountingFailures[protocol] = message
+		if failures == nil {
+			failures = make(map[string]string)
+			switch domain {
+			case "policy":
+				s.localPolicyFailures = failures
+			case "runtime":
+				s.localRuntimeFailures = failures
+			default:
+				s.localAccountingFailures = failures
+			}
+		}
+		failures[key] = message
 	} else {
-		delete(s.localAccountingFailures, protocol)
+		delete(failures, key)
 	}
 	s.mu.Unlock()
 	if message != "" && message != previous {
-		s.appendLog("local " + protocol + " accounting/quota degraded: " + message)
+		s.appendLog("local " + key + " degraded: " + message)
 	}
 }

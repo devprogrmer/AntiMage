@@ -26,7 +26,7 @@ func TestRestoreInboundSnapshotPreservesTrafficCounters(t *testing.T) {
 			}
 			defer db.Close()
 			if _, err := db.Exec(`
-CREATE TABLE inbounds (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0, usage_coefficient REAL NOT NULL DEFAULT 1);
+CREATE TABLE inbounds (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0, usage_coefficient REAL NOT NULL DEFAULT 1, upload_speed_limit INTEGER NOT NULL DEFAULT 0, download_speed_limit INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE hosts (id INTEGER PRIMARY KEY AUTOINCREMENT, inbound_tag TEXT NOT NULL);
 CREATE TABLE service_hosts (service_id INTEGER NOT NULL, host_id INTEGER NOT NULL);
 INSERT INTO inbounds (tag, uplink, downlink) VALUES ('tracked', 10, 20);`); err != nil {
@@ -93,7 +93,7 @@ func TestRestoreInboundSnapshotRestoresUsageCoefficient(t *testing.T) {
 	}
 	defer db.Close()
 	if _, err := db.Exec(`
-CREATE TABLE inbounds (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0, usage_coefficient REAL NOT NULL DEFAULT 1);
+CREATE TABLE inbounds (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0, usage_coefficient REAL NOT NULL DEFAULT 1, upload_speed_limit INTEGER NOT NULL DEFAULT 0, download_speed_limit INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE hosts (id INTEGER PRIMARY KEY AUTOINCREMENT, inbound_tag TEXT NOT NULL);
 CREATE TABLE service_hosts (service_id INTEGER NOT NULL, host_id INTEGER NOT NULL);
 INSERT INTO inbounds (tag, usage_coefficient) VALUES ('tracked', 1.5);`); err != nil {

@@ -17,7 +17,7 @@ func TestIKEv2NativeProvision(t *testing.T) {
 		t.Fatal("refusing provisioning outside isolated mount namespace")
 	}
 	s := New(Config{DataDir: filepath.Join(root, "provision-state")})
-	settings := map[string]any{"auth_mode": "certificate", "certificate_mode": "manual", "server_identity": "server", "ipv4_pool_cidr": "10.82.0.0/24", "ike_proposals": "aes256-sha256-modp2048!", "esp_proposals": "aes256-sha256!"}
+	settings := map[string]any{"auth_mode": "password+certificate", "certificate_mode": "manual", "server_identity": "server", "ipv4_pool_cidr": "10.82.0.0/24", "ike_proposals": "aes256-sha256-modp2048!", "esp_proposals": "aes256-sha256!"}
 	for key, file := range map[string]string{"ca_certificate": "ca.pem", "server_certificate": "server.pem", "server_key": "server.key"} {
 		raw, err := os.ReadFile(filepath.Join(root, file))
 		if err != nil {
@@ -25,7 +25,7 @@ func TestIKEv2NativeProvision(t *testing.T) {
 		}
 		settings[key] = string(raw)
 	}
-	inbound := ikev2RuntimeInbound{Tag: "native", Port: 500, Settings: settings, Users: []ikev2RuntimeUser{{UserID: 7, Username: "client", Status: "active", UsageCoefficient: 1.5, InboundCoefficient: 2}}}
+	inbound := ikev2RuntimeInbound{Tag: "native", Port: 500, Settings: settings, Users: []ikev2RuntimeUser{{UserID: 1, Username: "alice", Password: "alice-native-v1", Status: "active", UsageCoefficient: 1.5, InboundCoefficient: 2}}}
 	files, err := s.prepareIKEv2Inbound(inbound)
 	if err != nil {
 		t.Fatal(err)

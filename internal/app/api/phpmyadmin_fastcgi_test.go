@@ -1,6 +1,10 @@
 package api
 
 import (
+	"context"
+	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +13,94 @@ import (
 	"testing"
 	"time"
 )
+
+func TestFastCGIRequestStopsWhenRequestContextIsCanceled(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = io.Copy(io.Discard, conn)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, _, err = fastCGIRequestContextLimited(ctx, "tcp", listener.Addr().String(), nil, nil, 128)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("request error = %v, want context deadline", err)
+	}
+	<-serverDone
+}
+
+func TestPHPMyAdminFastCGIAdmissionIsBoundedAndCancelSafe(t *testing.T) {
+	server := &Server{}
+	releaseFirst, err := server.acquirePHPMyAdminFastCGISlot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if release, err := server.acquirePHPMyAdminFastCGISlot(ctx); err == nil {
+		release()
+		t.Fatal("second FastCGI request entered while the only slot was occupied")
+	} else if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("waiting request error=%v, want context deadline", err)
+	}
+	releaseFirst()
+	releaseNext, err := server.acquirePHPMyAdminFastCGISlot(context.Background())
+	if err != nil {
+		t.Fatalf("canceled waiter leaked the FastCGI slot: %v", err)
+	}
+	releaseNext()
+}
+
+func TestFastCGIRequestRejectsOutputAboveConfiguredLimit(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	serverDone := make(chan error, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		defer conn.Close()
+		for {
+			typeID, body, err := readFastCGIRecord(conn)
+			if err != nil {
+				serverDone <- err
+				return
+			}
+			if typeID == fcgiStdin && len(body) == 0 {
+				break
+			}
+		}
+		if err := writeFastCGIRecord(conn, fcgiStdout, []byte("12345")); err != nil {
+			serverDone <- err
+			return
+		}
+		serverDone <- writeFastCGIRecord(conn, fcgiEnd, nil)
+	}()
+
+	_, _, err = fastCGIRequestContextLimited(context.Background(), "tcp", listener.Addr().String(), nil, nil, 4)
+	if err == nil || !strings.Contains(err.Error(), "configured limit") {
+		t.Fatalf("request error = %v, want output limit error", err)
+	}
+	if err := <-serverDone; err != nil {
+		t.Fatalf("fake FastCGI server: %v", err)
+	}
+}
 
 func TestRewritePHPMyAdminBodyRemovesFrameProtection(t *testing.T) {
 	body := []byte(`<!doctype html>
@@ -81,11 +173,20 @@ func TestPHPMyAdminRecoverySessionCarriesProxyState(t *testing.T) {
 	}
 }
 
-func TestPHPMyAdminUploadPHPDirectivesUseOneGiBLimit(t *testing.T) {
+func TestPHPMyAdminPHPDirectivesBoundMemoryAndExecution(t *testing.T) {
 	directives := strings.Join(phpMyAdminUploadPHPDirectives(), "\n")
-	for _, directive := range []string{"upload_max_filesize=1024M", "post_max_size=1024M"} {
+	for _, directive := range []string{
+		"upload_max_filesize=1024M",
+		"post_max_size=1024M",
+		"memory_limit=512M",
+		"max_execution_time=600",
+		"max_input_time=600",
+	} {
 		if !strings.Contains(directives, directive) {
 			t.Fatalf("missing directive %q in %q", directive, directives)
 		}
+	}
+	if strings.Contains(directives, "memory_limit=4096M") || strings.Contains(directives, "max_execution_time=0") || strings.Contains(directives, "max_input_time=0") {
+		t.Fatalf("phpMyAdmin resource limits are still unbounded: %q", directives)
 	}
 }

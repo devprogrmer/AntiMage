@@ -16,7 +16,9 @@ func TestReporterSendsLegacyUserCreatedWhenEnabled(t *testing.T) {
 	seedTelegramSettings(t, db, "")
 
 	var payload map[string]any
+	calls := 0
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
 		if r.URL.Path != "/bottoken/sendMessage" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -39,6 +41,15 @@ func TestReporterSendsLegacyUserCreatedWhenEnabled(t *testing.T) {
 		ResetStrategy: "month",
 		Proxies:       []string{"vless", "vmess"},
 	})
+	if calls != 0 {
+		t.Fatalf("report path made synchronous Telegram calls: %d", calls)
+	}
+	if err := NewOutboxDispatcher(repo, sender).Dispatch(ctx, 10); err != nil {
+		t.Fatalf("dispatch report outbox: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("Telegram calls after outbox dispatch = %d, want 1", calls)
+	}
 
 	text, _ := payload["text"].(string)
 	if payload["chat_id"].(float64) != -1001 || payload["message_thread_id"].(float64) != 42 {
@@ -107,6 +118,9 @@ func TestReporterTelegramErrorDoesNotFailMutationPath(t *testing.T) {
 	sender := NewSender(repo, api.URL)
 	sender.retryDelays = nil
 	NewReporter(repo, sender).AdminDeleted(ctx, AdminReport{Username: "oldadmin", Actor: "pouria"})
+	if err := NewOutboxDispatcher(repo, sender).Dispatch(ctx, 10); err == nil {
+		t.Fatal("expected Telegram delivery failure")
+	}
 	assertTelegramColumnContains(t, db, "last_error", "temporary bad gateway")
 }
 

@@ -13,6 +13,13 @@ import (
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
+func validateRuntimePolicyRevision(current, incoming uint64) error {
+	if incoming > 0 && current > incoming {
+		return fmt.Errorf("stale runtime revision %d; current revision is %d", incoming, current)
+	}
+	return nil
+}
+
 type runtimePolicySnapshot struct {
 	Version    int    `json:"version"`
 	ConfigJSON string `json:"config_json"`
@@ -21,6 +28,8 @@ type runtimePolicySnapshot struct {
 	Checksum   string `json:"checksum"`
 	Stopped    bool   `json:"stopped,omitempty"`
 }
+
+var runtimePolicyAtomicWrite = writeAccountingState
 
 func runtimePolicyChecksum(snapshot runtimePolicySnapshot) (string, error) {
 	snapshot.Checksum = ""
@@ -38,15 +47,22 @@ func (s *Server) runtimePolicyPath() string {
 
 func (s *Server) currentRuntimePolicy() (*runtimePolicySnapshot, error) {
 	s.mu.Lock()
-	snapshot := s.runtimePolicy
-	s.mu.Unlock()
-	if snapshot != nil {
-		return snapshot, nil
+	if s.runtimePolicy != nil {
+		snapshot := *s.runtimePolicy
+		s.mu.Unlock()
+		return &snapshot, nil
 	}
+	s.mu.Unlock()
 	return s.loadRuntimePolicy()
 }
 
 func (s *Server) persistRuntimePolicy(req *nodev1.RuntimeConfigRequest) error {
+	s.runtimePolicyMu.Lock()
+	defer s.runtimePolicyMu.Unlock()
+	return s.persistRuntimePolicyLocked(req)
+}
+
+func (s *Server) persistRuntimePolicyLocked(req *nodev1.RuntimeConfigRequest) error {
 	if strings.TrimSpace(req.GetConfigJson()) == "" {
 		return fmt.Errorf("empty runtime policy config")
 	}
@@ -70,7 +86,7 @@ func (s *Server) persistRuntimePolicy(req *nodev1.RuntimeConfigRequest) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	if err := writeAccountingState(path, raw); err != nil {
+	if err := runtimePolicyAtomicWrite(path, raw); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -99,7 +115,11 @@ func (s *Server) loadRuntimePolicy() (*runtimePolicySnapshot, error) {
 		return nil, err
 	}
 	s.mu.Lock()
-	s.runtimePolicy = &snapshot
+	if s.runtimePolicy == nil {
+		s.runtimePolicy = &snapshot
+	} else {
+		snapshot = *s.runtimePolicy
+	}
 	s.mu.Unlock()
 	return &snapshot, nil
 }

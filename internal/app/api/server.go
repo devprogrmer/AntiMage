@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,6 +56,8 @@ type Server struct {
 	telegramRepo         telegramapp.Repository
 	telegramSender       telegramapp.Sender
 	telegramReports      telegramapp.Reporter
+	telegramOutbox       telegramapp.OutboxDispatcher
+	telegramOutboxKick   chan struct{}
 	telegramBackup       telegramapp.BackupDelivery
 	webhookRepo          webhookapp.Repository
 	webhookDispatch      webhookapp.Dispatcher
@@ -62,6 +65,8 @@ type Server struct {
 	certificateManager   *certificateapp.Manager
 	externalApps         *externalapps.Manager
 	backgroundOnce       sync.Once
+	phpMyAdminSlotOnce   sync.Once
+	phpMyAdminSlots      chan struct{}
 	nodeOperationsKick   chan struct{}
 	userOpsKickMu        sync.Mutex
 	userOpsKicking       bool
@@ -72,13 +77,19 @@ type Server struct {
 	liveUserGlobalSpeed  liveUserSpeedTotal
 	liveInboundSpeedsMu  sync.RWMutex
 	liveInboundSpeeds    map[string]liveInboundSpeed
-	sessionAdmissionMu   sync.Mutex
+	admissionLockMu      sync.Mutex
+	admissionLockRefs    map[int64]*sessionAdmissionLockRef
 	loginLimiter         loginRateLimiter
+	trustedProxyCIDRs    []netip.Prefix
 	operators            *operatorResolver
 	recentActionsEnabled bool
 }
 
 func New(cfg Config) (*Server, error) {
+	trustedProxyCIDRs, err := parseTrustedProxyCIDRs(cfg.TrustedProxyCIDRs)
+	if err != nil {
+		return nil, fmt.Errorf("trusted proxy CIDRs: %w", err)
+	}
 	pool, err := db.Open(cfg.Database)
 	if err != nil {
 		return nil, err
@@ -106,6 +117,7 @@ func New(cfg Config) (*Server, error) {
 	applyRuntimeSettingsToConfig(&cfg, runtimeSettings)
 	telegramRepo := telegramapp.NewRepository(pool.DB, pool.Dialect)
 	telegramSender := telegramapp.NewSender(telegramRepo, cfg.TelegramAPIBase)
+	telegramOutboxKick := make(chan struct{}, 1)
 	webhookRepo := webhookapp.NewRepository(pool.DB, pool.Dialect)
 	webhookDispatch := webhookapp.NewDispatcher(webhookRepo, webhookapp.Config{
 		Addresses:     cfg.WebhookAddresses,
@@ -123,28 +135,37 @@ func New(cfg Config) (*Server, error) {
 	}
 	outboundSubs := outboundsubapp.NewService(pool.DB, pool.Dialect)
 	server := &Server{
-		cfg:            cfg,
-		db:             pool.DB,
-		dialect:        pool.Dialect,
-		adminRepo:      adminRepo,
-		adminAuth:      adminapp.NewAuthenticator(adminRepo),
-		nodeController: nodecontroller.NewController(nodeRepo),
-		nodeMutations:  nodeMutationRepo,
-		systemService:  systemapp.NewService(pool.DB, pool.Dialect, ""),
-		maintenance:    systemapp.NewMaintenanceServiceWithDB(pool.DB, pool.Dialect),
-		usageService:   usage.NewService(usageRepo),
-		userService:    userapp.NewServiceWithTemplates(userRepo, settingsRepo),
-		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient("")),
-		nordService:    nordvpnapp.NewService(nordRepo, nordvpnapp.NewClient("")),
-		outboundSubs:   outboundSubs,
-		operators:      newOperatorResolver(),
-		settingsRepo:   settingsRepo,
-		telegramRepo:   telegramRepo,
-		telegramSender: telegramSender,
-		telegramReports: telegramapp.NewReporter(
+		cfg:               cfg,
+		db:                pool.DB,
+		dialect:           pool.Dialect,
+		adminRepo:         adminRepo,
+		adminAuth:         adminapp.NewAuthenticator(adminRepo),
+		nodeController:    nodecontroller.NewController(nodeRepo),
+		nodeMutations:     nodeMutationRepo,
+		systemService:     systemapp.NewService(pool.DB, pool.Dialect, ""),
+		maintenance:       systemapp.NewMaintenanceServiceWithDB(pool.DB, pool.Dialect),
+		usageService:      usage.NewService(usageRepo),
+		userService:       userapp.NewServiceWithTemplates(userRepo, settingsRepo),
+		warpService:       warpapp.NewService(warpRepo, warpapp.NewClient("")),
+		nordService:       nordvpnapp.NewService(nordRepo, nordvpnapp.NewClient("")),
+		outboundSubs:      outboundSubs,
+		trustedProxyCIDRs: trustedProxyCIDRs,
+		operators:         newOperatorResolver(),
+		settingsRepo:      settingsRepo,
+		telegramRepo:      telegramRepo,
+		telegramSender:    telegramSender,
+		telegramReports: telegramapp.NewReporterWithWake(
 			telegramRepo,
 			telegramSender,
+			func() {
+				select {
+				case telegramOutboxKick <- struct{}{}:
+				default:
+				}
+			},
 		),
+		telegramOutbox:     telegramapp.NewOutboxDispatcher(telegramRepo, telegramSender),
+		telegramOutboxKick: telegramOutboxKick,
 		telegramBackup:     telegramapp.NewBackupDelivery(telegramRepo, telegramSender),
 		webhookRepo:        webhookRepo,
 		webhookDispatch:    webhookDispatch,
@@ -204,6 +225,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 		go s.runAdminLifecycleWorker(ctx)
 		s.runUserLifecycleWorkers(ctx)
 		go s.runTelegramBackupScheduler(ctx)
+		go s.runTelegramMessageWorker(ctx)
 		go s.runCertificateRenewalWorker(ctx)
 		go s.runWebhookWorker(ctx)
 		go s.runTelegramBot(ctx)

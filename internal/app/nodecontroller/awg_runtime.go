@@ -41,6 +41,7 @@ type AWGRuntimePeer struct {
 	DeviceLimit           int64   `json:"device_limit,omitempty"`
 	IPLimit               int64   `json:"ip_limit,omitempty"`
 	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	ReflectedUsageLedger  string  `json:"reflected_usage_ledger,omitempty"`
 	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
 	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
 	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
@@ -87,6 +88,12 @@ func (r Repository) awgRuntime(ctx context.Context, nodeID int64, inbounds []map
 		if err != nil {
 			return AWGRuntime{}, err
 		}
+		applyInboundSpeedLimitToUsers(
+			inboundSpeedLimitFromInbound(inbound),
+			peers,
+			func(p *AWGRuntimePeer) *int64 { return &p.UploadSpeedLimit },
+			func(p *AWGRuntimePeer) *int64 { return &p.DownloadSpeedLimit },
+		)
 		tunnelPort := xrayconfig.RuntimeTunnelPortForInbound(inbound, usedPorts)
 		if tunnelPort > 0 {
 			usedPorts[tunnelPort] = struct{}{}
@@ -166,6 +173,13 @@ func AWGRuntimeSettings(inbound map[string]any) map[string]any {
 	out := make(map[string]any, len(settings))
 	for key, value := range settings {
 		out[key] = value
+	}
+	// NodeAgent's AmneziaWG runtime consumes address_pool. Panel configs use
+	// the same ipv4_pool_cidr aliases as the other native VPN runtimes.
+	if pool := strings.TrimSpace(firstNonEmptyOVString(
+		out["address_pool"], out["ipv4_pool_cidr"], out["ipv4PoolCidr"],
+	)); pool != "" {
+		out["address_pool"] = pool
 	}
 	delete(out, "clients")
 	return out

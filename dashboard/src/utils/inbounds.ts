@@ -43,6 +43,10 @@ export type RawInbound = {
 	upload_speed?: number;
 	download_speed?: number;
 	usage_coefficient?: number;
+	// Enforced per-user maximum for this inbound, in bits per second. 0 (or
+	// absent) means unlimited. Applies independently to every user.
+	upload_speed_limit?: number;
+	download_speed_limit?: number;
 };
 
 export const getInboundTraffic = (inbound: RawInbound) => {
@@ -145,6 +149,10 @@ export type InboundFormValues = {
 	port: string;
 	protocol: Protocol;
 	usageCoefficient: string;
+	// Enforced per-user speed caps for the inbound, in bits per second.
+	// "0" means unlimited. The cap applies to each user independently.
+	uploadSpeedLimit: string;
+	downloadSpeedLimit: string;
 
 	// proxy protocol
 	tcpAcceptProxyProtocol: boolean;
@@ -852,6 +860,27 @@ export const validateInboundFormFields = (
 		usageCoefficient > 100
 	) {
 		errors.usageCoefficient = "Usage coefficient must be between 0.01 and 100.";
+	}
+	// Enforced per-user inbound speed caps, expressed in bits per second. 0
+	// means unlimited. The caps apply independently to each user on the
+	// inbound, so a 8/8 cap lets every user reach 8/8.
+	const uploadSpeedLimit = Number(values.uploadSpeedLimit);
+	const downloadSpeedLimit = Number(values.downloadSpeedLimit);
+	if (
+		!Number.isFinite(uploadSpeedLimit) ||
+		!Number.isInteger(uploadSpeedLimit) ||
+		uploadSpeedLimit < 0
+	) {
+		errors.uploadSpeedLimit =
+			"Enforced upload speed must be a whole number of bits per second (0 for unlimited).";
+	}
+	if (
+		!Number.isFinite(downloadSpeedLimit) ||
+		!Number.isInteger(downloadSpeedLimit) ||
+		downloadSpeedLimit < 0
+	) {
+		errors.downloadSpeedLimit =
+			"Enforced download speed must be a whole number of bits per second (0 for unlimited).";
 	}
 	if (values.protocol === "pptp" && values.port.trim() !== "1723") {
 		errors.port = "PPTP port must be 1723.";
@@ -1758,6 +1787,8 @@ export const createDefaultInboundForm = (
 	port: defaultPortText(protocol),
 	protocol,
 	usageCoefficient: "1",
+	uploadSpeedLimit: "0",
+	downloadSpeedLimit: "0",
 	tcpAcceptProxyProtocol: false,
 	wsAcceptProxyProtocol: false,
 	httpupgradeAcceptProxyProtocol: false,
@@ -3212,6 +3243,12 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		usageCoefficient: Number.isFinite(Number(raw.usage_coefficient))
 			? String(raw.usage_coefficient)
 			: base.usageCoefficient,
+		uploadSpeedLimit: Number.isFinite(Number(raw.upload_speed_limit))
+			? String(raw.upload_speed_limit)
+			: base.uploadSpeedLimit,
+		downloadSpeedLimit: Number.isFinite(Number(raw.download_speed_limit))
+			? String(raw.download_speed_limit)
+			: base.downloadSpeedLimit,
 	};
 };
 
@@ -4282,6 +4319,12 @@ export const buildInboundPayload = (
 		usage_coefficient: Number.isFinite(Number(values.usageCoefficient))
 			? Number(values.usageCoefficient)
 			: 1,
+		upload_speed_limit: Number.isFinite(Number(values.uploadSpeedLimit))
+			? Number(values.uploadSpeedLimit)
+			: 0,
+		download_speed_limit: Number.isFinite(Number(values.downloadSpeedLimit))
+			? Number(values.downloadSpeedLimit)
+			: 0,
 		settings: buildSettings(values),
 	};
 

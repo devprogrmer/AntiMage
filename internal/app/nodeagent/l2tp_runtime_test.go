@@ -198,8 +198,37 @@ func TestStartAndStopL2TPInboundManageSystemPreUpHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := New(Config{DataDir: filepath.Join(root, "state")})
-	if err := server.startL2TPInbound("test", sources[0], sources[1], sources[2], sources[3], filepath.Join(root, "session.json")); err != nil {
+	chapTwo := filepath.Join(root, "source", "chap-two")
+	if err := os.WriteFile(chapTwo, []byte("alice * two *\n"), 0600); err != nil {
 		t.Fatal(err)
+	}
+	var serviceCommands []string
+	l2TPCommandContext = func(ctx context.Context, path string, args ...string) *exec.Cmd {
+		serviceCommands = append(serviceCommands, filepath.Base(path)+" "+strings.Join(args, " "))
+		return exec.CommandContext(ctx, "/bin/true")
+	}
+	if err := server.startL2TPInbound("test", sources[0], sources[1], sources[2], sources[3], filepath.Join(root, "session.json"), [32]byte{1}); err != nil {
+		t.Fatal(err)
+	}
+	startedCommands := len(serviceCommands)
+	if err := server.startL2TPInbound("test", sources[0], sources[1], sources[2], chapTwo, filepath.Join(root, "session.json"), [32]byte{2}); err != nil {
+		t.Fatal(err)
+	}
+	if len(serviceCommands) != startedCommands {
+		t.Fatalf("user-only CHAP update invoked service commands and risks dropping PPP sessions: before=%v after=%v", serviceCommands[:startedCommands], serviceCommands)
+	}
+	if raw, err := os.ReadFile(l2TPCHAPSecretsPath); err != nil || !strings.Contains(string(raw), "two") {
+		t.Fatalf("updated CHAP credentials were not installed atomically: %q, %v", raw, err)
+	}
+	beforeAgentRestart := len(serviceCommands)
+	restartedAgent := New(Config{DataDir: filepath.Join(root, "state")})
+	if err := restartedAgent.startL2TPInbound("test", sources[0], sources[1], sources[2], chapTwo, filepath.Join(root, "session.json"), [32]byte{2}); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range serviceCommands[beforeAgentRestart:] {
+		if strings.Contains(command, "stop xl2tpd") || strings.Contains(command, "start xl2tpd") || strings.Contains(command, "rereadsecrets") || strings.Contains(command, " reload") {
+			t.Fatalf("identical healthy L2TP config restarted/reloaded services after agent restart: %v", serviceCommands[beforeAgentRestart:])
+		}
 	}
 	if _, err := os.Stat(l2TPIPPreUpHookPath); err != nil {
 		t.Fatalf("L2TP startup did not install system pre-up hook: %v", err)
@@ -239,6 +268,64 @@ func TestPrepareL2TPInboundPersistsAllSessionEnforcementFields(t *testing.T) {
 		policy.UploadSpeedLimit != 1234 || policy.DownloadSpeedLimit != 5678 ||
 		policy.UsageCoefficient != 1.5 || policy.InboundCoefficient != 2 {
 		t.Fatalf("L2TP enforcement fields were not persisted: %+v", policy)
+	}
+}
+
+func TestL2TPRuntimeIdentityIncludesAdmissionAndCredentials(t *testing.T) {
+	server := New(Config{DataDir: t.TempDir()})
+	limit := int64(3)
+	base := l2TPRuntimeInbound{
+		Tag: "l2tp-identity", Port: 1701,
+		Settings: map[string]any{"ipsec_psk": "psk-a", "ipv4_pool_cidr": "10.67.0.0/24"},
+		Users:    []l2TPRuntimeUser{{UserID: 11, Username: "alice", VPNUsername: "alice-vpn", Password: "password-a", IPv4Address: "10.67.0.11", Status: "active", DeviceLimit: limit, IPLimit: 2}},
+	}
+	prepare := func(inbound l2TPRuntimeInbound, callback nativeRuntimeSessionCallback) [32]byte {
+		t.Helper()
+		files, err := server.prepareL2TPInbound(inbound, callback)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return files.Identity
+	}
+	callback := nativeRuntimeSessionCallback{URL: "https://panel.example/session", Token: "token-a", NodeID: 9}
+	identity := prepare(base, callback)
+	if got := prepare(base, callback); got != identity {
+		t.Fatal("identical L2TP runtime inputs produced different identity")
+	}
+	changedPassword := base
+	changedPassword.Users = append([]l2TPRuntimeUser(nil), base.Users...)
+	changedPassword.Users[0].Password = "password-b"
+	if prepare(changedPassword, callback) == identity {
+		t.Fatal("runtime identity ignored CHAP credentials")
+	}
+	changedAdmission := base
+	changedAdmission.Users = append([]l2TPRuntimeUser(nil), base.Users...)
+	changedAdmission.Users[0].DeviceLimit++
+	if prepare(changedAdmission, callback) == identity {
+		t.Fatal("runtime identity ignored device admission policy")
+	}
+	changedIPAdmission := base
+	changedIPAdmission.Users = append([]l2TPRuntimeUser(nil), base.Users...)
+	changedIPAdmission.Users[0].IPLimit++
+	if prepare(changedIPAdmission, callback) == identity {
+		t.Fatal("runtime identity ignored IP admission policy")
+	}
+	changedSessionPolicy := base
+	changedSessionPolicy.Users = append([]l2TPRuntimeUser(nil), base.Users...)
+	dataLimit := int64(100)
+	changedSessionPolicy.Users[0].DataLimit = &dataLimit
+	if prepare(changedSessionPolicy, callback) == identity {
+		t.Fatal("runtime identity ignored session quota policy")
+	}
+	changedCallback := callback
+	changedCallback.Token = "token-b"
+	if prepare(base, changedCallback) == identity {
+		t.Fatal("runtime identity ignored session callback credentials")
+	}
+	changedPSK := base
+	changedPSK.Settings = map[string]any{"ipsec_psk": "psk-b", "ipv4_pool_cidr": "10.67.0.0/24"}
+	if prepare(changedPSK, callback) == identity {
+		t.Fatal("runtime identity ignored the IPsec credential")
 	}
 }
 

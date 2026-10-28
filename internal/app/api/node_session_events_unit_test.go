@@ -6,9 +6,142 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
+
+func TestNodeSessionAdmissionLocksSerializePerUserAndAllowDifferentUsers(t *testing.T) {
+	server := &Server{}
+	releaseFirst := server.lockSessionAdmission(42)
+	sameUserAcquired := make(chan struct{})
+	go func() {
+		unlock := server.lockSessionAdmission(42)
+		unlock()
+		close(sameUserAcquired)
+	}()
+	select {
+	case <-sameUserAcquired:
+		releaseFirst()
+		t.Fatal("same-user admission was not serialized")
+	case <-time.After(25 * time.Millisecond):
+	}
+
+	differentUserAcquired := make(chan struct{})
+	go func() {
+		unlock := server.lockSessionAdmission(43)
+		unlock()
+		close(differentUserAcquired)
+	}()
+	select {
+	case <-differentUserAcquired:
+	case <-time.After(time.Second):
+		releaseFirst()
+		t.Fatal("admission for a different user was blocked")
+	}
+	releaseFirst()
+	select {
+	case <-sameUserAcquired:
+	case <-time.After(time.Second):
+		t.Fatal("same-user admission did not proceed after prior callback released")
+	}
+	server.admissionLockMu.Lock()
+	defer server.admissionLockMu.Unlock()
+	if len(server.admissionLockRefs) != 0 {
+		t.Fatalf("idle admission locks leaked: %d", len(server.admissionLockRefs))
+	}
+}
+
+func TestSessionAdmissionLocksUserRowAcrossMySQLPanelReplicas(t *testing.T) {
+	if query := sessionAdmissionPolicyQuery("mysql"); query != "SELECT COALESCE(ip_limit, 0), COALESCE(device_limit, 0) FROM users WHERE id = ? FOR UPDATE" {
+		t.Fatalf("MySQL admission policy query=%q; expected a transaction row lock", query)
+	}
+	if query := sessionAdmissionPolicyQuery("mariadb"); query != "SELECT COALESCE(ip_limit, 0), COALESCE(device_limit, 0) FROM users WHERE id = ? FOR UPDATE" {
+		t.Fatalf("MariaDB admission policy query=%q; expected a transaction row lock", query)
+	}
+	if query := sessionAdmissionPolicyQuery("sqlite"); query != "SELECT COALESCE(ip_limit, 0), COALESCE(device_limit, 0) FROM users WHERE id = ?" {
+		t.Fatalf("SQLite admission policy query=%q", query)
+	}
+}
+
+func TestRepeatedSeenEventsCoalesceSessionWrites(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "seen.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE vpn_user_sessions(node_id INTEGER, user_id INTEGER, session_id TEXT, ended_at DATETIME, last_seen_at DATETIME); INSERT INTO vpn_user_sessions(node_id,user_id,session_id,last_seen_at) VALUES(7,42,'wg:live','2020-01-01 00:00:00');`); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{db: db}
+	event := nodeSessionEventPayload{NodeID: 7, UserID: 42, Protocol: "wg", SessionID: "wg:live", Event: "seen"}
+	if err := server.applyNodeSessionEvent(context.Background(), event); err != nil {
+		t.Fatal(err)
+	}
+	var first string
+	if err := db.QueryRow(`SELECT last_seen_at FROM vpn_user_sessions WHERE session_id='wg:live'`).Scan(&first); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.applyNodeSessionEvent(context.Background(), event); err != nil {
+		t.Fatal(err)
+	}
+	var second string
+	if err := db.QueryRow(`SELECT last_seen_at FROM vpn_user_sessions WHERE session_id='wg:live'`).Scan(&second); err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("repeated seen event rewrote fresh last_seen_at: first=%q second=%q", first, second)
+	}
+}
+
+func TestSeenFastPathRequiresSessionOwner(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "seen-owner.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE vpn_user_sessions(node_id INTEGER, user_id INTEGER, session_id TEXT, ended_at DATETIME, last_seen_at DATETIME); INSERT INTO vpn_user_sessions(node_id,user_id,session_id,last_seen_at) VALUES(7,43,'wg:live','2020-01-01 00:00:00');`); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{db: db}
+	active, err := server.persistSeenForExistingSession(context.Background(), nodeSessionEventPayload{NodeID: 7, UserID: 42, SessionID: "wg:live"}, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active {
+		t.Fatal("heartbeat for a session owned by another user took the active-session fast path")
+	}
+}
+
+func TestActiveSeenEventDoesNotWaitForAdmissionLock(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "seen-fast-path.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE vpn_user_sessions(node_id INTEGER, user_id INTEGER, session_id TEXT, ended_at DATETIME, last_seen_at DATETIME); INSERT INTO vpn_user_sessions(node_id,user_id,session_id,last_seen_at) VALUES(7,42,'wg:live','2020-01-01 00:00:00');`); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{db: db}
+	unlockAdmission := server.lockSessionAdmission(42)
+	done := make(chan error, 1)
+	go func() {
+		done <- server.applyNodeSessionEvent(context.Background(), nodeSessionEventPayload{NodeID: 7, UserID: 42, Protocol: "wg", SessionID: "wg:live", Event: "seen"})
+	}()
+	select {
+	case err := <-done:
+		unlockAdmission()
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		unlockAdmission()
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		t.Fatal("active session heartbeat waited for the user admission lock")
+	}
+}
 
 func TestNodeSessionAdmissionClosesAddresslessLegacySession(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "sessions.db"))

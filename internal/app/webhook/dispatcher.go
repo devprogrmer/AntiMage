@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -51,7 +52,12 @@ func NewDispatcher(repo Repository, cfg Config) Dispatcher {
 
 // Enabled reports whether any webhook endpoint is configured.
 func (d Dispatcher) Enabled() bool {
-	return len(d.cfg.Addresses) > 0
+	for _, address := range d.cfg.Addresses {
+		if strings.TrimSpace(address) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Dispatch delivers one batch of due events. It is safe to call repeatedly from
@@ -97,30 +103,31 @@ func (d Dispatcher) Dispatch(ctx context.Context) error {
 	return sendErr
 }
 
-// post sends the batch to each configured endpoint and succeeds if at least one
-// endpoint accepts it, matching the legacy Python semantics.
+// post sends the batch to every configured endpoint. Partial delivery is
+// retried so one unavailable subscriber cannot silently miss an event.
 func (d Dispatcher) post(ctx context.Context, payload []byte) error {
-	var lastErr error
-	for _, address := range d.cfg.Addresses {
+	deliveredEndpoints := 0
+	var failures []error
+	for index, address := range d.cfg.Addresses {
 		if strings.TrimSpace(address) == "" {
 			continue
 		}
-		if err := d.postOne(ctx, address, payload); err != nil {
-			lastErr = err
+		deliveredEndpoints++
+		if err := d.postOne(ctx, index+1, address, payload); err != nil {
+			failures = append(failures, err)
 			continue
 		}
-		return nil
 	}
-	if lastErr == nil {
-		lastErr = fmt.Errorf("no webhook address accepted the batch")
+	if deliveredEndpoints == 0 {
+		return fmt.Errorf("no webhook endpoints are configured")
 	}
-	return lastErr
+	return errors.Join(failures...)
 }
 
-func (d Dispatcher) postOne(ctx context.Context, address string, payload []byte) error {
+func (d Dispatcher) postOne(ctx context.Context, endpoint int, address string, payload []byte) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, bytes.NewReader(payload))
 	if err != nil {
-		return err
+		return fmt.Errorf("webhook endpoint %d request construction failed", endpoint)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if strings.TrimSpace(d.cfg.Secret) != "" {
@@ -128,11 +135,11 @@ func (d Dispatcher) postOne(ctx context.Context, address string, payload []byte)
 	}
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("webhook endpoint %d request failed", endpoint)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("webhook %s returned status %d", address, resp.StatusCode)
+		return fmt.Errorf("webhook endpoint %d returned status %d", endpoint, resp.StatusCode)
 	}
 	return nil
 }

@@ -39,6 +39,7 @@ type PPTPRuntimeUser struct {
 	DeviceLimit           int64   `json:"device_limit,omitempty"`
 	IPLimit               int64   `json:"ip_limit,omitempty"`
 	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	ReflectedUsageLedger  string  `json:"reflected_usage_ledger,omitempty"`
 	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
 	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
 	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
@@ -87,6 +88,12 @@ func (r Repository) pptpRuntime(ctx context.Context, nodeID int64, inbounds []ma
 		if err != nil {
 			return PPTPRuntime{}, err
 		}
+		applyInboundSpeedLimitToUsers(
+			inboundSpeedLimitFromInbound(inbound),
+			users,
+			func(u *PPTPRuntimeUser) *int64 { return &u.UploadSpeedLimit },
+			func(u *PPTPRuntimeUser) *int64 { return &u.DownloadSpeedLimit },
+		)
 		tunnelPort := xrayconfig.RuntimeTunnelPortForInbound(inbound, usedPorts)
 		if tunnelPort > 0 {
 			usedPorts[tunnelPort] = struct{}{}

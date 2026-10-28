@@ -20,10 +20,16 @@ type XrayRuntimePolicy struct {
 	UsageCoefficient      float64 `json:"usage_coefficient"`
 	InboundCoefficient    float64 `json:"inbound_coefficient"`
 	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	ReflectedUsageLedger  string  `json:"reflected_usage_ledger,omitempty"`
 	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
 	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
 	DeviceLimit           int64   `json:"device_limit"`
 	IPLimit               int64   `json:"ip_limit"`
+	// Enforced per-user inbound caps, carried so a consumer can reconcile the
+	// user limit against the inbound maximum. Xray itself does not apply
+	// per-user shaping (see docs/offline-accounting-continuity.md).
+	InboundUploadSpeedLimit   int64 `json:"inbound_upload_speed_limit,omitempty"`
+	InboundDownloadSpeedLimit int64 `json:"inbound_download_speed_limit,omitempty"`
 }
 
 func (r Repository) xrayRuntimePolicies(ctx context.Context, node NodeRow, configJSON string, inbounds []map[string]any) ([]XrayRuntimePolicy, error) {
@@ -45,6 +51,7 @@ func (r Repository) xrayRuntimePolicies(ctx context.Context, node NodeRow, confi
 	ids := []int64{}
 	seen := map[int64]bool{}
 	coefficients := runtimeInboundUsageCoefficients(inbounds)
+	speedLimits := runtimeInboundSpeedLimits(inbounds)
 	for _, inbound := range cfg.Inbounds {
 		for _, client := range inbound.Settings.Clients {
 			prefix, _, found := strings.Cut(client.Email, ".")
@@ -52,7 +59,7 @@ func (r Repository) xrayRuntimePolicies(ctx context.Context, node NodeRow, confi
 			if !found || err != nil || id <= 0 {
 				continue
 			}
-			policies = append(policies, XrayRuntimePolicy{UserID: id, Email: client.Email, InboundTag: inbound.Tag, Protocol: inbound.Protocol, UsageCoefficient: normalizeUsageFactor(node.UsageCoefficient), InboundCoefficient: normalizeUsageFactor(coefficients[inbound.Tag])})
+			policies = append(policies, XrayRuntimePolicy{UserID: id, Email: client.Email, InboundTag: inbound.Tag, Protocol: inbound.Protocol, UsageCoefficient: normalizeUsageFactor(node.UsageCoefficient), InboundCoefficient: normalizeUsageFactor(coefficients[inbound.Tag]), InboundUploadSpeedLimit: speedLimits[inbound.Tag].Upload, InboundDownloadSpeedLimit: speedLimits[inbound.Tag].Download})
 			if !seen[id] {
 				seen[id] = true
 				ids = append(ids, id)
@@ -71,14 +78,14 @@ func (r Repository) xrayRuntimePolicies(ctx context.Context, node NodeRow, confi
 			marks[i] = "?"
 			args = append(args, id)
 		}
-		rows, err := r.db.QueryContext(ctx, `SELECT u.id,u.status,COALESCE(u.used_traffic,0),COALESCE(u.data_limit,0),COALESCE(u.expire,0),COALESCE(u.upload_speed_limit,0),COALESCE(u.download_speed_limit,0),COALESCE(u.device_limit,0),COALESCE(u.ip_limit,0),COALESCE(ref.batch_id,'')
+		rows, err := r.db.QueryContext(ctx, `SELECT u.id,u.status,COALESCE(u.used_traffic,0),COALESCE(u.data_limit,0),COALESCE(u.expire,0),COALESCE(u.upload_speed_limit,0),COALESCE(u.download_speed_limit,0),COALESCE(u.device_limit,0),COALESCE(u.ip_limit,0),COALESCE(ref.batch_id,''),COALESCE(ref.ledger_json,'')
 FROM users u LEFT JOIN node_wireguard_usage_reflection ref ON ref.node_id=? AND ref.user_id=u.id WHERE u.id IN (`+strings.Join(marks, ",")+`)`, args...)
 		if err != nil {
 			return nil, fmt.Errorf("load xray offline policy: %w", err)
 		}
 		for rows.Next() {
 			var p XrayRuntimePolicy
-			if err := rows.Scan(&p.UserID, &p.Status, &p.UsedTraffic, &p.DataLimit, &p.Expire, &p.UploadSpeedLimit, &p.DownloadSpeedLimit, &p.DeviceLimit, &p.IPLimit, &p.ReflectedUsageBatchID); err != nil {
+			if err := rows.Scan(&p.UserID, &p.Status, &p.UsedTraffic, &p.DataLimit, &p.Expire, &p.UploadSpeedLimit, &p.DownloadSpeedLimit, &p.DeviceLimit, &p.IPLimit, &p.ReflectedUsageBatchID, &p.ReflectedUsageLedger); err != nil {
 				rows.Close()
 				return nil, err
 			}

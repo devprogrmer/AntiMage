@@ -252,6 +252,7 @@ func (r Repository) autodeleteExpiredUsers(ctx context.Context, opts AutodeleteO
 		return AutodeleteResult{}, err
 	}
 	result := AutodeleteResult{}
+	deletedIDs := make([]int64, 0, len(candidates))
 	for _, row := range candidates {
 		result.Checked++
 		if row.AutoDeleteInDays < 0 {
@@ -266,7 +267,11 @@ func (r Repository) autodeleteExpiredUsers(ctx context.Context, opts AutodeleteO
 		if err := r.enqueueUserOperationForNodesTx(ctx, tx, NodeOperationRemoveUser, row.ID, now); err != nil {
 			return result, err
 		}
+		deletedIDs = append(deletedIDs, row.ID)
 		result.Deleted++
+	}
+	if err := r.recordAccountingDeletionTx(ctx, tx, deletedIDs, now); err != nil {
+		return result, err
 	}
 
 	if err := tx.Commit(); err != nil {

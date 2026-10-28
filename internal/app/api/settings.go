@@ -48,10 +48,44 @@ func (s *Server) handleAllSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "no settings changes")
 		return
 	}
+	// Prepare lazily-created records and legacy schema columns before opening
+	// the transaction. Some MySQL DDL implicitly commits an active transaction.
+	if payload.Panel != nil {
+		if _, err := s.settingsRepo.PanelSettings(r.Context()); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if payload.Runtime != nil {
+		if _, err := s.settingsRepo.RuntimeSettings(r.Context()); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if payload.Telegram != nil {
+		if _, err := s.telegramRepo.Settings(r.Context()); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if payload.Subscriptions != nil {
+		if _, err := s.settingsRepo.SubscriptionSettings(r.Context()); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	settingsRepo := s.settingsRepo.WithTx(tx)
+	telegramRepo := s.telegramRepo.WithTx(tx)
 
 	response := allSettingsResponse{}
 	if payload.Panel != nil {
-		updated, err := s.settingsRepo.UpdatePanelSettings(r.Context(), payload.Panel)
+		updated, err := settingsRepo.UpdatePanelSettings(r.Context(), payload.Panel)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -59,7 +93,7 @@ func (s *Server) handleAllSettings(w http.ResponseWriter, r *http.Request) {
 		response.Panel = &updated
 	}
 	if payload.Runtime != nil {
-		updated, err := s.settingsRepo.UpdateRuntimeSettings(r.Context(), payload.Runtime)
+		updated, err := settingsRepo.UpdateRuntimeSettings(r.Context(), payload.Runtime)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -67,7 +101,7 @@ func (s *Server) handleAllSettings(w http.ResponseWriter, r *http.Request) {
 		response.Runtime = &updated
 	}
 	if payload.Telegram != nil {
-		updated, err := s.telegramRepo.UpdateSettings(r.Context(), payload.Telegram)
+		updated, err := telegramRepo.UpdateSettings(r.Context(), payload.Telegram)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -75,7 +109,7 @@ func (s *Server) handleAllSettings(w http.ResponseWriter, r *http.Request) {
 		response.Telegram = &updated
 	}
 	if payload.Subscriptions != nil {
-		updated, err := s.settingsRepo.UpdateSubscriptionSettings(r.Context(), payload.Subscriptions)
+		updated, err := settingsRepo.UpdateSubscriptionSettings(r.Context(), payload.Subscriptions)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -83,7 +117,7 @@ func (s *Server) handleAllSettings(w http.ResponseWriter, r *http.Request) {
 		response.Subscriptions = &updated
 	}
 	for _, admin := range payload.SubscriptionAdmins {
-		updated, err := s.settingsRepo.UpdateAdminSubscriptionSettings(r.Context(), admin.ID, admin.Settings)
+		updated, err := settingsRepo.UpdateAdminSubscriptionSettings(r.Context(), admin.ID, admin.Settings)
 		if errors.Is(err, settingsapp.ErrAdminNotFound) {
 			writeError(w, http.StatusNotFound, "Admin not found")
 			return
@@ -93,6 +127,10 @@ func (s *Server) handleAllSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response.SubscriptionAdmins = append(response.SubscriptionAdmins, updated)
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 	if response.Runtime != nil {
 		s.applyRuntimeSettings(*response.Runtime)

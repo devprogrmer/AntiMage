@@ -48,6 +48,7 @@ CREATE TABLE node_wireguard_usage_reflection (
 node_id INTEGER NOT NULL,
 user_id INTEGER NOT NULL,
 batch_id TEXT NOT NULL,
+ledger_json TEXT NULL,
 updated_at DATETIME NOT NULL,
 PRIMARY KEY (node_id, user_id)
 );
@@ -56,10 +57,11 @@ INSERT INTO node_wireguard_usage_reflection (
 node_id,
 user_id,
 batch_id,
+ledger_json,
 updated_at
 ) VALUES
-(7, 10, 'wireguard-reflected-100', CURRENT_TIMESTAMP),
-(8, 10, 'wireguard-wrong-node', CURRENT_TIMESTAMP);
+(7, 10, 'wireguard-reflected-100', NULL, CURRENT_TIMESTAMP),
+(8, 10, 'wireguard-wrong-node', NULL, CURRENT_TIMESTAMP);
 `)
 	if err != nil {
 		t.Fatal(err)

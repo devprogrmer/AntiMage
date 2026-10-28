@@ -39,6 +39,7 @@ service NodeUsageService {
   rpc AckUserUsage(AckUsageRequest) returns (AckUsageResponse);
   rpc CollectOutboundUsage(CollectUsageRequest) returns (OutboundUsageBatch);
   rpc AckOutboundUsage(AckUsageRequest) returns (AckUsageResponse);
+  rpc RetireAccountingAnchors(RetireAccountingAnchorsRequest) returns (RetireAccountingAnchorsResponse);
 }
 
 service NodeLogsService {
@@ -370,6 +371,7 @@ message TransferMetrics {
 message CollectUsageRequest {
   string collector_id = 1;
   bool reset = 2;
+  uint32 reflection_version = 3;
 }
 
 message UserUsageBatch {
@@ -377,6 +379,8 @@ message UserUsageBatch {
   repeated UserUsageSample stats = 2;
   repeated OnlineUserIP online_ips = 3;
   repeated UserTrafficSpeed speeds = 4;
+  // Per-user cumulative raw receipts; persisted with staged usage, reflected only on flush.
+  map<int64, string> reflection_receipts = 5;
 }
 
 message UserTrafficSpeed {
@@ -389,6 +393,8 @@ message UserUsageSample {
   string uid = 1;
   uint64 value = 2;
   string inbound_tag = 3;
+  string protocol = 4;
+  string child_batch_id = 5;
 }
 
 message OnlineUserIP {
@@ -427,6 +433,27 @@ message AckUsageRequest {
 message AckUsageResponse {
   string batch_id = 1;
   bool acknowledged = 2;
+}
+
+// Retirement proofs are panel-persisted only after the delete tombstone and
+// cumulative raw accounting state commit in the same durable database.
+message AccountingRetirementProof {
+  string proof_id = 1;
+  int64 user_id = 2;
+  string epoch = 3;
+  string owner_key = 4;
+  uint64 total_raw = 5;
+  uint64 legacy_raw = 6;
+  int64 node_id = 7;
+}
+
+message RetireAccountingAnchorsRequest {
+  repeated AccountingRetirementProof proofs = 1;
+}
+
+message RetireAccountingAnchorsResponse {
+  bool acknowledged = 1;
+  repeated string accepted_proof_ids = 2;
 }
 
 message StreamLogsRequest {

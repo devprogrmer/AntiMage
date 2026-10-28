@@ -97,6 +97,15 @@ stage() {
     "$ANTIMAGE_PPTP_TEST_BINARY" -test.run='^TestPPTPNativeAccountingStage$' -test.v
 }
 
+mutation_stage() {
+  local action="$1"
+  env ANTIMAGE_PPTP_NATIVE_STATE="$ROOT/pptp-state" \
+    ANTIMAGE_PPTP_MUTATION_ACTION="$action" \
+    ANTIMAGE_PPTP_PID="$(cat "$ROOT/server.pid")" \
+    ANTIMAGE_NODE_HELPER_BINARY="$ANTIMAGE_NODE_HELPER_BINARY" \
+    "$ANTIMAGE_PPTP_TEST_BINARY" -test.run='^TestPPTPTargetedMutationNativeStage$' -test.v
+}
+
 panel_replay() {
   env ANTIMAGE_PPTP_NATIVE_STATE="$ROOT/pptp-state" \
     ANTIMAGE_NATIVE_PANEL_REQUIRE_FINAL="${1:-0}" \
@@ -181,6 +190,159 @@ wait_for() {
   return 1
 }
 
+wait_for_pptp_user_session() {
+  local user_id="$1" client_ns="$2" assigned_ip="$3" client_ip="$4"
+  local client_assigned
+  for _ in $(seq 1 600); do
+    client_assigned="$(ip netns exec "$client_ns" ip -o -4 addr show dev ppp0 2>/dev/null | awk 'NR == 1 { split($4, address, "/"); print address[1] }' || true)"
+    if [ "$client_assigned" = "$assigned_ip" ] && python3 - "$ROOT/pptp-state" "$user_id" "$assigned_ip" "$client_ip" <<'PY' >/dev/null 2>&1
+import glob, json, os, sys
+root, user_id, assigned, client = sys.argv[1:]
+for path in glob.glob(os.path.join(root, "pptp", "*", "ppp-accounting", "active", "*.json")):
+    try:
+        with open(path, encoding="utf-8") as stream: record = json.load(stream)
+    except (OSError, ValueError):
+        continue
+    if (int(record.get("UserID", 0)) == int(user_id)
+            and record.get("PeerIP") == assigned
+            and record.get("ClientIP") == client
+            and record.get("Final") is not True):
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+    then
+      echo "PPTP user ${user_id} authenticated with PPP address ${assigned_ip} and client ${client_ip}"
+      return 0
+    fi
+    sleep .1
+  done
+  # Recheck briefly after the last poll to avoid reporting a timeout if the
+  # session becomes durable while the final poll hands off to the callback.
+  for _ in $(seq 1 50); do
+    client_assigned="$(ip netns exec "$client_ns" ip -o -4 addr show dev ppp0 2>/dev/null | awk 'NR == 1 { split($4, address, "/"); print address[1] }' || true)"
+    if [ "$client_assigned" = "$assigned_ip" ] && python3 - "$ROOT/pptp-state" "$user_id" "$assigned_ip" "$client_ip" <<'PY' >/dev/null 2>&1
+import glob, json, os, sys
+root, user_id, assigned, client = sys.argv[1:]
+for path in glob.glob(os.path.join(root, "pptp", "*", "ppp-accounting", "active", "*.json")):
+    try:
+        with open(path, encoding="utf-8") as stream: record = json.load(stream)
+    except (OSError, ValueError):
+        continue
+    if (int(record.get("UserID", 0)) == int(user_id)
+            and record.get("PeerIP") == assigned
+            and record.get("ClientIP") == client
+            and record.get("Final") is not True):
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+    then
+      echo "PPTP user ${user_id} authenticated with PPP address ${assigned_ip} and client ${client_ip}"
+      return 0
+    fi
+    sleep .1
+  done
+  echo "timeout waiting for PPTP user ${user_id} authenticated PPP session (expected server address ${assigned_ip}, client ${client_ip})" >&2
+  for log in "$ROOT"/pppd-client-b.log "$ROOT"/pptpd.log; do
+    [ -f "$log" ] && { echo "--- $log ---" >&2; cat "$log" >&2; }
+  done
+  capture_ppp_state "failed waiting for PPTP user ${user_id} authenticated session"
+  return 1
+}
+
+wait_for_pptp_current_accounting_session() {
+  local user_id="$1" assigned_ip="$2" client_ip="$3"
+  for _ in $(seq 1 600); do
+    if python3 - "$ROOT/pptp-state" "$user_id" "$assigned_ip" "$client_ip" <<'PY' >/dev/null 2>&1
+import glob, json, os, sys
+root, user_id, assigned, client = sys.argv[1:]
+try:
+    pid = open('/run/ppp0.pid', encoding='ascii').read().strip()
+    boot = open('/proc/sys/kernel/random/boot_id', encoding='ascii').read().strip()
+    ifindex = open('/sys/class/net/ppp0/ifindex', encoding='ascii').read().strip()
+    stat = open(f'/proc/{pid}/stat', encoding='ascii').read()
+except (OSError, ValueError):
+    raise SystemExit(1)
+end = stat.rfind(')')
+if end < 0:
+    raise SystemExit(1)
+fields = stat[end + 1:].split()
+if len(fields) < 20 or fields[0] in ('Z', 'X'):
+    raise SystemExit(1)
+process = f'{boot}:{pid}:{fields[19]}'
+identity = f'{boot}:{ifindex}'
+for path in glob.glob(os.path.join(root, 'pptp', '*', 'ppp-accounting', 'active', 'ppp0-*.json')):
+    try:
+        with open(path, encoding='utf-8') as stream:
+            record = json.load(stream)
+    except (OSError, ValueError):
+        continue
+    if (int(record.get('UserID', 0)) == int(user_id)
+            and record.get('Interface') == 'ppp0'
+            and record.get('PeerIP') == assigned
+            and record.get('ClientIP') == client
+            and record.get('Identity') == identity
+            and record.get('Process') == process
+            and record.get('Final') is not True):
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+    then
+      echo "PPTP accounting session verified for user ${user_id}: ppp0=${assigned_ip}, client=${client_ip}"
+      return 0
+    fi
+    sleep .1
+  done
+  find "$ROOT/pptp-state" -path '*/ppp-accounting/active/ppp0-*.json' -type f -print -exec cat {} \; >&2
+  echo "timeout waiting for current PPTP accounting identity: user=${user_id} peer=${assigned_ip} client=${client_ip}" >&2
+  return 1
+}
+
+assert_pptp_user_auth_rejected() {
+  local log_path="$1" status="$2"
+  if [ "$status" -eq 0 ] || [ "$status" -eq 124 ]; then
+    cat "$log_path" >&2
+    echo "removed PPTP user reconnect exited unexpectedly with status $status" >&2
+    return 1
+  fi
+  if ! grep -Eiq 'CHAP authentication failed|authentication failed|peer refused to authenticate' "$log_path"; then
+    cat "$log_path" >&2
+    echo 'removed PPTP user probe failed without an explicit PPP authentication rejection' >&2
+    return 1
+  fi
+  if ip netns exec "$NS_B" ip link show ppp0 >/dev/null 2>&1; then
+    cat "$log_path" >&2
+    echo 'removed PPTP user obtained a usable PPP interface after deletion' >&2
+    return 1
+  fi
+  if python3 - "$ROOT/pptp-state" <<'PY'
+import glob, json, os, sys
+for path in glob.glob(sys.argv[1] + '/pptp/*/ppp-accounting/active/*.json'):
+    try:
+        with open(path, encoding='utf-8') as stream: record = json.load(stream)
+    except (OSError, ValueError):
+        continue
+    if int(record.get('UserID', 0)) != 8 or record.get('Final') is True:
+        continue
+    session_id = str(record.get('ID', '')).strip()
+    final_path = os.path.join(os.path.dirname(os.path.dirname(path)), 'final', session_id + '.json')
+    try:
+        with open(final_path, encoding='utf-8') as stream: final = json.load(stream)
+    except (OSError, ValueError):
+        raise SystemExit(1)
+    if not (final.get('Final') is True
+            and final.get('ID') == record.get('ID')
+            and int(final.get('UserID', 0)) == 8
+            and final.get('Process') == record.get('Process')):
+        raise SystemExit(1)
+PY
+  then
+    return 0
+  fi
+  cat "$log_path" >&2
+  echo 'removed PPTP user still has an effective active accounting session after the rejection probe' >&2
+  return 1
+}
+
 wait_for_empty_session_outbox() {
   for _ in $(seq 1 300); do
     if ! find "$ROOT/pptp-state/native-session-outbox" -type f -name '*.json' -print -quit 2>/dev/null | grep -q .; then return 0; fi
@@ -234,6 +396,9 @@ capture_ppp_state() {
     ip netns exec "$NS" ip -details addr show || true
     ip netns exec "$NS" ip link show || true
     ip netns exec "$NS" ip route show table all || true
+    ip netns exec "$NS_B" ip -details addr show || true
+    ip netns exec "$NS_B" ip link show || true
+    ip netns exec "$NS_B" ip route show table all || true
     echo '--- PPP pid files ---'
     ls -la /run/ppp* /var/run/ppp* 2>/dev/null || true
     cat /run/ppp*.pid /var/run/ppp*.pid 2>/dev/null || true
@@ -254,13 +419,15 @@ capture_ppp_state() {
 start_server() {
   pptpd -f -c "$server_config" >"$ROOT/pptpd.log" 2>&1 &
   SERVER_PID="$!"
+  echo "$SERVER_PID" >"$ROOT/server.pid"
   PIDS+=("$SERVER_PID")
   wait_for 'PPTP TCP control listener' sh -c 'ss -lnt "( sport = :1723 )" | grep -q 1723'
 }
 
 start_client() {
   local client_ns="${1:-$NS}" server_ip="${2:-10.251.0.1}" output="${3:-$ROOT/pppd-client.log}" wait_active="${4:-1}"
-  ip netns exec "$client_ns" pppd nodetach noauth name native-pptp password native-pptp-secret \
+  local name="${5:-native-pptp}" password="${6:-native-pptp-secret}"
+  ip netns exec "$client_ns" pppd nodetach noauth name "$name" password "$password" \
     refuse-eap refuse-pap refuse-chap refuse-mschap \
     require-mppe-128 noipdefault nodefaultroute mtu 1200 mru 1200 \
     pty "$PPTP_CLIENT --nolaunchpppd $server_ip --loglevel 0" \
@@ -272,6 +439,17 @@ start_client() {
     wait_for 'server PPP interface' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
     wait_for 'durable server session-start hook' sh -c 'find "$1" -path "*/ppp-accounting/active/ppp*.json" -print -quit | grep -q .' _ "$ROOT/pptp-state"
   fi
+}
+
+start_client_b() {
+  local wait_active="${1:-1}"
+  start_client "$NS_B" 10.252.0.1 "$ROOT/pppd-client-b.log" "$wait_active" "${CLIENT_B_NAME:-native-pptp-bob}" "${CLIENT_B_PASSWORD:-native-pptp-bob-v1}"
+  CLIENT_B_PID="$CLIENT_PID"
+}
+
+set_client_b_credentials() {
+  CLIENT_B_NAME="$1"
+  CLIENT_B_PASSWORD="$2"
 }
 
 ip netns add "$NS"
@@ -302,6 +480,41 @@ client_a_pid="$CLIENT_PID"
 wait_for 'first PPTP tunnel traffic' ip netns exec "$NS" ping -c 1 -W 1 10.68.0.1
 session_config="$(find "$ROOT/pptp-state/pptp" -name session-helper.json -print -quit)"
 assert_ppp_real_ip "$ROOT/pptp-state" 10.251.0.2
+
+echo '=== native targeted PPTP Add/Update/Remove preserves unrelated PPP session ==='
+server_pid_before="$(cat "$ROOT/server.pid")"
+alice_ifindex_before="$(cat "/sys/class/net/$(ip -o -4 addr show | awk '$2 ~ /^ppp[0-9]+$/ && $4 ~ /^10\.68\.0\.1(\/.*)?$/ { print $2; exit }')/ifindex")"
+mutation_stage add
+mutation_stage rollback
+set_client_b_credentials native-pptp-bob native-pptp-bob-v1
+start_client_b 0
+wait_for_pptp_user_session 8 "$NS_B" 10.68.0.3 10.252.0.2
+mutation_stage update
+ip netns exec "$NS" ping -c 2 -W 2 10.68.0.1
+ip netns exec "$NS_B" ping -c 2 -W 2 10.68.0.1
+mutation_stage remove
+wait_for_gone 'removed Bob PPP interface' ip netns exec "$NS_B" ip link show ppp0
+ip netns exec "$NS" ping -c 2 -W 2 10.68.0.1
+echo '=== removed PPTP user cannot authenticate again ==='
+stop_pid "$CLIENT_B_PID"
+timeout 20s ip netns exec "$NS_B" pppd nodetach maxfail 1 noauth name native-pptp-bob password native-pptp-bob-v2 \
+  refuse-eap refuse-pap refuse-chap refuse-mschap \
+  require-mppe-128 noipdefault nodefaultroute mtu 1200 mru 1200 \
+  pty "$PPTP_CLIENT --nolaunchpppd 10.252.0.1 --loglevel 0" \
+  >"$ROOT/pppd-removed-user-reconnect.log" 2>&1 &
+removed_probe_pid="$!"
+PIDS+=("$removed_probe_pid")
+set +e
+wait "$removed_probe_pid"
+removed_probe_rc=$?
+set -e
+forget_pid "$removed_probe_pid"
+assert_pptp_user_auth_rejected "$ROOT/pppd-removed-user-reconnect.log" "$removed_probe_rc"
+server_pid_after="$(cat "$ROOT/server.pid")"
+alice_ifindex_after="$(cat "/sys/class/net/$(ip -o -4 addr show | awk '$2 ~ /^ppp[0-9]+$/ && $4 ~ /^10\.68\.0\.1(\/.*)?$/ { print $2; exit }')/ifindex")"
+test "$server_pid_after" = "$server_pid_before"
+test "$alice_ifindex_after" = "$alice_ifindex_before"
+echo "PPTP targeted mutation preserved pptpd PID=${server_pid_after} and Alice PPP ifindex=${alice_ifindex_after}"
 
 echo '=== native concurrent PPTP DeviceLimit=1; reserve first authenticated session ==='
 set_session_limits "$session_config" 1 0
@@ -367,6 +580,7 @@ wait_for_gone 'server PPP interface shutdown' sh -c 'ip -o link show | grep -q "
 start_server
 start_client
 wait_for 'post-restart PPTP tunnel traffic' ip netns exec "$NS" ping -c 1 -W 1 10.68.0.1
+wait_for_pptp_current_accounting_session 7 10.68.0.2 10.251.0.2
 stage collect-next "$ROOT/pptp-state"
 panel_replay
 stage ack "$ROOT/pptp-state"

@@ -528,7 +528,26 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 	}
 	result := ProcessOperationsResult{}
 	blockedNodes := map[int64]bool{}
-	foldedNodes := bulkRuntimeUserOperationNodes(operations)
+	bulkCandidates := bulkRuntimeUserOperationNodes(operations)
+	bulkUserIDs := make([]int64, 0)
+	bulkNodeIDs := make([]int64, 0, len(bulkCandidates))
+	for _, operation := range operations {
+		if operation.NodeID.Valid && bulkCandidates[operation.NodeID.Int64] && operation.UserID.Valid {
+			bulkUserIDs = append(bulkUserIDs, operation.UserID.Int64)
+		}
+	}
+	for nodeID := range bulkCandidates {
+		bulkNodeIDs = append(bulkNodeIDs, nodeID)
+	}
+	userProtocols, err := c.repo.RuntimeMutationProtocolsByUserIDs(ctx, bulkUserIDs)
+	if err != nil {
+		return result, err
+	}
+	nodeCapabilities, err := c.repo.RuntimeCapabilitiesByNodeIDs(ctx, bulkNodeIDs)
+	if err != nil {
+		return result, err
+	}
+	foldedNodes := bulkRuntimeUserOperationNodesWithProtocols(operations, userProtocols, nodeCapabilities)
 	for nodeID := range foldedNodes {
 		if err := c.repo.QueueSyncConfig(ctx, &nodeID, nil); err != nil {
 			return result, err
@@ -579,6 +598,164 @@ func bulkRuntimeUserOperationNodes(operations []OperationRow) map[int64]bool {
 		}
 	}
 	return result
+}
+
+func bulkRuntimeUserOperationNodesWithProtocols(operations []OperationRow, protocolsByUser map[int64][]string, capabilitiesByNode map[int64]map[string]bool) map[int64]bool {
+	candidates := bulkRuntimeUserOperationNodes(operations)
+	result := make(map[int64]bool, len(candidates))
+	for nodeID := range candidates {
+		for _, operation := range operations {
+			if !operation.NodeID.Valid || operation.NodeID.Int64 != nodeID || !isRuntimeUserOperation(operation.OperationType) {
+				continue
+			}
+			if !operation.UserID.Valid {
+				result[nodeID] = true
+				break
+			}
+			protocols := protocolsByUser[operation.UserID.Int64]
+			if len(protocols) == 0 {
+				result[nodeID] = true
+				break
+			}
+			for _, protocol := range protocols {
+				capability := targetedUserCapability(protocol, operation.OperationType)
+				if capability == "" || !capabilitiesByNode[nodeID][capability] {
+					result[nodeID] = true
+					break
+				}
+			}
+			if result[nodeID] {
+				break
+			}
+		}
+	}
+	return result
+}
+
+func targetedUserCapability(protocol, operation string) string {
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	operation = strings.ToLower(strings.TrimSpace(operation))
+	switch protocol {
+	case "vless":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_vless"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_vless"
+		}
+	case "vmess":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_vmess"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_vmess"
+		}
+	case "trojan":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_trojan"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_trojan"
+		}
+	case "shadowsocks":
+		// Both Shadowsocks AEAD and multi-user 2022 users carry proxies.type
+		// "shadowsocks"; the method decides which account message the nodeagent
+		// encodes, so one capability covers them.
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_shadowsocks"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_shadowsocks"
+		}
+	case "hysteria", "hysteria2":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_hysteria"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_hysteria"
+		}
+	case "wireguard":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_wireguard"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_wireguard"
+		}
+	case "amneziawg":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_amneziawg"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_amneziawg"
+		}
+	case "openvpn":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_openvpn"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_openvpn"
+		}
+	case "l2tp":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_l2tp"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_l2tp"
+		}
+	case "pptp":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_pptp"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_pptp"
+		}
+	case "ikev2":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_ikev2"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_ikev2"
+		}
+	case "anyconnect", "cisco":
+		switch operation {
+		case "update_user":
+			return "targeted_user_update_anyconnect"
+		case "add_user", "remove_user", "disable_user", "enable_user":
+			return "targeted_user_add_remove_anyconnect"
+		}
+	}
+	return ""
+}
+
+func supportsTargetedUserMutation(client *nodeclient.Client, protocols []string, operation string, assignedToNode bool) bool {
+	if client == nil || !assignedToNode || len(protocols) != 1 {
+		return false
+	}
+	capability := targetedUserCapability(protocols[0], operation)
+	return capability != "" && client.Supports(capability)
+}
+
+func (c Controller) runtimeUserOperationTargeted(ctx context.Context, nodeID int64, operation OperationRow) (bool, error) {
+	if !operation.UserID.Valid || operation.UserID.Int64 <= 0 {
+		return false, nil
+	}
+	protocols, err := c.repo.RuntimeMutationProtocolsByUserIDs(ctx, []int64{operation.UserID.Int64})
+	if err != nil {
+		return false, err
+	}
+	userProtocols := protocols[operation.UserID.Int64]
+	if len(userProtocols) != 1 {
+		return false, nil
+	}
+	capability := targetedUserCapability(userProtocols[0], operation.OperationType)
+	if capability == "" {
+		return false, nil
+	}
+	capabilities, err := c.repo.RuntimeCapabilitiesByNodeIDs(ctx, []int64{nodeID})
+	if err != nil {
+		return false, err
+	}
+	return capabilities[nodeID][capability], nil
 }
 
 func (c Controller) ProcessRuntimeUserOperations(ctx context.Context, req ProcessUserOperationsRequest) (ProcessOperationsResult, error) {
@@ -931,8 +1108,21 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow, 
 					return err
 				}
 			}
-			if operation.OperationType == "update_user" && !client.Supports("targeted_user_update") {
+			targeted, targetErr := c.runtimeUserOperationTargeted(ctx, node.ID, operation)
+			if targetErr != nil {
+				return targetErr
+			}
+			protocols, protocolErr := c.repo.RuntimeMutationProtocolsByUserIDs(ctx, []int64{operation.UserID.Int64})
+			if protocolErr != nil {
+				return protocolErr
+			}
+			userProtocols := protocols[operation.UserID.Int64]
+			// Require an explicit node capability and a single protocol before
+			// using any targeted path; mixed or legacy nodes stay on SyncConfig.
+			if !supportsTargetedUserMutation(client, userProtocols, operation.OperationType, targeted) {
 				syncConfig = true
+			} else {
+				syncConfig = false
 			}
 			if !syncConfig {
 				return c.grpcApplyUserOperation(ctx, client, node, operation, prepared)
@@ -1274,6 +1464,12 @@ func runtimeResult(node NodeRow, state *nodev1.RuntimeState, metrics *nodev1.Met
 		result.AppliedRevision = state.GetAppliedRevision()
 		result.DesiredRevision = state.GetAppliedRevision()
 		result.Capabilities = append([]string(nil), state.GetCapabilities()...)
+		for _, capability := range result.Capabilities {
+			switch capability {
+			case "accounting_degraded", "policy_degraded", "vpn_runtime_degraded":
+				result.AgentStatus = "degraded"
+			}
+		}
 	}
 	if metrics != nil {
 		system := metrics.GetSystem()

@@ -142,6 +142,52 @@ func TestPPPPreUpAdmissionRejectsDurableOfflineQuota(t *testing.T) {
 	}
 }
 
+func TestPPPTransitioningPolicyBlocksNewSessionsButAllowsStop(t *testing.T) {
+	dir := t.TempDir()
+	runtimeRoot := filepath.Join(dir, "l2tp", "native")
+	if err := os.MkdirAll(runtimeRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(runtimeRoot, "session-helper.json")
+	if err := offlineDurableJSON(configPath, nativeSessionHelperConfig{
+		Protocol: "l2tp", InboundTag: "native", Users: map[string]int64{"alice": 42},
+		Policies: map[string]nativeSessionUserPolicy{"alice": {Status: "active"}},
+		StateDir: filepath.Join(runtimeRoot, "sessions"), Transitioning: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("common_name", "alice")
+	t.Setenv("PPPD_PID", "123")
+	t.Setenv("IPPARAM", "198.51.100.10")
+	previousProcess, previousProtocol, previousSignal := pppOfflineReadProcess, pppOfflineDetectProtocol, nativePPPProcessSignal
+	pppOfflineReadProcess = func(pid string) (string, error) { return "fixture-boot:123:1", nil }
+	pppOfflineDetectProtocol = func(string) (string, error) { return "l2tp", nil }
+	var signaled string
+	nativePPPProcessSignal = func(identity string) error { signaled = identity; return nil }
+	t.Cleanup(func() {
+		pppOfflineReadProcess, pppOfflineDetectProtocol, nativePPPProcessSignal = previousProcess, previousProtocol, previousSignal
+	})
+	if err := pppOfflineWriteAdmissionReservation(dir, 42, "native", "fixture-boot:123:1", "198.51.100.10"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, event := range []string{"pre-up", "start"} {
+		err := RunNativeSessionEventHelper([]string{configPath, event})
+		if err == nil || !strings.Contains(err.Error(), "policy is being updated") {
+			t.Fatalf("%s should be held during policy transition, got %v", event, err)
+		}
+	}
+	if err := RunNativeSessionEventHelper([]string{configPath, "stop"}); err == nil || strings.Contains(err.Error(), "policy is being updated") {
+		t.Fatalf("stop should pass the transition gate and reach session lookup, got %v", err)
+	}
+	if signaled != "fixture-boot:123:1" {
+		t.Fatalf("transitioning start did not terminate its exact PPP process: %q", signaled)
+	}
+	if _, err := os.Stat(pppOfflineAdmissionReservationPath(dir, signaled)); !os.IsNotExist(err) {
+		t.Fatalf("transitioning start left a stale pending reservation: %v", err)
+	}
+}
+
 func TestL2TPPreUpDeviceLimitDenialPersistsPeerWithoutCreatingSession(t *testing.T) {
 	dir := t.TempDir()
 	runtimeRoot := filepath.Join(dir, "l2tp", "native")
@@ -168,7 +214,7 @@ func TestL2TPPreUpDeviceLimitDenialPersistsPeerWithoutCreatingSession(t *testing
 	t.Setenv("common_name", "alice")
 	t.Setenv("PPPD_PID", "222")
 	t.Setenv("IPPARAM", "10.252.0.2")
-	previousProcess, previousSignal := pppOfflineReadProcess, nativePPPProcessSignal
+	previousProcess, previousLiveProcess, previousSignal := pppOfflineReadProcess, pppOfflineReadLiveProcess, nativePPPProcessSignal
 	previousIdentity, previousProtocol := pppOfflineReadIdentity, pppOfflineDetectProtocol
 	pppOfflineReadProcess = func(pid string) (string, error) {
 		switch pid {
@@ -180,6 +226,7 @@ func TestL2TPPreUpDeviceLimitDenialPersistsPeerWithoutCreatingSession(t *testing
 			return "", os.ErrNotExist
 		}
 	}
+	pppOfflineReadLiveProcess = pppOfflineReadProcess
 	pppOfflineReadIdentity = func(iface string) (string, error) {
 		if iface == first.Interface {
 			return first.Identity, nil
@@ -190,7 +237,7 @@ func TestL2TPPreUpDeviceLimitDenialPersistsPeerWithoutCreatingSession(t *testing
 	var signaled string
 	nativePPPProcessSignal = func(identity string) error { signaled = identity; return nil }
 	t.Cleanup(func() {
-		pppOfflineReadProcess, nativePPPProcessSignal = previousProcess, previousSignal
+		pppOfflineReadProcess, pppOfflineReadLiveProcess, nativePPPProcessSignal = previousProcess, previousLiveProcess, previousSignal
 		pppOfflineReadIdentity, pppOfflineDetectProtocol = previousIdentity, previousProtocol
 	})
 
@@ -393,9 +440,22 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 	if err := RunNativeSessionEventHelper([]string{configPath, "start", "203.0.113.11"}); err != nil {
 		t.Fatal(err)
 	}
+	// ip-down may not retain the address variables provided to ip-up. Stop
+	// must use the exact pppd process identity and durable start record.
+	t.Setenv("IPREMOTE", "")
+	t.Setenv("REMOTENUMBER", "")
+	t.Setenv("trusted_ip", "")
+	t.Setenv("trusted_ip6", "")
+	t.Setenv("IFNAME", "ppp0")
+	t.Setenv("BYTES_SENT", "1234")
+	t.Setenv("BYTES_RCVD", "5678")
 
-	if len(events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(events))
+	if err := RunNativeSessionEventHelper([]string{configPath, "stop"}); err != nil {
+		t.Fatalf("stop did not recover durable PPP session metadata: %v", err)
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("expected start and stop events, got %d", len(events))
 	}
 	event := events[0]
 	if event.Protocol != protocol {
@@ -406,6 +466,9 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 	}
 	if event.AssignedIP != "10.67.0.10" || event.ClientIP != "203.0.113.11" {
 		t.Fatalf("unexpected event addresses: %#v", event)
+	}
+	if events[1].Event != "stop" || events[1].SessionID != event.SessionID || events[1].AssignedIP != event.AssignedIP || events[1].ClientIP != event.ClientIP {
+		t.Fatalf("stop did not preserve exact start identity after environment changed: start=%#v stop=%#v", event, events[1])
 	}
 }
 

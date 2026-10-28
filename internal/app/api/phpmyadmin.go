@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
@@ -220,6 +221,11 @@ func (s *Server) handlePHPMyAdminProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.servePHPMyAdminLocal(w, r, status); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "phpMyAdmin request body exceeds the configured upload limit")
+			return
+		}
 		writeError(w, http.StatusBadGateway, "phpMyAdmin proxy failed: "+err.Error())
 	}
 }
@@ -416,13 +422,17 @@ func ensurePHPMyAdminRuntimeConfig(credentials phpMyAdminCredentials, theme stri
 	if strings.TrimSpace(credentials.Password) == "" {
 		allowNoPassword = "true"
 	}
+	phpDirectives := ""
+	for _, directive := range phpMyAdminUploadPHPDirectives() {
+		name, value, ok := strings.Cut(directive, "=")
+		if !ok {
+			continue
+		}
+		phpDirectives += "ini_set(" + phpString(name) + ", " + phpString(value) + ");\n"
+	}
 	config := "<?php\n" +
 		"declare(strict_types=1);\n" +
-		"ini_set('upload_max_filesize', '1024M');\n" +
-		"ini_set('post_max_size', '1024M');\n" +
-		"ini_set('memory_limit', '4096M');\n" +
-		"ini_set('max_execution_time', '0');\n" +
-		"ini_set('max_input_time', '0');\n" +
+		phpDirectives +
 		"$i = 1;\n" +
 		"$cfg['Servers'] = [];\n" +
 		"$cfg['Servers'][$i] = [];\n" +

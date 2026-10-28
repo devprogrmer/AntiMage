@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	managedprocess "github.com/antimage/antimage/internal/platform/process"
@@ -24,8 +25,9 @@ var (
 )
 
 type openVPNProcess struct {
-	cmd  *exec.Cmd
-	done chan struct{}
+	cmd        *exec.Cmd
+	done       chan struct{}
+	configHash [32]byte
 
 	waitMu  sync.Mutex
 	waitErr error
@@ -75,12 +77,25 @@ func (s *Server) startOpenVPNInbound(
 			tag,
 		)
 	}
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("openvpn %q: read config: %w", tag, err)
+	}
+	configHash := sha256.Sum256(config)
 
 	s.mu.Lock()
 	previous := s.openVPNRuntimes[tag]
 	s.mu.Unlock()
 
 	if previous != nil {
+		select {
+		case <-previous.done:
+			// A dead process must be replaced even when its old config hash matches.
+		default:
+			if previous.configHash == configHash {
+				return nil
+			}
+		}
 		if err := stopOpenVPNProcess(previous); err != nil {
 			return fmt.Errorf(
 				"openvpn %q: stop previous runtime: %w",
@@ -119,8 +134,9 @@ func (s *Server) startOpenVPNInbound(
 	}
 
 	runtime := &openVPNProcess{
-		cmd:  cmd,
-		done: make(chan struct{}),
+		cmd:        cmd,
+		done:       make(chan struct{}),
+		configHash: configHash,
 	}
 
 	go func() {
@@ -316,6 +332,16 @@ func (s *Server) stopOpenVPNInbound(
 }
 
 func (s *Server) stopAllOpenVPNRuntimes() {
+	if err := s.stopAllOpenVPNRuntimesVerified(); err != nil {
+		s.appendLog("stop OpenVPN runtimes failed: " + err.Error())
+	}
+}
+
+// stopAllOpenVPNRuntimesVerified returns only after every managed OpenVPN
+// process has exited and its Wait goroutine has recorded completion. Callers
+// may use this as process evidence; clearing the in-memory runtime map alone is
+// not sufficient evidence that the daemon stopped.
+func (s *Server) stopAllOpenVPNRuntimesVerified() error {
 	s.mu.Lock()
 
 	runtimes := make(
@@ -332,6 +358,7 @@ func (s *Server) stopAllOpenVPNRuntimes() {
 
 	s.mu.Unlock()
 
+	var stopErr error
 	for tag, runtime := range runtimes {
 		if runtime == nil {
 			continue
@@ -346,8 +373,16 @@ func (s *Server) stopAllOpenVPNRuntimes() {
 				"stop openvpn runtime failed: " +
 					tag + ": " + err.Error(),
 			)
+			stopErr = errors.Join(stopErr, fmt.Errorf("stop OpenVPN %q: %w", tag, err))
+			continue
+		}
+		select {
+		case <-runtime.done:
+		default:
+			stopErr = errors.Join(stopErr, fmt.Errorf("OpenVPN %q process exit was not observed", tag))
 		}
 	}
+	return stopErr
 }
 
 func (s *Server) stopRemovedOpenVPNRuntimes(

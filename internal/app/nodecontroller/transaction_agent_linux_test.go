@@ -80,9 +80,14 @@ func TestControllerStartupConsumesActualAgentRestoreEvidenceOverTLS(t *testing.T
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		stop := *startFence
-		stop.CommandId = "cleanup-runtime"
-		_, _ = agent.StopRuntime(context.Background(), &nodev1.StopRuntimeRequest{OperationId: "restore-op", Fence: &stop})
+		stop := &nodev1.DestructiveFence{
+			OperationId:        startFence.GetOperationId(),
+			CommandId:          "cleanup-runtime",
+			ResourceId:         startFence.GetResourceId(),
+			ResourceGeneration: startFence.GetResourceGeneration(),
+			LeaseGeneration:    startFence.GetLeaseGeneration(),
+		}
+		_, _ = agent.StopRuntime(context.Background(), &nodev1.StopRuntimeRequest{OperationId: "restore-op", Fence: stop})
 	})
 
 	tlsFixture := httptest.NewTLSServer(nil)

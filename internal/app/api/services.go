@@ -419,6 +419,9 @@ func (s *Server) handleServiceDelete(w http.ResponseWriter, r *http.Request, ser
 			if _, err := tx.ExecContext(r.Context(), `UPDATE users SET status = 'deleted', service_id = NULL WHERE service_id = ?`, serviceID); err != nil {
 				return err
 			}
+			if err := userapp.RecordAccountingDeletionTx(r.Context(), tx, s.dialect, ids, time.Now().UTC()); err != nil {
+				return err
+			}
 			refreshUserIDs = ids
 		default:
 			return statusError{status: http.StatusBadRequest, detail: "Invalid delete mode"}

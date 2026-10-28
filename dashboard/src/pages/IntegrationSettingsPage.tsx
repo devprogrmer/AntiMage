@@ -76,6 +76,7 @@ import {
 	type PanelSettingsResponse,
 	renewSubscriptionCertificate,
 	type RuntimeSettingsResponse,
+	type RuntimeSettingsUpdatePayload,
 	sendTelegramBackup,
 	testTelegramSettings,
 	type SubscriptionCertificate,
@@ -181,6 +182,7 @@ const defaultRuntimeSettings: RuntimeSettingsResponse = {
 	phpmyadmin_login_mode: "antimage",
 	phpmyadmin_username: "",
 	phpmyadmin_password: "",
+	phpmyadmin_password_configured: false,
 };
 
 const flattenEventToggleValues = (
@@ -840,6 +842,7 @@ export const IntegrationSettingsPage = () => {
 	>(panelData?.default_subscription_type ?? "key");
 	const [runtimeSettingsForm, setRuntimeSettingsForm] =
 		useState<RuntimeSettingsResponse>(defaultRuntimeSettings);
+	const [phpMyAdminPasswordDirty, setPhpMyAdminPasswordDirty] = useState(false);
 
 	useEffect(() => {
 		if (panelData) {
@@ -849,7 +852,8 @@ export const IntegrationSettingsPage = () => {
 
 	useEffect(() => {
 		if (runtimeSettings) {
-			setRuntimeSettingsForm(runtimeSettings);
+			setRuntimeSettingsForm({ ...runtimeSettings, phpmyadmin_password: "" });
+			setPhpMyAdminPasswordDirty(false);
 		}
 	}, [runtimeSettings]);
 
@@ -1033,7 +1037,8 @@ export const IntegrationSettingsPage = () => {
 				queryClient.setQueryData("panel-settings", updated.panel);
 			}
 			if (updated.runtime) {
-				setRuntimeSettingsForm(updated.runtime);
+				setRuntimeSettingsForm({ ...updated.runtime, phpmyadmin_password: "" });
+				setPhpMyAdminPasswordDirty(false);
 				queryClient.setQueryData("runtime-settings", updated.runtime);
 			}
 			if (updated.subscriptions) {
@@ -1377,7 +1382,8 @@ export const IntegrationSettingsPage = () => {
 
 	const runtimeDirty = Boolean(
 		runtimeSettings &&
-			JSON.stringify(runtimeSettingsForm) !== JSON.stringify(runtimeSettings),
+			JSON.stringify(runtimeSettingsForm) !==
+				JSON.stringify({ ...runtimeSettings, phpmyadmin_password: "" }),
 	);
 	const panelDirty = Boolean(
 		panelData && panelDefaultSubType !== panelData.default_subscription_type,
@@ -1422,7 +1428,11 @@ export const IntegrationSettingsPage = () => {
 		if (panelDirty) {
 			payload.panel = { default_subscription_type: panelDefaultSubType };
 		}
-		if (runtimeDirty) payload.runtime = runtimeSettingsForm;
+		if (runtimeDirty) {
+			const runtimeUpdate: RuntimeSettingsUpdatePayload = { ...runtimeSettingsForm };
+			if (!phpMyAdminPasswordDirty) delete runtimeUpdate.phpmyadmin_password;
+			payload.runtime = runtimeUpdate;
+		}
 		if (isDirty) payload.telegram = buildTelegramPayload(getTelegramValues());
 		if (isSubscriptionDirty) {
 			payload.subscriptions = buildSubscriptionPayload(getSubscriptionValues());
@@ -2264,13 +2274,18 @@ export const IntegrationSettingsPage = () => {
 											<Input
 												type="password"
 												value={runtimeSettingsForm.phpmyadmin_password}
-												placeholder={t("phpmyadmin.passwordPlaceholder")}
-												onChange={(event) =>
+												placeholder={
+													runtimeSettings?.phpmyadmin_password_configured
+														? t("admins.passwordOptionalHint")
+														: t("phpmyadmin.passwordPlaceholder")
+												}
+												onChange={(event) => {
+													setPhpMyAdminPasswordDirty(true);
 													setRuntimeSettingsForm((prev) => ({
 														...prev,
 														phpmyadmin_password: event.target.value,
-													}))
-												}
+													}));
+												}}
 											/>
 										</FormControl>
 									</SimpleGrid>

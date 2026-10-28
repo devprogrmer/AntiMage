@@ -131,9 +131,22 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	if err != nil {
 		return SubscriptionHTTPResponse{}, err
 	}
+	// The effective subscription settings (base record plus any admin override)
+	// are read from the database. Resolve them at most once per request instead
+	// of re-querying on every branch of this hot subscriber-facing path.
+	var (
+		settings     SubscriptionSettings
+		settingsRead bool
+	)
+	effectiveSettings := func() SubscriptionSettings {
+		if !settingsRead {
+			settings = s.effectiveSettings(ctx, user.AdminID)
+			settingsRead = true
+		}
+		return settings
+	}
 	if wantsSubscriptionHTML(req) && req.ClientType == "" {
-		settings := s.effectiveSettings(ctx, user.AdminID)
-		html, err := s.renderSubscriptionHTML(ctx, user, req, settings)
+		html, err := s.renderSubscriptionHTML(ctx, user, req, effectiveSettings())
 		if err != nil {
 			return SubscriptionHTTPResponse{}, err
 		}
@@ -157,7 +170,7 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	}
 	clientType := req.ClientType
 	if clientType == "" {
-		clientType = selectSubscriptionClientType(req.UserAgent, s.effectiveSettings(ctx, user.AdminID))
+		clientType = selectSubscriptionClientType(req.UserAgent, effectiveSettings())
 	}
 	config, ok := subscriptionClientConfigs[clientType]
 	if !ok {
@@ -180,7 +193,7 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	return SubscriptionHTTPResponse{
 		Status:    200,
 		MediaType: config.Media,
-		Headers:   subscriptionHeaders(user, req, s.effectiveSettings(ctx, user.AdminID)),
+		Headers:   subscriptionHeaders(user, req, effectiveSettings()),
 		Body:      []byte(body),
 	}, nil
 }

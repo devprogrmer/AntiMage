@@ -153,7 +153,9 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			tag TEXT NOT NULL UNIQUE,
 			uplink INTEGER NOT NULL DEFAULT 0,
 			downlink INTEGER NOT NULL DEFAULT 0,
-			usage_coefficient REAL NOT NULL DEFAULT 1
+			usage_coefficient REAL NOT NULL DEFAULT 1,
+			upload_speed_limit INTEGER NOT NULL DEFAULT 0,
+			download_speed_limit INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE TABLE hosts (
 			id INTEGER PRIMARY KEY,
@@ -330,6 +332,14 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			idempotency_key TEXT NOT NULL UNIQUE,
 			created_at DATETIME NULL,
 			updated_at DATETIME NULL
+		)`,
+		`CREATE TABLE user_accounting_tombstones (user_id INTEGER PRIMARY KEY, deleted_at DATETIME NOT NULL)`,
+		`CREATE TABLE node_usage_user_queue (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, node_id INTEGER NOT NULL, batch_id TEXT NOT NULL,
+			ledger_json TEXT NULL, user_id INTEGER NOT NULL, used_traffic INTEGER NOT NULL DEFAULT 0,
+			online INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, processed_at DATETIME NULL,
+			history_processed_at DATETIME NULL, retirement_pending INTEGER NOT NULL DEFAULT 0,
+			UNIQUE(node_id,batch_id,user_id)
 		)`,
 		`INSERT INTO jwt (id, admin_secret_key, secret_key) VALUES (1, 'admin-secret', 'legacy-secret')`,
 		`INSERT INTO tls (id, key, certificate) VALUES (1, 'legacy-key', 'legacy-cert')`,

@@ -54,6 +54,7 @@ type openVPNRuntimeUser struct {
 	DeviceLimit           int64   `json:"device_limit,omitempty"`
 	IPLimit               int64   `json:"ip_limit,omitempty"`
 	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	ReflectedUsageLedger  string  `json:"reflected_usage_ledger,omitempty"`
 	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
 	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
 	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
@@ -74,6 +75,7 @@ type preparedL2TPRuntime struct {
 	XL2TPConfig   string
 	CHAPSecrets   string
 	SessionConfig string
+	Identity      [32]byte
 	TProxy        openVPNTProxySpec
 	NAT           openVPNNATSpec
 }
@@ -310,7 +312,12 @@ func (s *Server) applyNativeRuntime(raw string) error {
 			return fmt.Errorf("only one l2tp runtime inbound is supported")
 		}
 
-		files, err := s.prepareL2TPInbound(inbound, payload.SessionCallback)
+		var files l2TPRuntimeFiles
+		err := withPPPAdmissionLock(s.cfg.DataDir, func() error {
+			var prepareErr error
+			files, prepareErr = s.prepareL2TPInbound(inbound, payload.SessionCallback)
+			return prepareErr
+		})
 		if err != nil {
 			return err
 		}
@@ -333,6 +340,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 				XL2TPConfig:   files.XL2TPConfig,
 				CHAPSecrets:   files.CHAPSecrets,
 				SessionConfig: files.SessionConfig,
+				Identity:      files.Identity,
 				TProxy:        tproxy,
 				NAT:           nat,
 			},
@@ -582,6 +590,7 @@ func (s *Server) applyNativeRuntime(raw string) error {
 			runtime.XL2TPConfig,
 			runtime.CHAPSecrets,
 			runtime.SessionConfig,
+			runtime.Identity,
 		); err != nil {
 			_ = s.removeL2TPTProxyForTag(runtime.Tag)
 			_ = s.removeL2TPNATForTag(runtime.Tag)

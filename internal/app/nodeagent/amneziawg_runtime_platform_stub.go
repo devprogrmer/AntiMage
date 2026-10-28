@@ -32,3 +32,9 @@ func amneziaWGPlatformSnapshot(interfaceName string) ([]wireGuardPeerCounters, e
 func amneziaWGPlatformRemovePeer(interfaceName, publicKey string) error {
 	return fmt.Errorf("amneziawg native runtime is supported only on linux")
 }
+func amneziaWGPlatformPeerSnapshot(string) (map[string]wireGuardKernelPeer, error) {
+	return nil, fmt.Errorf("amneziawg native runtime is supported only on linux")
+}
+func amneziaWGPlatformPeerApply(string, wireGuardPeerMutationStep) error {
+	return fmt.Errorf("amneziawg native runtime is supported only on linux")
+}

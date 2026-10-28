@@ -1,0 +1,112 @@
+package nodeagent
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestParseWireGuardPeerSnapshotCapturesConfigurableState(t *testing.T) {
+	publicKey := strings.Repeat("A", 43) + "="
+	psk := strings.Repeat("B", 43) + "="
+	raw := "private\tpublic\t51820\toff\n" +
+		publicKey + "\t" + psk + "\t198.51.100.8:51820\t10.69.0.2/32,10.69.1.0/24\t1700000000\t12\t34\t25\n"
+	peers, err := parseWireGuardPeerSnapshot(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer, ok := peers[publicKey]
+	if !ok {
+		t.Fatalf("peer %q missing from snapshot", publicKey)
+	}
+	if peer.PresharedKey != psk || peer.Endpoint != "198.51.100.8:51820" || peer.PersistentKeepalive != 25 {
+		t.Fatalf("peer configurable state = %+v", peer)
+	}
+	if peer.ReceivedBytes != 12 || peer.SentBytes != 34 {
+		t.Fatalf("peer accounting counters = rx:%d tx:%d", peer.ReceivedBytes, peer.SentBytes)
+	}
+	if strings.Join(peer.AllowedIPs, ",") != "10.69.0.2/32,10.69.1.0/24" {
+		t.Fatalf("allowed IPs = %v", peer.AllowedIPs)
+	}
+}
+
+func TestParseWireGuardPeerSnapshotAcceptsDisabledKeepaliveFromWgDump(t *testing.T) {
+	key := strings.Repeat("C", 43) + "="
+	raw := "private\tpublic\t51820\toff\n" + key + "\t(none)\t(none)\t10.69.0.2/32\t0\t0\t0\toff\n"
+	peers, err := parseWireGuardPeerSnapshot(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := peers[key].PersistentKeepalive; got != 0 {
+		t.Fatalf("disabled keepalive parsed as %d, want 0", got)
+	}
+}
+
+func TestParseWireGuardPeerSnapshotRejectsIncompleteOrAmbiguousDump(t *testing.T) {
+	key := strings.Repeat("A", 43) + "="
+	peer := key + "\t(none)\t(none)\t10.69.0.2/32\t0\t0\t0\t0\n"
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{name: "missing interface row", raw: peer},
+		{name: "truncated peer row", raw: "private\tpublic\t51820\toff\n" + key + "\t(none)\t(none)\t10.69.0.2/32\t0\n"},
+		{name: "duplicate peer", raw: "private\tpublic\t51820\toff\n" + peer + peer},
+		{name: "malformed counter", raw: "private\tpublic\t51820\toff\n" + key + "\t(none)\t(none)\t10.69.0.2/32\tbad\t0\t0\t0\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := parseWireGuardPeerSnapshot(tc.raw); err == nil {
+				t.Fatal("expected malformed snapshot to be rejected")
+			}
+		})
+	}
+}
+
+func TestWireGuardPeerInventoryDetectsPartialOrUnexpectedSnapshot(t *testing.T) {
+	first := strings.Repeat("A", 43) + "="
+	second := strings.Repeat("B", 43) + "="
+	snapshot, err := parseWireGuardPeerSnapshot("private\tpublic\t51820\toff\n" + first + "\t(none)\t(none)\t10.69.0.2/32\t0\t0\t0\t0\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := parseWireGuardPeerList(first + "\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wireGuardPeerInventoriesMatch(snapshot, listed) {
+		t.Fatal("matching complete peer inventories were rejected")
+	}
+	listed, err = parseWireGuardPeerList(first + "\n" + second + "\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wireGuardPeerInventoriesMatch(snapshot, listed) {
+		t.Fatal("incomplete dump was accepted against the complete peer inventory")
+	}
+	if _, err := parseWireGuardPeerList(first + "\n" + first + "\n"); err == nil {
+		t.Fatal("duplicate peer inventory key was accepted")
+	}
+}
+
+func TestWireGuardPeerSnapshotMatchesCommittedConfigButIgnoresTransientState(t *testing.T) {
+	key := strings.Repeat("A", 43) + "="
+	psk := strings.Repeat("B", 43) + "="
+	raw := "private\tpublic\t51820\toff\n" + key + "\t" + psk + "\t198.51.100.4:51820\t10.69.0.7/32\t1700000000\t123\t456\t25\n"
+	snapshot, err := parseWireGuardPeerSnapshot(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := []wireGuardRuntimePeer{{UserID: 7, PublicKey: key, PresharedKey: psk, Address: "10.69.0.7"}}
+	if err := wireGuardPeerSnapshotMatchesPolicy(snapshot, policy, ""); err != nil {
+		t.Fatalf("valid snapshot with runtime endpoint/counters rejected: %v", err)
+	}
+	policy[0].PresharedKey = strings.Repeat("C", 43) + "="
+	if err := wireGuardPeerSnapshotMatchesPolicy(snapshot, policy, ""); err == nil {
+		t.Fatal("accepted stale preshared-key snapshot")
+	}
+	policy[0].PresharedKey = psk
+	policy[0].Address = "10.69.0.8"
+	if err := wireGuardPeerSnapshotMatchesPolicy(snapshot, policy, ""); err == nil {
+		t.Fatal("accepted stale AllowedIPs snapshot")
+	}
+}

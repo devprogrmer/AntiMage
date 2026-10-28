@@ -3,12 +3,24 @@ package nodeagent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
+
+func TestValidateRuntimePolicyRevisionRejectsStaleSyncAndAllowsCurrentOrLegacy(t *testing.T) {
+	if err := validateRuntimePolicyRevision(42, 41); err == nil {
+		t.Fatal("stale runtime revision was accepted")
+	}
+	for _, revision := range []uint64{0, 42, 43} {
+		if err := validateRuntimePolicyRevision(42, revision); err != nil {
+			t.Errorf("revision %d rejected: %v", revision, err)
+		}
+	}
+}
 
 func TestRuntimePolicySnapshotRestartAndIntegrity(t *testing.T) {
 	s := &Server{cfg: Config{DataDir: t.TempDir()}}
@@ -64,5 +76,48 @@ func TestRuntimePolicyWriteFailureDoesNotReplaceLastValid(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Dir(s.runtimePolicyPath())); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRuntimePolicyAtomicWriteHookPreservesPublishedSnapshotOnFailure(t *testing.T) {
+	s := &Server{cfg: Config{DataDir: t.TempDir()}}
+	first := &nodev1.RuntimeConfigRequest{ConfigJson: `{}`, DesiredRevision: 1}
+	if err := s.persistRuntimePolicy(first); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(s.runtimePolicyPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := runtimePolicyAtomicWrite
+	runtimePolicyAtomicWrite = func(string, []byte) error { return errors.New("injected atomic policy write failure") }
+	t.Cleanup(func() { runtimePolicyAtomicWrite = previous })
+	if err := s.persistRuntimePolicy(&nodev1.RuntimeConfigRequest{ConfigJson: `{}`, DesiredRevision: 2}); err == nil {
+		t.Fatal("injected policy write failure was ignored")
+	}
+	after, err := os.ReadFile(s.runtimePolicyPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) || s.runtimePolicy.Revision != 1 {
+		t.Fatalf("failed write changed policy: memory=%+v diskChanged=%v", s.runtimePolicy, string(after) != string(before))
+	}
+}
+
+func TestCurrentRuntimePolicyReturnsIsolatedSnapshot(t *testing.T) {
+	s := &Server{cfg: Config{DataDir: t.TempDir()}}
+	want := &nodev1.RuntimeConfigRequest{ConfigJson: `{}`, OvRuntimeJson: `{"xray_policies":[{"email":"alice"}]}`, DesiredRevision: 7}
+	if err := s.persistRuntimePolicy(want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.currentRuntimePolicy()
+	if err != nil || got == nil {
+		t.Fatalf("current runtime policy: snapshot=%v err=%v", got, err)
+	}
+	got.NativeJSON = `{}`
+	got.Revision = 99
+	current, err := s.currentRuntimePolicy()
+	if err != nil || current.NativeJSON != want.OvRuntimeJson || current.Revision != 7 {
+		t.Fatalf("caller mutation escaped snapshot copy: snapshot=%+v err=%v", current, err)
 	}
 }

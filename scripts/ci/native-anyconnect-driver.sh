@@ -103,6 +103,33 @@ start_reconnect_attempt() {
   client_pid=$!
   PIDS+=("$client_pid")
 }
+run_targeted_mutation_stage() {
+  echo '=== ocserv targeted Add/Update/Remove without daemon restart ==='
+  env ANTIMAGE_ANYCONNECT_MUTATION_E2E=1 \
+    ANTIMAGE_ANYCONNECT_MUTATION_ROOT="$ROOT/anyconnect-mutation-e2e" \
+    ANTIMAGE_ANYCONNECT_MUTATION_NS="$NS" \
+    ANTIMAGE_ANYCONNECT_MUTATION_ENDPOINT="10.253.0.1:4434" \
+    ANTIMAGE_ANYCONNECT_MUTATION_NS2="$NS2" \
+    ANTIMAGE_ANYCONNECT_MUTATION_ENDPOINT2="10.254.0.1:4434" \
+    ANTIMAGE_ANYCONNECT_MUTATION_PORT=4434 \
+    ANTIMAGE_ANYCONNECT_MUTATION_CERT="$ROOT/cert.pem" \
+    ANTIMAGE_ANYCONNECT_MUTATION_KEY="$ROOT/key.pem" \
+    ANTIMAGE_ANYCONNECT_MUTATION_VPN_SCRIPT="$VPNSCRIPT" \
+    "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectTargetedMutationNativeE2E$' -test.count=1 -test.v
+}
+run_controller_mutation_stage() {
+  [ -n "${ANTIMAGE_ANYCONNECT_CONTROLLER_TEST_BINARY:-}" ] || return 0
+  echo '=== Controller -> NodeAgent -> ocserv targeted mutation E2E ==='
+  env ANTIMAGE_ANYCONNECT_MUTATION_E2E=1 \
+    ANTIMAGE_ANYCONNECT_CONTROLLER_ROOT="$ROOT/anyconnect-controller-e2e" \
+    ANTIMAGE_ANYCONNECT_MUTATION_NS="$NS" \
+    ANTIMAGE_ANYCONNECT_MUTATION_NS2="$NS2" \
+    ANTIMAGE_ANYCONNECT_MUTATION_PORT=4435 \
+    ANTIMAGE_ANYCONNECT_MUTATION_CERT="$ROOT/cert.pem" \
+    ANTIMAGE_ANYCONNECT_MUTATION_KEY="$ROOT/key.pem" \
+    ANTIMAGE_ANYCONNECT_MUTATION_VPN_SCRIPT="$VPNSCRIPT" \
+    "$ANTIMAGE_ANYCONNECT_CONTROLLER_TEST_BINARY" -test.run='^TestControllerAnyConnectTargetedMutationNativeE2E$' -test.count=1 -test.v
+}
 run_accounting() {
   local action="$1" quota_bytes="${2:-52428800}"
   env ANTIMAGE_ANYCONNECT_ACTION="$action" \
@@ -401,6 +428,10 @@ if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
 fi
 start_client "$ROOT/openconnect.log"
 ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
+if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
+  run_targeted_mutation_stage
+  run_controller_mutation_stage
+fi
 if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   transfer_tunnel_payload initial
   echo '=== AnyConnect real remote-IP reporting and native IP limit ==='

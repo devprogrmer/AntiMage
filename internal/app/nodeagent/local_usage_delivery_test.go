@@ -6,6 +6,32 @@ import (
 	"testing"
 )
 
+func BenchmarkLocalUsageReflectionResultReuse(b *testing.B) {
+	queries := make([]localUsageReflectionQuery, 512)
+	for index := range queries {
+		queries[index] = localUsageReflectionQuery{Protocol: "xray", UserID: int64(index + 1), InboundTag: "vless"}
+	}
+	b.Run("allocate-results", func(b *testing.B) {
+		server := New(Config{DataDir: b.TempDir()})
+		b.ReportAllocs()
+		for range b.N {
+			if _, err := server.localAwaitingReflectionUsageBatch(queries); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("reuse-results", func(b *testing.B) {
+		server := New(Config{DataDir: b.TempDir()})
+		var results []localUsageReflectionResult
+		b.ReportAllocs()
+		for range b.N {
+			if err := server.localAwaitingReflectionUsageBatchInto(queries, &results); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
 func TestLocalDeliveryReflectionLostACKRestartAndCompaction(t *testing.T) {
 	s := &Server{cfg: Config{DataDir: t.TempDir()}}
 	deliveries := []localUsageDelivery{
@@ -39,6 +65,39 @@ func TestLocalDeliveryReflectionLostACKRestartAndCompaction(t *testing.T) {
 	}
 	if len(restarted.localUsageDeliveries) != 1 || restarted.localUsageDeliveries[0].Rows[0].UserID != 11 {
 		t.Fatal("reflected rows not safely compacted")
+	}
+}
+
+func TestLocalDeliveryReflectionBatchCompactsAndTotalsInQueryOrder(t *testing.T) {
+	s := &Server{cfg: Config{DataDir: t.TempDir()}}
+	deliveries := []localUsageDelivery{
+		{BatchID: "combined-old", Rows: []localUsageDeliveryRow{
+			{Protocol: "xray", ChildID: "xray-old", UserID: 10, InboundTag: "a", Raw: 100},
+			{Protocol: "wireguard", ChildID: "wireguard-old", UserID: 11, InboundTag: "b", Raw: 200},
+		}},
+		{BatchID: "combined-new", Rows: []localUsageDeliveryRow{
+			{Protocol: "xray", ChildID: "xray-new", UserID: 10, InboundTag: "a", Raw: 50},
+		}},
+	}
+	if err := s.persistLocalUsageDeliveriesLocked(deliveries); err != nil {
+		t.Fatal(err)
+	}
+	totals, err := s.localAwaitingReflectionUsageBatch([]localUsageReflectionQuery{
+		{Protocol: "xray", UserID: 10, InboundTag: "a", PendingChildID: "xray-new", ReflectedRootBatchID: "combined-new"},
+		{Protocol: "wireguard", UserID: 11, InboundTag: "b"},
+		{Protocol: "xray", UserID: 10, InboundTag: "a", ReflectedRootBatchID: "combined-new"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(totals) != 3 || totals[0].Awaiting != 0 || totals[1].Awaiting != 200 || totals[2].Awaiting != 0 {
+		t.Fatalf("batched awaiting usage=%v, want [0 200 0]", totals)
+	}
+	if !totals[0].PendingReflected || totals[1].PendingReflected || totals[2].PendingReflected {
+		t.Fatalf("batched pending reflection=%v, want [true false false]", totals)
+	}
+	if len(s.localUsageDeliveries) != 1 || len(s.localUsageDeliveries[0].Rows) != 1 || s.localUsageDeliveries[0].Rows[0].UserID != 11 {
+		t.Fatalf("batched compaction left unexpected rows: %+v", s.localUsageDeliveries)
 	}
 }
 

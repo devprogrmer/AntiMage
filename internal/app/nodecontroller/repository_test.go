@@ -574,6 +574,211 @@ func TestBulkRuntimeUserOperationNodesUsesFullSyncAboveThreshold(t *testing.T) {
 	}
 }
 
+func TestRuntimeUserProtocolAndNodeCapabilityLookup(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "bulk-protocols.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, `
+CREATE TABLE users (id INTEGER PRIMARY KEY, status TEXT);
+CREATE TABLE proxies (user_id INTEGER, type TEXT);
+CREATE TABLE nodes (id INTEGER PRIMARY KEY, node_capabilities TEXT);
+INSERT INTO users VALUES (1, 'active'), (2, 'deleted');
+INSERT INTO proxies VALUES (1, 'VLESS'), (1, 'wireguard'), (2, 'openvpn');
+INSERT INTO nodes VALUES (7, '["targeted_user_update_vless"]');`); err != nil {
+		t.Fatal(err)
+	}
+	got, err := NewRepository(db, "sqlite").RuntimeProtocolsByUserIDs(ctx, []int64{1, 2, 0, 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got[1]) != 2 || got[2] != nil {
+		t.Fatalf("protocols by user=%v, want active user 1's two protocols and no deleted user", got)
+	}
+	mutationProtocols, err := NewRepository(db, "sqlite").RuntimeMutationProtocolsByUserIDs(ctx, []int64{2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mutationProtocols[2]) != 1 || mutationProtocols[2][0] != "openvpn" {
+		t.Fatalf("mutation protocols by deleted user=%v, want retained protocol for targeted removal", mutationProtocols)
+	}
+	seen := map[string]bool{}
+	for _, protocol := range got[1] {
+		seen[protocol] = true
+	}
+	if !seen["vless"] || !seen["wireguard"] {
+		t.Fatalf("protocols by user=%v, expected normalized vless and wireguard", got[1])
+	}
+	nodeCapabilities, err := NewRepository(db, "sqlite").RuntimeCapabilitiesByNodeIDs(ctx, []int64{7, 8, 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !nodeCapabilities[7]["targeted_user_update_vless"] || nodeCapabilities[8] != nil {
+		t.Fatalf("node capabilities=%v, expected stored capability for node 7 only", nodeCapabilities)
+	}
+}
+
+func TestBulkVLESSUpdatesStayTargetedWhenNodeAdvertisesSupport(t *testing.T) {
+	operations := make([]OperationRow, bulkRuntimeUserOperationThreshold+2)
+	protocols := make(map[int64][]string, len(operations))
+	capabilities := map[int64]map[string]bool{7: {"targeted_user_update_vless": true}}
+	for index := range operations {
+		userID := int64(index + 1)
+		operations[index] = OperationRow{
+			OperationType: "update_user",
+			NodeID:        sql.NullInt64{Int64: 7, Valid: true},
+			UserID:        sql.NullInt64{Int64: userID, Valid: true},
+		}
+		protocols[userID] = []string{"vless"}
+	}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); folded[7] {
+		t.Fatal("bulk VLESS-only operations must keep targeted updates instead of queuing full sync")
+	}
+	protocols[operations[0].UserID.Int64] = []string{"openvpn"}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("bulk batch with an unsupported protocol must retain conservative full-sync fallback")
+	}
+	protocols[operations[0].UserID.Int64] = []string{"vless"}
+	delete(capabilities[7], "targeted_user_update_vless")
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("bulk VLESS updates on a legacy node without the advertised capability must retain fallback")
+	}
+}
+
+func TestBulkVLESSAddRemoveStayTargetedOnlyWithExplicitCapability(t *testing.T) {
+	operations := make([]OperationRow, bulkRuntimeUserOperationThreshold+2)
+	protocols := make(map[int64][]string, len(operations))
+	capabilities := map[int64]map[string]bool{7: {"targeted_user_add_remove_vless": true}}
+	for index := range operations {
+		userID := int64(index + 1)
+		operations[index] = OperationRow{
+			OperationType: "remove_user",
+			NodeID:        sql.NullInt64{Int64: 7, Valid: true},
+			UserID:        sql.NullInt64{Int64: userID, Valid: true},
+		}
+		protocols[userID] = []string{"vless"}
+	}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); folded[7] {
+		t.Fatal("bulk VLESS removals on a capable node must stay targeted")
+	}
+	delete(capabilities[7], "targeted_user_add_remove_vless")
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("bulk VLESS removals on a legacy node must retain full-sync fallback")
+	}
+	capabilities[7]["targeted_user_add_remove_vless"] = true
+	operations[0].OperationType = "add_user"
+	protocols[operations[0].UserID.Int64] = []string{"vless", "openvpn"}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("mixed-protocol add batch must retain conservative full-sync fallback")
+	}
+}
+
+func TestBulkWireGuardMutationsStayTargetedOnlyWithExplicitCapability(t *testing.T) {
+	operations := make([]OperationRow, bulkRuntimeUserOperationThreshold+2)
+	protocols := make(map[int64][]string, len(operations))
+	capabilities := map[int64]map[string]bool{7: {"targeted_user_update_wireguard": true}}
+	for index := range operations {
+		userID := int64(index + 1)
+		operations[index] = OperationRow{
+			OperationType: "update_user",
+			NodeID:        sql.NullInt64{Int64: 7, Valid: true},
+			UserID:        sql.NullInt64{Int64: userID, Valid: true},
+		}
+		protocols[userID] = []string{"wireguard"}
+	}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); folded[7] {
+		t.Fatal("bulk WireGuard updates on a capable node must stay targeted")
+	}
+	delete(capabilities[7], "targeted_user_update_wireguard")
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("legacy node without WireGuard update capability must retain full-sync fallback")
+	}
+	capabilities[7]["targeted_user_add_remove_wireguard"] = true
+	for index := range operations {
+		operations[index].OperationType = "remove_user"
+	}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); folded[7] {
+		t.Fatal("bulk WireGuard removals on a capable node must stay targeted")
+	}
+	protocols[operations[0].UserID.Int64] = []string{"wireguard", "vless"}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("mixed protocol batch must retain conservative full-sync fallback")
+	}
+}
+
+func TestBulkOpenVPNMutationsStayTargetedOnlyWithExplicitCapability(t *testing.T) {
+	operations := make([]OperationRow, bulkRuntimeUserOperationThreshold+2)
+	protocols := make(map[int64][]string, len(operations))
+	capabilities := map[int64]map[string]bool{7: {"targeted_user_update_openvpn": true, "targeted_user_add_remove_openvpn": true}}
+	for index := range operations {
+		userID := int64(index + 1)
+		operations[index] = OperationRow{OperationType: "update_user", NodeID: sql.NullInt64{Int64: 7, Valid: true}, UserID: sql.NullInt64{Int64: userID, Valid: true}}
+		protocols[userID] = []string{"openvpn"}
+	}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); folded[7] {
+		t.Fatal("bulk OpenVPN updates on a capable node must remain targeted")
+	}
+	delete(capabilities[7], "targeted_user_update_openvpn")
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("legacy OpenVPN update must retain full-sync fallback")
+	}
+	capabilities[7]["targeted_user_update_openvpn"] = true
+	for index := range operations {
+		operations[index].OperationType = "remove_user"
+	}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); folded[7] {
+		t.Fatal("bulk OpenVPN removals on a capable node must remain targeted")
+	}
+	protocols[operations[0].UserID.Int64] = []string{"openvpn", "vless"}
+	if folded := bulkRuntimeUserOperationNodesWithProtocols(operations, protocols, capabilities); !folded[7] {
+		t.Fatal("mixed-protocol batch must retain conservative full-sync fallback")
+	}
+}
+
+func TestTargetedUserCapabilityIsProtocolAndOperationSpecific(t *testing.T) {
+	cases := []struct {
+		protocol, operation, want string
+	}{
+		{"wireguard", "update_user", "targeted_user_update_wireguard"},
+		{"wireguard", "add_user", "targeted_user_add_remove_wireguard"},
+		{"wireguard", "remove_user", "targeted_user_add_remove_wireguard"},
+		{"amneziawg", "update_user", "targeted_user_update_amneziawg"},
+		{"amneziawg", "add_user", "targeted_user_add_remove_amneziawg"},
+		{"amneziawg", "remove_user", "targeted_user_add_remove_amneziawg"},
+		{"openvpn", "update_user", "targeted_user_update_openvpn"},
+		{"openvpn", "add_user", "targeted_user_add_remove_openvpn"},
+		{"openvpn", "remove_user", "targeted_user_add_remove_openvpn"},
+		{"vless", "update_user", "targeted_user_update_vless"},
+		{"vless", "add_user", "targeted_user_add_remove_vless"},
+		{"vless", "remove_user", "targeted_user_add_remove_vless"},
+		{"vmess", "update_user", "targeted_user_update_vmess"},
+		{"vmess", "add_user", "targeted_user_add_remove_vmess"},
+		{"vmess", "remove_user", "targeted_user_add_remove_vmess"},
+		{"trojan", "update_user", "targeted_user_update_trojan"},
+		{"trojan", "add_user", "targeted_user_add_remove_trojan"},
+		{"trojan", "remove_user", "targeted_user_add_remove_trojan"},
+		{"shadowsocks", "update_user", "targeted_user_update_shadowsocks"},
+		{"shadowsocks", "add_user", "targeted_user_add_remove_shadowsocks"},
+		{"shadowsocks", "remove_user", "targeted_user_add_remove_shadowsocks"},
+		{"hysteria", "update_user", "targeted_user_update_hysteria"},
+		{"hysteria", "add_user", "targeted_user_add_remove_hysteria"},
+		{"hysteria2", "remove_user", "targeted_user_add_remove_hysteria"},
+		{"vmess", "sync_config", ""},
+		{"trojan", "sync_config", ""},
+		{"shadowsocks", "sync_config", ""},
+		{"hysteria", "sync_config", ""},
+		{"wireguard", "sync_config", ""},
+		{"openvpn", "sync_config", ""},
+	}
+	for _, test := range cases {
+		if got := targetedUserCapability(test.protocol, test.operation); got != test.want {
+			t.Errorf("targetedUserCapability(%q,%q)=%q, want %q", test.protocol, test.operation, got, test.want)
+		}
+	}
+}
+
 func TestControllerProcessQueueRetriesUnavailableUserDeltaWithoutFullSync(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-starvation.db")+"?_pragma=busy_timeout(30000)")

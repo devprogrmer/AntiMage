@@ -37,6 +37,7 @@ type WGRuntimePeer struct {
 	Status                string  `json:"status"`
 	UsedTraffic           int64   `json:"used_traffic"`
 	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
+	ReflectedUsageLedger  string  `json:"reflected_usage_ledger,omitempty"`
 	DataLimit             *int64  `json:"data_limit,omitempty"`
 	Expire                *int64  `json:"expire,omitempty"`
 	DeviceLimit           int64   `json:"device_limit,omitempty"`
@@ -97,6 +98,12 @@ func (r Repository) wgRuntime(ctx context.Context, nodeID int64, inbounds []map[
 		if err != nil {
 			return WGRuntime{}, err
 		}
+		applyInboundSpeedLimitToUsers(
+			inboundSpeedLimitFromInbound(inbound),
+			peers,
+			func(p *WGRuntimePeer) *int64 { return &p.UploadSpeedLimit },
+			func(p *WGRuntimePeer) *int64 { return &p.DownloadSpeedLimit },
+		)
 		if len(peers) == 0 {
 			continue
 		}
@@ -161,7 +168,7 @@ func (r Repository) attachWGUsageReflections(
 	}
 
 	query := `
-SELECT user_id, batch_id
+SELECT user_id, batch_id, COALESCE(ledger_json, '')
 FROM node_wireguard_usage_reflection
 WHERE node_id = ?
   AND user_id IN (` + strings.Join(userPlaceholders, ",") + `)`
@@ -181,16 +188,18 @@ WHERE node_id = ?
 	defer rows.Close()
 
 	reflected := make(map[int64]string, len(userIDs))
+	reflectedLedger := make(map[int64]string, len(userIDs))
 
 	for rows.Next() {
 		var userID int64
-		var batchID string
+		var batchID, ledger string
 
-		if err := rows.Scan(&userID, &batchID); err != nil {
+		if err := rows.Scan(&userID, &batchID, &ledger); err != nil {
 			return err
 		}
 
 		reflected[userID] = strings.TrimSpace(batchID)
+		reflectedLedger[userID] = ledger
 	}
 
 	if err := rows.Err(); err != nil {
@@ -199,6 +208,7 @@ WHERE node_id = ?
 
 	for i := range peers {
 		peers[i].ReflectedUsageBatchID = reflected[peers[i].UserID]
+		peers[i].ReflectedUsageLedger = reflectedLedger[peers[i].UserID]
 	}
 
 	return nil

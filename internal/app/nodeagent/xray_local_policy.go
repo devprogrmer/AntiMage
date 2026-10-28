@@ -24,6 +24,166 @@ type xrayQuotaRevocation struct {
 	ExistingStreams bool
 }
 
+type xrayQuotaUsageSample struct {
+	Used uint64
+	At   time.Time
+}
+
+type xrayQuotaSampleKey struct {
+	UserID     int64
+	InboundTag string
+	Email      string
+}
+
+const (
+	xrayQuotaAdaptiveMin    = 100 * time.Millisecond
+	xrayQuotaAdaptiveMax    = 500 * time.Millisecond
+	xrayQuotaNearLimitBytes = 1 << 20
+)
+
+type xrayQuotaPolicyIndex struct {
+	Revision          uint64
+	Checksum          string
+	Policies          []xrayLocalUserPolicy
+	EmailIndex        map[string]int
+	UsageTotal        []uint64
+	ReflectionQueries []localUsageReflectionQuery
+	ReflectionResults []localUsageReflectionResult
+	EnforcedPositions []int
+}
+
+func (s *Server) xrayQuotaPolicyIndexFor(snapshot *runtimePolicySnapshot) (*xrayQuotaPolicyIndex, error) {
+	if snapshot == nil {
+		return &xrayQuotaPolicyIndex{}, nil
+	}
+	cacheable := snapshot.Revision != 0 || snapshot.Checksum != ""
+	if cacheable {
+		s.mu.Lock()
+		cached := s.xrayQuotaPolicyIndex
+		if cached != nil && cached.Revision == snapshot.Revision && cached.Checksum == snapshot.Checksum {
+			s.mu.Unlock()
+			return cached, nil
+		}
+		s.mu.Unlock()
+	}
+	payload, err := parseNativeRuntimePayload(snapshot.NativeJSON)
+	if err != nil {
+		return nil, err
+	}
+	index := &xrayQuotaPolicyIndex{
+		Revision: snapshot.Revision, Checksum: snapshot.Checksum,
+		Policies: payload.XrayPolicies, EmailIndex: make(map[string]int, len(payload.XrayPolicies)),
+	}
+	for position, policy := range index.Policies {
+		if !xrayPolicyNeedsLocalQuotaCheck(policy) {
+			continue
+		}
+		if _, exists := index.EmailIndex[policy.Email]; !exists {
+			index.EmailIndex[policy.Email] = len(index.EmailIndex)
+		}
+		index.EnforcedPositions = append(index.EnforcedPositions, position)
+	}
+	index.UsageTotal = make([]uint64, len(index.EmailIndex))
+	index.ReflectionQueries = make([]localUsageReflectionQuery, len(index.EnforcedPositions))
+	for queryPosition, policyPosition := range index.EnforcedPositions {
+		policy := index.Policies[policyPosition]
+		index.ReflectionQueries[queryPosition] = localUsageReflectionQuery{
+			Protocol: "xray", UserID: policy.UserID, InboundTag: policy.InboundTag,
+			ReflectedRootBatchID: policy.ReflectedUsageBatchID, ReflectedLedger: policy.ReflectedUsageLedger,
+		}
+	}
+	if cacheable {
+		s.mu.Lock()
+		if current := s.runtimePolicy; current != nil && current.Revision == snapshot.Revision && current.Checksum == snapshot.Checksum {
+			s.xrayQuotaPolicyIndex = index
+		}
+		s.mu.Unlock()
+	}
+	return index, nil
+}
+
+// Fill the cached scratch totals in one pass over Xray accounting series. The
+// caller serializes access to UsageTotal with xrayUsageMu.
+func xrayQuotaUsageTotalsInto(counters map[string]accountingCounter, baselines map[string]uint64, index *xrayQuotaPolicyIndex) error {
+	clear(index.UsageTotal)
+	for key, counter := range counters {
+		separator := strings.LastIndexByte(key, ':')
+		if separator <= 0 {
+			continue
+		}
+		usageIndex, ok := index.EmailIndex[key[:separator]]
+		if !ok {
+			continue
+		}
+		baseline := baselines[key]
+		if counter.Total < baseline {
+			return fmt.Errorf("xray quota baseline exceeds logical total")
+		}
+		delta := counter.Total - baseline
+		if ^uint64(0)-index.UsageTotal[usageIndex] < delta {
+			return fmt.Errorf("xray quota overflow")
+		}
+		index.UsageTotal[usageIndex] += delta
+	}
+	return nil
+}
+
+func xrayPoliciesNeedLocalQuotaCheck(policies []xrayLocalUserPolicy) bool {
+	for _, policy := range policies {
+		if xrayPolicyNeedsLocalQuotaCheck(policy) {
+			return true
+		}
+	}
+	return false
+}
+
+func xrayPolicyNeedsLocalQuotaCheck(policy xrayLocalUserPolicy) bool {
+	switch strings.ToLower(strings.TrimSpace(policy.Status)) {
+	case "active":
+		return policy.DataLimit > 0 || policy.Expire > 0
+	case "on_hold":
+		// on_hold remains usable under the shared native session policy.
+		return false
+	default:
+		// Missing or non-active status is itself an enforceable condition.
+		return true
+	}
+}
+
+// xrayQuotaUsageTotals groups counter deltas by policy email in one pass. The
+// old quota path scanned every counter once per user, making each tick
+// proportional to users multiplied by stats series.
+func xrayQuotaUsageTotals(
+	counters map[string]accountingCounter,
+	baselines map[string]uint64,
+	policies []xrayLocalUserPolicy,
+) (map[string]uint64, error) {
+	totals := make(map[string]uint64, len(policies))
+	for _, policy := range policies {
+		totals[policy.Email] = 0
+	}
+	for key, counter := range counters {
+		separator := strings.LastIndexByte(key, ':')
+		if separator <= 0 {
+			continue
+		}
+		email := key[:separator]
+		if _, ok := totals[email]; !ok {
+			continue
+		}
+		baseline := baselines[key]
+		if counter.Total < baseline {
+			return nil, fmt.Errorf("xray quota baseline exceeds logical total")
+		}
+		delta := counter.Total - baseline
+		if ^uint64(0)-totals[email] < delta {
+			return nil, fmt.Errorf("xray quota overflow")
+		}
+		totals[email] += delta
+	}
+	return totals, nil
+}
+
 func (s *Server) markRestoredXrayRevocations(nativeJSON, configJSON string) error {
 	payload, err := parseNativeRuntimePayload(nativeJSON)
 	if err != nil {
@@ -70,11 +230,11 @@ func (s *Server) quotaCheckXrayOffline(ctx context.Context) error {
 	if snapshot == nil || !running {
 		return nil
 	}
-	payload, err := parseNativeRuntimePayload(snapshot.NativeJSON)
+	policyIndex, err := s.xrayQuotaPolicyIndexFor(snapshot)
 	if err != nil {
 		return err
 	}
-	if len(payload.XrayPolicies) == 0 {
+	if !xrayPoliciesNeedLocalQuotaCheck(policyIndex.Policies) {
 		return nil
 	}
 	client := s.cachedXrayStatsClient(path, port)
@@ -82,8 +242,28 @@ func (s *Server) quotaCheckXrayOffline(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	return s.quotaCheckXrayOfflineWithStats(ctx, snapshot, generation, policyIndex, stats)
+}
+
+func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *runtimePolicySnapshot, generation string, policyIndex *xrayQuotaPolicyIndex, stats []xrayStat) error {
+	if snapshot == nil || policyIndex == nil || !xrayPoliciesNeedLocalQuotaCheck(policyIndex.Policies) {
+		return nil
+	}
+	s.mu.Lock()
+	path, port := s.cfg.XrayPath, s.cfg.XrayAPIPort
+	s.mu.Unlock()
+	client := s.cachedXrayStatsClient(path, port)
 	s.xrayUsageMu.Lock()
 	defer s.xrayUsageMu.Unlock()
+	if s.xrayQuotaSamples == nil {
+		s.xrayQuotaSamples = make(map[xrayQuotaSampleKey]xrayQuotaUsageSample)
+	}
+	if s.xrayQuotaSampleRevision != policyIndex.Revision || s.xrayQuotaSampleChecksum != policyIndex.Checksum {
+		clear(s.xrayQuotaSamples)
+		s.xrayQuotaSampleRevision = policyIndex.Revision
+		s.xrayQuotaSampleChecksum = policyIndex.Checksum
+		s.xrayQuotaNextInterval = xrayQuotaAdaptiveMax
+	}
 	if err := s.ensureXrayUsageStateLoadedLocked(); err != nil {
 		return err
 	}
@@ -93,54 +273,66 @@ func (s *Server) quotaCheckXrayOffline(ctx context.Context) error {
 	if !unchanged {
 		return fmt.Errorf("xray changed during quota snapshot")
 	}
-	counters, err := s.previewXrayAccountingCountersLocked(stats, generation)
+	// Reuse the checkpoint scratch map: this path only needs the counter deltas
+	// to compute per-user totals and does not publish them.
+	counters, err := s.previewXrayAccountingCountersLockedInto(stats, generation, s.xrayCounterScratch)
 	if err != nil {
 		return err
 	}
+	s.xrayCounterScratch = counters
+	if err := xrayQuotaUsageTotalsInto(counters, s.xrayUsageBaseline, policyIndex); err != nil {
+		return err
+	}
+	pendingBatchID := ""
+	if s.xrayUsagePending != nil {
+		pendingBatchID = s.xrayUsagePending.BatchID
+	}
+	reflectionQueries := policyIndex.ReflectionQueries
+	for index := range reflectionQueries {
+		reflectionQueries[index].PendingChildID = pendingBatchID
+	}
+	if err := s.localAwaitingReflectionUsageBatchInto(reflectionQueries, &policyIndex.ReflectionResults); err != nil {
+		return err
+	}
+	reflectionResults := policyIndex.ReflectionResults
 	var enforcementErr error
-	for _, policy := range payload.XrayPolicies {
-		var raw uint64
-		for key, counter := range counters {
-			if !strings.HasPrefix(key, policy.Email+":") {
-				continue
-			}
-			baseline := s.xrayUsageBaseline[key]
-			if counter.Total < baseline {
-				return fmt.Errorf("xray quota baseline exceeds logical total")
-			}
-			delta := counter.Total - baseline
-			if ^uint64(0)-raw < delta {
-				return fmt.Errorf("xray quota overflow")
-			}
-			raw += delta
-		}
-		pendingID := ""
-		if p := s.xrayUsagePending; p != nil {
-			pendingID = p.BatchID
-			reflected, err := s.localPendingUsageReflected("xray", policy.UserID, pendingID, policy.ReflectedUsageBatchID)
-			if err != nil {
-				return err
-			}
-			if reflected {
-				for _, sample := range p.Samples {
-					if sample.UserID != policy.UserID || sample.InboundTag != policy.InboundTag {
-						continue
-					}
-					if sample.Value > raw {
-						return fmt.Errorf("xray reflected pending exceeds unacked usage")
-					}
-					raw -= sample.Value
+	now := time.Now()
+	nextInterval := xrayQuotaAdaptiveMax
+	for reflectionPosition, policyPosition := range policyIndex.EnforcedPositions {
+		policy := policyIndex.Policies[policyPosition]
+		raw := policyIndex.UsageTotal[policyIndex.EmailIndex[policy.Email]]
+		if pending := s.xrayUsagePending; pending != nil && reflectionResults[reflectionPosition].PendingReflected {
+			for _, sample := range pending.Samples {
+				if sample.UserID != policy.UserID || sample.InboundTag != policy.InboundTag {
+					continue
 				}
+				if sample.Value > raw {
+					return fmt.Errorf("xray reflected pending exceeds unacked usage")
+				}
+				raw -= sample.Value
 			}
 		}
-		awaiting, err := s.localAwaitingReflectionUsage("xray", policy.UserID, policy.InboundTag, pendingID, policy.ReflectedUsageBatchID)
-		if err != nil {
-			return err
-		}
+		awaiting := reflectionResults[reflectionPosition].Awaiting
 		if ^uint64(0)-raw < awaiting {
 			return fmt.Errorf("xray reflection overflow")
 		}
-		allowed, _ := s.localQuotaAllowed("xray", policy.UserID, policy.InboundTag, policy.nativeSessionUserPolicy, raw+awaiting, time.Now())
+		live := nativeSessionEffectiveLiveUsage(policy.nativeSessionUserPolicy, raw+awaiting)
+		used := int64ToUint(policy.UsedTraffic)
+		if ^uint64(0)-used < live {
+			used = ^uint64(0)
+		} else {
+			used += live
+		}
+		sampleKey := xrayQuotaSampleKey{UserID: policy.UserID, InboundTag: policy.InboundTag, Email: policy.Email}
+		previous, hasPrevious := s.xrayQuotaSamples[sampleKey]
+		interval := xrayQuotaPolicyAdaptiveInterval(policy.nativeSessionUserPolicy, used, previous, hasPrevious, now)
+		if interval < nextInterval {
+			nextInterval = interval
+		}
+		if policy.DataLimit > 0 && strings.EqualFold(strings.TrimSpace(policy.Status), "active") {
+			s.xrayQuotaSamples[sampleKey] = xrayQuotaUsageSample{Used: used, At: now}
+		}
+		allowed, _ := s.localQuotaAllowed("xray", policy.UserID, policy.InboundTag, policy.nativeSessionUserPolicy, raw+awaiting, now)
 		if allowed {
 			continue
 		}
@@ -165,5 +357,87 @@ func (s *Server) quotaCheckXrayOffline(ctx context.Context) error {
 		// per-user close-all-streams API. Do not claim hard cutoff of old streams.
 		enforcementErr = errors.Join(enforcementErr, fmt.Errorf("xray %s authentication revoked; existing-stream termination unavailable", policy.Email))
 	}
+	s.xrayQuotaNextInterval = nextInterval
 	return enforcementErr
+}
+
+func (s *Server) xrayQuotaAdaptiveInterval() time.Duration {
+	s.mu.Lock()
+	policyIndex := s.xrayQuotaPolicyIndex
+	s.mu.Unlock()
+	if policyIndex != nil && len(policyIndex.EnforcedPositions) == 0 {
+		// Accounting checkpoints still collect the counters needed for billing.
+		// A separate quota timer adds no value when no policy can be enforced.
+		return 0
+	}
+	s.xrayUsageMu.Lock()
+	defer s.xrayUsageMu.Unlock()
+	if s.xrayQuotaNextInterval < xrayQuotaAdaptiveMin || s.xrayQuotaNextInterval > xrayQuotaAdaptiveMax {
+		return xrayQuotaAdaptiveMax
+	}
+	return s.xrayQuotaNextInterval
+}
+
+func xrayQuotaPolicyAdaptiveInterval(policy nativeSessionUserPolicy, used uint64, previous xrayQuotaUsageSample, hasPrevious bool, now time.Time) time.Duration {
+	interval := xrayQuotaAdaptiveMax
+	if !strings.EqualFold(strings.TrimSpace(policy.Status), "active") {
+		return interval
+	}
+	if policy.Expire > 0 {
+		untilExpiry := time.Unix(policy.Expire, 0).Sub(now)
+		interval = minDuration(interval, adaptiveDeadlineInterval(untilExpiry))
+	}
+	if policy.DataLimit > 0 {
+		limit := uint64(policy.DataLimit)
+		if used >= limit {
+			return xrayQuotaAdaptiveMin
+		}
+		remaining := limit - used
+		nearBytes := uint64(xrayQuotaNearLimitBytes)
+		if limit/100 > nearBytes {
+			nearBytes = limit / 100
+		}
+		if remaining <= nearBytes {
+			interval = minDuration(interval, xrayQuotaAdaptiveMin)
+		} else if !hasPrevious {
+			// Take an initial close sample after a policy revision before relaxing
+			// the cadence; no prior rate estimate exists yet.
+			interval = minDuration(interval, xrayQuotaAdaptiveMin)
+		} else if used > previous.Used && now.After(previous.At) {
+			bytesPerSecond := float64(used-previous.Used) / now.Sub(previous.At).Seconds()
+			if bytesPerSecond > 0 {
+				eta := time.Duration(float64(time.Second) * float64(remaining) / bytesPerSecond)
+				interval = minDuration(interval, adaptiveDeadlineInterval(eta))
+			}
+		}
+	}
+	return interval
+}
+
+func adaptiveDeadlineInterval(until time.Duration) time.Duration {
+	if until <= 0 {
+		return xrayQuotaAdaptiveMin
+	}
+	interval := until / 4
+	if interval < xrayQuotaAdaptiveMin {
+		return xrayQuotaAdaptiveMin
+	}
+	if interval > xrayQuotaAdaptiveMax {
+		return xrayQuotaAdaptiveMax
+	}
+	return interval
+}
+
+func minDuration(a, b time.Duration) time.Duration {
+	if b < a {
+		return b
+	}
+	return a
+}
+
+func int64ToUint(value int64) uint64 {
+	if value <= 0 {
+		return 0
+	}
+	return uint64(value)
 }
