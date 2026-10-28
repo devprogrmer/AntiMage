@@ -256,15 +256,41 @@ class WorkflowIsolationTest(unittest.TestCase):
         )
         # The log is still surfaced so failures remain diagnosable.
         self.assertIn('cat "$provision_log"', step)
-        self.assertIn('[ "$provision_status" -eq 0 ] || exit "$provision_status"', step)
+        self.assertIn('if [ "$provision_status" -ne 0 ]; then', step)
+        self.assertIn('exit "$provision_status"', step)
 
     def test_driver_and_evidence_are_safe_under_cancellation(self):
         step = self._l2tp_step()
         self.assertIn("bash scripts/ci/native-l2tp-driver.sh \\\n", step)
-        self.assertIn('</dev/null >"$RUNNER_TEMP/native-l2tp.log" 2>&1', step)
+        # The driver's own output still goes to a file rather than the captured
+        # step stdout, so its descendants cannot hold the step pipe open.
+        self.assertIn('driver_log="$RUNNER_TEMP/native-l2tp.log"', step)
+        self.assertIn('</dev/null >"$driver_log" 2>&1', step)
+        self.assertIn('cat "$driver_log"', step)
         workflow = self.WORKFLOW.read_text(encoding="utf-8")
         # Evidence must survive a cancelled run (a wedged step is cancelled).
         self.assertEqual(workflow.count("if: failure() || cancelled()"), 2)
+
+    def test_driver_tree_is_reaped_and_failures_are_annotated(self):
+        step = self._l2tp_step()
+        # `timeout` only signals the direct child; the privileged grandchildren
+        # (xl2tpd/pppd/charon) have to be reaped explicitly or the runner stays
+        # wedged and the job never ends, so no log or artifact is ever produced.
+        self.assertIn("bash scripts/ci/l2tp-reap-driver-tree.sh", step)
+        self.assertGreaterEqual(
+            step.count("bash scripts/ci/l2tp-reap-driver-tree.sh"),
+            1,
+        )
+        # The failure reason must be surfaced as a check-run annotation, which
+        # survives cancellation when the job logs do not.
+        self.assertIn('emit_failure_annotation "$driver_log" "native L2TP driver failed"', step)
+        self.assertIn(
+            'emit_failure_annotation "$provision_log" "native L2TP kernel provisioning failed"',
+            step,
+        )
+        self.assertIn("::error title=", step)
+        # The reaper is regression-tested from this same step.
+        self.assertIn("sudo python3 scripts/ci/l2tp-reap-driver-tree-test.py", step)
 
 
 class CapturedPipeWedgeTest(unittest.TestCase):

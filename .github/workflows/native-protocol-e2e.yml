@@ -90,12 +90,37 @@ jobs:
           # same SHA whose third attempt passed. Detaching stdin and sending the
           # helper output to a file keeps every descendant off the capture pipe,
           # and the file is printed afterwards so the logs are still visible.
+
+          # Surface the tail of a failed log as a check-run annotation. The
+          # runner drops the logs of a job that is later cancelled, which is why
+          # the last two native-l2tp attempts produced no diagnosable output at
+          # all. Annotations are recorded when they are emitted, so they survive
+          # cancellation and make the real failure readable afterwards.
+          emit_failure_annotation() {
+            local log="$1" title="$2" body
+            [ -s "$log" ] || return 0
+            body="$(command tail -c 3000 "$log" | command sed -e 's/%/%25/g' -e 's/\r/%0D/g' | command awk 'BEGIN{ORS="%0A"}{print}')"
+            printf '::error title=%s::%s\n' "$title" "$body"
+          }
+
+          # The driver starts private xl2tpd/pppd/charon daemons, veth pairs and
+          # client namespaces. `timeout` only signals the direct child, so the
+          # privileged grandchildren outlive it and leave the host networking
+          # torn down mid-flight; the runner then becomes unresponsive, which
+          # also defeats the job's own timeout (the last attempt sat 36+ minutes
+          # past its 45-minute cap). scripts/ci/l2tp-reap-driver-tree.sh reaps
+          # the whole tree after every run and is covered by its own
+          # process-level test.
           provision_log="$RUNNER_TEMP/native-l2tp-provision.log"
           provision_status=0
           python3 scripts/ci/l2tp-kernel-module-resolver-test.py </dev/null >"$provision_log" 2>&1 || provision_status=$?
+          sudo python3 scripts/ci/l2tp-reap-driver-tree-test.py </dev/null >>"$provision_log" 2>&1 || provision_status=$?
           bash scripts/ci/ensure-l2tp-kernel-module.sh </dev/null >>"$provision_log" 2>&1 || provision_status=$?
           cat "$provision_log"
-          [ "$provision_status" -eq 0 ] || exit "$provision_status"
+          if [ "$provision_status" -ne 0 ]; then
+            emit_failure_annotation "$provision_log" "native L2TP kernel provisioning failed"
+            exit "$provision_status"
+          fi
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           api_test="$RUNNER_TEMP/antimage-api.test"
@@ -104,15 +129,21 @@ jobs:
           go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           go test -c -o "$api_test" ./internal/app/api
           go build -o "$node_helper" ./cmd/antimage_node
+          driver_log="$RUNNER_TEMP/native-l2tp.log"
+          status=0
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
             timeout --signal=TERM --kill-after=30s 12m bash scripts/ci/native-l2tp-driver.sh \
-            </dev/null >"$RUNNER_TEMP/native-l2tp.log" 2>&1 || status=$?
-          cat "$RUNNER_TEMP/native-l2tp.log"
-          exit "${status:-0}"
+            </dev/null >"$driver_log" 2>&1 || status=$?
+          bash scripts/ci/l2tp-reap-driver-tree.sh
+          cat "$driver_log"
+          if [ "$status" -ne 0 ]; then
+            emit_failure_annotation "$driver_log" "native L2TP driver failed"
+          fi
+          exit "$status"
 
       - name: Run real Xray protocol E2E
         if: ${{ matrix.protocol == 'xray' }}
