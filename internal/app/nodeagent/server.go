@@ -153,6 +153,7 @@ type Server struct {
 	xrayAccountingCounters           map[string]accountingCounter
 	xrayNativeScratch                map[string]uint64
 	xrayCounterScratch               map[string]accountingCounter
+	xrayStatKeyCache                 map[string]xrayStatNativeKey
 	xrayQuotaRevoked                 map[string]xrayQuotaRevocation
 	xrayAccountingGeneration         string
 	xrayUsageLoaded                  bool

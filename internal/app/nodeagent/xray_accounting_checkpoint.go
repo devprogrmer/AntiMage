@@ -63,6 +63,26 @@ func (s *Server) previewXrayAccountingCountersLocked(stats []xrayStat, generatio
 	return s.previewXrayAccountingCountersLockedInto(stats, generation, nil)
 }
 
+// xrayStatNativeKey is the resolved outcome of one stat name: the persistent
+// "email:direction" counter key to accumulate under, or ok=false when the stat
+// is not a countable user traffic series.
+//
+// The resolution is a pure function of the stat name, so memoizing it cannot
+// change which series are counted or how they are keyed. It only avoids
+// re-parsing the same names on every tick: the parse walks the ">>>" fields,
+// lowercases them, decodes the base64 inbound tag in the email and allocates the
+// concatenated counter key, for every series of every quota and checkpoint tick.
+type xrayStatNativeKey struct {
+	Key string
+	OK  bool
+}
+
+// xrayStatKeyCacheMaxSeries bounds the memo. Production series counts are the
+// enforced user x inbound set (hundreds to a few thousand); reaching the bound
+// simply drops the memo, which refills from the next tick's names and can never
+// change an accounting result.
+const xrayStatKeyCacheMaxSeries = 65536
+
 func (s *Server) previewXrayAccountingCountersLockedInto(stats []xrayStat, generation string, next map[string]accountingCounter) (map[string]accountingCounter, error) {
 	if generation == "" {
 		generation = s.xrayAccountingGeneration
@@ -76,16 +96,25 @@ func (s *Server) previewXrayAccountingCountersLockedInto(stats []xrayStat, gener
 		s.xrayNativeScratch = native
 	}
 	clear(native)
+	cache := s.xrayStatKeyCache
+	if cache == nil {
+		cache = make(map[string]xrayStatNativeKey, len(s.xrayAccountingCounters))
+		s.xrayStatKeyCache = cache
+	}
 	for _, stat := range stats {
-		name, ok := parseXrayStatName(stat.Name)
-		if !ok || name.Type != "user" || name.Metric != "traffic" || stat.Value < 0 {
+		resolved, cached := cache[stat.Name]
+		if !cached {
+			if len(cache) >= xrayStatKeyCacheMaxSeries {
+				cache = make(map[string]xrayStatNativeKey, xrayStatKeyCacheMaxSeries)
+				s.xrayStatKeyCache = cache
+			}
+			resolved = resolveXrayStatNativeKey(stat.Name)
+			cache[stat.Name] = resolved
+		}
+		if !resolved.OK || stat.Value < 0 {
 			continue
 		}
-		identity, err := parseXrayUserEmail(name.Email)
-		if err != nil || identity.UserID <= 0 {
-			continue
-		}
-		native[name.Email+":"+name.Direction] = uint64(stat.Value)
+		native[resolved.Key] = uint64(stat.Value)
 	}
 	// Existing pre-journal batches contain native counters. Seed from their
 	// snapshot so migration cannot count their pending bytes a second time.
@@ -111,6 +140,21 @@ func (s *Server) previewXrayAccountingCountersLockedInto(stats []xrayStat, gener
 		}
 	}
 	return advanceAccountingCountersInto(next, previousCounters, native, seed)
+}
+
+// resolveXrayStatNativeKey is the single source of truth for turning a stat name
+// into a native counter key. It performs exactly the checks the tick used to
+// inline, so the memoized and unmemoized paths accept and reject the same names.
+func resolveXrayStatNativeKey(statName string) xrayStatNativeKey {
+	name, ok := parseXrayStatName(statName)
+	if !ok || name.Type != "user" || name.Metric != "traffic" {
+		return xrayStatNativeKey{}
+	}
+	identity, err := parseXrayUserEmail(name.Email)
+	if err != nil || identity.UserID <= 0 {
+		return xrayStatNativeKey{}
+	}
+	return xrayStatNativeKey{Key: name.Email + ":" + name.Direction, OK: true}
 }
 
 func (s *Server) checkpointXrayAccounting(ctx context.Context) error {
