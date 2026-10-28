@@ -414,6 +414,7 @@ func (s *Server) localAwaitingReflectionUsageBatch(queries []localUsageReflectio
 }
 
 func (s *Server) localAwaitingReflectionUsageBatchInto(queries []localUsageReflectionQuery, results *[]localUsageReflectionResult) error {
+	s.runtimeMetricsCounters.reflectionCalls.Add(1)
 	if len(queries) == 0 {
 		*results = (*results)[:0]
 		return nil

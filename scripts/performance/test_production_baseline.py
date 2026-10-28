@@ -521,6 +521,51 @@ class CollectorTest(unittest.TestCase):
         self.assertEqual(audit.safe_message("first\nsecond"), "first")
 
 
+
+    def test_runtime_metrics_snapshot_is_read_only_and_reports_real_counters(self):
+        self.write("runtime-metrics.json", {
+            "sampled_at_unix": 100, "process_started_at_unix": 1, "uptime_seconds": 99,
+            "goroutine_count": 42, "heap_bytes": 1048576, "heap_objects_bytes": 2048,
+            "stack_bytes": 4096, "total_alloc_bytes": 999, "alloc_bytes": 1048576,
+            "gc_cycles": 7, "gc_cpu_seconds_micro": 2500000, "heap_released_bytes": 512,
+            "accounting_ticks": 11, "quota_evaluations": 13, "reflection_calls": 5,
+            "delivery_calls": 3})
+        metrics = audit.runtime_metrics_snapshot(self.root)
+        self.assertEqual(metrics["status"], "ok")
+        self.assertEqual(metrics["goroutine_count"], 42)
+        self.assertEqual(metrics["gc_cpu_seconds_micro"], 2500000)
+        report = audit.runtime_instrumentation_report(metrics, {"xray": 0}, sampled_before=99)
+        self.assertEqual(report["source"], "nodeagent runtime-metrics.json")
+        self.assertEqual(report["goroutine_count"], 42)
+        self.assertEqual(report["gc_cpu_seconds"], 2.5)
+        self.assertEqual(report["accounting_calls"], {"accounting_ticks": 11, "quota_evaluations": 13})
+        self.assertTrue(report["snapshot_advanced_during_observation"])
+        self.assertIsNone(report["reason"])
+
+    def test_runtime_metrics_missing_reports_unavailable_not_fabricated(self):
+        metrics = audit.runtime_metrics_snapshot(self.root)
+        self.assertEqual(metrics["status"], "missing")
+        report = audit.runtime_instrumentation_report(metrics, {"xray": 0})
+        self.assertEqual(report["source"], "unavailable")
+        self.assertIsNone(report["goroutine_count"])
+        self.assertIsNone(report["heap_bytes"])
+        self.assertIsNone(report["gc_cycles"])
+        self.assertIsNone(report["accounting_calls"])
+        self.assertTrue(report["reason"])
+
+    def test_runtime_metrics_rejects_non_numeric_values(self):
+        self.write("runtime-metrics.json", {
+            "sampled_at_unix": "not-an-int", "goroutine_count": {"nested": 1},
+            "heap_bytes": None, "gc_cycles": 4, "accounting_ticks": 2})
+        metrics = audit.runtime_metrics_snapshot(self.root)
+        self.assertEqual(metrics["status"], "ok")
+        self.assertIsNone(metrics["sampled_at_unix"])
+        self.assertIsNone(metrics["goroutine_count"])
+        self.assertIsNone(metrics["heap_bytes"])
+        self.assertEqual(metrics["gc_cycles"], 4)
+        self.assertEqual(metrics["accounting_ticks"], 2)
+
+
 class DatabaseDiscoveryTest(unittest.TestCase):
     """The collector must resolve the panel DB from the install .env, read-only."""
 
@@ -793,7 +838,6 @@ class CollectorDiscoveryEntrypointTest(unittest.TestCase):
         # path that db_inventory then reports as unavailable. No crash, no null report.
         payload = json.loads(out)
         self.assertEqual(payload["database"]["discovery"], "ok")
-
 
 if __name__ == "__main__":
     unittest.main()

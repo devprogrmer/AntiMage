@@ -420,6 +420,12 @@ func (s *Server) runLocalAccountingWorkerWithWakeAdaptive(ctx context.Context, n
 			sampleCtx, cancel := context.WithTimeout(ctx, timeout)
 			err := tick(sampleCtx, enforce, checkpoint)
 			cancel()
+			if checkpoint {
+				s.runtimeMetricsCounters.accountingTicks.Add(1)
+			}
+			if enforce {
+				s.runtimeMetricsCounters.quotaEvaluations.Add(1)
+			}
 			if ctx.Err() == nil {
 				s.recordLocalWorkerHealth(name, err)
 			}
@@ -450,7 +456,12 @@ func (s *Server) runWokenQuotaTick(ctx context.Context, checkpointInterval time.
 	}
 	sampleCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	return tick(sampleCtx, true, checkpoint)
+	err := tick(sampleCtx, true, checkpoint)
+	if checkpoint {
+		s.runtimeMetricsCounters.accountingTicks.Add(1)
+	}
+	s.runtimeMetricsCounters.quotaEvaluations.Add(1)
+	return err
 }
 
 func nextQuotaDelay(minimum time.Duration, adaptiveInterval func() time.Duration, tickErr error) time.Duration {

@@ -134,10 +134,17 @@ CPU uses the NodeAgent PID's user+system time only: 100% is one logical core.
 Host-normalized CPU, affinity and available cgroup limits are reported separately.
 RSS/VSZ and thread counts are sampled repeatedly. Accounting state-file changes
 are timestamped alongside CPU samples; these are activity observations, not exact
-tick counts or causal hotspot attribution. The current production process does
-not expose safe aggregate Go heap/GC/goroutine or internal quota/RPC/DB counters,
-so those values remain unavailable. No profiler, signal, trace or network debug
-endpoint is enabled by this script.
+tick counts or causal hotspot attribution.
+
+Nodes running the instrumentation build also write `runtime-metrics.json` into the
+NodeAgent data directory every five seconds: Go heap/GC/alloc/goroutine state plus
+read-only counters for accounting ticks, quota evaluations, reflection calls and
+usage deliveries. It is a best-effort atomic snapshot that NodeAgent never reads
+back, so it adds no behavior and never fails the node when the directory is
+unwritable. The collector reports those values when the file is present and marks
+`runtime_instrumentation.source` as `unavailable` with an explicit reason when the
+running binary predates it. Internal database query counts remain unavailable.
+No profiler, signal, trace or network debug endpoint is enabled by this script.
 
 Use the measured host constraints, actual protocol mix and observed scale as the
 acceptance workload. Current external observations of approximately 650 users,

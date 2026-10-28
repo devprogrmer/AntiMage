@@ -179,6 +179,7 @@ func (s *Server) migratedLocalUsageV2Locked() (*localUsageLedgerV2, error) {
 }
 
 func (s *Server) recordLocalUsageDeliveryV2(root string) (map[int64]string, error) {
+	s.runtimeMetricsCounters.deliveryCalls.Add(1)
 	if root == "" {
 		return nil, nil
 	}

@@ -344,6 +344,85 @@ def parse_reflection_key(key):
         return None
 
 
+def runtime_metrics_snapshot(data_dir):
+    """Read the best-effort NodeAgent runtime-metrics snapshot.
+
+    NodeAgent writes this file atomically every few seconds and never reads it
+    back, so it is a pure read-only observation. When an older node binary does
+    not write it, every field stays None and the report says so instead of
+    inventing a number.
+    """
+    document, status = read_json(Path(data_dir) / "runtime-metrics.json")
+    result = {"status": status, "file_mtime_ns": None}
+    for field in ("sampled_at_unix", "process_started_at_unix", "uptime_seconds",
+                  "goroutine_count", "heap_bytes", "heap_objects_bytes", "stack_bytes",
+                  "total_alloc_bytes", "alloc_bytes", "gc_cycles", "gc_cpu_seconds_micro",
+                  "heap_released_bytes", "accounting_ticks", "quota_evaluations",
+                  "reflection_calls", "delivery_calls"):
+        result[field] = None
+    if document is None:
+        return result
+    try:
+        result["file_mtime_ns"] = (Path(data_dir) / "runtime-metrics.json").stat().st_mtime_ns
+    except OSError:
+        pass
+    for field in ("sampled_at_unix", "process_started_at_unix", "uptime_seconds",
+                  "goroutine_count", "heap_bytes", "heap_objects_bytes", "stack_bytes",
+                  "total_alloc_bytes", "alloc_bytes", "gc_cycles", "gc_cpu_seconds_micro",
+                  "heap_released_bytes", "accounting_ticks", "quota_evaluations",
+                  "reflection_calls", "delivery_calls"):
+        value = document.get(field)
+        if type(value) in (int, float):
+            result[field] = value
+    return result
+
+
+def runtime_instrumentation_report(metrics, metadata_changes, sampled_before=None):
+    """Assemble the runtime_instrumentation block.
+
+    A capable node writes runtime-metrics.json, so heap/GC/goroutine/allocation
+    and the per-loop call counters are real observations. An older node binary
+    leaves them None with an explicit reason. Either way the block never
+    fabricates a number and never claims causal CPU attribution.
+    """
+    accounting_calls = None
+    if metrics.get("accounting_ticks") is not None:
+        accounting_calls = {
+            "accounting_ticks": metrics.get("accounting_ticks"),
+            "quota_evaluations": metrics.get("quota_evaluations"),
+        }
+    available = metrics.get("status") == "ok"
+    sampled_at = metrics.get("sampled_at_unix")
+    fresh = available and (sampled_before is None or sampled_at is None or sampled_at != sampled_before)
+    return {
+        "source": "nodeagent runtime-metrics.json" if available else "unavailable",
+        "snapshot_status": metrics.get("status"),
+        "snapshot_file_mtime_ns": metrics.get("file_mtime_ns"),
+        "snapshot_sampled_at_unix": metrics.get("sampled_at_unix"),
+        "snapshot_advanced_during_observation": fresh,
+        "goroutine_count": metrics.get("goroutine_count"),
+        "heap_bytes": metrics.get("heap_bytes"),
+        "heap_objects_bytes": metrics.get("heap_objects_bytes"),
+        "stack_bytes": metrics.get("stack_bytes"),
+        "total_alloc_bytes": metrics.get("total_alloc_bytes"),
+        "alloc_bytes": metrics.get("alloc_bytes"),
+        "heap_released_bytes": metrics.get("heap_released_bytes"),
+        "gc_cycles": metrics.get("gc_cycles"),
+        "gc_cpu_seconds": (metrics.get("gc_cpu_seconds_micro") / 1e6
+                           if metrics.get("gc_cpu_seconds_micro") is not None else None),
+        "accounting_calls": accounting_calls,
+        "reflection_calls": metrics.get("reflection_calls"),
+        "quota_tick_calls": metrics.get("quota_evaluations"),
+        "delivery_calls": metrics.get("delivery_calls"),
+        "accounting_state_change_observations": metadata_changes,
+        "internal_db_query_calls": None,
+        "reason": (None if available else
+                   "NodeAgent runtime-metrics.json is missing or invalid; the running binary "
+                   "predates read-only runtime instrumentation"),
+        "cpu_hotspot_attribution": "unavailable without existing process profiling instrumentation; timestamped state-change correlation is not causal attribution",
+    }
+
+
 def runtime_inventory(data_dir):
     snap, status = read_json(Path(data_dir) / "accounting/runtime-policy.json")
     result = {"status": status, "rows": {}, "inbounds": {}, "native": {}, "node_id": 0,
@@ -1470,6 +1549,7 @@ def sample(args):
     previous_sample = None
     previous_files = {}
     metadata_changes = {p: 0 for p in ("xray",) + tuple(NATIVE_FIELDS.values())}
+    runtime_metrics_before = runtime_metrics_snapshot(args.data_dir)
     while time.monotonic() - start_mono < duration:
         current = process_info(node["pid"])
         if not current or current["stat"]["start_ticks"] != node["stat"]["start_ticks"]:
@@ -1535,6 +1615,7 @@ def sample(args):
     if not process_current:
         raise CollectorStageError("sampling", "antimage-node exited before collection completed",
                                   diagnostics={"pid": node["pid"], "observed_seconds": round(elapsed, 3)})
+    runtime_metrics = runtime_metrics_snapshot(args.data_dir)
     audit_after = audit_snapshot(args)
     if not namespace_matches:
         for value in audit_after["live"].values():
@@ -1592,13 +1673,9 @@ def sample(args):
         "traffic": traffic,
         "configuration": interval_configuration(node["pid"]),
         "collector_net_namespace_matches_node": namespace_matches,
-        "runtime_instrumentation": {"goroutine_count": None, "accounting_calls": None,
-                                    "reflection_calls": None, "quota_tick_calls": None,
-                                    "accounting_state_change_observations": metadata_changes,
-                                    "heap_bytes": None, "gc_cycles": None, "gc_cpu_seconds": None,
-                                    "internal_db_query_calls": None,
-                                    "reason": "current production NodeAgent does not expose these aggregate counters; state-file changes are activity observations, not tick/call counts",
-                                    "cpu_hotspot_attribution": "unavailable without existing process profiling instrumentation; timestamped state-change correlation is not causal attribution"},
+        "runtime_instrumentation": runtime_instrumentation_report(
+            runtime_metrics, metadata_changes,
+            sampled_before=runtime_metrics_before.get("sampled_at_unix")),
         "xray": {"binary": binary_info("/proc/" + str(xray_proc["pid"]) + "/exe" if xray_proc else xray_path),
                  "pid": xray_proc["pid"] if xray_proc else None,
                  "version": xray_version(xray_path)},

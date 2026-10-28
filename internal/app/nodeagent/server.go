@@ -46,6 +46,7 @@ type Server struct {
 	metricsSystemCache               *nodev1.SystemMetrics
 	metricsSystemCacheAt             time.Time
 	metricsSystemSampler             func() *nodev1.SystemMetrics
+	runtimeMetricsCounters           runtimeMetricsCounters
 	startedAt                        time.Time
 	lastConfig                       string
 	lastRuntime                      *exec.Cmd
@@ -284,9 +285,15 @@ func (s *Server) Run(ctx context.Context) error {
 		defer close(quotaDone)
 		s.runLocalQuotaScheduler(accountingCtx, quotaInterval, checkpointInterval)
 	}()
+	metricsDone := make(chan struct{})
+	go func() {
+		defer close(metricsDone)
+		s.runRuntimeMetricsWriter(accountingCtx)
+	}()
 	defer func() {
 		stopAccounting()
 		<-quotaDone
+		<-metricsDone
 	}()
 
 	errCh := make(chan error, 1)
