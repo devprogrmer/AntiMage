@@ -42,7 +42,27 @@ module_available() {
   [ -n "$(find "/lib/modules/${kernel_release}" -name 'l2tp_ppp.ko*' -print -quit 2>/dev/null || true)" ]
 }
 
+# A module built for a different kernel can wedge the runner the instant it is
+# loaded, taking the job and its log with it. Check that the module we are about
+# to hand to `modprobe` really targets the running kernel, and stop here instead
+# of loading something the kernel cannot match.
+verify_module_matches_kernel() {
+  local module_path vermagic
+  module_path="$(find "/lib/modules/${kernel_release}" -name 'l2tp_ppp.ko*' -print -quit 2>/dev/null || true)"
+  if [ -z "$module_path" ]; then
+    echo "l2tp_ppp is still missing from /lib/modules/${kernel_release}" >&2
+    return 1
+  fi
+  vermagic="$(modinfo -F vermagic "$module_path" 2>/dev/null || modinfo "$module_path" 2>/dev/null | sed -n 's/^vermagic: *//p' || true)"
+  case "$vermagic" in
+    "$kernel_release"*) return 0 ;;
+  esac
+  echo "refusing to load ${module_path}: vermagic '${vermagic}' does not match kernel ${kernel_release}" >&2
+  echo "a mismatched l2tp_ppp can hang the runner, so this job fails here instead" >&2
+  return 1
+}
 if module_available; then
+  verify_module_matches_kernel || exit 1
   echo "l2tp_ppp is already present in /lib/modules/${kernel_release}"
   exit 0
 fi
@@ -57,6 +77,7 @@ if [ "$apt_budget" -gt 15 ] && \
      apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 \
      install -y --no-install-recommends "$module_package"; then
   if module_available; then
+    verify_module_matches_kernel || exit 1
     echo "${module_package} installed via apt"
     exit 0
   fi
@@ -121,8 +142,11 @@ install_from_source() {
   sudo DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=15s 180s \
     apt-get -y -f install --no-install-recommends >/dev/null 2>&1 || true
   if module_available; then
-    echo "${module_package} installed from ${label}"
-    return 0
+    if verify_module_matches_kernel; then
+      echo "${module_package} installed from ${label}"
+      return 0
+    fi
+    return 1
   fi
   echo "${label} did not produce an installed l2tp_ppp module"
   return 1

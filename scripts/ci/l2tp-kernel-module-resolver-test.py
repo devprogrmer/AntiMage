@@ -125,6 +125,14 @@ fi
 exit 0
 """
 
+MODINFO_STUB = """#!/bin/sh
+if [ "$1" = "-F" ] && [ "$2" = "vermagic" ]; then
+  echo "${STUB_VERMAGIC:-$STUB_KERNEL SMP mod_unload modversions}"
+  exit 0
+fi
+exit 1
+"""
+
 
 class ProvisioningTest(unittest.TestCase):
     def setUp(self):
@@ -140,17 +148,20 @@ class ProvisioningTest(unittest.TestCase):
         self._stub("apt-get", APT_GET_STUB)
         self._stub("uname", UNAME_STUB)
         self._stub("find", FIND_STUB)
+        self._stub("modinfo", MODINFO_STUB)
 
     def _stub(self, name, body):
         path = self.bin / name
         path.write_text(body)
         path.chmod(path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
-    def _run(self, sources):
+    def _run(self, sources, vermagic=None):
         import json
 
         (self.fixture / "config.json").write_text(json.dumps({"sources": sources}))
         env = os.environ.copy()
+        if vermagic is not None:
+            env["STUB_VERMAGIC"] = vermagic
         env.update(
             {
                 "PATH": f"{self.bin}{os.pathsep}{env['PATH']}",
@@ -185,6 +196,15 @@ class ProvisioningTest(unittest.TestCase):
         self.assertIn("installed from", result.stdout)
         # The stub only marks the module present when a non-empty .deb landed.
         self.assertTrue((self.fixture / "installed").exists())
+
+    def test_refuses_a_module_built_for_another_kernel(self):
+        """A mismatched l2tp_ppp can hang the runner when modprobe loads it."""
+        result = self._run(
+            [{"base": "http://azure.archive.ubuntu.com", "filename": LIVE_FILE}],
+            vermagic="6.5.0-99-generic SMP mod_unload modversions",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not match kernel", result.stderr)
 
     def test_fails_over_when_a_mirror_404s(self):
         result = self._run(
