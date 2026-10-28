@@ -68,21 +68,20 @@ jobs:
       - name: Run native L2TP and PPP lifecycle
         if: ${{ matrix.protocol == 'l2tp' }}
         shell: bash
-        # The step body lives in scripts/ci/native-l2tp-lifecycle-step.sh so it
-        # can bound every phase from the inside and still reach its own reap,
-        # log dump and annotation. When the runner fires a step timeout it kills
-        # the body instantly, so anything after a hanging command is lost; if
-        # that also pushes the job past its 45-minute cap, GitHub discards the
-        # job log and artifacts entirely. The last three native-l2tp hangs
-        # produced exactly one artifact: the check-run note "The job has
-        # exceeded the maximum execution time of 45m0s".
+        # The lifecycle runs in its own session with stdout and stderr on a
+        # file, and this step waits for it with its own deadline. Nothing the
+        # lifecycle leaks - apt method children, xl2tpd/pppd/charon, namespace
+        # helpers - can then hold this step's captured pipe or keep this step
+        # from returning. The previous attempts did hand the step's lifetime to
+        # the lifecycle: a wedged run went straight to the 45-minute job cap,
+        # GitHub cancelled the job, and the log and every artifact were
+        # discarded, so three consecutive failures produced no diagnosable
+        # output at all. The step body itself is scripts/ci/native-l2tp-lifecycle-step.sh,
+        # which bounds every phase out of one shared budget.
         #
-        # 30 minutes is larger than the script's own 25-minute self-bound and
-        # smaller than the job's 45-minute cap, which keeps room for the capture
-        # and upload steps even when the driver fails. The outer 26-minute
-        # 	imeout is only a backstop: the script bounds every phase itself and
-        # reserves time to print its logs before exiting.
-
+        # 30 minutes is larger than the lifecycle's own bound and smaller than
+        # the job's 45-minute cap, which keeps room for the capture and upload
+        # steps even when the lifecycle fails.
         timeout-minutes: 30
         run: |
           set -uo pipefail
@@ -93,37 +92,57 @@ jobs:
           # It never skips the test: the driver still runs `modprobe l2tp_ppp`,
           # so a genuinely unavailable package still fails this native job.
           #
-          # The provisioning helpers must not write to this step's captured
-          # stdout. The runner only considers a step finished once that pipe
-          # reaches EOF, and `sudo timeout apt-get`/`dpkg` spawn privileged
-          # method/child processes (http, gpgv, dpkg) that can outlive the killed
-          # parent while still holding the inherited pipe. When that happened the
-          # step body would exit but the pipe stayed open, so neither the step's
-          # own timeout nor the bounded wrappers could end it and the job only
-          # stopped at the 45-minute job timeout with no log and no artifact -
-          # exactly the native-l2tp hang seen on two attempts of the same SHA
-          # whose third attempt passed. Detaching stdin and sending every helper's
-          # output to a file keeps descendants off the capture pipe, and the files
-          # are printed afterwards so the logs are still visible.
-          #
           # The driver starts private xl2tpd/pppd/charon daemons, veth pairs and
           # client namespaces. `timeout` only signals the direct child, so the
           # privileged grandchildren outlive it and leave the host networking
-          # torn down mid-flight; the runner then becomes unresponsive, which
-          # also defeats the job's own timeout (one attempt sat 36+ minutes past
-          # its 45-minute cap). scripts/ci/l2tp-reap-driver-tree.sh reaps the
+          # torn down mid-flight; scripts/ci/l2tp-reap-driver-tree.sh reaps the
           # whole tree after every run and is covered by its own process-level
           # test.
-          status=0
           step_log="$RUNNER_TEMP/native-l2tp-lifecycle-step.log"
-          timeout --signal=TERM --kill-after=30s 26m \
-            bash scripts/ci/native-l2tp-lifecycle-step.sh </dev/null 2>&1 | tee "$step_log" || status=$?
+          status_file="$RUNNER_TEMP/native-l2tp-lifecycle-step.status"
+          rm -f "$status_file"
+          : >"$step_log"
+
+          setsid bash -c '
+            rc=0
+            bash scripts/ci/native-l2tp-lifecycle-step.sh </dev/null || rc=$?
+            printf "%s" "$rc" > "$1"
+          ' native-l2tp-lifecycle "$status_file" >"$step_log" 2>&1 </dev/null &
+          lifecycle_pid=$!
+
+          # Never wait on the lifecycle itself: a process stuck in an
+          # uninterruptible kernel path cannot be signalled away, so the only
+          # reliable way to keep this step finite is to stop waiting for it.
+          deadline=$(( $(date +%s) + ${ANTIMAGE_L2TP_STEP_DEADLINE_SECONDS:-1440} ))
+          while [ ! -s "$status_file" ]; do
+            kill -0 "$lifecycle_pid" 2>/dev/null || break
+            [ "$(date +%s)" -lt "$deadline" ] || break
+            sleep 5
+          done
+
+          # Reap before reading the logs so no daemon still holds them open.
           bash scripts/ci/l2tp-reap-driver-tree.sh || true
+
+          status=0
+          if [ -s "$status_file" ]; then
+            status="$(command head -c 16 "$status_file" | command tr -dc '0-9')"
+            [ -n "$status" ] || status=1
+          else
+            # Still running past the deadline: stop the whole session and fail
+            # with the conventional timeout status. The test is not skipped or
+            # weakened by this - it is reported as a timeout.
+            sudo kill -KILL -- "-$lifecycle_pid" 2>/dev/null || true
+            kill -KILL "$lifecycle_pid" 2>/dev/null || true
+            status=124
+          fi
+
           for log in "$RUNNER_TEMP/native-l2tp-provision.log" "$RUNNER_TEMP/native-l2tp.log"; do
             [ -s "$log" ] || continue
             printf '=== tail of %s ===\n' "$log"
-            command tail -c 20000 "$log"
+            command tail -c 20000 "$log" || true
           done
+          printf '=== lifecycle step log ===\n'
+          command tail -c 200000 "$step_log" || true
           if [ "$status" -ne 0 ]; then
             # Surface the tail as a check-run annotation: annotations are
             # recorded when emitted, so they survive a later cancellation that
@@ -318,6 +337,10 @@ jobs:
             ${{ runner.temp }}/antimage-ikev2-*/targeted-client-*.log
             ${{ runner.temp }}/antimage-anyconnect-failure/**
             ${{ runner.temp }}/native-runner-state.txt
+            ${{ runner.temp }}/native-l2tp-lifecycle-step.log
+            ${{ runner.temp }}/native-l2tp-lifecycle-step.status
+            ${{ runner.temp }}/native-l2tp-provision.log
+            ${{ runner.temp }}/native-l2tp.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -375,16 +398,21 @@ jobs:
             ANTIMAGE_VPN_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_VPN_API_TEST_BINARY="$api_test" \
             bash scripts/ci/native-vpn-drivers.sh
-          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
-            ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
-            ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
-            ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
-            ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
-            timeout --signal=TERM --kill-after=30s 12m bash scripts/ci/native-l2tp-driver.sh
-          # `timeout` only signals the direct child, so the driver's privileged
-          # grandchildren (xl2tpd/pppd/charon) have to be reaped explicitly or
-          # they keep their veth pairs and namespaces and wedge the runner.
-          bash scripts/ci/l2tp-reap-driver-tree.sh || true
+          # `timeout` only signals the direct child and a process parked in an
+          # uninterruptible kernel path cannot be signalled away at all, so the
+          # driver runs detached with its output on a file and is waited for
+          # with a bounded deadline. Without that, a wedged driver keeps this
+          # step alive until the job cap, and the cancelled job loses its log
+          # and artifacts. The helper reaps the driver tree before it returns.
+          bash scripts/ci/l2tp-bounded-run.sh \
+            "$RUNNER_TEMP/exact-once-l2tp.log" \
+            "$RUNNER_TEMP/exact-once-l2tp.status" 780 \
+            sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+              ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
+              ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
+              ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
+              ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
+              timeout --signal=TERM --kill-after=30s 12m bash scripts/ci/native-l2tp-driver.sh
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_PPTP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_PPTP_PANEL_TEST_BINARY="$nodecontroller_test" \
@@ -400,6 +428,9 @@ jobs:
             ${{ runner.temp }}/antimage-native-vpn-failure/**
             ${{ runner.temp }}/antimage-l2tp-failure/**
             ${{ runner.temp }}/antimage-pptp-failure/**
+            ${{ runner.temp }}/exact-once-provision.log
+            ${{ runner.temp }}/exact-once-l2tp.log
+            ${{ runner.temp }}/exact-once-l2tp.status
           if-no-files-found: ignore
           retention-days: 7
 

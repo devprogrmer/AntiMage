@@ -249,26 +249,49 @@ class WorkflowIsolationTest(unittest.TestCase):
         end = rest.index("\n      - name: ")
         return rest[:end]
 
+    def _l2tp_step_body(self):
+        """Return the step's `run:` block with its ten-space indent removed."""
+        step = self._l2tp_step()
+        marker = "\n        run: |\n"
+        start = step.index(marker) + len(marker)
+        body = []
+        for line in step[start:].split("\n"):
+            if line.strip() == "":
+                body.append("")
+                continue
+            if not line.startswith("          "):
+                break
+            body.append(line[10:])
+        return "\n".join(body)
+
     def test_step_delegates_to_a_self_bounding_script(self):
         step = self._l2tp_step()
         # The body was extracted so a hanging phase still reaches its own reap,
-        # log dump and annotation. When the runner fires a step timeout it kills
-        # the body instantly, and once the job passes its 45-minute cap GitHub
-        # discards the job log and every artifact as well.
+        # log dump and annotation.
+        self.assertIn('setsid bash -c ', step)
         self.assertIn(
-            'bash scripts/ci/native-l2tp-lifecycle-step.sh </dev/null 2>&1 | tee "$step_log" || status=$?',
+            "bash scripts/ci/native-l2tp-lifecycle-step.sh </dev/null || rc=$?",
             step,
             "the step must delegate to the self-bounding script",
         )
-        # The step has to keep going after the script fails, so it must not run
-        # under `set -e` before it has reaped, printed and annotated.
+        # The lifecycle must never run on the step's captured stdout: a leaked
+        # privileged descendant would otherwise hold the pipe open and the step
+        # could not finish even after its own body returned.
+        self.assertIn('>"$step_log" 2>&1 </dev/null &', step)
+        self.assertNotIn("| tee", step)
+        # The step has to keep going after the lifecycle fails, so it must not
+        # run under `set -e` before it has reaped, printed and annotated.
         self.assertIn("set -uo pipefail", step)
         self.assertNotIn("set -euo pipefail", step)
-        # The step's bound must sit between the script's own 25-minute bound and
-        # the 45-minute job cap, leaving room for the capture and upload steps.
+        # The step's bound must sit between the lifecycle's own bound and the
+        # 45-minute job cap, leaving room for the capture and upload steps.
         self.assertIn("timeout-minutes: 30", step)
         self.assertNotIn("timeout-minutes: 35", step)
-        self.assertIn("timeout --signal=TERM --kill-after=30s 26m", step)
+        self.assertIn('status_file="$RUNNER_TEMP/native-l2tp-lifecycle-step.status"', step)
+        # The step polls for the lifecycle and never waits on it, so a process
+        # stuck in an uninterruptible kernel path cannot hold the step open.
+        self.assertIn("while [ ! -s \"$status_file\" ]; do", step)
+        self.assertNotIn("wait \"$lifecycle_pid\"", step)
 
     def test_driver_and_evidence_are_safe_under_cancellation(self):
         step = self._l2tp_step()
@@ -434,6 +457,112 @@ sleep 120
             "redirecting the helper to a file must let the captured pipe close",
         )
 
+
+class BoundedL2TPRunnerTest(unittest.TestCase):
+    """The shared bounded runner must never outlive its deadline."""
+
+    RUNNER = (
+        pathlib.Path(__file__).resolve().parents[2]
+        / "scripts"
+        / "ci"
+        / "l2tp-bounded-run.sh"
+    )
+
+    def _fixture(self):
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="l2tp-bounded-run-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        ci_dir = tmp / "scripts" / "ci"
+        ci_dir.mkdir(parents=True)
+        # Hermetic stand-in for the real reaper, which signals daemons by name.
+        (ci_dir / "l2tp-reap-driver-tree.sh").write_text(
+            "#!/usr/bin/env bash\necho reaped\n"
+        )
+        return tmp
+
+    def test_a_wedged_command_is_reported_as_a_timeout(self):
+        tmp = self._fixture()
+        log = tmp / "run.log"
+        status = tmp / "run.status"
+        started = time.monotonic()
+        result = subprocess.run(
+            ["bash", str(self.RUNNER), str(log), str(status), "6", "sleep", "600"],
+            cwd=str(tmp),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 90, "the runner must not wait for a wedged command")
+        self.assertEqual(result.returncode, 124, result.stdout + result.stderr)
+        self.assertIn("reaped", result.stdout)
+        subprocess.run(["pkill", "-9", "-f", "sleep 600"], check=False, capture_output=True)
+
+    def test_the_command_status_is_forwarded(self):
+        tmp = self._fixture()
+        result = subprocess.run(
+            [
+                "bash", str(self.RUNNER), str(tmp / "run.log"), str(tmp / "run.status"),
+                "60", "bash", "-c", "echo from-driver; exit 3",
+            ],
+            cwd=str(tmp),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertIn("from-driver", result.stdout)
+
+class StepBodyBoundingTest(unittest.TestCase):
+    """The workflow step must return even when the lifecycle never does.
+
+    This is the regression that the previous attempts were missing. A process
+    stuck in an uninterruptible kernel path cannot be signalled away, so if the
+    step waits for the lifecycle it never finishes: the job then runs to its
+    45-minute cap, GitHub cancels it, and the log and artifacts are discarded.
+    The body below is the real one from the workflow, run against a lifecycle
+    stub that never exits.
+    """
+
+    def _step_body(self):
+        return WorkflowIsolationTest()._l2tp_step_body()
+
+    def test_step_returns_and_reports_a_timeout_when_the_lifecycle_wedges(self):
+        body = self._step_body()
+        self.assertIn("setsid", body)
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="l2tp-step-body-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        ci_dir = tmp / "scripts" / "ci"
+        ci_dir.mkdir(parents=True)
+        # Stands in for a lifecycle that is wedged for good.
+        (ci_dir / "native-l2tp-lifecycle-step.sh").write_text(
+            "#!/usr/bin/env bash\nsleep 600\n"
+        )
+        (ci_dir / "l2tp-reap-driver-tree.sh").write_text("#!/usr/bin/env bash\nexit 0\n")
+        env = dict(os.environ)
+        env["RUNNER_TEMP"] = str(tmp)
+        env["ANTIMAGE_L2TP_STEP_DEADLINE_SECONDS"] = "8"
+        started = time.monotonic()
+        result = subprocess.run(
+            ["bash", "-c", body],
+            cwd=str(tmp),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 90, "the step must not wait for the lifecycle")
+        self.assertEqual(result.returncode, 124, result.stdout + result.stderr)
+        self.assertIn("=== lifecycle step log ===", result.stdout)
+        self.assertIn("::error title=native L2TP lifecycle step failed::", result.stdout)
+        subprocess.run(
+            ["pkill", "-9", "-f", "sleep 600"],
+            check=False,
+            capture_output=True,
+        )
 
 class ExtractedStepBoundingTest(unittest.TestCase):
     """The extracted step must bound itself and always return.
