@@ -259,7 +259,11 @@ jobs:
 
       - name: Capture runner networking state after failure
         if: failure() || cancelled()
-        timeout-minutes: 3
+        # Every probe below is individually bounded, but the sum (ten
+        # `timeout 10s` commands plus the chown/chmod sweeps) can exceed a
+        # 3-minute budget on a busy runner, which is why this step kept failing
+        # instead of recording the evidence it had already collected.
+        timeout-minutes: 6
         shell: bash
         run: |
           for evidence in "$RUNNER_TEMP"/antimage-*-failure "$RUNNER_TEMP"/antimage-ikev2-*; do
@@ -281,6 +285,7 @@ jobs:
 
       - name: Upload native runtime evidence
         if: failure() || cancelled()
+        timeout-minutes: 6
         uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.protocol }}-evidence-${{ github.run_id }}

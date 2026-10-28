@@ -14,6 +14,7 @@ ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-l2tp-XXXXXX") }"
 ROOT="${ROOT% }"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 python3 "$SCRIPT_DIR/test_native_l2tp_session_state.py"
+python3 "$SCRIPT_DIR/l2tp-evidence-copy-test.py"
 NS="antimage-l2tp-client"
 NS_B="antimage-l2tp-client-b"
 VETH_HOST="altp-vh"
@@ -52,7 +53,11 @@ cleanup() {
   set +e
   if [ "$rc" -ne 0 ]; then
     mkdir -p "$RUNNER_TEMP/antimage-l2tp-failure"
-    cp -a "$ROOT/." "$RUNNER_TEMP/antimage-l2tp-failure/" 2>/dev/null || true
+    # The private xl2tpd control pipes live in $ROOT as FIFOs. Copying them into
+    # the uploaded evidence tree makes actions/upload-artifact block forever on
+    # the FIFO read, which silently burned the whole job timeout. Prune every
+    # non-uploadable entry instead of copying the run tree verbatim.
+    bash "$SCRIPT_DIR/l2tp-evidence-copy.sh" "$ROOT" "$RUNNER_TEMP/antimage-l2tp-failure"
     chmod -R a+rX "$RUNNER_TEMP/antimage-l2tp-failure" 2>/dev/null || true
     if [ -s "$ROOT/quota-watch.log" ]; then
       echo '=== captured L2TP quota worker output ===' >&2
