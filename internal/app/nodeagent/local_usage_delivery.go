@@ -33,6 +33,43 @@ type localUsageDeliveryState struct {
 	Ledger            *localUsageLedgerV2  `json:"ledger,omitempty"`
 }
 
+// localUsageAnchorCache memoizes the serialized migration-anchor sidecar and
+// its content hash for the exact slice that produced them. The v2 reflection
+// path persists the cumulative ledger on every collection while the fixed
+// production anchor set stays byte-identical, so without this the full anchor
+// slice was re-marshalled and re-hashed on every tick.
+//
+// The cache key is slice identity plus length. Callers rebuild a fresh slice
+// whenever anchor content changes (append, deep copy, or row filtering), so a
+// changed set always misses. The cached slice is retained so its backing array
+// cannot be freed and reallocated under a different anchor set.
+type localUsageAnchorCache struct {
+	deliveries []localUsageDelivery
+	hash       string
+	raw        []byte
+}
+
+// anchorSidecarLocked returns the serialized v1 migration-anchor document and
+// its hex-encoded SHA-256 content hash. When the caller passes the exact slice
+// the previous result was computed from, the memoized bytes and hash are
+// reused; any other slice (including every producer that changed anchor
+// content) is re-serialized and re-hashed exactly as before.
+func (s *Server) anchorSidecarLocked(deliveries []localUsageDelivery) ([]byte, string, error) {
+	cache := s.localUsageAnchorCache
+	if cache != nil && len(deliveries) > 0 && len(cache.deliveries) == len(deliveries) &&
+		&cache.deliveries[0] == &deliveries[0] {
+		return cache.raw, cache.hash, nil
+	}
+	raw, err := json.Marshal(localUsageDeliveryState{Version: 1, Deliveries: deliveries})
+	if err != nil {
+		return nil, "", err
+	}
+	sum := sha256.Sum256(raw)
+	hash := hex.EncodeToString(sum[:])
+	s.localUsageAnchorCache = &localUsageAnchorCache{deliveries: deliveries, hash: hash, raw: raw}
+	return raw, hash, nil
+}
+
 func (s *Server) ensureLocalUsageDeliveriesLocked() error {
 	if s.localUsageLoaded {
 		return nil
@@ -135,12 +172,11 @@ func (s *Server) persistLocalUsageDeliveriesLocked(deliveries []localUsageDelive
 		state.Version = 2
 		state.Ledger = s.localUsageV2
 		if len(deliveries) > 0 {
-			raw, err := json.Marshal(localUsageDeliveryState{Version: 1, Deliveries: deliveries})
+			raw, hash, err := s.anchorSidecarLocked(deliveries)
 			if err != nil {
 				return err
 			}
-			sum := sha256.Sum256(raw)
-			state.LegacyAnchorsHash = hex.EncodeToString(sum[:])
+			state.LegacyAnchorsHash = hash
 			if state.LegacyAnchorsHash != previousAnchorHash {
 				anchorPath := filepath.Join(filepath.Dir(path), "deliveries-v1-"+state.LegacyAnchorsHash+".json")
 				if err := writeAccountingState(anchorPath, raw); err != nil {

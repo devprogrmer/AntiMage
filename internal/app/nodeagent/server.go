@@ -59,6 +59,7 @@ type Server struct {
 	localUsageV2Index                *localUsageV2Index
 	localUsageReceiptCache           *localUsageReceiptCache
 	localUsageLegacyHash             string
+	localUsageAnchorCache            *localUsageAnchorCache
 	localUsageMu                     sync.Mutex
 	localUsageLoaded                 bool
 	localUsageDeliveries             []localUsageDelivery
