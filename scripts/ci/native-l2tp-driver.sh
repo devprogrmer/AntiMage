@@ -248,6 +248,29 @@ wait_for_gone() {
   echo "timeout waiting for $name to stop" >&2
   return 1
 }
+verify_client_traffic() {
+  local namespace="$1" label="$2"
+  if ip netns exec "$namespace" ping -c 2 -W 2 10.67.0.1; then return 0; fi
+  echo "L2TP active-client traffic failed after $label; capturing network and PPP state" >&2
+  {
+    echo "=== $namespace addresses and links ==="
+    ip netns exec "$namespace" ip -details -statistics addr show || true
+    echo "=== $namespace routes ==="
+    ip netns exec "$namespace" ip route show table all || true
+    echo "=== $namespace PPP process ==="
+    ip netns exec "$namespace" pgrep -a pppd || true
+    echo "=== server PPP interfaces ==="
+    ip -details -statistics link show type ppp || true
+    echo "=== PPP and xl2tpd processes ==="
+    pgrep -a pppd || true
+    pgrep -a xl2tpd || true
+    echo "=== PPP daemon log tails ==="
+    for file in "$ROOT"/server-pppd.log "$ROOT"/xl2tpd-server.log "$ROOT"/xl2tpd-client.log; do
+      [ -f "$file" ] && { echo "--- $file ---"; tail -n 100 "$file"; }
+    done
+  } >&2
+  return 1
+}
 env ANTIMAGE_L2TP_API_STATE="$ROOT/l2tp-state" \
   "$ANTIMAGE_L2TP_API_TEST_BINARY" -test.run='^TestL2TPNativePanelSessionServer$' -test.v >"$ROOT/panel-api.log" 2>&1 &
 API_PID=$!; PIDS+=("$API_PID")
@@ -580,7 +603,7 @@ set_session_limits "$session_config" 1 0
 find "$ROOT/l2tp-state" -path '*/admission-denials/*.json' -delete
 start_client_b 0
 wait_for_denial_reason 'device limit reached'
-ip netns exec "$NS" ping -c 2 -W 2 10.67.0.1
+verify_client_traffic "$NS" 'DeviceLimit rejection'
 stop_client_b
 stop_pid "$CLIENT_DAEMON_PID"
 stop_pid "$CLIENT_LAUNCH_PID"
@@ -598,7 +621,7 @@ set_session_limits "$session_config" 0 1
 find "$ROOT/l2tp-state" -path '*/admission-denials/*.json' -delete
 start_client_b 0
 wait_for_denial_reason 'IP limit reached'
-ip netns exec "$NS" ping -c 2 -W 2 10.67.0.1
+verify_client_traffic "$NS" 'IPLimit rejection'
 stop_client_b
 stop_pid "$CLIENT_DAEMON_PID"
 stop_pid "$CLIENT_LAUNCH_PID"

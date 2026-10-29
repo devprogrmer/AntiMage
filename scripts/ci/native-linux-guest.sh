@@ -125,8 +125,9 @@ wait "$test_pid"
 rc=$?
 test_pid=''
 cat "$evidence/test.log"
-scp -q -r -P "$port" -i "$root/key" -o BatchMode=yes -o StrictHostKeyChecking=yes \
-  -o UserKnownHostsFile="$root/known_hosts" -o ConnectTimeout=5 \
-  "root@127.0.0.1:/root/antimage-native/evidence/." "$RUNNER_TEMP/"
+set -o pipefail
+ssh "${ssh_args[@]}" root@127.0.0.1 \
+  'tar -C /root/antimage-native/evidence -cf - .' |
+  tar -C "$evidence" -xf -
 set -e
 exit "$rc"
