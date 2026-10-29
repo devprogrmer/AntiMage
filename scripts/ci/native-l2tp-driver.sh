@@ -421,7 +421,7 @@ start_client() {
   wait_for 'client control pipe' test -p "$ROOT/client.control"
   printf 'c antimage\n' >"$ROOT/client.control"
   if [ "$wait_active" = 1 ]; then
-    wait_for 'client PPP interface' ip netns exec "$NS" ip link show ppp0
+    wait_for 'client PPP address assignment' sh -c 'ip netns exec "$1" ip -o -4 addr show dev ppp0 | grep -q "inet 10.67.0.2 peer 10.67.0.1"' _ "$NS"
     wait_for 'server PPP interface' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
     wait_for 'durable production session-start hook' sh -c 'find "$1" -path "*/ppp-accounting/active/ppp*.json" -print -quit | grep -q .' _ "$ROOT/l2tp-state"
   fi
@@ -544,7 +544,7 @@ start_client_b() {
   wait_for 'second client control pipe' test -p "$ROOT/client-b.control"
   printf 'c antimage\n' >"$ROOT/client-b.control"
   if [ "$wait_active" = 1 ]; then
-    wait_for 'second client PPP interface' ip netns exec "$NS_B" ip link show ppp0
+    wait_for 'second client PPP address assignment' sh -c 'ip netns exec "$1" ip -o -4 addr show dev ppp0 | grep -q "inet 10.67.0.2 peer 10.67.0.1"' _ "$NS_B"
     wait_for 'second durable L2TP session start record' sh -c 'find "$1" -path "*/ppp-accounting/active/ppp*.json" -print -quit | grep -q .' _ "$ROOT/l2tp-state"
   fi
 }
@@ -611,6 +611,7 @@ find "$ROOT/l2tp-state" -path '*/admission-denials/*.json' -delete
 start_client_b
 assert_l2tp_real_ip "$ROOT/l2tp-state" 10.252.0.2
 stop_client_b
+wait_for_gone 'server PPP interface after successful DeviceLimit handoff' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
 set_session_limits "$session_config" 0 0
 start_client
 assert_l2tp_real_ip "$ROOT/l2tp-state" 10.251.0.2
