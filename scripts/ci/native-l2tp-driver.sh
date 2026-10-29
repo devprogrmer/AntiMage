@@ -13,6 +13,7 @@ fi
 ROOT="${ROOT:-$(mktemp -d "${RUNNER_TEMP:-/tmp}/antimage-l2tp-XXXXXX") }"
 ROOT="${ROOT% }"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+python3 "$SCRIPT_DIR/test_native_l2tp_session_state.py"
 NS="antimage-l2tp-client"
 NS_B="antimage-l2tp-client-b"
 VETH_HOST="altp-vh"
@@ -108,8 +109,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$ROOT" "$ROOT/etc/ppp/ip-pre-up.d" "$ROOT/etc/xl2tpd" "$ROOT/etc/run"
+mkdir -p "$ROOT" "$ROOT/etc"
 mkdir -p "$ROOT/l2tp-state"
+# Overlay a private /etc tree instead of bind-mounting individual config files.
+# L2TP preparation uses atomic rename for /etc/ipsec.conf and ipsec.secrets;
+# replacing a file bind-mount target fails with EBUSY on Linux.
+cp -a /etc/. "$ROOT/etc/"
+mkdir -p "$ROOT/etc/ppp/ip-pre-up.d" "$ROOT/etc/xl2tpd" "$ROOT/etc/run"
 # The package may auto-start a host strongSwan daemon before the test mount is
 # installed. Stop it so the production ipsec start command loads this test's
 # generated L2TP connection from the isolated /etc/ipsec.conf.
@@ -118,7 +124,7 @@ systemctl stop strongswan.service >/dev/null 2>&1 || true
 ipsec stop >/dev/null 2>&1 || true
 # strongSwan's bypass-lan plugin otherwise installs higher-priority cleartext
 # policies for the directly connected test subnet, shadowing UDP/1701 ESP.
-SERVER_STRONGSWAN_CONF="$ROOT/server-strongswan.conf"
+SERVER_STRONGSWAN_CONF="$ROOT/etc/strongswan.conf"
 cat >"$SERVER_STRONGSWAN_CONF" <<'EOF'
 include /etc/strongswan.d/*.conf
 charon {
@@ -129,7 +135,6 @@ charon {
     }
 }
 EOF
-mount --bind "$SERVER_STRONGSWAN_CONF" /etc/strongswan.conf
 # Current kernels expose the PPP-over-L2TP driver as l2tp_ppp. Try the legacy
 # pppol2tp module name too, but do not fail when that alias is not shipped.
 modprobe l2tp_ppp
@@ -143,10 +148,7 @@ if [ ! -x /etc/ppp/ip-pre-up ]; then
 fi
 cp -a /etc/ppp/ip-pre-up "$ROOT/etc/ppp/ip-pre-up"
 for file in "$ROOT/etc/ipsec.conf" "$ROOT/etc/ipsec.secrets" "$ROOT/etc/ppp/options"; do : >"$file"; done
-mount --bind "$ROOT/etc/ppp" /etc/ppp
-mount --bind "$ROOT/etc/xl2tpd" /etc/xl2tpd
-mount --bind "$ROOT/etc/ipsec.conf" /etc/ipsec.conf
-mount --bind "$ROOT/etc/ipsec.secrets" /etc/ipsec.secrets
+mount --bind "$ROOT/etc" /etc
 
 quota_bytes="${ANTIMAGE_L2TP_QUOTA_BYTES:-52428800}"
 stage() {
@@ -158,6 +160,14 @@ stage() {
     ANTIMAGE_L2TP_SESSION_CALLBACK_TOKEN="$callback_token" \
     ANTIMAGE_NODE_HELPER_BINARY="$ANTIMAGE_NODE_HELPER_BINARY" \
     "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPNativeAccountingStage$' -test.v
+}
+mutation_stage() {
+  local action="$1"
+  env ANTIMAGE_L2TP_NATIVE_STATE="$ROOT/l2tp-state" \
+    ANTIMAGE_L2TP_MUTATION_ACTION="$action" \
+    ANTIMAGE_L2TP_XL2TPD_PID="$(cat "$ROOT/server.pid")" \
+    ANTIMAGE_NODE_HELPER_BINARY="$ANTIMAGE_NODE_HELPER_BINARY" \
+    "$ANTIMAGE_L2TP_TEST_BINARY" -test.run='^TestL2TPTargetedMutationNativeStage$' -test.v
 }
 panel_replay() {
   env ANTIMAGE_L2TP_NATIVE_STATE="$ROOT/l2tp-state" \
@@ -214,6 +224,20 @@ print(f'L2TP live outer IP verified from PPP session state: {expected}')
 PY
 }
 
+snapshot_l2tp_sessions() {
+  python3 "$SCRIPT_DIR/native_l2tp_session_state.py" snapshot "$ROOT/l2tp-state" >"$ROOT/active-before-$1.json"
+}
+
+wait_for_new_l2tp_real_ip() {
+  local expected="$1" snapshot="$ROOT/active-before-$2.json"
+  # A stopped PPP session's active record is retained so a retried stop hook
+  # can finish safely. Snapshot process identities before dialing so an older
+  # retained record cannot satisfy this new connection's readiness wait.
+  wait_for "new L2TP session for outer IP $expected" \
+    python3 "$SCRIPT_DIR/native_l2tp_session_state.py" has-new-session \
+      "$ROOT/l2tp-state" "$snapshot" "$expected"
+}
+
 wait_for_denial_reason() {
   local expected="$1"
   for _ in $(seq 1 300); do
@@ -246,29 +270,6 @@ wait_for_gone() {
   local name="$1"; shift
   for _ in $(seq 1 200); do if ! "$@" >/dev/null 2>&1; then return 0; fi; sleep .1; done
   echo "timeout waiting for $name to stop" >&2
-  return 1
-}
-verify_client_traffic() {
-  local namespace="$1" label="$2"
-  if ip netns exec "$namespace" ping -c 2 -W 2 10.67.0.1; then return 0; fi
-  echo "L2TP active-client traffic failed after $label; capturing network and PPP state" >&2
-  {
-    echo "=== $namespace addresses and links ==="
-    ip netns exec "$namespace" ip -details -statistics addr show || true
-    echo "=== $namespace routes ==="
-    ip netns exec "$namespace" ip route show table all || true
-    echo "=== $namespace PPP process ==="
-    ip netns exec "$namespace" pgrep -a pppd || true
-    echo "=== server PPP interfaces ==="
-    ip -details -statistics link show type ppp || true
-    echo "=== PPP and xl2tpd processes ==="
-    pgrep -a pppd || true
-    pgrep -a xl2tpd || true
-    echo "=== PPP daemon log tails ==="
-    for file in "$ROOT"/server-pppd.log "$ROOT"/xl2tpd-server.log "$ROOT"/xl2tpd-client.log; do
-      [ -f "$file" ] && { echo "--- $file ---"; tail -n 100 "$file"; }
-    done
-  } >&2
   return 1
 }
 env ANTIMAGE_L2TP_API_STATE="$ROOT/l2tp-state" \
@@ -408,6 +409,7 @@ client_ipsec_daemon() {
 }
 start_client() {
   local wait_active="${1:-1}"
+  snapshot_l2tp_sessions client-a
   rm -f "$ROOT/client.pid" "$ROOT/client.control"
   mkdir -p "$CLIENT_PPP_RUNDIR"
   ip netns exec "$NS" unshare --mount --fork --propagation private bash -c '
@@ -425,7 +427,7 @@ start_client() {
   if [ "$wait_active" = 1 ]; then
     wait_for 'client PPP interface' ip netns exec "$NS" ip link show ppp0
     wait_for 'server PPP interface' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
-    wait_for 'durable production session-start hook' sh -c 'find "$1" -path "*/ppp-accounting/active/ppp*.json" -print -quit | grep -q .' _ "$ROOT/l2tp-state"
+    wait_for_new_l2tp_real_ip 10.251.0.2 client-a
   fi
 }
 write_client_b_files() {
@@ -532,6 +534,7 @@ EOF
 }
 start_client_b() {
   local wait_active="${1:-1}"
+  snapshot_l2tp_sessions client-b
   rm -f "$ROOT/client-b.pid" "$ROOT/client-b.control"
   mkdir -p "$CLIENT_PPP_RUNDIR_B"
   ip netns exec "$NS_B" unshare --mount --fork --propagation private bash -c '
@@ -547,8 +550,12 @@ start_client_b() {
   printf 'c antimage\n' >"$ROOT/client-b.control"
   if [ "$wait_active" = 1 ]; then
     wait_for 'second client PPP interface' ip netns exec "$NS_B" ip link show ppp0
-    wait_for 'second durable L2TP session start record' sh -c 'find "$1" -path "*/ppp-accounting/active/ppp*.json" -print -quit | grep -q .' _ "$ROOT/l2tp-state"
+    wait_for_new_l2tp_real_ip 10.252.0.2 client-b
   fi
+}
+set_client_b_credentials() {
+  local username="$1" password="$2"
+  sed -i "s/^name .*/name ${username}/; s/^password .*/password ${password}/" "$ROOT/client-b-options"
 }
 stop_client_b() {
   if [ -n "${CLIENT_DAEMON_PID_B:-}" ]; then stop_pid "$CLIENT_DAEMON_PID_B"; fi
@@ -564,12 +571,51 @@ wait_for_empty_session_outbox() {
   cat "$ROOT/panel-api.log" >&2
   return 1
 }
+instrument_ip_down_hook() {
+  local hook="$1" helper="$2" config="$3" trace="$4"
+  cat >"$hook" <<EOF
+#!/bin/sh
+set +e
+printf 'begin pppd_pid_set=%s ifname_set=%s device_set=%s common_name_set=%s peername_set=%s username_set=%s ipremote_set=%s bytes_sent_set=%s bytes_rcvd_set=%s\\n' \\
+  "\${PPPD_PID:+yes}" "\${IFNAME:+yes}" "\${DEVICE:+yes}" "\${common_name:+yes}" "\${PEERNAME:+yes}" "\${USERNAME:+yes}" "\${IPREMOTE:+yes}" "\${BYTES_SENT:+yes}" "\${BYTES_RCVD:+yes}" >>"$trace"
+error_file="\$(mktemp)"
+trap 'rm -f "\$error_file"' EXIT HUP INT TERM
+"$helper" session-event "$config" stop "\${6:-}" >/dev/null 2>"\$error_file"
+rc=\$?
+error_class=none
+if [ "\$rc" -ne 0 ]; then
+  if grep -q 'PPP process identity' "\$error_file"; then error_class=process_identity
+  elif grep -q 'missing trusted PPP start metadata' "\$error_file"; then error_class=missing_start_record
+  elif grep -q 'PPP stop metadata does not match start' "\$error_file"; then error_class=start_stop_mismatch
+  elif grep -q 'PPP stop inbound mismatch' "\$error_file"; then error_class=inbound_mismatch
+  elif grep -q 'PPP BYTES_SENT' "\$error_file"; then error_class=sent_counter
+  elif grep -q 'PPP BYTES_RCVD' "\$error_file"; then error_class=received_counter
+  elif grep -q 'PPP final counter overflow' "\$error_file"; then error_class=counter_overflow
+  elif grep -q 'PPP session identity' "\$error_file"; then error_class=session_identity
+  elif grep -q 'session state' "\$error_file"; then error_class=callback_state
+  elif [ -s "\$error_file" ]; then error_class=other_helper_error
+  else error_class=no_helper_error_text
+  fi
+fi
+printf 'end helper_exit=%s error_class=%s\\n' "\$rc" "\$error_class" >>"$trace"
+rm -f "\$error_file"
+trap - EXIT HUP INT TERM
+exit "\$rc"
+EOF
+  chmod 0700 "$hook"
+}
 
 echo '=== production L2TP daemon configuration and real xl2tpd/PPP tunnel ==='
 stage prepare
 config_path="$(cat "$ROOT/l2tp-state/xl2tpd-config-path")"
 ppp_options_path="$(awk -F ' = ' '/^pppoptfile = / {print $2}' "$config_path")"
 printf '\ndebug\nlogfile %s\n' "$ROOT/server-pppd.log" >>"$ppp_options_path"
+session_config="$(find "$ROOT/l2tp-state/l2tp" -name session-helper.json -print -quit)"
+instrument_ip_down_hook \
+  "$(dirname "$session_config")/ip-down.sh" \
+  "$ANTIMAGE_NODE_HELPER_BINARY" \
+  "$session_config" \
+  "$ROOT/ppp-ip-down-trace.log"
 cp "$config_path" /etc/xl2tpd/xl2tpd.conf
 write_client_files
 write_client_b_files
@@ -598,12 +644,41 @@ wait_for 'assigned production VPN address' sh -c 'ip netns exec "$1" ip -o -4 ad
 session_config="$(find "$ROOT/l2tp-state/l2tp" -name session-helper.json -print -quit)"
 assert_l2tp_real_ip "$ROOT/l2tp-state" 10.251.0.2
 
+echo '=== native targeted L2TP Add/Update/Remove preserves unrelated PPP session ==='
+server_pid_before="$(cat "$ROOT/server.pid")"
+alice_ifindex_before="$(cat "/sys/class/net/$(ip -o -4 addr show | awk '$2 ~ /^ppp[0-9]+$/ && $4 ~ /^10\.67\.0\.1(\/.*)?$/ { print $2; exit }')/ifindex")"
+mutation_stage add
+mutation_stage rollback
+set_client_b_credentials native-l2tp-bob native-l2tp-bob-v1
+start_client_b
+test "$(ip netns exec "$NS_B" ip -o -4 addr show dev ppp0 | awk 'NR == 1 { split($4, address, "/"); print address[1] }')" = 10.67.0.3
+mutation_stage update
+ip netns exec "$NS" ping -c 2 -W 2 10.67.0.1
+ip netns exec "$NS_B" ping -c 2 -W 2 10.67.0.1
+stop_client_b
+set_client_b_credentials native-l2tp-bob native-l2tp-bob-v2
+start_client_b
+ip netns exec "$NS_B" ping -c 2 -W 2 10.67.0.1
+mutation_stage remove
+wait_for_gone 'removed Bob PPP interface' ip netns exec "$NS_B" ip link show ppp0
+ip netns exec "$NS" ping -c 2 -W 2 10.67.0.1
+server_pid_after="$(cat "$ROOT/server.pid")"
+alice_ifindex_after="$(cat "/sys/class/net/$(ip -o -4 addr show | awk '$2 ~ /^ppp[0-9]+$/ && $4 ~ /^10\.67\.0\.1(\/.*)?$/ { print $2; exit }')/ifindex")"
+test "$server_pid_after" = "$server_pid_before"
+test "$alice_ifindex_after" = "$alice_ifindex_before"
+stop_client_b
+set_client_b_credentials native-l2tp native-l2tp-secret
+echo "L2TP targeted mutation preserved xl2tpd PID=${server_pid_after} and Alice PPP ifindex=${alice_ifindex_after}"
+
 echo '=== native concurrent L2TP DeviceLimit=1; source B denied with source A live ==='
 set_session_limits "$session_config" 1 0
 find "$ROOT/l2tp-state" -path '*/admission-denials/*.json' -delete
 start_client_b 0
 wait_for_denial_reason 'device limit reached'
-verify_client_traffic "$NS" 'DeviceLimit rejection'
+wait_for_gone 'denied second client PPP interface' ip netns exec "$NS_B" ip link show ppp0
+python3 "$SCRIPT_DIR/native_l2tp_session_state.py" denial-has-no-session-state \
+  "$ROOT/l2tp-state" 10.252.0.2 'device limit reached'
+ip netns exec "$NS" ping -c 2 -W 2 10.67.0.1
 stop_client_b
 stop_pid "$CLIENT_DAEMON_PID"
 stop_pid "$CLIENT_LAUNCH_PID"
@@ -621,7 +696,10 @@ set_session_limits "$session_config" 0 1
 find "$ROOT/l2tp-state" -path '*/admission-denials/*.json' -delete
 start_client_b 0
 wait_for_denial_reason 'IP limit reached'
-verify_client_traffic "$NS" 'IPLimit rejection'
+wait_for_gone 'IP-limited second client PPP interface' ip netns exec "$NS_B" ip link show ppp0
+python3 "$SCRIPT_DIR/native_l2tp_session_state.py" denial-has-no-session-state \
+  "$ROOT/l2tp-state" 10.252.0.2 'IP limit reached'
+ip netns exec "$NS" ping -c 2 -W 2 10.67.0.1
 stop_client_b
 stop_pid "$CLIENT_DAEMON_PID"
 stop_pid "$CLIENT_LAUNCH_PID"
@@ -739,6 +817,13 @@ find "$ROOT/l2tp-state" -path '*/ppp-accounting/admission-denials/7.json' -delet
 printf 'c antimage\n' >"$ROOT/client.control"
 wait_for 'durable L2TP reconnect denial' sh -c 'find "$1" -path "*/ppp-accounting/admission-denials/7.json" -print -quit | grep -q .' _ "$ROOT/l2tp-state"
 wait_for_gone 'denied reconnect PPP interface' ip netns exec "$NS" ip link show ppp0
+# The client namespace link can disappear before the server-side pppd has
+# finished its synchronous ip-down callback. Keep the Panel API alive until
+# xl2tpd removes every server PPP interface and those stop hooks have returned.
+wait_for_gone 'all server PPP interfaces after quota denial' sh -c 'ip -o link show | grep -q "ppp[0-9]"'
+# The interface is removed before pppd waits for ip-down children. Reap every
+# PPP daemon too, so the final Panel assertion observes delivered stop events.
+wait_for_gone 'all pppd stop callbacks after quota denial' pgrep -x pppd
 stage collect-final
 panel_replay 1
 stage ack
