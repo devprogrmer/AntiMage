@@ -74,7 +74,7 @@ jobs:
           go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           go test -c -o "$api_test" ./internal/app/api
           go build -o "$node_helper" ./cmd/antimage_node
-          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+          sudo python3 scripts/ci/native-isolated-run.py env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
@@ -261,20 +261,20 @@ jobs:
           go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           go test -c -o "$api_test" ./internal/app/api
           go build -o "$node_helper" ./cmd/antimage_node
-          sudo env \
+          sudo python3 scripts/ci/native-isolated-run.py env \
             RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_VPN_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_VPN_API_TEST_BINARY="$api_test" \
             bash scripts/ci/native-vpn-drivers.sh
-          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+          sudo python3 scripts/ci/native-isolated-run.py env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
             bash scripts/ci/native-l2tp-driver.sh
-          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+          sudo python3 scripts/ci/native-isolated-run.py env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_PPTP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_PPTP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_PPTP_API_TEST_BINARY="$api_test" \
