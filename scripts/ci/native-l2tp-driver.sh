@@ -201,16 +201,37 @@ PY
 }
 
 assert_l2tp_real_ip() {
-  python3 - "$1" "$2" <<'PY'
+  local root="$1" expected="$2"
+  for _ in $(seq 1 300); do
+    if python3 - "$root" "$expected" <<'PY' >/dev/null 2>&1
+import glob, json, sys
+root, expected = sys.argv[1:]
+for path in glob.glob(root + '/l2tp/*/ppp-accounting/active/*.json'):
+    try:
+        with open(path, encoding='utf-8') as f: record = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        continue
+    if int(record.get('UserID', 0)) == 7 and record.get('ClientIP') == expected:
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+    then
+      echo "L2TP live outer IP verified from PPP session state: $expected"
+      return 0
+    fi
+    sleep 0.1
+  done
+  python3 - "$root" "$expected" <<'PY'
 import glob, json, sys
 root, expected = sys.argv[1:]
 records = []
 for path in glob.glob(root + '/l2tp/*/ppp-accounting/active/*.json'):
-    with open(path, encoding='utf-8') as f: record = json.load(f)
+    try:
+        with open(path, encoding='utf-8') as f: record = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        continue
     if int(record.get('UserID', 0)) == 7: records.append(record)
-if not any(record.get('ClientIP') == expected for record in records):
-    raise SystemExit(f'no live L2TP session recorded outer IP {expected}: {records}')
-print(f'L2TP live outer IP verified from PPP session state: {expected}')
+raise SystemExit(f'no live L2TP session recorded outer IP {expected} after 30s: {records}')
 PY
 }
 
