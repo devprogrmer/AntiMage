@@ -19,7 +19,9 @@ permissions:
 jobs:
   native-runtime:
     name: native-${{ matrix.protocol }}
-    runs-on: ${{ matrix.protocol == 'pptp' && 'ubuntu-22.04' || 'ubuntu-latest' }}
+    # The latest Azure kernel lacks a matching L2TP extra-modules package and
+    # is outside the pinned AWG module's supported build environment.
+    runs-on: ${{ (matrix.protocol == 'pptp' || matrix.protocol == 'l2tp' || matrix.protocol == 'amneziawg') && 'ubuntu-22.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false

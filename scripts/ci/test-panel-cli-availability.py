@@ -45,5 +45,29 @@ class PanelCLIAvailabilityTest(unittest.TestCase):
         self.assertEqual(result.stdout, "admin\nlist\n")
 
 
+class NodeCommandAvailabilityTest(unittest.TestCase):
+    def test_direct_node_commands_keep_the_original_dispatch(self):
+        script = pathlib.Path(__file__).resolve().parents[1] / "antimage/antimage-node-binary.sh"
+        source = script.read_text()
+        start = source.index("\ndispatch_command() {")
+        end = source.index('\nif [ -z "${COMMAND:-}" ]', start)
+        commands = {
+            "up": "up_command", "down": "down_command",
+            "restart": "restart_command", "status": "status_command",
+            "logs": "logs_command", "edit": "edit_command",
+            "update": "update_command", "core-update": "update_core_command",
+        }
+        stubs = ["ensure_script_matches_installed_mode() { :; }"]
+        for handler in commands.values():
+            stubs.append(f"{handler}() {{ printf '%s\\n' '{handler}'; }}")
+        body = "\n".join(stubs) + source[start:end] + '\ndispatch_command "$1"'
+        for command, handler in commands.items():
+            with self.subTest(command=command):
+                result = subprocess.run(["bash", "-c", body, "node-test", command],
+                                        capture_output=True, text=True, check=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, handler + "\n")
+
+
 if __name__ == "__main__":
     unittest.main()
