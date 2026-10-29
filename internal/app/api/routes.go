@@ -92,7 +92,7 @@ func (s *Server) Handler() http.Handler {
 	})
 
 	r.NotFound(s.handleHomeOrSubscriptionPath)
-	return withRequestID(&externalAppAwareHandler{apps: s.externalApps, next: withAPIRequestBodyLimit(r)})
+	return &externalAppAwareHandler{apps: s.externalApps, next: withAPIRequestBodyLimit(r)}
 }
 
 func (s *Server) registerAdminRoutes(r chi.Router) {
@@ -162,17 +162,10 @@ func (s *Server) registerSystemRoutes(r chi.Router) {
 	r.HandleFunc("/system/metrics", s.requireAdmin(s.handleSystemMetricsWebSocket))
 	r.HandleFunc("/system", s.requireAdmin(s.handleSystemStats))
 	r.HandleFunc("/maintenance/info", s.requireSudo(s.handleMaintenanceInfo))
-	r.HandleFunc("/maintenance/versions", s.requireSudo(s.handleMaintenanceVersions))
-	r.HandleFunc("/maintenance/history", s.requireSudo(s.handleMaintenanceHistory))
-	r.HandleFunc("/maintenance/operations", s.requireSudo(s.handleMaintenanceOperations))
 	r.HandleFunc("/maintenance/status", s.requireSudo(s.handleMaintenanceStatus))
 	r.HandleFunc("/maintenance/update", s.requireSudo(s.handleMaintenanceUpdate))
-	r.HandleFunc("/maintenance/backups", s.requireSudo(s.handleMaintenanceBackups))
-	r.HandleFunc("/maintenance/rollback", s.requireSudo(s.handleMaintenanceRollback))
 	r.HandleFunc("/maintenance/restart", s.requireSudo(s.handleMaintenanceRestart))
 	r.HandleFunc("/maintenance/soft-reload", s.requireSudo(s.handleMaintenanceSoftReload))
-	r.HandleFunc("/maintenance/diagnostics", s.requireSudo(s.handleDiagnostics))
-	r.HandleFunc("/maintenance/diagnostics/*", s.requireSudo(s.handleDiagnosticAcknowledge))
 }
 
 func (s *Server) registerSettingsRoutes(r chi.Router) {
@@ -239,8 +232,6 @@ func (s *Server) registerNodeRoutes(r chi.Router) {
 	r.HandleFunc("/haproxy/*", s.requireSudo(s.handleHAProxyPath))
 	r.HandleFunc("/haproxy", s.requireSudo(s.handleHAProxyRoot))
 	r.HandleFunc("/nodes/service/update", s.requireSudo(s.handleNodesServiceUpdate))
-	r.HandleFunc("/nodes/rollouts", s.requireSudo(s.handleRollouts))
-	r.HandleFunc("/nodes/rollouts/*", s.requireSudo(s.handleRolloutPath))
 	r.HandleFunc("/nodes/usage", s.requireSudo(s.handleNodesUsage))
 	r.HandleFunc("/nodes/metrics", s.requireSudo(s.handleNodesMetricsWebSocket))
 	r.HandleFunc("/nodes", s.requireSudo(s.handleNodes))

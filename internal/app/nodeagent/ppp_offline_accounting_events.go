@@ -27,7 +27,6 @@ type pppOfflineSession struct {
 
 var pppOfflineReadIdentity = pppOfflineInterfaceIdentity
 var pppOfflineReadProcess = offlineProcessIdentity
-var pppOfflineReadLiveProcess = offlineLiveProcessIdentity
 var pppOfflineDetectProtocol = pppOfflineProcessProtocol
 var pppOfflineReadCounter = readL2TPInterfaceCounter
 var pppSessionHelperExecutable = os.Executable
@@ -55,114 +54,26 @@ func offlineDurableJSON(path string, value any) error {
 }
 
 func offlineProcessIdentity(pid string) (string, error) {
-	identity, _, err := offlineProcessDetails(pid)
-	return identity, err
-}
-
-// ip-down may outlive pppd itself. Only stop hooks may recover an identity
-// from durable start metadata; admission and signalling still require /proc.
-func pppOfflineStopProcessIdentity(root, iface, pid string) (string, error) {
-	identity, err := pppOfflineReadProcess(pid)
-	if !os.IsNotExist(err) {
-		return identity, err
-	}
 	if _, err := strconv.ParseUint(pid, 10, 32); err != nil {
 		return "", err
 	}
 	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	if err != nil {
 		return "", err
-	}
-	identity, err = pppOfflineFindReapedProcess(root, iface, pid, strings.TrimSpace(string(boot)))
-	if err != nil {
-		return "", err
-	}
-	// A PID may have been reused while the durable records were read.
-	current, err := pppOfflineReadProcess(pid)
-	if err == nil && current != identity {
-		return "", fmt.Errorf("PPP stop process PID was reused")
-	}
-	if err != nil && !os.IsNotExist(err) {
-		return "", err
-	}
-	return identity, nil
-}
-
-func pppOfflineFindReapedProcess(root, iface, pid, boot string) (string, error) {
-	if !l2TPPPPInterfacePattern.MatchString(iface) || boot == "" {
-		return "", fmt.Errorf("invalid PPP stop session identity")
-	}
-	paths, err := filepath.Glob(filepath.Join(root, "ppp-accounting", "active", "*.json"))
-	if err != nil {
-		return "", err
-	}
-	var identity, recordedInterface string
-	for _, path := range paths {
-		raw, err := os.ReadFile(path)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return "", err
-		}
-		var record pppOfflineSession
-		if err := json.Unmarshal(raw, &record); err != nil {
-			return "", err
-		}
-		parts := strings.Split(record.Process, ":")
-		if len(parts) != 3 || parts[0] != boot || parts[1] != pid {
-			continue
-		}
-		if _, err := strconv.ParseUint(parts[2], 10, 64); err != nil {
-			return "", fmt.Errorf("invalid durable PPP process start time")
-		}
-		if identity != "" && (identity != record.Process || recordedInterface != record.Interface) {
-			return "", fmt.Errorf("ambiguous durable PPP stop process identity")
-		}
-		identity, recordedInterface = record.Process, record.Interface
-	}
-	if identity == "" || recordedInterface != iface {
-		return "", os.ErrNotExist
-	}
-	return identity, nil
-}
-
-// offlineLiveProcessIdentity is for admission and enforcement decisions. A
-// zombie still has a readable /proc/<pid>/stat and must remain addressable by
-// identity so its ip-down hook can persist the final session record. It must
-// not, however, count as a live session or be signalled as one.
-func offlineLiveProcessIdentity(pid string) (string, error) {
-	identity, state, err := offlineProcessDetails(pid)
-	if err != nil {
-		return "", err
-	}
-	if state == "Z" || state == "X" {
-		return "", os.ErrNotExist
-	}
-	return identity, nil
-}
-
-func offlineProcessDetails(pid string) (string, string, error) {
-	if _, err := strconv.ParseUint(pid, 10, 32); err != nil {
-		return "", "", err
-	}
-	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
-	if err != nil {
-		return "", "", err
 	}
 	raw, err := os.ReadFile(filepath.Join("/proc", pid, "stat"))
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	end := strings.LastIndexByte(string(raw), ')')
 	if end < 0 {
-		return "", "", fmt.Errorf("invalid process stat")
+		return "", fmt.Errorf("invalid process stat")
 	}
 	fields := strings.Fields(string(raw)[end+1:])
 	if len(fields) < 20 {
-		return "", "", fmt.Errorf("short process stat")
+		return "", fmt.Errorf("short process stat")
 	}
-	return strings.TrimSpace(string(boot)) + ":" + pid + ":" + fields[19], fields[0], nil
+	return strings.TrimSpace(string(boot)) + ":" + pid + ":" + fields[19], nil
 }
 
 // pppOfflineProcessProtocol resolves a pppd process to the VPN daemon that

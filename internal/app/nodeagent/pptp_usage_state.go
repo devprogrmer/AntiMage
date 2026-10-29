@@ -81,5 +81,5 @@ func (s *Server) persistPPTPUsageStateLocked() error {
 		return fmt.Errorf("marshal pptp usage state: %w", err)
 	}
 
-	return s.writeAccountingStateDeduped(s.pptpUsageStatePath(), raw)
+	return writeAccountingState(s.pptpUsageStatePath(), raw)
 }

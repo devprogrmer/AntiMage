@@ -24,18 +24,18 @@ func (r Repository) ListNodeItems(ctx context.Context, nodeID int64) ([]NodeList
 	id,
 	COALESCE(name, ''),
 	note,
-	COALESCE(address, ''),
-	COALESCE(port, 0),
-	COALESCE(api_port, 0),
-	COALESCE(usage_coefficient, 1),
+	address,
+	port,
+	api_port,
+	usage_coefficient,
 	data_limit,
-	COALESCE(proxy_enabled, 0),
+	proxy_enabled,
 	proxy_type,
 	proxy_host,
 	proxy_port,
 	proxy_username,
 	proxy_password,
-	COALESCE(status, ''),
+	status,
 	COALESCE(agent_status, 'unknown'),
 	COALESCE(xray_status, 'unknown'),
 	COALESCE(desired_revision, 0),
@@ -43,7 +43,6 @@ func (r Repository) ListNodeItems(ctx context.Context, nodeID int64) ([]NodeList
 	node_capabilities,
 	message,
 	xray_version,
-	node_binary_tag,
 	COALESCE(geo_mode, 'default'),
 	COALESCE(xray_config_mode, 'default'),
 	COALESCE(uplink, 0),
@@ -69,8 +68,8 @@ WHERE LOWER(COALESCE(status, '')) <> 'deleted'`
 	for rows.Next() {
 		var item NodeListItem
 		var dataLimit, proxyPort sql.NullInt64
-		var note, proxyType, proxyHost, proxyUsername, proxyPassword, capabilities, message, xrayVersion, nodeBinaryTag, certificate, certificateKey sql.NullString
-		var proxyEnabled sql.NullBool
+		var note, proxyType, proxyHost, proxyUsername, proxyPassword, capabilities, message, xrayVersion, certificate, certificateKey sql.NullString
+		var proxyEnabled bool
 		if err := rows.Scan(
 			&item.ID,
 			&item.Name,
@@ -94,7 +93,6 @@ WHERE LOWER(COALESCE(status, '')) <> 'deleted'`
 			&capabilities,
 			&message,
 			&xrayVersion,
-			&nodeBinaryTag,
 			&item.GeoMode,
 			&item.XrayConfigMode,
 			&item.Uplink,
@@ -106,7 +104,7 @@ WHERE LOWER(COALESCE(status, '')) <> 'deleted'`
 		}
 		item.DataLimit = int64PtrFromNull(dataLimit)
 		item.Note = stringPtrFromNull(note)
-		item.ProxyEnabled = proxyEnabled.Valid && proxyEnabled.Bool
+		item.ProxyEnabled = proxyEnabled
 		item.ProxyType = stringPtrFromNull(proxyType)
 		item.ProxyHost = stringPtrFromNull(proxyHost)
 		item.ProxyPort = int64PtrFromNull(proxyPort)
@@ -114,7 +112,6 @@ WHERE LOWER(COALESCE(status, '')) <> 'deleted'`
 		item.ProxyPassword = stringPtrFromNull(proxyPassword)
 		item.Message = stringPtrFromNull(message)
 		item.XrayVersion = stringPtrFromNull(xrayVersion)
-		item.NodeBinaryTag = stringPtrFromNull(nodeBinaryTag)
 		if capabilities.Valid {
 			_ = json.Unmarshal([]byte(capabilities.String), &item.Capabilities)
 		}

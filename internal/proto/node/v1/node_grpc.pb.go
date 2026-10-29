@@ -1021,12 +1021,11 @@ var NodeRuntimeService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	NodeUsageService_CollectOnlineUsers_FullMethodName      = "/antimage.node.v1.NodeUsageService/CollectOnlineUsers"
-	NodeUsageService_CollectUserUsage_FullMethodName        = "/antimage.node.v1.NodeUsageService/CollectUserUsage"
-	NodeUsageService_AckUserUsage_FullMethodName            = "/antimage.node.v1.NodeUsageService/AckUserUsage"
-	NodeUsageService_CollectOutboundUsage_FullMethodName    = "/antimage.node.v1.NodeUsageService/CollectOutboundUsage"
-	NodeUsageService_AckOutboundUsage_FullMethodName        = "/antimage.node.v1.NodeUsageService/AckOutboundUsage"
-	NodeUsageService_RetireAccountingAnchors_FullMethodName = "/antimage.node.v1.NodeUsageService/RetireAccountingAnchors"
+	NodeUsageService_CollectOnlineUsers_FullMethodName   = "/antimage.node.v1.NodeUsageService/CollectOnlineUsers"
+	NodeUsageService_CollectUserUsage_FullMethodName     = "/antimage.node.v1.NodeUsageService/CollectUserUsage"
+	NodeUsageService_AckUserUsage_FullMethodName         = "/antimage.node.v1.NodeUsageService/AckUserUsage"
+	NodeUsageService_CollectOutboundUsage_FullMethodName = "/antimage.node.v1.NodeUsageService/CollectOutboundUsage"
+	NodeUsageService_AckOutboundUsage_FullMethodName     = "/antimage.node.v1.NodeUsageService/AckOutboundUsage"
 )
 
 // NodeUsageServiceClient is the client API for NodeUsageService service.
@@ -1038,7 +1037,6 @@ type NodeUsageServiceClient interface {
 	AckUserUsage(ctx context.Context, in *AckUsageRequest, opts ...grpc.CallOption) (*AckUsageResponse, error)
 	CollectOutboundUsage(ctx context.Context, in *CollectUsageRequest, opts ...grpc.CallOption) (*OutboundUsageBatch, error)
 	AckOutboundUsage(ctx context.Context, in *AckUsageRequest, opts ...grpc.CallOption) (*AckUsageResponse, error)
-	RetireAccountingAnchors(ctx context.Context, in *RetireAccountingAnchorsRequest, opts ...grpc.CallOption) (*RetireAccountingAnchorsResponse, error)
 }
 
 type nodeUsageServiceClient struct {
@@ -1099,16 +1097,6 @@ func (c *nodeUsageServiceClient) AckOutboundUsage(ctx context.Context, in *AckUs
 	return out, nil
 }
 
-func (c *nodeUsageServiceClient) RetireAccountingAnchors(ctx context.Context, in *RetireAccountingAnchorsRequest, opts ...grpc.CallOption) (*RetireAccountingAnchorsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RetireAccountingAnchorsResponse)
-	err := c.cc.Invoke(ctx, NodeUsageService_RetireAccountingAnchors_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // NodeUsageServiceServer is the server API for NodeUsageService service.
 // All implementations must embed UnimplementedNodeUsageServiceServer
 // for forward compatibility.
@@ -1118,7 +1106,6 @@ type NodeUsageServiceServer interface {
 	AckUserUsage(context.Context, *AckUsageRequest) (*AckUsageResponse, error)
 	CollectOutboundUsage(context.Context, *CollectUsageRequest) (*OutboundUsageBatch, error)
 	AckOutboundUsage(context.Context, *AckUsageRequest) (*AckUsageResponse, error)
-	RetireAccountingAnchors(context.Context, *RetireAccountingAnchorsRequest) (*RetireAccountingAnchorsResponse, error)
 	mustEmbedUnimplementedNodeUsageServiceServer()
 }
 
@@ -1143,9 +1130,6 @@ func (UnimplementedNodeUsageServiceServer) CollectOutboundUsage(context.Context,
 }
 func (UnimplementedNodeUsageServiceServer) AckOutboundUsage(context.Context, *AckUsageRequest) (*AckUsageResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AckOutboundUsage not implemented")
-}
-func (UnimplementedNodeUsageServiceServer) RetireAccountingAnchors(context.Context, *RetireAccountingAnchorsRequest) (*RetireAccountingAnchorsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RetireAccountingAnchors not implemented")
 }
 func (UnimplementedNodeUsageServiceServer) mustEmbedUnimplementedNodeUsageServiceServer() {}
 func (UnimplementedNodeUsageServiceServer) testEmbeddedByValue()                          {}
@@ -1258,24 +1242,6 @@ func _NodeUsageService_AckOutboundUsage_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _NodeUsageService_RetireAccountingAnchors_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RetireAccountingAnchorsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(NodeUsageServiceServer).RetireAccountingAnchors(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: NodeUsageService_RetireAccountingAnchors_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NodeUsageServiceServer).RetireAccountingAnchors(ctx, req.(*RetireAccountingAnchorsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // NodeUsageService_ServiceDesc is the grpc.ServiceDesc for NodeUsageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1302,10 +1268,6 @@ var NodeUsageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AckOutboundUsage",
 			Handler:    _NodeUsageService_AckOutboundUsage_Handler,
-		},
-		{
-			MethodName: "RetireAccountingAnchors",
-			Handler:    _NodeUsageService_RetireAccountingAnchors_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

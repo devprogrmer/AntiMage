@@ -168,7 +168,7 @@ func anyConnectUsageBatchProto(p *anyConnectUsagePendingBatch) *nodev1.UserUsage
 		if s.Value == 0 && s.Online {
 			uid = "online:" + uid
 		}
-		batch.Stats = append(batch.Stats, &nodev1.UserUsageSample{Uid: uid, Value: s.Value, InboundTag: s.InboundTag, Protocol: "anyconnect", ChildBatchId: p.BatchID})
+		batch.Stats = append(batch.Stats, &nodev1.UserUsageSample{Uid: uid, Value: s.Value, InboundTag: s.InboundTag})
 		ips := make([]*nodev1.OnlineIP, 0, len(s.IPs))
 		for _, ip := range s.IPs {
 			ips = append(ips, &nodev1.OnlineIP{Ip: ip, LastSeenUnix: now})

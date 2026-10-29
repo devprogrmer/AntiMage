@@ -509,11 +509,9 @@ func wireGuardUsageBatchProto(
 	if pending != nil {
 		for _, sample := range pending.Samples {
 			stats = append(stats, &nodev1.UserUsageSample{
-				Uid:          "wireguard:" + strconv.FormatInt(sample.UserID, 10),
-				Value:        sample.Value,
-				InboundTag:   sample.InboundTag,
-				Protocol:     "wireguard",
-				ChildBatchId: pending.BatchID,
+				Uid:        "wireguard:" + strconv.FormatInt(sample.UserID, 10),
+				Value:      sample.Value,
+				InboundTag: sample.InboundTag,
 			})
 		}
 	}

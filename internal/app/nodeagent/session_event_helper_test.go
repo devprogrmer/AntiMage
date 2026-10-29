@@ -142,139 +142,6 @@ func TestPPPPreUpAdmissionRejectsDurableOfflineQuota(t *testing.T) {
 	}
 }
 
-func TestPPPTransitioningPolicyBlocksNewSessionsButAllowsStop(t *testing.T) {
-	dir := t.TempDir()
-	runtimeRoot := filepath.Join(dir, "l2tp", "native")
-	if err := os.MkdirAll(runtimeRoot, 0700); err != nil {
-		t.Fatal(err)
-	}
-	configPath := filepath.Join(runtimeRoot, "session-helper.json")
-	if err := offlineDurableJSON(configPath, nativeSessionHelperConfig{
-		Protocol: "l2tp", InboundTag: "native", Users: map[string]int64{"alice": 42},
-		Policies: map[string]nativeSessionUserPolicy{"alice": {Status: "active"}},
-		StateDir: filepath.Join(runtimeRoot, "sessions"), Transitioning: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("common_name", "alice")
-	t.Setenv("PPPD_PID", "123")
-	t.Setenv("IPPARAM", "198.51.100.10")
-	previousProcess, previousProtocol, previousSignal := pppOfflineReadProcess, pppOfflineDetectProtocol, nativePPPProcessSignal
-	pppOfflineReadProcess = func(pid string) (string, error) { return "fixture-boot:123:1", nil }
-	pppOfflineDetectProtocol = func(string) (string, error) { return "l2tp", nil }
-	var signaled string
-	nativePPPProcessSignal = func(identity string) error { signaled = identity; return nil }
-	t.Cleanup(func() {
-		pppOfflineReadProcess, pppOfflineDetectProtocol, nativePPPProcessSignal = previousProcess, previousProtocol, previousSignal
-	})
-	if err := pppOfflineWriteAdmissionReservation(dir, 42, "native", "fixture-boot:123:1", "198.51.100.10"); err != nil {
-		t.Fatal(err)
-	}
-
-	for _, event := range []string{"pre-up", "start"} {
-		err := RunNativeSessionEventHelper([]string{configPath, event})
-		if err == nil || !strings.Contains(err.Error(), "policy is being updated") {
-			t.Fatalf("%s should be held during policy transition, got %v", event, err)
-		}
-	}
-	if err := RunNativeSessionEventHelper([]string{configPath, "stop"}); err == nil || strings.Contains(err.Error(), "policy is being updated") {
-		t.Fatalf("stop should pass the transition gate and reach session lookup, got %v", err)
-	}
-	if signaled != "fixture-boot:123:1" {
-		t.Fatalf("transitioning start did not terminate its exact PPP process: %q", signaled)
-	}
-	if _, err := os.Stat(pppOfflineAdmissionReservationPath(dir, signaled)); !os.IsNotExist(err) {
-		t.Fatalf("transitioning start left a stale pending reservation: %v", err)
-	}
-}
-
-func TestL2TPPreUpDeviceLimitDenialPersistsPeerWithoutCreatingSession(t *testing.T) {
-	dir := t.TempDir()
-	runtimeRoot := filepath.Join(dir, "l2tp", "native")
-	activeDir := filepath.Join(runtimeRoot, "ppp-accounting", "active")
-	if err := os.MkdirAll(activeDir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	configPath := filepath.Join(runtimeRoot, "session-helper.json")
-	if err := offlineDurableJSON(configPath, nativeSessionHelperConfig{
-		Protocol: "l2tp", InboundTag: "native", Users: map[string]int64{"alice": 42},
-		Policies: map[string]nativeSessionUserPolicy{"alice": {Status: "active", DeviceLimit: 1}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	first := pppOfflineSession{
-		ID: "session-a", UserID: 42, InboundTag: "native", Interface: "ppp0",
-		PeerIP: "10.67.0.2", ClientIP: "10.251.0.2", Identity: "fixture-interface-1",
-		Process: "fixture-boot:111:1",
-	}
-	if err := offlineDurableJSON(pppOfflineSessionActivePath(runtimeRoot, first.Interface, first.Process), first); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("common_name", "alice")
-	t.Setenv("PPPD_PID", "222")
-	t.Setenv("IPPARAM", "10.252.0.2")
-	previousProcess, previousLiveProcess, previousSignal := pppOfflineReadProcess, pppOfflineReadLiveProcess, nativePPPProcessSignal
-	previousIdentity, previousProtocol := pppOfflineReadIdentity, pppOfflineDetectProtocol
-	pppOfflineReadProcess = func(pid string) (string, error) {
-		switch pid {
-		case "111":
-			return first.Process, nil
-		case "222":
-			return "fixture-boot:222:1", nil
-		default:
-			return "", os.ErrNotExist
-		}
-	}
-	pppOfflineReadLiveProcess = pppOfflineReadProcess
-	pppOfflineReadIdentity = func(iface string) (string, error) {
-		if iface == first.Interface {
-			return first.Identity, nil
-		}
-		return "", os.ErrNotExist
-	}
-	pppOfflineDetectProtocol = func(pid string) (string, error) { return "l2tp", nil }
-	var signaled string
-	nativePPPProcessSignal = func(identity string) error { signaled = identity; return nil }
-	t.Cleanup(func() {
-		pppOfflineReadProcess, pppOfflineReadLiveProcess, nativePPPProcessSignal = previousProcess, previousLiveProcess, previousSignal
-		pppOfflineReadIdentity, pppOfflineDetectProtocol = previousIdentity, previousProtocol
-	})
-
-	err := RunNativeSessionEventHelper([]string{configPath, "pre-up", "10.252.0.2"})
-	if err == nil || !strings.Contains(err.Error(), "device limit reached") {
-		t.Fatalf("second live peer was not denied by DeviceLimit=1: %v", err)
-	}
-	if signaled != "fixture-boot:222:1" {
-		t.Fatalf("denial signaled wrong PPP process: %q", signaled)
-	}
-	var denial struct {
-		ClientIP string `json:"client_ip"`
-		Process  string `json:"process"`
-		Reason   string `json:"reason"`
-	}
-	raw, err := os.ReadFile(filepath.Join(runtimeRoot, "ppp-accounting", "admission-denials", "42.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(raw, &denial); err != nil {
-		t.Fatal(err)
-	}
-	if denial.ClientIP != "10.252.0.2" || denial.Process != signaled || denial.Reason != "device limit reached" {
-		t.Fatalf("denial evidence lost peer identity: %+v", denial)
-	}
-	if _, err := os.Stat(pppOfflineAdmissionReservationPath(dir, signaled)); !os.IsNotExist(err) {
-		t.Fatalf("denied peer left a pending reservation: %v", err)
-	}
-	if _, err := os.Stat(pppOfflineSessionActivePath(runtimeRoot, "ppp1", signaled)); !os.IsNotExist(err) {
-		t.Fatalf("denied peer left an active PPP session: %v", err)
-	}
-	got, err := pppOfflineFindActiveSession(runtimeRoot, first.Interface, first.Process)
-	if err != nil || got.ClientIP != "10.251.0.2" {
-		t.Fatalf("first admitted session did not remain recorded: %+v err=%v", got, err)
-	}
-}
-
 func TestRunNativeSessionEventHelperStartStop(t *testing.T) {
 	var events []nativeSessionEvent
 
@@ -440,22 +307,9 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 	if err := RunNativeSessionEventHelper([]string{configPath, "start", "203.0.113.11"}); err != nil {
 		t.Fatal(err)
 	}
-	// ip-down may not retain the address variables provided to ip-up. Stop
-	// must use the exact pppd process identity and durable start record.
-	t.Setenv("IPREMOTE", "")
-	t.Setenv("REMOTENUMBER", "")
-	t.Setenv("trusted_ip", "")
-	t.Setenv("trusted_ip6", "")
-	t.Setenv("IFNAME", "ppp0")
-	t.Setenv("BYTES_SENT", "1234")
-	t.Setenv("BYTES_RCVD", "5678")
 
-	if err := RunNativeSessionEventHelper([]string{configPath, "stop"}); err != nil {
-		t.Fatalf("stop did not recover durable PPP session metadata: %v", err)
-	}
-
-	if len(events) != 2 {
-		t.Fatalf("expected start and stop events, got %d", len(events))
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
 	}
 	event := events[0]
 	if event.Protocol != protocol {
@@ -466,9 +320,6 @@ func testRunNativeSessionEventHelperPPPEnvironment(
 	}
 	if event.AssignedIP != "10.67.0.10" || event.ClientIP != "203.0.113.11" {
 		t.Fatalf("unexpected event addresses: %#v", event)
-	}
-	if events[1].Event != "stop" || events[1].SessionID != event.SessionID || events[1].AssignedIP != event.AssignedIP || events[1].ClientIP != event.ClientIP {
-		t.Fatalf("stop did not preserve exact start identity after environment changed: start=%#v stop=%#v", event, events[1])
 	}
 }
 

@@ -13,20 +13,11 @@ import { fetch } from "../service/http";
 import { recoverFromStaleChunk } from "../utils/chunkRecovery";
 import { Login } from "./Login";
 
-const AMShell = lazy(async () => ({
-	default: (await import("../components/am/AMShell")).AMShell,
+const AppLayout = lazy(async () => ({
+	default: (await import("../components/AppLayout")).AppLayout,
 }));
 const DashboardPage = lazy(async () => ({
 	default: (await import("./DashboardPage")).DashboardPage,
-}));
-const DiagnosticsPage = lazy(async () => ({
-	default: (await import("./DiagnosticsPage")).DiagnosticsPage,
-}));
-const UpdatesPage = lazy(async () => ({
-	default: (await import("./UpdatesPage")).UpdatesPage,
-}));
-const OperationsPage = lazy(async () => ({
-	default: (await import("./OperationsPage")).OperationsPage,
 }));
 const UsersPage = lazy(async () => ({
 	default: (await import("./UsersPage")).UsersPage,
@@ -142,9 +133,6 @@ const routeSegments = new Set([
 	"phpmyadmin",
 	"external-apps",
 	"recent-actions",
-	"diagnostics",
-	"updates",
-	"operations",
 ]);
 
 const trimTrailingSlash = (value: string) => {
@@ -212,7 +200,7 @@ export const router = createBrowserRouter(
 	[
 		{
 			path: "/",
-			element: <LazyPage Page={AMShell} />,
+			element: <LazyPage Page={AppLayout} />,
 			hydrateFallbackElement: <PageLoading />,
 			errorElement: <RouteErrorPage />,
 			loader: fetchAdminLoader,
@@ -296,18 +284,6 @@ export const router = createBrowserRouter(
 				{
 					path: "external-apps",
 					element: <LazyPage Page={ExternalAppsPage} />,
-				},
-				{
-					path: "diagnostics",
-					element: <LazyPage Page={DiagnosticsPage} />,
-				},
-				{
-					path: "updates",
-					element: <LazyPage Page={UpdatesPage} />,
-				},
-				{
-					path: "operations",
-					element: <LazyPage Page={OperationsPage} />,
 				},
 			],
 		},

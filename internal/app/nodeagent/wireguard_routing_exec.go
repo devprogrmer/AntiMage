@@ -3,7 +3,6 @@ package nodeagent
 import (
 	"context"
 	"fmt"
-	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	"os/exec"
 	"runtime"
 	"sort"
@@ -18,7 +17,7 @@ var (
 		name string,
 		args ...string,
 	) ([]byte, error) {
-		return managedprocess.CommandContext(ctx, name, args...).CombinedOutput()
+		return exec.CommandContext(ctx, name, args...).CombinedOutput()
 	}
 	wireGuardRoutingLookPath = exec.LookPath
 	wireGuardRoutingGOOS     = runtime.GOOS

@@ -48,20 +48,6 @@ CREATE TABLE telegram_settings (
 )`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`CREATE TABLE telegram_message_outbox (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-event TEXT NOT NULL,
-message TEXT NOT NULL,
-status TEXT NOT NULL DEFAULT 'pending',
-attempts INTEGER NOT NULL DEFAULT 0,
-send_at DATETIME NOT NULL,
-claimed_at DATETIME NULL,
-last_error TEXT NULL,
-created_at DATETIME NOT NULL,
-updated_at DATETIME NOT NULL
-)`); err != nil {
-		t.Fatal(err)
-	}
 	return db, NewRepository(db, "sqlite")
 }
 

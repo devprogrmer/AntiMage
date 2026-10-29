@@ -81,5 +81,5 @@ func (s *Server) persistL2TPUsageStateLocked() error {
 		return fmt.Errorf("marshal l2tp usage state: %w", err)
 	}
 
-	return s.writeAccountingStateDeduped(s.l2TPUsageStatePath(), raw)
+	return writeAccountingState(s.l2TPUsageStatePath(), raw)
 }

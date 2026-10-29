@@ -124,15 +124,8 @@ charon-cmd {{
  load_modular = yes
  plugins {{
   include /etc/strongswan.d/charon/*.conf
-  # The responder owns the production control socket that
-  # "ipsec rereadsecrets"/"ipsec reload" resolve (/run/charon.ctl). Only the
-  # IKE *clients* run through this section, so they must never claim it, or a
-  # client would silently swallow the daemon's reload during user mutation.
-  stroke {{
-   socket = unix://{SOCKET_DIR}/{SOCKET_PREFIX}.{side}.cmd.ctl
-  }}
   vici {{
-   socket = unix://{SOCKET_DIR}/{SOCKET_PREFIX}.{side}.cmd.vici
+   socket = unix://{vici_socket_path(side)}
   }}
  }}
 }}
@@ -250,34 +243,7 @@ pools {
     def client(ns=C,side='client',host='10.80.0.1',identity='client'):
         p=start_isolated(['charon-cmd','--host',host,'--identity',identity,'--remote-identity','server','--p12',pathlib.Path('/etc/ipsec.d')/(identity+'.p12'),'--profile','ikev2-pub','--remote-ts','10.81.0.1/32','--ike-proposal','aes256-sha256-modp2048','--esp-proposal','aes256-sha256'],ns,side+'.conf',side+'.stdout')
         wait(lambda:'INSTALLED' in sas(),'CHILD_SA');return p
-    srv=server()
-    if os.environ.get('ANTIMAGE_IKEV2_TARGETED_E2E') == '1':
-        if not os.environ.get('ANTIMAGE_IKEV2_TEST_BINARY'):
-            raise RuntimeError('targeted IKEv2 E2E requires ANTIMAGE_IKEV2_TEST_BINARY')
-        # The Go test enters the worker PID namespace and reads its private /proc.
-        # Resolve charon's PID there; the host PID is not visible in that /proc.
-        charon_pid=run(['nsenter','-t',str(srv.pid),'-m','-n','-p','--','pgrep','-n','charon']).strip()
-        env={**os.environ,'STRONGSWAN_CONF':'/etc/strongswan.conf','ANTIMAGE_IKEV2_TARGETED_E2E':'1','ANTIMAGE_IKEV2_TARGETED_ROOT':str(R),'ANTIMAGE_IKEV2_CLIENT_NS':C,'ANTIMAGE_IKEV2_CHARON_PID':charon_pid,'ANTIMAGE_IKEV2_SERVER_VICI_URI':'unix://'+str(vici_socket_path('server')),'ANTIMAGE_IKEV2_SERVER_LOG':str(SOCKET_DIR/(SOCKET_PREFIX+'.server.log')),'ANTIMAGE_IKEV2_SECRETS_PATH':'/etc/ipsec.secrets','ANTIMAGE_IKEV2_CLIENT_STRONGSWAN_CONF':str(R/'client.conf'),'ANTIMAGE_IKEV2_CLIENT_CONFIG_PREFIX':SOCKET_PREFIX+'.client'}
-        command=['nsenter','-t',str(srv.pid),'-m','-n','-p','--',os.environ['ANTIMAGE_IKEV2_TEST_BINARY'],'-test.run=^TestIKEv2TargetedMutationNativeE2E$','-test.v']
-        targeted=sp.run(command,env=env,text=True,stdout=sp.PIPE,stderr=sp.STDOUT,timeout=300)
-        print(targeted.stdout,flush=True)
-        if targeted.returncode:
-            # Keep only the diagnostic logs; never publish the private /etc copy
-            # or certificate keys with the CI artifact.
-            server_log=SOCKET_DIR/(SOCKET_PREFIX+'.server.log')
-            def redact(text):
-                for secret in ('alice-native-v1','bob-native-v1','bob-native-v2'):
-                    text=text.replace(secret,'[redacted]')
-                return text
-            if server_log.exists():
-                write('targeted-server.log',redact(server_log.read_text(errors='replace')))
-            for client_log in R.glob('targeted-client-*.log'):
-                client_log.write_text(redact(client_log.read_text(errors='replace')))
-            raise RuntimeError('native IKEv2 targeted mutation E2E failed')
-        write('targeted-evidence.json',json.dumps({'targeted_rpc_e2e':True,'charon_pid':charon_pid},indent=2)+'\n')
-        print('PASS native IKEv2 targeted mutation E2E',flush=True)
-        raise SystemExit(0)
-    cli=client();traffic('initial')
+    srv=server();cli=client();traffic('initial')
     before=sas();print(sw('--rekey','--child',CONN if os.environ.get('ANTIMAGE_IKEV2_PROVISION') else 'tunnel'),flush=True)
     wait(lambda:sas()!=before,'rekey change');traffic('after-child-rekey')
     print(sw('--rekey','--ike',CONN),flush=True);time.sleep(1);traffic('after-ike-rekey')

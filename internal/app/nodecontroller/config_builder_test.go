@@ -155,55 +155,14 @@ func TestApplyRuntimeAPIEnablesOnlineUserStats(t *testing.T) {
 	}
 }
 
-func TestImplementedProtocolUserMutationsAvoidFullSyncPreparation(t *testing.T) {
-	for _, protocol := range []string{"l2tp", "pptp", "wireguard", "amneziawg", "ikev2", "anyconnect", "vmess", "trojan", "shadowsocks", "hysteria", "unknown"} {
+func TestRemoteAccessProtocolsRequireFullUserSync(t *testing.T) {
+	for _, protocol := range []string{"openvpn", "l2tp", "pptp", "wireguard", "ikev2", "anyconnect"} {
 		if !protocolRequiresFullUserSync(protocol) {
-			t.Fatalf("%s user mutation lacks a targeted implementation and must use full sync", protocol)
+			t.Fatalf("%s user changes must trigger a full runtime sync", protocol)
 		}
 	}
 	if protocolRequiresFullUserSync("vless") {
 		t.Fatal("Xray-native users should keep using hot user updates")
-	}
-}
-
-func TestOpenVPNUserMutationCanAvoidSyncPreparationWhenCapabilityIsGated(t *testing.T) {
-	if protocolRequiresFullUserSync("openvpn") {
-		t.Fatal("OpenVPN must allow capability-gated targeted mutation without prebuilding full sync")
-	}
-	for _, protocol := range []string{"l2tp", "pptp", "ikev2", "anyconnect", "vless"} {
-		got := protocolRequiresFullUserSync(protocol)
-		want := protocol != "vless"
-		if got != want {
-			t.Fatalf("protocolRequiresFullUserSync(%q)=%v want %v", protocol, got, want)
-		}
-	}
-}
-
-func TestOpenVPNTargetedMutationCapabilitiesAreOperationSpecific(t *testing.T) {
-	operations := []string{"add_user", "update_user", "remove_user", "enable_user", "disable_user"}
-	for _, operation := range operations {
-		if capability := targetedUserCapability("openvpn", operation); capability == "" {
-			t.Fatalf("OpenVPN %s lacks an operation-specific capability", operation)
-		}
-	}
-	if got := targetedUserCapability("openvpn", "update_user"); got != "targeted_user_update_openvpn" {
-		t.Fatalf("OpenVPN update capability=%q", got)
-	}
-	for _, operation := range []string{"add_user", "remove_user", "enable_user", "disable_user"} {
-		if got := targetedUserCapability("openvpn", operation); got != "targeted_user_add_remove_openvpn" {
-			t.Fatalf("OpenVPN %s capability=%q", operation, got)
-		}
-	}
-}
-
-func TestL2TPTargetedMutationCapabilityRequiresOperationSpecificGate(t *testing.T) {
-	if got := targetedUserCapability("l2tp", "update_user"); got != "targeted_user_update_l2tp" {
-		t.Fatalf("L2TP update capability=%q", got)
-	}
-	for _, operation := range []string{"add_user", "remove_user", "enable_user", "disable_user"} {
-		if got := targetedUserCapability("l2tp", operation); got != "targeted_user_add_remove_l2tp" {
-			t.Fatalf("L2TP %s capability=%q", operation, got)
-		}
 	}
 }
 

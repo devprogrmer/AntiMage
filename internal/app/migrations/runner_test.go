@@ -59,8 +59,7 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertTableColumns(t, ctx, db, "sqlite", "users", []string{"id", "username", "credential_key", "subadress", "flow", "sub_revoked_at", "sub_updated_at", "sub_last_user_agent", "ip_limit", "upload_speed_limit", "download_speed_limit", "subscription_message", "admin_disabled_at", "service_limit_disabled_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "user_presence", []string{"user_id", "online_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "user_subscription_access", []string{"user_id", "updated_at", "user_agent"})
-	assertTableColumns(t, ctx, db, "sqlite", "node_usage_user_queue", []string{"processed_at", "history_processed_at", "ledger_json"})
-	assertTableColumns(t, ctx, db, "sqlite", "node_usage_user_queue", []string{"retirement_pending"})
+	assertTableColumns(t, ctx, db, "sqlite", "node_usage_user_queue", []string{"processed_at", "history_processed_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "node_usage_outbound_queue", []string{"processed_at", "history_processed_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "next_plans", []string{"user_id", "position", "data_limit", "expire", "increase_data_limit", "start_on_first_connect", "trigger_on"})
 	assertTableColumns(t, ctx, db, "sqlite", "user_usage_logs", []string{"user_id", "used_traffic_at_reset", "reset_at"})
@@ -76,17 +75,10 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertNoColumn(t, ctx, db, "sqlite", "nodes", "nobetci_port")
 	assertNoColumn(t, ctx, db, "sqlite", "panel_settings", "use_nobetci")
 	assertTableColumns(t, ctx, db, "sqlite", "node_operations", []string{"operation_type", "status", "idempotency_key"})
-	assertTableColumns(t, ctx, db, "sqlite", "diagnostics", []string{"id", "source", "resource_type", "resource_id", "severity", "code", "summary", "detail", "first_seen_at", "last_seen_at", "occurrence_count", "status", "recommended_action"})
-	assertTableColumns(t, ctx, db, "sqlite", "operations", []string{"id", "operation_type", "target_type", "target_id", "requested_by", "request_id", "state", "phase", "progress", "created_at", "started_at", "updated_at", "completed_at", "error", "metadata_json"})
-	assertTableColumns(t, ctx, db, "sqlite", "telegram_message_outbox", []string{"id", "event", "message", "status", "attempts", "send_at", "claimed_at", "last_error", "created_at", "updated_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_configs", []string{"id", "name", "enabled", "settings", "created_at", "updated_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_targets", []string{"config_id", "node_id", "listeners"})
 	assertTableColumns(t, ctx, db, "sqlite", "haproxy_templates", []string{"id", "name", "archive", "created_at"})
-	assertTableColumns(t, ctx, db, "sqlite", "node_wireguard_usage_reflection", []string{"node_id", "user_id", "batch_id", "updated_at", "ledger_json"})
-	assertTableColumns(t, ctx, db, "sqlite", "node_usage_reflection_staged", []string{"node_id", "user_id", "epoch", "owner_hash", "owner_key", "total_raw", "legacy_raw", "legacy_raw_complete"})
-	assertTableColumns(t, ctx, db, "sqlite", "user_accounting_tombstones", []string{"user_id", "deleted_at"})
-	assertTableColumns(t, ctx, db, "sqlite", "node_usage_retirement_ledger", []string{"node_id", "user_id", "epoch", "owner_hash", "owner_key", "settled_raw", "total_raw", "retired_raw", "updated_at"})
-	assertTableColumns(t, ctx, db, "sqlite", "node_usage_retirement_proofs", []string{"proof_id", "node_id", "user_id", "epoch", "owner_hash", "owner_key", "total_raw", "legacy_raw", "created_at", "delivered_at"})
+	assertTableColumns(t, ctx, db, "sqlite", "node_wireguard_usage_reflection", []string{"node_id", "user_id", "batch_id", "updated_at"})
 	if _, err := db.ExecContext(ctx, `INSERT INTO haproxy_configs (id, name, enabled, settings, created_at, updated_at) VALUES (9101, 'first', 0, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP), (9102, 'second', 0, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
 		t.Fatalf("seed HAProxy configs: %v", err)
 	}
@@ -134,24 +126,6 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	if second.GooseVersion != version.GooseVersion {
 		t.Fatalf("goose version changed after idempotent run: %#v -> %#v", version, second)
 	}
-}
-
-func TestUsageRetirementProofMigrationPreservesExistingReflectionRows(t *testing.T) {
-	ctx := context.Background()
-	db := openSQLiteTestDB(t)
-	if err := RunMigrationsTo(ctx, db, "sqlite", 73); err != nil {
-		t.Fatalf("run migrations through v73: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO node_usage_reflection_staged(node_id,user_id,epoch,owner_hash,owner_key,total_raw) VALUES(7,10,'old-epoch','owner-hash','"xray":"in"',900)`); err != nil {
-		t.Fatal(err)
-	}
-	if err := RunMigrationsTo(ctx, db, "sqlite", 74); err != nil {
-		t.Fatalf("apply retirement proof migration: %v", err)
-	}
-	assertDBInt64Migration(t, db, `SELECT total_raw FROM node_usage_reflection_staged WHERE node_id=7 AND user_id=10 AND epoch='old-epoch'`, 900)
-	assertDBInt64Migration(t, db, `SELECT legacy_raw FROM node_usage_reflection_staged WHERE node_id=7 AND user_id=10 AND epoch='old-epoch'`, 0)
-	assertDBInt64Migration(t, db, `SELECT legacy_raw_complete FROM node_usage_reflection_staged WHERE node_id=7 AND user_id=10 AND epoch='old-epoch'`, 0)
-	assertTableColumns(t, ctx, db, "sqlite", "node_usage_retirement_proofs", []string{"proof_id", "node_id", "user_id", "epoch", "owner_hash", "owner_key", "total_raw", "legacy_raw", "created_at", "delivered_at"})
 }
 
 func TestRunMigrationsExternalDatabase(t *testing.T) {
@@ -487,30 +461,6 @@ func TestDetectGooseVersion(t *testing.T) {
 	}
 }
 
-func TestPreGooseLatestSchemaRunsPlatformMaintenanceMigrations(t *testing.T) {
-	ctx := context.Background()
-	db := openSQLiteTestDB(t)
-	if err := RunMigrationsTo(ctx, db, "sqlite", legacyGooseBaselineVersion); err != nil {
-		t.Fatalf("create latest pre-update schema: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, `DROP TABLE goose_db_version`); err != nil {
-		t.Fatal(err)
-	}
-	if err := RunMigrations(ctx, db, "sqlite"); err != nil {
-		t.Fatalf("upgrade pre-Goose schema: %v", err)
-	}
-	version, err := Version(ctx, db, "sqlite")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if version.GooseVersion != latestGooseVersion {
-		t.Fatalf("goose version = %d, want %d", version.GooseVersion, latestGooseVersion)
-	}
-	assertTableColumns(t, ctx, db, "sqlite", "diagnostics", []string{"id", "status", "last_seen_at"})
-	assertTableColumns(t, ctx, db, "sqlite", "operations", []string{"id", "state", "request_id", "metadata_json"})
-	assertTableColumns(t, ctx, db, "sqlite", "wireguard_device_revocations", []string{"inbound_tag", "user_id", "device_index", "public_key", "credential_fingerprint", "revoked_at"})
-}
-
 func TestPreGooseVersion45SchemaStillRunsHostFinalMaskMigration(t *testing.T) {
 	ctx := context.Background()
 	db := openSQLiteTestDB(t)
@@ -603,7 +553,7 @@ func TestPreGooseVersion54SchemaStillRunsWireGuardReflectionMigration(t *testing
 	if err := RunMigrations(ctx, db, "sqlite"); err != nil {
 		t.Fatal(err)
 	}
-	assertTableColumns(t, ctx, db, "sqlite", "node_wireguard_usage_reflection", []string{"node_id", "user_id", "batch_id", "updated_at", "ledger_json"})
+	assertTableColumns(t, ctx, db, "sqlite", "node_wireguard_usage_reflection", []string{"node_id", "user_id", "batch_id", "updated_at"})
 }
 
 func TestRunMigrationsToSQLite(t *testing.T) {

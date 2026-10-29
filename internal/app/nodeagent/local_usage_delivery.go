@@ -1,8 +1,6 @@
 package nodeagent
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -27,47 +25,8 @@ type localUsageDelivery struct {
 }
 
 type localUsageDeliveryState struct {
-	LegacyAnchorsHash string               `json:"legacy_anchors_hash,omitempty"`
-	Version           int                  `json:"version"`
-	Deliveries        []localUsageDelivery `json:"deliveries"`
-	Ledger            *localUsageLedgerV2  `json:"ledger,omitempty"`
-}
-
-// localUsageAnchorCache memoizes the serialized migration-anchor sidecar and
-// its content hash for the exact slice that produced them. The v2 reflection
-// path persists the cumulative ledger on every collection while the fixed
-// production anchor set stays byte-identical, so without this the full anchor
-// slice was re-marshalled and re-hashed on every tick.
-//
-// The cache key is slice identity plus length. Callers rebuild a fresh slice
-// whenever anchor content changes (append, deep copy, or row filtering), so a
-// changed set always misses. The cached slice is retained so its backing array
-// cannot be freed and reallocated under a different anchor set.
-type localUsageAnchorCache struct {
-	deliveries []localUsageDelivery
-	hash       string
-	raw        []byte
-}
-
-// anchorSidecarLocked returns the serialized v1 migration-anchor document and
-// its hex-encoded SHA-256 content hash. When the caller passes the exact slice
-// the previous result was computed from, the memoized bytes and hash are
-// reused; any other slice (including every producer that changed anchor
-// content) is re-serialized and re-hashed exactly as before.
-func (s *Server) anchorSidecarLocked(deliveries []localUsageDelivery) ([]byte, string, error) {
-	cache := s.localUsageAnchorCache
-	if cache != nil && len(deliveries) > 0 && len(cache.deliveries) == len(deliveries) &&
-		&cache.deliveries[0] == &deliveries[0] {
-		return cache.raw, cache.hash, nil
-	}
-	raw, err := json.Marshal(localUsageDeliveryState{Version: 1, Deliveries: deliveries})
-	if err != nil {
-		return nil, "", err
-	}
-	sum := sha256.Sum256(raw)
-	hash := hex.EncodeToString(sum[:])
-	s.localUsageAnchorCache = &localUsageAnchorCache{deliveries: deliveries, hash: hash, raw: raw}
-	return raw, hash, nil
+	Version    int                  `json:"version"`
+	Deliveries []localUsageDelivery `json:"deliveries"`
 }
 
 func (s *Server) ensureLocalUsageDeliveriesLocked() error {
@@ -86,58 +45,8 @@ func (s *Server) ensureLocalUsageDeliveriesLocked() error {
 	if err := json.Unmarshal(raw, &state); err != nil {
 		return fmt.Errorf("decode accounting delivery ledger: %w", err)
 	}
-	if (state.Version != 1 && state.Version != 2) || len(state.Deliveries) > 4096 {
+	if state.Version != 1 || len(state.Deliveries) > 4096 {
 		return fmt.Errorf("invalid accounting delivery ledger version or capacity")
-	}
-	if state.Version == 2 && state.LegacyAnchorsHash != "" {
-		if len(state.LegacyAnchorsHash) != 64 {
-			return fmt.Errorf("invalid migration anchor identity")
-		}
-		if _, err := hex.DecodeString(state.LegacyAnchorsHash); err != nil {
-			return fmt.Errorf("invalid migration anchor identity")
-		}
-		path := filepath.Join(s.cfg.DataDir, "accounting", "deliveries-v1-"+state.LegacyAnchorsHash+".json")
-		raw, err := readOfflineAccountingState(path)
-		if err != nil {
-			return fmt.Errorf("read migration anchors: %w", err)
-		}
-		hash := sha256.Sum256(raw)
-		if hex.EncodeToString(hash[:]) != state.LegacyAnchorsHash {
-			return fmt.Errorf("migration anchor checksum mismatch")
-		}
-		var anchors localUsageDeliveryState
-		if err := json.Unmarshal(raw, &anchors); err != nil {
-			return fmt.Errorf("decode migration anchors: %w", err)
-		}
-		if anchors.Version != 1 || len(anchors.Deliveries) > 4096 {
-			return fmt.Errorf("invalid migration anchors")
-		}
-		state.Deliveries = anchors.Deliveries
-	}
-	if state.Version == 2 {
-		if err := validateLocalUsageV2(state.Ledger); err != nil {
-			return err
-		}
-		legacyTotals := map[localUsageOwnerKey]uint64{}
-		for _, delivery := range state.Deliveries {
-			for _, row := range delivery.Rows {
-				key := localUsageOwnerKey{row.Protocol, row.UserID, row.InboundTag}
-				if ^uint64(0)-legacyTotals[key] < row.Raw {
-					return fmt.Errorf("migration anchor accounting overflow")
-				}
-				legacyTotals[key] += row.Raw
-			}
-		}
-		for _, owner := range state.Ledger.Owners {
-			key := localUsageOwnerKey{owner.Protocol, owner.UserID, owner.InboundTag}
-			if legacyTotals[key] != owner.LegacyTotal {
-				return fmt.Errorf("migration anchor total mismatch for user %d protocol %s inbound %s", owner.UserID, owner.Protocol, owner.InboundTag)
-			}
-			delete(legacyTotals, key)
-		}
-		if len(legacyTotals) != 0 {
-			return fmt.Errorf("migration anchors contain an owner missing from cumulative ledger")
-		}
 	}
 	seen := map[string]bool{}
 	for _, delivery := range state.Deliveries {
@@ -151,12 +60,7 @@ func (s *Server) ensureLocalUsageDeliveriesLocked() error {
 			}
 		}
 	}
-	if state.Version == 2 {
-		s.localUsageV2 = state.Ledger
-	}
 	s.localUsageDeliveries = state.Deliveries
-	s.localUsageDeliveryIndex = nil
-	s.localUsageLegacyHash = state.LegacyAnchorsHash
 	s.localUsageLoaded = true
 	return nil
 }
@@ -166,41 +70,11 @@ func (s *Server) persistLocalUsageDeliveriesLocked(deliveries []localUsageDelive
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	state := localUsageDeliveryState{Version: 1, Deliveries: deliveries}
-	previousAnchorHash := s.localUsageLegacyHash
-	if s.localUsageV2 != nil {
-		state.Version = 2
-		state.Ledger = s.localUsageV2
-		if len(deliveries) > 0 {
-			raw, hash, err := s.anchorSidecarLocked(deliveries)
-			if err != nil {
-				return err
-			}
-			state.LegacyAnchorsHash = hash
-			if state.LegacyAnchorsHash != previousAnchorHash {
-				anchorPath := filepath.Join(filepath.Dir(path), "deliveries-v1-"+state.LegacyAnchorsHash+".json")
-				if err := writeAccountingState(anchorPath, raw); err != nil {
-					return fmt.Errorf("persist migration anchors: %w", err)
-				}
-			}
-		}
-		state.Deliveries = nil
-	}
-	raw, err := json.Marshal(state)
+	raw, err := json.Marshal(localUsageDeliveryState{Version: 1, Deliveries: deliveries})
 	if err != nil {
 		return err
 	}
-	if err := writeAccountingState(path, raw); err != nil {
-		return err
-	}
-	s.localUsageLegacyHash = state.LegacyAnchorsHash
-	s.localUsageDeliveryIndex = nil
-	if previousAnchorHash != "" && previousAnchorHash != state.LegacyAnchorsHash {
-		// The new content-addressed anchor is durable and referenced by the main
-		// state before the old sidecar is removed.
-		_ = os.Remove(filepath.Join(filepath.Dir(path), "deliveries-v1-"+previousAnchorHash+".json"))
-	}
-	return nil
+	return writeAccountingState(path, raw)
 }
 
 func usageDeliveryRows(protocol, childID string, batch *nodev1.UserUsageBatch) ([]localUsageDeliveryRow, error) {
@@ -209,12 +83,6 @@ func usageDeliveryRows(protocol, childID string, batch *nodev1.UserUsageBatch) (
 	}
 	rows := make([]localUsageDeliveryRow, 0, len(batch.GetStats()))
 	for _, sample := range batch.GetStats() {
-		if sample.GetProtocol() != "" && sample.GetProtocol() != protocol {
-			return nil, fmt.Errorf("accounting sample protocol mismatch: got %s want %s", sample.GetProtocol(), protocol)
-		}
-		if sample.GetChildBatchId() != "" && sample.GetChildBatchId() != childID {
-			return nil, fmt.Errorf("accounting sample child mismatch: got %s want %s", sample.GetChildBatchId(), childID)
-		}
 		uid := strings.TrimPrefix(sample.GetUid(), "online:")
 		if _, suffix, found := strings.Cut(uid, ":"); found {
 			uid = suffix
@@ -368,10 +236,6 @@ func (s *Server) recordLocalUsageDelivery(batchID string) error {
 		s.localUsageMu.Unlock()
 		return err
 	}
-	if s.localUsageV2 != nil {
-		s.localUsageMu.Unlock()
-		return fmt.Errorf("accounting ledger v2 requires a reflection-v2 collector; upgrade the panel before the node")
-	}
 	for _, delivery := range s.localUsageDeliveries {
 		if delivery.BatchID == batchID {
 			s.localUsageMu.Unlock()
@@ -411,141 +275,86 @@ func (s *Server) recordLocalUsageDelivery(batchID string) error {
 	return nil
 }
 
-func (s *Server) localAwaitingReflectionUsage(protocol string, userID int64, inboundTag, pendingChildID, reflectedRootBatchID string, ledger ...string) (uint64, error) {
-	results, err := s.localAwaitingReflectionUsageBatch([]localUsageReflectionQuery{{
-		Protocol: protocol, UserID: userID, InboundTag: inboundTag,
-		PendingChildID: pendingChildID, ReflectedRootBatchID: reflectedRootBatchID, ReflectedLedger: firstReflectionLedger(ledger),
-	}})
-	if err != nil {
-		return 0, err
-	}
-	return results[0].Awaiting, nil
-}
-
-type localUsageReflectionQuery struct {
-	Protocol             string
-	UserID               int64
-	InboundTag           string
-	PendingChildID       string
-	ReflectedRootBatchID string
-	ReflectedLedger      string
-}
-
-type localUsageReflectionResult struct {
-	Awaiting         uint64
-	PendingReflected bool
-}
-
-// Batch several reflection checks under one lock and persist compaction once.
-// Query order remains significant for users with multiple reflected roots.
-func (s *Server) localAwaitingReflectionUsageBatch(queries []localUsageReflectionQuery) ([]localUsageReflectionResult, error) {
-	if len(queries) == 0 {
-		return nil, nil
-	}
-	var results []localUsageReflectionResult
-	if err := s.localAwaitingReflectionUsageBatchInto(queries, &results); err != nil {
-		return nil, err
-	}
-	return results, nil
-}
-
-func (s *Server) localAwaitingReflectionUsageBatchInto(queries []localUsageReflectionQuery, results *[]localUsageReflectionResult) error {
-	s.runtimeMetricsCounters.reflectionCalls.Add(1)
-	if len(queries) == 0 {
-		*results = (*results)[:0]
-		return nil
-	}
+func (s *Server) localAwaitingReflectionUsage(protocol string, userID int64, inboundTag, pendingChildID, reflectedRootBatchID string) (uint64, error) {
 	s.localUsageMu.Lock()
 	defer s.localUsageMu.Unlock()
 	if err := s.ensureLocalUsageDeliveriesLocked(); err != nil {
-		return err
+		return 0, err
 	}
-	if cap(*results) < len(queries) {
-		*results = make([]localUsageReflectionResult, len(queries))
-	} else {
-		*results = (*results)[:len(queries)]
-		clear(*results)
+	reflectedThrough := -1
+	for index, delivery := range s.localUsageDeliveries {
+		if delivery.BatchID == reflectedRootBatchID {
+			reflectedThrough = index
+			break
+		}
 	}
-	resultRows := *results
-	if s.localUsageV2 != nil {
-		return s.localUsageReflectionV2Locked(queries, resultRows)
+	var total uint64
+	// The common path only reads the ledger. Do not copy every delivery and
+	// row unless reflection actually requires pruning or zeroing a row. All
+	// access remains under localUsageMu and the durable rewrite below is kept.
+	needsRewrite := false
+readOnly:
+	for index, delivery := range s.localUsageDeliveries {
+		for _, row := range delivery.Rows {
+			if row.UserID == userID && (index < reflectedThrough ||
+				(index == reflectedThrough && (row.Raw != 0 || (row.Protocol == protocol && row.ChildID != pendingChildID)))) {
+				needsRewrite = true
+				break readOnly
+			}
+			if row.Protocol != protocol || row.UserID != userID || row.InboundTag != inboundTag || row.ChildID == pendingChildID {
+				continue
+			}
+			if ^uint64(0)-total < row.Raw {
+				return 0, fmt.Errorf("unreflected accounting usage overflow")
+			}
+			total += row.Raw
+		}
 	}
-	if unchanged, err := s.localUsageReflectionIndexedLocked(queries, resultRows); unchanged || err != nil {
-		return err
+	if !needsRewrite {
+		return total, nil
 	}
-	clear(resultRows)
-	// Copy only when a new authoritative reflection actually requires compaction.
-	deliveries := append([]localUsageDelivery(nil), s.localUsageDeliveries...)
-	for index := range deliveries {
-		deliveries[index].Rows = append([]localUsageDeliveryRow(nil), deliveries[index].Rows...)
-	}
+	total = 0
 	changed := false
-	for queryIndex, query := range queries {
-		reflectedThrough := -1
-		for index, delivery := range deliveries {
-			if delivery.BatchID == query.ReflectedRootBatchID {
-				reflectedThrough = index
-				if query.PendingChildID != "" && query.ReflectedRootBatchID != "" {
-					for _, row := range delivery.Rows {
-						if row.UserID == query.UserID && row.Protocol == query.Protocol && row.ChildID == query.PendingChildID {
-							resultRows[queryIndex].PendingReflected = true
-							break
-						}
-					}
-				}
-				break
+	next := make([]localUsageDelivery, 0, len(s.localUsageDeliveries))
+	for index, delivery := range s.localUsageDeliveries {
+		rows := make([]localUsageDeliveryRow, 0, len(delivery.Rows))
+		for _, row := range delivery.Rows {
+			if index < reflectedThrough && row.UserID == userID {
+				changed = true
+				continue
 			}
+			if index == reflectedThrough && row.UserID == userID && row.Raw != 0 {
+				row.Raw = 0
+				changed = true
+			}
+			if index == reflectedThrough && row.UserID == userID && row.Protocol == protocol && row.ChildID != pendingChildID {
+				changed = true
+				continue
+			}
+			rows = append(rows, row)
+			if row.Protocol != protocol || row.UserID != userID || row.InboundTag != inboundTag || row.ChildID == pendingChildID {
+				continue
+			}
+			if ^uint64(0)-total < row.Raw {
+				return 0, fmt.Errorf("unreflected accounting usage overflow")
+			}
+			total += row.Raw
 		}
-		queryChanged := false
-		writeDelivery := 0
-		for deliveryIndex := range deliveries {
-			delivery := deliveries[deliveryIndex]
-			writeRow := 0
-			for _, row := range delivery.Rows {
-				if deliveryIndex < reflectedThrough && row.UserID == query.UserID {
-					queryChanged = true
-					continue
-				}
-				if deliveryIndex == reflectedThrough && row.UserID == query.UserID && row.Raw != 0 {
-					row.Raw = 0
-					queryChanged = true
-				}
-				if deliveryIndex == reflectedThrough && row.UserID == query.UserID && row.Protocol == query.Protocol && row.ChildID != query.PendingChildID {
-					queryChanged = true
-					continue
-				}
-				delivery.Rows[writeRow] = row
-				writeRow++
-				if row.Protocol != query.Protocol || row.UserID != query.UserID || row.InboundTag != query.InboundTag || row.ChildID == query.PendingChildID {
-					continue
-				}
-				if ^uint64(0)-resultRows[queryIndex].Awaiting < row.Raw {
-					return fmt.Errorf("unreflected accounting usage overflow")
-				}
-				resultRows[queryIndex].Awaiting += row.Raw
-			}
-			delivery.Rows = delivery.Rows[:writeRow]
-			if len(delivery.Rows) > 0 {
-				deliveries[writeDelivery] = delivery
-				writeDelivery++
-			}
-		}
-		deliveries = deliveries[:writeDelivery]
-		if queryChanged {
-			changed = true
+		if len(rows) > 0 {
+			next = append(next, localUsageDelivery{BatchID: delivery.BatchID, Rows: rows})
 		}
 	}
 	if changed {
-		if err := s.persistLocalUsageDeliveriesLocked(deliveries); err != nil {
-			return err
+		if err := s.persistLocalUsageDeliveriesLocked(next); err != nil {
+			return 0, err
 		}
-		s.localUsageDeliveries = deliveries
+		s.localUsageDeliveries = next
 	}
-	return nil
+	return total, nil
 }
 
-func (s *Server) localPendingUsageReflected(protocol string, userID int64, pendingChildID, reflectedRootBatchID string, ledger ...string) (bool, error) {
-	if pendingChildID == "" || (reflectedRootBatchID == "" && firstReflectionLedger(ledger) == "") {
+func (s *Server) localPendingUsageReflected(protocol string, userID int64, pendingChildID, reflectedRootBatchID string) (bool, error) {
+	if pendingChildID == "" || reflectedRootBatchID == "" {
 		return false, nil
 	}
 	s.localUsageMu.Lock()
@@ -553,19 +362,15 @@ func (s *Server) localPendingUsageReflected(protocol string, userID int64, pendi
 	if err := s.ensureLocalUsageDeliveriesLocked(); err != nil {
 		return false, err
 	}
-	if s.localUsageV2 != nil && firstReflectionLedger(ledger) != "" {
-		return s.localPendingReflectedV2Locked(protocol, userID, pendingChildID, firstReflectionLedger(ledger))
-	}
-	index := s.localUsageIndexLocked()
-	position, found := index.Batches[reflectedRootBatchID]
-	if !found {
-		return false, nil
-	}
-	for _, entry := range index.Users[userID] {
-		if entry.Position == position && entry.Row.Protocol == protocol && entry.Row.ChildID == pendingChildID {
-			return true, nil
+	for _, delivery := range s.localUsageDeliveries {
+		if delivery.BatchID != reflectedRootBatchID {
+			continue
+		}
+		for _, row := range delivery.Rows {
+			if row.UserID == userID && row.Protocol == protocol && row.ChildID == pendingChildID {
+				return true, nil
+			}
 		}
 	}
-
 	return false, nil
 }

@@ -23,7 +23,7 @@ func (s *Server) openVPNOfflineGeneration(tag, root string, durable bool) (strin
 	s.mu.Unlock()
 	path := filepath.Join(root, "accounting-generation.json")
 	if pid > 0 {
-		identity, err := offlineLiveProcessIdentity(strconv.Itoa(pid))
+		identity, err := offlineProcessIdentity(strconv.Itoa(pid))
 		if err != nil {
 			return "", err
 		}
@@ -123,7 +123,7 @@ func (s *Server) openVPNOfflinePolicySnapshot(cfg nativeSessionHelperConfig, pre
 		if err != nil {
 			return cfg, err
 		}
-		usage, err := s.offlinePolicyRaw(preview.Baseline, "openvpn", uid, cfg.InboundTag, preview.PendingID, policy.ReflectedUsageBatchID, pendingRaw, policy.ReflectedUsageLedger)
+		usage, err := s.offlinePolicyRaw(preview.Baseline, "openvpn", uid, cfg.InboundTag, preview.PendingID, policy.ReflectedUsageBatchID, pendingRaw)
 		if err != nil {
 			return cfg, err
 		}

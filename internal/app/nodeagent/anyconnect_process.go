@@ -2,9 +2,7 @@ package nodeagent
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
-	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	"os"
 	"os/exec"
 	"sort"
@@ -15,44 +13,15 @@ import (
 
 var (
 	anyConnectLookPath       = exec.LookPath
-	anyConnectCommandContext = managedprocess.CommandContext
+	anyConnectCommandContext = exec.CommandContext
 	anyConnectStartupGrace   = 400 * time.Millisecond
 )
 
 type anyConnectProcess struct {
-	cmd        *exec.Cmd
-	done       chan struct{}
-	configHash [32]byte
-	tag        string
-	inbound    anyConnectRuntimeInbound
-	files      anyConnectRuntimeFiles
-	waitMu     sync.Mutex
-	waitErr    error
-}
-
-func anyConnectRuntimeConfigHash(files anyConnectRuntimeFiles) ([32]byte, error) {
-	h := sha256.New()
-	paths := []string{files.ConfigPath, files.ServerCert, files.ServerKey}
-	if strings.TrimSpace(files.CACert) != "" {
-		if _, err := os.Stat(files.CACert); err == nil {
-			paths = append(paths, files.CACert)
-		} else if !os.IsNotExist(err) {
-			return [32]byte{}, err
-		}
-	}
-	for _, path := range paths {
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return [32]byte{}, err
-		}
-		_, _ = h.Write([]byte(path))
-		_, _ = h.Write([]byte{0})
-		_, _ = h.Write(raw)
-		_, _ = h.Write([]byte{0})
-	}
-	var digest [32]byte
-	copy(digest[:], h.Sum(nil))
-	return digest, nil
+	cmd     *exec.Cmd
+	done    chan struct{}
+	waitMu  sync.Mutex
+	waitErr error
 }
 
 func (p *anyConnectProcess) setWaitError(err error) {
@@ -87,22 +56,10 @@ func (s *Server) startAnyConnectInbound(runtime preparedAnyConnectRuntime) error
 	if err != nil {
 		return fmt.Errorf("anyconnect %q: ocserv executable not installed", tag)
 	}
-	configHash, err := anyConnectRuntimeConfigHash(runtime.Files)
-	if err != nil {
-		return fmt.Errorf("anyconnect %q: hash runtime config: %w", tag, err)
-	}
 	s.mu.Lock()
 	previous := s.anyConnectRuntimes[tag]
 	s.mu.Unlock()
 	if previous != nil {
-		select {
-		case <-previous.done:
-			// A dead process must be replaced even when its config hash matches.
-		default:
-			if previous.configHash == configHash {
-				return nil
-			}
-		}
 		if err := stopAnyConnectProcess(previous); err != nil {
 			return fmt.Errorf("anyconnect %q: stop previous runtime: %w", tag, err)
 		}
@@ -112,13 +69,11 @@ func (s *Server) startAnyConnectInbound(runtime preparedAnyConnectRuntime) error
 	cmd := anyConnectCommandContext(context.Background(), path, "-f", "-c", runtime.Files.ConfigPath)
 	cmd.Stdout = logWriter{server: s}
 	cmd.Stderr = logWriter{server: s}
-	if cmd.Env == nil {
-		cmd.Env = os.Environ()
-	}
+	cmd.Env = os.Environ()
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("anyconnect %q: start: %w", tag, err)
 	}
-	p := &anyConnectProcess{cmd: cmd, done: make(chan struct{}), configHash: configHash, tag: tag, inbound: runtime.Inbound, files: runtime.Files}
+	p := &anyConnectProcess{cmd: cmd, done: make(chan struct{})}
 	go func() {
 		err := cmd.Wait()
 		p.setWaitError(err)
@@ -163,18 +118,16 @@ func stopAnyConnectProcess(p *anyConnectProcess) error {
 	default:
 	}
 	if err := openVPNTerminateProcess(p.cmd.Process); err != nil {
-		_ = managedprocess.Kill(p.cmd)
+		_ = p.cmd.Process.Kill()
 	}
 	select {
 	case <-p.done:
-		_ = managedprocess.Kill(p.cmd)
 		return nil
 	case <-time.After(openVPNShutdownGrace):
 	}
-	_ = managedprocess.Kill(p.cmd)
+	_ = p.cmd.Process.Kill()
 	select {
 	case <-p.done:
-		_ = managedprocess.Kill(p.cmd)
 		return nil
 	case <-time.After(openVPNKillGrace):
 		return fmt.Errorf("process did not exit after forced kill")

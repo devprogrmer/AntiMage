@@ -541,11 +541,9 @@ func pptpUsageBatchProto(
 		stats = append(
 			stats,
 			&nodev1.UserUsageSample{
-				Uid:          statUID,
-				Value:        sample.Value,
-				InboundTag:   sample.InboundTag,
-				Protocol:     "pptp",
-				ChildBatchId: pending.BatchID,
+				Uid:        statUID,
+				Value:      sample.Value,
+				InboundTag: sample.InboundTag,
 			},
 		)
 

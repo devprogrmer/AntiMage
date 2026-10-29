@@ -100,7 +100,7 @@ func TestPPPOfflineAdmissionLimitUsesLiveSessionsAndOuterIP(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	oldIdentity, oldProcess := pppOfflineReadIdentity, pppOfflineReadLiveProcess
+	oldIdentity, oldProcess := pppOfflineReadIdentity, pppOfflineReadProcess
 	pppOfflineReadIdentity = func(iface string) (string, error) {
 		switch iface {
 		case "ppp0":
@@ -111,8 +111,8 @@ func TestPPPOfflineAdmissionLimitUsesLiveSessionsAndOuterIP(t *testing.T) {
 			return "interface-gone", nil
 		}
 	}
-	pppOfflineReadLiveProcess = func(pid string) (string, error) { return "boot:" + pid + ":1", nil }
-	t.Cleanup(func() { pppOfflineReadIdentity, pppOfflineReadLiveProcess = oldIdentity, oldProcess })
+	pppOfflineReadProcess = func(pid string) (string, error) { return "boot:" + pid + ":1", nil }
+	t.Cleanup(func() { pppOfflineReadIdentity, pppOfflineReadProcess = oldIdentity, oldProcess })
 	if err := pppOfflineWriteAdmissionReservation(root, 7, "test", "boot:103:1", "198.51.100.11"); err != nil {
 		t.Fatal(err)
 	}

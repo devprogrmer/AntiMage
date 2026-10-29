@@ -11,19 +11,18 @@ type PanelSettingsUpdate struct {
 }
 
 type RuntimeSettings struct {
-	DashboardPath                string `json:"dashboard_path"`
-	RecordNodeUsage              bool   `json:"record_node_usage"`
-	RecordNodeUserUsages         bool   `json:"record_node_user_usages"`
-	SubscriptionReadOnly         bool   `json:"subscription_read_only"`
-	APIDocsEnabled               bool   `json:"api_docs_enabled"`
-	PHPMyAdminEnabled            bool   `json:"phpmyadmin_enabled"`
-	PHPMyAdminPort               int    `json:"phpmyadmin_port"`
-	PHPMyAdminPath               string `json:"phpmyadmin_path"`
-	PHPMyAdminPublicURL          string `json:"phpmyadmin_public_url"`
-	PHPMyAdminLoginMode          string `json:"phpmyadmin_login_mode"`
-	PHPMyAdminUsername           string `json:"phpmyadmin_username"`
-	PHPMyAdminPassword           string `json:"-"`
-	PHPMyAdminPasswordConfigured bool   `json:"phpmyadmin_password_configured"`
+	DashboardPath        string `json:"dashboard_path"`
+	RecordNodeUsage      bool   `json:"record_node_usage"`
+	RecordNodeUserUsages bool   `json:"record_node_user_usages"`
+	SubscriptionReadOnly bool   `json:"subscription_read_only"`
+	APIDocsEnabled       bool   `json:"api_docs_enabled"`
+	PHPMyAdminEnabled    bool   `json:"phpmyadmin_enabled"`
+	PHPMyAdminPort       int    `json:"phpmyadmin_port"`
+	PHPMyAdminPath       string `json:"phpmyadmin_path"`
+	PHPMyAdminPublicURL  string `json:"phpmyadmin_public_url"`
+	PHPMyAdminLoginMode  string `json:"phpmyadmin_login_mode"`
+	PHPMyAdminUsername   string `json:"phpmyadmin_username"`
+	PHPMyAdminPassword   string `json:"phpmyadmin_password"`
 }
 
 type RuntimeSettingsUpdate struct {

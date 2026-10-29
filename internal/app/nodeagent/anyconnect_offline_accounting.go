@@ -127,7 +127,6 @@ func (s *Server) anyConnectOfflineSnapshots(ctx context.Context) ([]anyConnectOf
 				p.DeviceLimit = user.DeviceLimit
 				p.IPLimit = user.IPLimit
 				p.ReflectedUsageBatchID = user.ReflectedUsageBatchID
-				p.ReflectedUsageLedger = user.ReflectedUsageLedger
 				policies[user.Username] = p
 			}
 		}
@@ -283,7 +282,7 @@ func (s *Server) quotaCheckAnyConnectOffline(ctx context.Context) error {
 					samples = append(samples, ikev2UsageSample{UserID: sample.UserID, InboundTag: sample.InboundTag, Value: sample.Value})
 				}
 			}
-			raw, err := s.offlineQuotaRaw("anyconnect", owner, next, captured, samples, pendingID, policy.ReflectedUsageBatchID, policy.ReflectedUsageLedger)
+			raw, err := s.offlineQuotaRaw("anyconnect", owner, next, captured, samples, pendingID, policy.ReflectedUsageBatchID)
 			if err != nil {
 				return err
 			}

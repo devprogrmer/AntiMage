@@ -17,8 +17,6 @@ import (
 
 const maxNativeSessionOutboxEvents = 4096
 
-var readNativeSessionOutboxDir = os.ReadDir
-
 // Helper driven VPNs can keep admitting locally valid sessions while the panel
 // is unreachable. Persist callback events before returning success so reconnect
 // and disconnect metadata can be replayed after the panel or node comes back.
@@ -27,44 +25,20 @@ func (s *Server) sendNativeSessionEventOfflineSafe(ctx context.Context, callback
 	if callback.URL == "" {
 		return nil
 	}
-	key, shouldSend, tracked := s.reserveNativeSessionHeartbeat(callback, event)
-	if !shouldSend {
-		// A prior delivery may be durably queued while the panel was down. Keep
-		// replaying that queue even when this duplicate heartbeat is coalesced.
-		return s.flushNativeSessionOutbox(ctx, callback)
-	}
-	forgetReservation := func() {
-		if tracked {
-			s.forgetNativeSessionHeartbeat(key)
-		}
-	}
 	if err := s.flushNativeSessionOutbox(ctx, callback); err != nil {
 		if errors.Is(err, errNativeSessionDeviceLimit) || !nativeSessionCallbackRetryable(err) {
-			forgetReservation()
 			return err
 		}
-		if err := s.enqueueNativeSessionEvent(event); err != nil {
-			forgetReservation()
-			return err
-		}
-		return nil
+		return s.enqueueNativeSessionEvent(event)
 	}
 	err := s.sendNativeSessionEvent(ctx, callback, event)
 	if err == nil || errors.Is(err, errNativeSessionDeviceLimit) {
-		if errors.Is(err, errNativeSessionDeviceLimit) {
-			forgetReservation()
-		}
 		return err
 	}
 	if !nativeSessionCallbackRetryable(err) {
-		forgetReservation()
 		return err
 	}
-	if err := s.enqueueNativeSessionEvent(event); err != nil {
-		forgetReservation()
-		return err
-	}
-	return nil
+	return s.enqueueNativeSessionEvent(event)
 }
 
 func nativeSessionCallbackRetryable(err error) bool {
@@ -90,19 +64,20 @@ func nativeSessionEventKey(event nativeSessionEvent) (string, error) {
 
 func (s *Server) enqueueNativeSessionEvent(event nativeSessionEvent) error {
 	dir := s.nativeSessionOutboxDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read native session outbox: %w", err)
+	}
 	key, err := nativeSessionEventKey(event)
 	if err != nil {
 		return err
 	}
-	s.nativeSessionOutboxMu.Lock()
-	defer s.nativeSessionOutboxMu.Unlock()
-	if err := s.loadNativeSessionOutboxLocked(dir); err != nil {
-		return err
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), key) {
+			return nil
+		}
 	}
-	if _, exists := s.nativeSessionOutboxKeys[key]; exists {
-		return nil
-	}
-	if s.nativeSessionOutboxEntryCount >= maxNativeSessionOutboxEvents {
+	if len(entries) >= maxNativeSessionOutboxEvents {
 		return fmt.Errorf("native session outbox capacity exceeded")
 	}
 	raw, err := json.Marshal(event)
@@ -116,33 +91,27 @@ func (s *Server) enqueueNativeSessionEvent(event nativeSessionEvent) error {
 	if err := writeAccountingState(filepath.Join(dir, name), raw); err != nil {
 		return fmt.Errorf("persist native session event: %w", err)
 	}
-	s.nativeSessionOutboxFiles = append(s.nativeSessionOutboxFiles, name)
-	sort.Strings(s.nativeSessionOutboxFiles)
-	s.nativeSessionOutboxKeys[key] = struct{}{}
-	s.nativeSessionOutboxEntryCount++
 	return nil
 }
 
 func (s *Server) flushNativeSessionOutbox(ctx context.Context, callback nativeRuntimeSessionCallback) error {
 	dir := s.nativeSessionOutboxDir()
-	s.nativeSessionOutboxFlushMu.Lock()
-	defer s.nativeSessionOutboxFlushMu.Unlock()
-	for {
-		s.nativeSessionOutboxMu.Lock()
-		if err := s.loadNativeSessionOutboxLocked(dir); err != nil {
-			s.nativeSessionOutboxMu.Unlock()
-			return err
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read native session outbox: %w", err)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
 		}
-		if len(s.nativeSessionOutboxFiles) == 0 {
-			s.nativeSessionOutboxMu.Unlock()
-			return nil
-		}
-		name := s.nativeSessionOutboxFiles[0]
-		s.nativeSessionOutboxMu.Unlock()
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		path := filepath.Join(dir, name)
+		path := filepath.Join(dir, entry.Name())
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("read queued native session event: %w", err)
@@ -157,69 +126,11 @@ func (s *Server) flushNativeSessionOutbox(ctx context.Context, callback nativeRu
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("prune delivered native session event: %w", err)
 		}
-		s.nativeSessionOutboxMu.Lock()
-		s.nativeSessionOutboxFiles = removeNativeSessionOutboxFile(s.nativeSessionOutboxFiles, name)
-		if key := nativeSessionOutboxKeyFromName(name); key != "" {
-			delete(s.nativeSessionOutboxKeys, key)
-		}
-		if s.nativeSessionOutboxEntryCount > 0 {
-			s.nativeSessionOutboxEntryCount--
-		}
-		s.nativeSessionOutboxMu.Unlock()
 		if err := syncNativeSessionOutboxDir(dir); err != nil {
 			return err
 		}
 	}
-}
-
-// loadNativeSessionOutboxLocked initializes a per-process FIFO/key index. The
-// durable directory is read once per data directory; enqueue/flush then update
-// the index as files are atomically persisted and acknowledged.
-func (s *Server) loadNativeSessionOutboxLocked(dir string) error {
-	if s.nativeSessionOutboxLoaded && s.nativeSessionOutboxLoadedDir == dir {
-		return nil
-	}
-	entries, err := readNativeSessionOutboxDir(dir)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("read native session outbox: %w", err)
-	}
-	s.nativeSessionOutboxLoadedDir = dir
-	s.nativeSessionOutboxLoaded = true
-	s.nativeSessionOutboxFiles = s.nativeSessionOutboxFiles[:0]
-	s.nativeSessionOutboxKeys = make(map[string]struct{}, len(entries))
-	s.nativeSessionOutboxEntryCount = len(entries)
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		s.nativeSessionOutboxFiles = append(s.nativeSessionOutboxFiles, entry.Name())
-		if key := nativeSessionOutboxKeyFromName(entry.Name()); key != "" {
-			s.nativeSessionOutboxKeys[key] = struct{}{}
-		}
-	}
 	return nil
-}
-
-func nativeSessionOutboxKeyFromName(name string) string {
-	name = strings.TrimSuffix(name, ".json")
-	separator := strings.LastIndexByte(name, '-')
-	if separator < 0 {
-		return ""
-	}
-	key := name[separator+1:]
-	if len(key) != sha256.Size*2 {
-		return ""
-	}
-	return key
-}
-
-func removeNativeSessionOutboxFile(files []string, name string) []string {
-	for index, file := range files {
-		if file == name {
-			return append(files[:index], files[index+1:]...)
-		}
-	}
-	return files
 }
 
 func syncNativeSessionOutboxDir(dir string) error {

@@ -3,7 +3,6 @@ package nodecontroller
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"math"
 	"net/url"
 	"os"
@@ -13,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/antimage/antimage/internal/platform/usagereflection"
 	_ "modernc.org/sqlite"
 )
 
@@ -1249,81 +1247,12 @@ func TestScaleUserUsageCombinesFactorsAndSaturates(t *testing.T) {
 	}
 }
 
-func TestCumulativeReceiptStagesOnceAcrossLostACKAndWrapperReplay(t *testing.T) {
-	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-receipt.db")+"?_pragma=busy_timeout(30000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	createUsageTables(t, ctx, db)
-	_, err = db.ExecContext(ctx, `INSERT INTO admins(id,users_usage,lifetime_usage) VALUES(1,0,0); INSERT INTO services(id,used_traffic,lifetime_used_traffic,users_usage,updated_at) VALUES(2,0,0,0,CURRENT_TIMESTAMP); INSERT INTO admins_services(admin_id,service_id,used_traffic,lifetime_used_traffic,updated_at) VALUES(1,2,0,0,CURRENT_TIMESTAMP); INSERT INTO users(id,status,used_traffic,data_limit,admin_id,service_id) VALUES(10,'active',100,10000,1,2); INSERT INTO nodes(id,status,usage_coefficient) VALUES(7,'connected',1); INSERT INTO system(id,uplink,downlink) VALUES(1,0,0);`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	repo := NewRepository(db, "sqlite")
-	key := usagereflection.Key("xray", "in")
-	receipt := func(root, child string, total, currentRaw uint64) string {
-		raw, err := json.Marshal(usagereflection.Watermark{Version: 2, Epoch: "node-epoch", Root: root, Totals: map[string]uint64{key: total}, Baselines: map[string]uint64{key: 0}, LegacyBatches: map[string]map[string]uint64{key: {"combined-old": 50, "combined-unseen": 50}}, PendingChildren: map[string]usagereflection.PendingChild{key: {BatchID: child, Raw: currentRaw}}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return string(raw)
-	}
-	stage := func(root, child string, total, raw uint64) {
-		t.Helper()
-		delta := UserUsageDelta{UserID: 10, Value: int64(raw), RawValue: raw, Online: true, AccountingProtocol: "xray", AccountingChildID: child, InboundTag: "in", InboundCoefficient: 1}
-		if err := repo.StoreCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, root, []UserUsageDelta{delta}, "", nil, UsagePersistOptions{ReflectionReceipts: map[int64]string{10: receipt(root, child, total, raw)}}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// One v1 delivery was already durably staged. The other 50 bytes were in
-	// the full legacy node ledger but never reached the panel before migration.
-	if err := repo.StoreCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, "combined-old", []UserUsageDelta{{UserID: 10, Value: 50, Online: true}}, "", nil); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repo.FlushStagedUsage(ctx, 100); err != nil {
-		t.Fatal(err)
-	}
-	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id=10`, 150)
-	// The first v2 receipt must bill the missing v1 root and the current child.
-	stage("combined-first", "xray-current", 150, 50)
-	if _, err := repo.FlushStagedUsage(ctx, 100); err != nil {
-		t.Fatal(err)
-	}
-	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id=10`, 250)
-	// A wrapper with the same pending child after a lost ACK bills nothing.
-	stage("combined-rewrapped", "xray-current", 150, 50)
-	if _, err := repo.FlushStagedUsage(ctx, 100); err != nil {
-		t.Fatal(err)
-	}
-	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id=10`, 250)
-	var ledger string
-	if err := db.QueryRowContext(ctx, `SELECT ledger_json FROM node_wireguard_usage_reflection WHERE node_id=7 AND user_id=10`).Scan(&ledger); err != nil {
-		t.Fatal(err)
-	}
-	w, err := usagereflection.Decode(ledger)
-	if err != nil || w.Totals[key] != 150 {
-		t.Fatalf("reflected watermark=%+v err=%v", w, err)
-	}
-	// Later traffic advances the same per-owner cursor by only its new bytes.
-	stage("combined-next", "xray-next", 175, 25)
-	if _, err := repo.FlushStagedUsage(ctx, 100); err != nil {
-		t.Fatal(err)
-	}
-	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id=10`, 275)
-}
-
 func createUsageTables(t *testing.T, ctx context.Context, db *sql.DB) {
 	t.Helper()
 	statements := []string{
 		`CREATE TABLE admins (id INTEGER PRIMARY KEY, users_usage INTEGER NOT NULL DEFAULT 0, lifetime_usage INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE node_usage_batch_tombstones (node_id INTEGER NOT NULL, batch_id TEXT NOT NULL, kind TEXT NOT NULL, pruned INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (node_id, batch_id, kind))`,
-		`CREATE TABLE node_wireguard_usage_reflection (node_id INTEGER NOT NULL, user_id INTEGER NOT NULL, batch_id TEXT NOT NULL, ledger_json TEXT NULL, updated_at DATETIME NOT NULL, PRIMARY KEY (node_id, user_id))`,
-		`CREATE TABLE node_usage_reflection_staged (node_id INTEGER NOT NULL,user_id INTEGER NOT NULL,epoch TEXT NOT NULL,owner_hash TEXT NOT NULL,owner_key TEXT NOT NULL,total_raw INTEGER NOT NULL,legacy_raw INTEGER NOT NULL DEFAULT 0,legacy_raw_complete INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(node_id,user_id,epoch,owner_hash))`,
-		`CREATE TABLE user_accounting_tombstones (user_id INTEGER PRIMARY KEY, deleted_at DATETIME NOT NULL)`,
-		`CREATE TABLE node_usage_retirement_ledger (node_id INTEGER NOT NULL,user_id INTEGER NOT NULL,epoch TEXT NOT NULL,owner_hash TEXT NOT NULL,owner_key TEXT NOT NULL,settled_raw INTEGER NOT NULL,total_raw INTEGER NOT NULL,retired_raw INTEGER NOT NULL,updated_at DATETIME NOT NULL,PRIMARY KEY(node_id,user_id,epoch,owner_hash))`,
-		`CREATE TABLE node_usage_retirement_proofs (proof_id TEXT NOT NULL PRIMARY KEY,node_id INTEGER NOT NULL,user_id INTEGER NOT NULL,epoch TEXT NOT NULL,owner_hash TEXT NOT NULL,owner_key TEXT NOT NULL,total_raw INTEGER NOT NULL,legacy_raw INTEGER NOT NULL,created_at DATETIME NOT NULL,delivered_at DATETIME NULL,UNIQUE(node_id,user_id,epoch,owner_hash))`,
+		`CREATE TABLE node_wireguard_usage_reflection (node_id INTEGER NOT NULL, user_id INTEGER NOT NULL, batch_id TEXT NOT NULL, updated_at DATETIME NOT NULL, PRIMARY KEY (node_id, user_id))`,
 		`CREATE TABLE services (id INTEGER PRIMARY KEY, used_traffic INTEGER NOT NULL DEFAULT 0, lifetime_used_traffic INTEGER NOT NULL DEFAULT 0, users_usage INTEGER NOT NULL DEFAULT 0, updated_at DATETIME NULL)`,
 		`CREATE TABLE admins_services (admin_id INTEGER NOT NULL, service_id INTEGER NOT NULL, used_traffic INTEGER NOT NULL DEFAULT 0, lifetime_used_traffic INTEGER NOT NULL DEFAULT 0, updated_at DATETIME NULL, PRIMARY KEY (admin_id, service_id))`,
 		`CREATE TABLE users (id INTEGER PRIMARY KEY, status TEXT NOT NULL, used_traffic INTEGER NOT NULL DEFAULT 0, data_limit INTEGER NULL, expire INTEGER NULL, online_at DATETIME NULL, on_hold_expire_duration INTEGER NULL, on_hold_timeout DATETIME NULL, edit_at DATETIME NULL, created_at DATETIME NULL, last_status_change DATETIME NULL, admin_id INTEGER NULL, service_id INTEGER NULL)`,
@@ -1335,7 +1264,7 @@ func createUsageTables(t *testing.T, ctx context.Context, db *sql.DB) {
 		`CREATE TABLE inbounds (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE system (id INTEGER PRIMARY KEY, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE node_operations (id INTEGER PRIMARY KEY AUTOINCREMENT, operation_type TEXT NOT NULL, node_id INTEGER NULL, user_id INTEGER NULL, payload TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT NULL, idempotency_key TEXT NOT NULL UNIQUE, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)`,
-		`CREATE TABLE node_usage_user_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, node_id INTEGER NOT NULL, batch_id TEXT NOT NULL, ledger_json TEXT NULL, user_id INTEGER NOT NULL, used_traffic INTEGER NOT NULL DEFAULT 0, online INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, processed_at DATETIME NULL, history_processed_at DATETIME NULL, retirement_pending INTEGER NOT NULL DEFAULT 0, UNIQUE(node_id, batch_id, user_id))`,
+		`CREATE TABLE node_usage_user_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, node_id INTEGER NOT NULL, batch_id TEXT NOT NULL, user_id INTEGER NOT NULL, used_traffic INTEGER NOT NULL DEFAULT 0, online INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, processed_at DATETIME NULL, history_processed_at DATETIME NULL, UNIQUE(node_id, batch_id, user_id))`,
 		`CREATE TABLE node_usage_outbound_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, node_id INTEGER NOT NULL, batch_id TEXT NOT NULL, tag TEXT NOT NULL, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0, inbound_uplink INTEGER NOT NULL DEFAULT 0, inbound_downlink INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, processed_at DATETIME NULL, history_processed_at DATETIME NULL, UNIQUE(node_id, batch_id, tag))`,
 	}
 	for _, stmt := range statements {
@@ -1714,268 +1643,4 @@ FROM node_wireguard_usage_reflection
 WHERE node_id = 7 AND user_id = 10`,
 		"wireguard-reflection-300",
 	)
-}
-
-func TestCumulativeReceiptPreservesPerSampleRounding(t *testing.T) {
-	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-rounding.db")+"?_pragma=busy_timeout(30000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	createUsageTables(t, ctx, db)
-	_, err = db.ExecContext(ctx, `INSERT INTO admins(id,users_usage,lifetime_usage) VALUES(1,0,0); INSERT INTO services(id,used_traffic,lifetime_used_traffic,users_usage,updated_at) VALUES(2,0,0,0,CURRENT_TIMESTAMP); INSERT INTO admins_services(admin_id,service_id,used_traffic,lifetime_used_traffic,updated_at) VALUES(1,2,0,0,CURRENT_TIMESTAMP); INSERT INTO users(id,status,used_traffic,data_limit,admin_id,service_id) VALUES(10,'active',0,10000,1,2); INSERT INTO nodes(id,status,usage_coefficient) VALUES(7,'connected',1); INSERT INTO system(id,uplink,downlink) VALUES(1,0,0);`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	key := usagereflection.Key("xray", "in")
-	receipt, err := json.Marshal(usagereflection.Watermark{Version: 2, Epoch: "rounding-epoch", Root: "combined-rounding", Totals: map[string]uint64{key: 2}, Baselines: map[string]uint64{key: 0}, PendingChildren: map[string]usagereflection.PendingChild{key: {BatchID: "xray-rounding", Raw: 2}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	deltas := []UserUsageDelta{
-		{UserID: 10, Value: 1, RawValue: 1, Online: true, AccountingProtocol: "xray", AccountingChildID: "xray-rounding", InboundTag: "in", InboundCoefficient: 1.5},
-		{UserID: 10, Value: 1, RawValue: 1, Online: true, AccountingProtocol: "xray", AccountingChildID: "xray-rounding", InboundTag: "in", InboundCoefficient: 1.5},
-	}
-	repo := NewRepository(db, "sqlite")
-	if err := repo.StoreCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, "combined-rounding", deltas, "", nil, UsagePersistOptions{ReflectionReceipts: map[int64]string{10: string(receipt)}}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repo.FlushStagedUsage(ctx, 100); err != nil {
-		t.Fatal(err)
-	}
-	// The legacy pipeline rounds each 1-byte sample separately: round(1.5)+round(1.5)=4.
-	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id=10`, 4)
-}
-
-func TestCumulativeReceiptPersistenceFailureRollsBackAndRetries(t *testing.T) {
-	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-receipt-rollback.db")+"?_pragma=busy_timeout(30000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	createUsageTables(t, ctx, db)
-	_, err = db.ExecContext(ctx, `INSERT INTO admins(id,users_usage,lifetime_usage) VALUES(1,0,0); INSERT INTO services(id,used_traffic,lifetime_used_traffic,users_usage,updated_at) VALUES(2,0,0,0,CURRENT_TIMESTAMP); INSERT INTO admins_services(admin_id,service_id,used_traffic,lifetime_used_traffic,updated_at) VALUES(1,2,0,0,CURRENT_TIMESTAMP); INSERT INTO users(id,status,used_traffic,data_limit,admin_id,service_id) VALUES(10,'active',0,10000,1,2); INSERT INTO nodes(id,status,usage_coefficient) VALUES(7,'connected',1); INSERT INTO system(id,uplink,downlink) VALUES(1,0,0); CREATE TRIGGER reject_accounting_stage BEFORE INSERT ON node_usage_user_queue BEGIN SELECT RAISE(FAIL,'injected persistence failure'); END;`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	key := usagereflection.Key("xray", "in")
-	encoded, err := json.Marshal(usagereflection.Watermark{Version: 2, Epoch: "rollback-epoch", Root: "combined-rollback", Totals: map[string]uint64{key: 30}, Baselines: map[string]uint64{key: 0}, PendingChildren: map[string]usagereflection.PendingChild{key: {BatchID: "xray-child-rollback", Raw: 30}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	delta := UserUsageDelta{UserID: 10, Value: 30, RawValue: 30, Online: true, AccountingProtocol: "xray", AccountingChildID: "xray-child-rollback", InboundTag: "in", InboundCoefficient: 1}
-	repo := NewRepository(db, "sqlite")
-	opts := UsagePersistOptions{ReflectionReceipts: map[int64]string{10: string(encoded)}}
-	if err := repo.StoreCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, "combined-rollback", []UserUsageDelta{delta}, "", nil, opts); err == nil {
-		t.Fatal("expected injected persistence error")
-	}
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_reflection_staged`, 0)
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_batch_tombstones`, 0)
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_user_queue`, 0)
-	if _, err := db.ExecContext(ctx, `DROP TRIGGER reject_accounting_stage`); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.StoreCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, "combined-rollback", []UserUsageDelta{delta}, "", nil, opts); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repo.FlushStagedUsage(ctx, 100); err != nil {
-		t.Fatal(err)
-	}
-	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id=10`, 30)
-	assertInt64(t, db, `SELECT total_raw FROM node_usage_reflection_staged WHERE node_id=7 AND user_id=10`, 30)
-}
-
-func TestDeletedUserAccountingMovesToDurableRetirementBeforeACK(t *testing.T) {
-	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-retirement.db")+"?_pragma=busy_timeout(30000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	createUsageTables(t, ctx, db)
-	if _, err := db.ExecContext(ctx, `INSERT INTO users(id,status,used_traffic) VALUES(10,'deleted',123),(11,'deleted',456); INSERT INTO nodes(id,status,usage_coefficient) VALUES(7,'connected',1); INSERT INTO user_accounting_tombstones(user_id,deleted_at) VALUES(10,CURRENT_TIMESTAMP),(11,CURRENT_TIMESTAMP);`); err != nil {
-		t.Fatal(err)
-	}
-	key := usagereflection.Key("xray", "in")
-	wgKey := usagereflection.Key("wireguard", "wg-in")
-	openvpnKey := usagereflection.Key("openvpn", "ovpn-in")
-	encoded, err := json.Marshal(usagereflection.Watermark{
-		Version: 2, Epoch: "retirement-epoch", Root: "combined-retirement",
-		Totals: map[string]uint64{key: 4096, wgKey: 512}, Baselines: map[string]uint64{key: 0, wgKey: 0},
-		LegacyBatches: map[string]map[string]uint64{key: {"combined-legacy-root": 4096}, wgKey: {"wireguard-legacy-root": 512}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	repo := NewRepository(db, "sqlite")
-	second, err := json.Marshal(usagereflection.Watermark{
-		Version: 2, Epoch: "retirement-epoch", Root: "combined-retirement",
-		Totals: map[string]uint64{openvpnKey: 2048}, Baselines: map[string]uint64{openvpnKey: 0},
-		LegacyBatches: map[string]map[string]uint64{openvpnKey: {"openvpn-legacy-root": 2048}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	options := UsagePersistOptions{ReflectionReceipts: map[int64]string{10: string(encoded), 11: string(second)}}
-	if err := repo.StoreCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, "combined-retirement", nil, "", nil, options); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.StoreCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, "combined-retirement", nil, "", nil, options); err != nil {
-		t.Fatalf("same-root lost-ACK retry: %v", err)
-	}
-	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id=10`, 123)
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_ledger WHERE node_id=7 AND epoch='retirement-epoch'`, 3)
-	assertInt64(t, db, `SELECT SUM(retired_raw) FROM node_usage_retirement_ledger WHERE node_id=7 AND epoch='retirement-epoch'`, 6656)
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs WHERE node_id=7 AND epoch='retirement-epoch'`, 3)
-	assertInt64(t, db, `SELECT retirement_pending FROM node_usage_user_queue WHERE node_id=7 AND batch_id='combined-retirement' AND user_id=10`, 1)
-	assertInt64(t, db, `SELECT retirement_pending FROM node_usage_user_queue WHERE node_id=7 AND batch_id='combined-retirement' AND user_id=11`, 1)
-	if _, err := repo.FlushStagedUsage(ctx, 100); err != nil {
-		t.Fatal(err)
-	}
-	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id=10`, 123)
-	assertInt64(t, db, `SELECT SUM(total_raw) FROM node_usage_retirement_ledger WHERE node_id=7 AND user_id=10 AND epoch='retirement-epoch'`, 4608)
-	pendingProofs, err := NewRepository(db, "sqlite").PendingAccountingRetirementProofs(ctx, 7)
-	if err != nil || len(pendingProofs) != 3 {
-		t.Fatalf("durable proofs after repository restart: count=%d err=%v", len(pendingProofs), err)
-	}
-	if pendingProofs[0].GetProofId() == "" || pendingProofs[0].GetLegacyRaw() == 0 || pendingProofs[0].GetTotalRaw() < pendingProofs[0].GetLegacyRaw() {
-		t.Fatalf("invalid durable retirement proof: %+v", pendingProofs[0])
-	}
-	proofIDs := make([]string, 0, len(pendingProofs))
-	for _, proof := range pendingProofs {
-		proofIDs = append(proofIDs, proof.GetProofId())
-	}
-	if err := repo.MarkAccountingRetirementProofsDelivered(ctx, 7, proofIDs); err != nil {
-		t.Fatal(err)
-	}
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs WHERE node_id=7 AND delivered_at IS NULL`, 0)
-	if err := repo.EnsureAccountingRetirementProofs(ctx, 7); err != nil {
-		t.Fatal(err)
-	}
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs WHERE node_id=7 AND delivered_at IS NULL`, 0)
-
-	next, err := json.Marshal(usagereflection.Watermark{
-		Version: 2, Epoch: "retirement-epoch", Root: "combined-retirement-next",
-		Totals: map[string]uint64{key: 8192}, Baselines: map[string]uint64{key: 0},
-		LegacyBatches:   map[string]map[string]uint64{key: {"combined-legacy-root": 4096}},
-		PendingChildren: map[string]usagereflection.PendingChild{key: {BatchID: "xray-retirement-next", Raw: 4096}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	delta := UserUsageDelta{UserID: 10, Value: 4096, RawValue: 4096, Online: true, AccountingProtocol: "xray", AccountingChildID: "xray-retirement-next", InboundTag: "in", InboundCoefficient: 1}
-	if err := repo.StoreCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, "combined-retirement-next", []UserUsageDelta{delta}, "", nil, UsagePersistOptions{ReflectionReceipts: map[int64]string{10: string(next)}}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repo.FlushStagedUsage(ctx, 100); err != nil {
-		t.Fatal(err)
-	}
-	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id=10`, 123)
-	assertInt64(t, db, `SELECT SUM(total_raw) FROM node_usage_retirement_ledger WHERE node_id=7 AND user_id=10 AND epoch='retirement-epoch'`, 8704)
-	assertInt64(t, db, `SELECT SUM(retired_raw) FROM node_usage_retirement_ledger WHERE node_id=7 AND epoch='retirement-epoch'`, 10752)
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs WHERE node_id=7 AND epoch='retirement-epoch' AND delivered_at IS NULL AND total_raw=8192 AND legacy_raw=4096`, 1)
-}
-
-func TestAccountingRetirementProofRollsBackWithFailedPanelTransaction(t *testing.T) {
-	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-retirement-proof-rollback.db")+"?_pragma=busy_timeout(30000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	createUsageTables(t, ctx, db)
-	if _, err := db.ExecContext(ctx, `INSERT INTO users(id,status,used_traffic) VALUES(10,'deleted',123); INSERT INTO nodes(id,status,usage_coefficient) VALUES(7,'connected',1); INSERT INTO user_accounting_tombstones(user_id,deleted_at) VALUES(10,CURRENT_TIMESTAMP); CREATE TRIGGER reject_retirement_proof BEFORE INSERT ON node_usage_retirement_proofs BEGIN SELECT RAISE(ABORT,'injected proof persistence failure'); END;`); err != nil {
-		t.Fatal(err)
-	}
-	key := usagereflection.Key("xray", "in")
-	receipt, err := json.Marshal(usagereflection.Watermark{
-		Version: 2, Epoch: "proof-rollback-epoch", Root: "combined-proof-rollback",
-		Totals: map[string]uint64{key: 4096}, Baselines: map[string]uint64{key: 0},
-		LegacyBatches: map[string]map[string]uint64{key: {"combined-legacy": 4096}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = NewRepository(db, "sqlite").StoreCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, "combined-proof-rollback", nil, "", nil, UsagePersistOptions{ReflectionReceipts: map[int64]string{10: string(receipt)}})
-	if err == nil {
-		t.Fatal("expected injected durable-proof write failure")
-	}
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_ledger`, 0)
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs`, 0)
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_reflection_staged`, 0)
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_user_queue`, 0)
-}
-
-func TestAccountingRetirementProofCanUsePriorCommittedWatermarkWithoutNewReceipt(t *testing.T) {
-	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-retirement-prior-watermark.db")+"?_pragma=busy_timeout(30000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	createUsageTables(t, ctx, db)
-	if _, err := db.ExecContext(ctx, `INSERT INTO nodes(id,status,usage_coefficient) VALUES(7,'connected',1)`); err != nil {
-		t.Fatal(err)
-	}
-	key := usagereflection.Key("xray", "in")
-	encoded, err := json.Marshal(usagereflection.Watermark{
-		Version: 2, Epoch: "prior-watermark-epoch", Root: "combined-prior-watermark",
-		Totals: map[string]uint64{key: 900}, Baselines: map[string]uint64{key: 0},
-		LegacyBatches: map[string]map[string]uint64{key: {"combined-legacy": 600}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	repo := NewRepository(db, "sqlite")
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.insertStagedUserUsage(ctx, tx, 7, "combined-prior-watermark", map[int64]int64{10: 0}, time.Now().UTC(), map[int64]string{10: string(encoded)}); err != nil {
-		t.Fatal(err)
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
-	assertInt64(t, db, `SELECT legacy_raw FROM node_usage_reflection_staged WHERE node_id=7 AND user_id=10 AND epoch='prior-watermark-epoch'`, 600)
-	if _, err := db.ExecContext(ctx, `UPDATE node_usage_reflection_staged SET legacy_raw=0,legacy_raw_complete=0 WHERE node_id=7 AND user_id=10`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO user_accounting_tombstones(user_id,deleted_at) VALUES(10,CURRENT_TIMESTAMP)`); err != nil {
-		t.Fatal(err)
-	}
-	if err := NewRepository(db, "sqlite").EnsureAccountingRetirementProofs(ctx, 7); err != nil {
-		t.Fatal(err)
-	}
-	assertInt64(t, db, `SELECT total_raw FROM node_usage_retirement_ledger WHERE node_id=7 AND user_id=10 AND epoch='prior-watermark-epoch'`, 900)
-	assertInt64(t, db, `SELECT retired_raw FROM node_usage_retirement_ledger WHERE node_id=7 AND user_id=10 AND epoch='prior-watermark-epoch'`, 900)
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs WHERE node_id=7 AND user_id=10 AND total_raw=900 AND legacy_raw=600 AND delivered_at IS NULL`, 1)
-}
-
-func TestAccountingTombstoneAloneDoesNotCreateRetirementProof(t *testing.T) {
-	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-retirement-tombstone-only.db")+"?_pragma=busy_timeout(30000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	createUsageTables(t, ctx, db)
-	if _, err := db.ExecContext(ctx, `INSERT INTO users(id,status,used_traffic) VALUES(10,'deleted',123); INSERT INTO nodes(id,status,usage_coefficient) VALUES(7,'connected',1); INSERT INTO user_accounting_tombstones(user_id,deleted_at) VALUES(10,CURRENT_TIMESTAMP)`); err != nil {
-		t.Fatal(err)
-	}
-	repo := NewRepository(db, "sqlite")
-	if err := repo.EnsureAccountingRetirementProofs(ctx, 7); err != nil {
-		t.Fatal(err)
-	}
-	proofs, err := repo.PendingAccountingRetirementProofs(ctx, 7)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(proofs) != 0 {
-		t.Fatalf("tombstone without durable accounting reflection produced proofs: %+v", proofs)
-	}
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_ledger WHERE node_id=7 AND user_id=10`, 0)
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_retirement_proofs WHERE node_id=7 AND user_id=10`, 0)
 }

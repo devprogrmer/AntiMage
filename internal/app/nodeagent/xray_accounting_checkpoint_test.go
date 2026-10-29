@@ -196,38 +196,3 @@ func TestXrayGenerationDetectsResetThatOvertakesOldCounter(t *testing.T) {
 		t.Fatalf("generation reconnect batch = %v, %v", batch, err)
 	}
 }
-
-// BenchmarkXrayAccountingCheckpointSteadyState measures the per-tick cost of
-// publishing an unchanged Xray accounting sample. In steady state the native
-// counters and the durable totals are identical, so the checkpoint must not
-// allocate a fresh map sized by every counter series on each pass.
-func BenchmarkXrayAccountingCheckpointSteadyState(b *testing.B) {
-	const seriesCount = 2048
-	s := New(Config{DataDir: b.TempDir()})
-	if err := s.ensureXrayUsageStateLoadedLocked(); err != nil {
-		b.Fatal(err)
-	}
-	stats := make([]xrayStat, 0, seriesCount)
-	for index := 0; index < seriesCount/2; index++ {
-		email := fmt.Sprintf("%d.user-%04d", index+1, index)
-		for _, direction := range []string{"uplink", "downlink"} {
-			stats = append(stats, xrayStat{
-				Name:  "user>>>" + email + ">>>traffic>>>" + direction,
-				Value: int64(index + 1),
-			})
-		}
-	}
-	if err := s.checkpointXrayStatsLocked(stats); err != nil {
-		b.Fatal(err)
-	}
-	if len(s.xrayAccountingCounters) != seriesCount {
-		b.Fatalf("unexpected counter series count %d", len(s.xrayAccountingCounters))
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for index := 0; index < b.N; index++ {
-		if err := s.checkpointXrayStatsLocked(stats); err != nil {
-			b.Fatal(err)
-		}
-	}
-}

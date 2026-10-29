@@ -22,14 +22,6 @@ type Config struct {
 	Version       string
 }
 
-// BuildVersion is injected into shipped executables; it identifies the
-// running binary independently of the installer's persisted target version.
-var BuildVersion = "dev"
-
-// These values identify the executable, independently of installer metadata.
-var BuildCommit = ""
-var BuildChannel = "unknown"
-
 func LoadConfig() Config {
 	dataDir := envString("ANTIMAGE_NODE_DATA_DIR", envString("ANTIMAGE_DATA_DIR", "/var/lib/antimage-node"))
 	return Config{
@@ -44,7 +36,7 @@ func LoadConfig() Config {
 		XrayAPIPort:   envInt("XRAY_API_PORT", 10085),
 		InstallMode:   envString("ANTIMAGE_NODE_INSTALL_MODE", "binary"),
 		UpdateChannel: envString("ANTIMAGE_NODE_UPDATE_CHANNEL", "stable"),
-		Version:       BuildVersion,
+		Version:       envString("ANTIMAGE_NODE_VERSION", "dev"),
 	}
 }
 

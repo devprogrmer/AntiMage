@@ -90,8 +90,6 @@ wireguard_native_stage() {
   [ -n "${ANTIMAGE_WIREGUARD_TEST_BINARY:-}" ] || return 0
   env ANTIMAGE_WIREGUARD_NATIVE_STATE="$state" \
     ANTIMAGE_WIREGUARD_NATIVE_INTERFACE=wg-native \
-    ANTIMAGE_WIREGUARD_NATIVE_SERVER_PRIVATE_KEY="${server_priv:-}" \
-    ANTIMAGE_WIREGUARD_NATIVE_CLIENT_NS="$NS" \
     ANTIMAGE_WIREGUARD_NATIVE_PEER="$client_pub" \
     ANTIMAGE_WIREGUARD_EXTRA_PEER_PUBLIC_KEY="${client2_pub:-}" \
     ANTIMAGE_WIREGUARD_NATIVE_QUOTA_BYTES="$quota_bytes" \
@@ -167,28 +165,6 @@ run_wireguard() {
   wireguard_native_stage collect "$ROOT/wireguard-accounting"
   NATIVE_SESSION_EXPECT_MARKER=""
   wait_for 'native WireGuard Panel session seen event' test -s "$ROOT/wireguard-accounting/native-session-api/api-active"
-
-  if [ -n "${ANTIMAGE_WIREGUARD_CONTROLLER_TEST_BINARY:-}" ]; then
-    echo '=== WireGuard targeted Controller -> NodeAgent -> kernel mutation ==='
-    ANTIMAGE_WIREGUARD_TARGETED_MUTATION_E2E=1 \
-      ANTIMAGE_WIREGUARD_NATIVE_INTERFACE=wg-native \
-      ANTIMAGE_WIREGUARD_NATIVE_PEER="$client_pub" \
-      ANTIMAGE_WIREGUARD_NATIVE_SERVER_PRIVATE_KEY="$server_priv" \
-      ANTIMAGE_WIREGUARD_NATIVE_CLIENT_NS="$NS" \
-      "$ANTIMAGE_WIREGUARD_CONTROLLER_TEST_BINARY" \
-      -test.run='^TestControllerWireGuardTargetedMutationNativeE2E$' -test.v
-  fi
-
-  if [ -n "${ANTIMAGE_WIREGUARD_TEST_BINARY:-}" ]; then
-    echo '=== WireGuard runtime-policy persistence failure rollback ==='
-    ANTIMAGE_WIREGUARD_TARGETED_MUTATION_E2E=1 \
-      ANTIMAGE_WIREGUARD_NATIVE_INTERFACE=wg-native \
-      ANTIMAGE_WIREGUARD_NATIVE_PEER="$client_pub" \
-      ANTIMAGE_WIREGUARD_NATIVE_SERVER_PRIVATE_KEY="$server_priv" \
-      ANTIMAGE_WIREGUARD_NATIVE_CLIENT_NS="$NS" \
-      "$ANTIMAGE_WIREGUARD_TEST_BINARY" \
-      -test.run='^TestWireGuardTargetedMutationPersistenceFailureNativeRollback$' -test.v
-  fi
 
   ip link del wg-native
   ip link add wg-native type wireguard
@@ -321,7 +297,6 @@ run_wireguard() {
 
 run_openvpn() {
   echo '=== OpenVPN native tun/traffic/restart ==='
-  : "${ANTIMAGE_OPENVPN_TEST_BINARY:?missing compiled nodeagent test binary}"
   local quota_bytes="${ANTIMAGE_OPENVPN_QUOTA_BYTES:-$((50 * 1024 * 1024))}"
   local ca_key="$ROOT/ca.key" ca_cert="$ROOT/ca.crt"
   local server_key="$ROOT/server.key" server_csr="$ROOT/server.csr" server_cert="$ROOT/server.crt"
@@ -340,28 +315,6 @@ run_openvpn() {
   openssl x509 -req -days 1 -in "$client_csr" -CA "$ca_cert" -CAkey "$ca_key" \
     -CAcreateserial -extfile <(printf 'keyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=clientAuth\n') \
     -out "$client_cert" >/dev/null 2>&1
-  if [ "${ANTIMAGE_OPENVPN_MUTATION_E2E:-0}" = 1 ]; then
-    echo '=== OpenVPN targeted user mutation against managed native daemon ==='
-    env ANTIMAGE_OPENVPN_MUTATION_E2E=1 \
-      ANTIMAGE_OPENVPN_MUTATION_ROOT="$ROOT/openvpn-mutation-e2e" \
-      ANTIMAGE_OPENVPN_MUTATION_NS="$NS" \
-      ANTIMAGE_OPENVPN_MUTATION_PORT=11942 \
-      ANTIMAGE_OPENVPN_MUTATION_CA="$ca_cert" \
-      ANTIMAGE_OPENVPN_MUTATION_CERT="$server_cert" \
-      ANTIMAGE_OPENVPN_MUTATION_KEY="$server_key" \
-      "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNTargetedMutationNativeE2E$' -test.count=1 -test.v
-  fi
-  if [ -n "${ANTIMAGE_OPENVPN_CONTROLLER_TEST_BINARY:-}" ]; then
-    echo '=== Controller to NodeAgent to real OpenVPN targeted mutation E2E ==='
-    env ANTIMAGE_OPENVPN_MUTATION_E2E=1 \
-      ANTIMAGE_OPENVPN_CONTROLLER_ROOT="$ROOT/openvpn-controller-e2e" \
-      ANTIMAGE_OPENVPN_MUTATION_NS="$NS" \
-      ANTIMAGE_OPENVPN_MUTATION_PORT=11942 \
-      ANTIMAGE_OPENVPN_MUTATION_CA="$ca_cert" \
-      ANTIMAGE_OPENVPN_MUTATION_CERT="$server_cert" \
-      ANTIMAGE_OPENVPN_MUTATION_KEY="$server_key" \
-      "$ANTIMAGE_OPENVPN_CONTROLLER_TEST_BINARY" -test.run='^TestControllerOpenVPNTargetedMutationNativeE2E$' -test.count=1 -test.v
-  fi
   cat >"$ROOT/openvpn-connect.sh" <<EOF
 #!/bin/sh
 exec env ANTIMAGE_OPENVPN_ACTION=admission ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" ANTIMAGE_OPENVPN_NATIVE_PID="\${daemon_pid}" "${ANTIMAGE_OPENVPN_TEST_BINARY:-/bin/true}" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v

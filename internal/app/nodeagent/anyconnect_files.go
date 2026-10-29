@@ -1,71 +1,21 @@
 package nodeagent
 
 import (
-	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 )
 
-var (
-	anyConnectCommand = exec.Command
-	anyConnectRename  = os.Rename
-)
+var anyConnectCommand = exec.Command
 
 type anyConnectUsageRuntimeConfig struct {
 	InboundTag string           `json:"inbound_tag"`
 	SocketPath string           `json:"socket_path"`
 	Users      map[string]int64 `json:"users"`
-}
-
-// ocserv creates AF_UNIX sockets. The kernel caps sun_path at 108 bytes
-// including the terminating NUL, and ocserv appends a per-worker suffix to
-// "socket-file", so sockets cannot live under a deep data directory without
-// making the daemon exit immediately. Keep sockets in a short, bounded
-// directory derived from the data dir so runtime state stays isolated.
-var (
-	anyConnectSocketRootOnce sync.Once
-	anyConnectSocketRootPath string
-)
-
-func anyConnectSocketRoot() string {
-	anyConnectSocketRootOnce.Do(func() {
-		for _, candidate := range []string{
-			"/run/antimage-anyconnect",
-			filepath.Join(os.TempDir(), "antimage-anyconnect"),
-		} {
-			if err := os.MkdirAll(candidate, 0700); err != nil {
-				continue
-			}
-			probe, err := os.MkdirTemp(candidate, ".write-probe-")
-			if err != nil {
-				continue
-			}
-			_ = os.Remove(probe)
-			anyConnectSocketRootPath = candidate
-			return
-		}
-		anyConnectSocketRootPath = filepath.Join(os.TempDir(), "antimage-anyconnect")
-	})
-	return anyConnectSocketRootPath
-}
-
-func anyConnectRuntimeSocketDir(dataDir, tag string) string {
-	sum := sha256.Sum256([]byte(filepath.Clean(dataDir)))
-	return filepath.Join(anyConnectSocketRoot(), fmt.Sprintf("%x", sum[:6]), openVPNRuntimeDirName(tag))
-}
-
-// AnyConnectControlSocketPath returns the short, bounded occtl socket path the
-// NodeAgent uses for an AnyConnect runtime tag. Controller-side native tooling
-// uses it to reach the live daemon without duplicating the socket-dir layout.
-func AnyConnectControlSocketPath(dataDir, tag string) string {
-	return filepath.Join(anyConnectRuntimeSocketDir(dataDir, tag), "ocserv.sock")
 }
 
 func (s *Server) prepareAnyConnectInbound(inbound anyConnectRuntimeInbound, callback nativeRuntimeSessionCallback) (preparedAnyConnectRuntime, error) {
@@ -83,28 +33,19 @@ func (s *Server) prepareAnyConnectInbound(inbound anyConnectRuntimeInbound, call
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return preparedAnyConnectRuntime{}, err
 	}
-	socketDir := anyConnectRuntimeSocketDir(s.cfg.DataDir, tag)
-	if err := os.MkdirAll(socketDir, 0700); err != nil {
+	if err := os.RemoveAll(usersDir); err != nil {
 		return preparedAnyConnectRuntime{}, err
 	}
-	stageRoot, err := os.MkdirTemp(root, ".users-stage-")
-	if err != nil {
+	if err := os.MkdirAll(usersDir, 0700); err != nil {
 		return preparedAnyConnectRuntime{}, err
 	}
-	defer os.RemoveAll(stageRoot)
 	files := anyConnectRuntimeFiles{
 		ConfigPath: filepath.Join(root, "ocserv.conf"), PasswordFile: filepath.Join(root, "ocpasswd"),
 		ServerCert: filepath.Join(root, "server.crt"), ServerKey: filepath.Join(root, "server.key"),
 		CACert: filepath.Join(root, "ca.crt"), UserConfigDir: usersDir,
-		ControlSocket: filepath.Join(socketDir, "ocserv.sock"), WorkerSocket: filepath.Join(socketDir, "ocserv-worker.sock"),
+		ControlSocket: filepath.Join(root, "ocserv.sock"), WorkerSocket: filepath.Join(root, "ocserv-worker.sock"),
 		PIDFile:     filepath.Join(root, "ocserv.pid"),
 		UsageConfig: filepath.Join(root, "usage-helper.json"),
-	}
-	stagedFiles := files
-	stagedFiles.PasswordFile = filepath.Join(stageRoot, "ocpasswd")
-	stagedFiles.UserConfigDir = filepath.Join(stageRoot, "users")
-	if err := os.MkdirAll(stagedFiles.UserConfigDir, 0700); err != nil {
-		return preparedAnyConnectRuntime{}, err
 	}
 	if err := writeAtomicMode(files.ServerCert, []byte(cert+"\n"), 0644); err != nil {
 		return preparedAnyConnectRuntime{}, err
@@ -117,6 +58,7 @@ func (s *Server) prepareAnyConnectInbound(inbound anyConnectRuntimeInbound, call
 			return preparedAnyConnectRuntime{}, err
 		}
 	}
+	_ = os.Remove(files.PasswordFile)
 	users := make(map[string]int64, len(inbound.Users))
 	policies := make(map[string]nativeSessionUserPolicy, len(inbound.Users))
 	for _, user := range inbound.Users {
@@ -130,7 +72,7 @@ func (s *Server) prepareAnyConnectInbound(inbound anyConnectRuntimeInbound, call
 		if !nativeSessionUserAllowed(user) {
 			continue
 		}
-		args := []string{"-c", stagedFiles.PasswordFile, "-g", "antimage", username}
+		args := []string{"-c", files.PasswordFile, "-g", "antimage", username}
 		cmd := anyConnectCommand("ocpasswd", args...)
 		cmd.Stdin = strings.NewReader(user.Password + "\n" + user.Password + "\n")
 		if output, err := cmd.CombinedOutput(); err != nil {
@@ -139,16 +81,16 @@ func (s *Server) prepareAnyConnectInbound(inbound anyConnectRuntimeInbound, call
 		users[username] = user.UserID
 		policies[username] = anyConnectSessionPolicy(user)
 		if cfg := renderAnyConnectUserConfig(user, inbound.Settings); strings.TrimSpace(cfg) != "" {
-			if err := writeAtomicMode(filepath.Join(stagedFiles.UserConfigDir, username), []byte(cfg), 0600); err != nil {
+			if err := writeAtomicMode(filepath.Join(usersDir, username), []byte(cfg), 0600); err != nil {
 				return preparedAnyConnectRuntime{}, err
 			}
 		}
 	}
-	if err := os.Chmod(stagedFiles.PasswordFile, 0600); err != nil && len(users) > 0 {
+	if err := os.Chmod(files.PasswordFile, 0600); err != nil && len(users) > 0 {
 		return preparedAnyConnectRuntime{}, err
 	}
 	if len(users) == 0 {
-		if err := writeAtomicMode(stagedFiles.PasswordFile, nil, 0600); err != nil {
+		if err := writeAtomicMode(files.PasswordFile, nil, 0600); err != nil {
 			return preparedAnyConnectRuntime{}, err
 		}
 	}
@@ -196,83 +138,7 @@ func (s *Server) prepareAnyConnectInbound(inbound anyConnectRuntimeInbound, call
 	if err != nil {
 		return preparedAnyConnectRuntime{}, err
 	}
-	if err := publishAnyConnectUserState(root, files.PasswordFile, files.UserConfigDir, stagedFiles.PasswordFile, stagedFiles.UserConfigDir); err != nil {
-		return preparedAnyConnectRuntime{}, fmt.Errorf("anyconnect %q: publish user state: %w", tag, err)
-	}
 	return preparedAnyConnectRuntime{Tag: tag, Files: files, Inbound: inbound, TProxy: tproxy, NAT: nat}, nil
-}
-
-func publishAnyConnectUserState(root, passwordPath, usersPath, stagedPasswordPath, stagedUsersPath string) error {
-	backupRoot, err := os.MkdirTemp(root, ".users-backup-")
-	if err != nil {
-		return err
-	}
-	cleanupBackup := true
-	defer func() {
-		if cleanupBackup {
-			_ = os.RemoveAll(backupRoot)
-		}
-	}()
-	backupPassword := filepath.Join(backupRoot, "ocpasswd")
-	backupUsers := filepath.Join(backupRoot, "users")
-	passwordExists, usersExist := false, false
-	if _, err := os.Lstat(passwordPath); err == nil {
-		passwordExists = true
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	if _, err := os.Lstat(usersPath); err == nil {
-		usersExist = true
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	if usersExist {
-		if err := anyConnectRename(usersPath, backupUsers); err != nil {
-			return err
-		}
-	}
-	if passwordExists {
-		if err := anyConnectRename(passwordPath, backupPassword); err != nil {
-			var rollbackErr error
-			if usersExist {
-				rollbackErr = anyConnectRename(backupUsers, usersPath)
-			}
-			if rollbackErr != nil {
-				cleanupBackup = false
-			}
-			return errors.Join(err, rollbackErr)
-		}
-	}
-	rollback := func(cause error) error {
-		rollbackErr := error(nil)
-		if _, err := os.Lstat(usersPath); err == nil {
-			rollbackErr = errors.Join(rollbackErr, os.RemoveAll(usersPath))
-		} else if !os.IsNotExist(err) {
-			rollbackErr = errors.Join(rollbackErr, err)
-		}
-		if usersExist {
-			rollbackErr = errors.Join(rollbackErr, anyConnectRename(backupUsers, usersPath))
-		}
-		if _, err := os.Lstat(passwordPath); err == nil {
-			rollbackErr = errors.Join(rollbackErr, os.Remove(passwordPath))
-		} else if !os.IsNotExist(err) {
-			rollbackErr = errors.Join(rollbackErr, err)
-		}
-		if passwordExists {
-			rollbackErr = errors.Join(rollbackErr, anyConnectRename(backupPassword, passwordPath))
-		}
-		if rollbackErr != nil {
-			cleanupBackup = false
-		}
-		return errors.Join(cause, rollbackErr)
-	}
-	if err := anyConnectRename(stagedUsersPath, usersPath); err != nil {
-		return rollback(err)
-	}
-	if err := anyConnectRename(stagedPasswordPath, passwordPath); err != nil {
-		return rollback(err)
-	}
-	return nil
 }
 
 func nativeSessionUserAllowed(user anyConnectRuntimeUser) bool {
