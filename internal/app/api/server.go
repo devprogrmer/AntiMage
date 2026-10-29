@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,7 +32,6 @@ import (
 	webhookapp "github.com/antimage/antimage/internal/app/webhook"
 	"github.com/antimage/antimage/internal/app/xrayconfig"
 	"github.com/antimage/antimage/internal/platform/db"
-	"github.com/antimage/antimage/internal/platform/requestctx"
 )
 
 type Server struct {
@@ -56,8 +54,6 @@ type Server struct {
 	telegramRepo         telegramapp.Repository
 	telegramSender       telegramapp.Sender
 	telegramReports      telegramapp.Reporter
-	telegramOutbox       telegramapp.OutboxDispatcher
-	telegramOutboxKick   chan struct{}
 	telegramBackup       telegramapp.BackupDelivery
 	webhookRepo          webhookapp.Repository
 	webhookDispatch      webhookapp.Dispatcher
@@ -65,8 +61,6 @@ type Server struct {
 	certificateManager   *certificateapp.Manager
 	externalApps         *externalapps.Manager
 	backgroundOnce       sync.Once
-	phpMyAdminSlotOnce   sync.Once
-	phpMyAdminSlots      chan struct{}
 	nodeOperationsKick   chan struct{}
 	userOpsKickMu        sync.Mutex
 	userOpsKicking       bool
@@ -77,19 +71,13 @@ type Server struct {
 	liveUserGlobalSpeed  liveUserSpeedTotal
 	liveInboundSpeedsMu  sync.RWMutex
 	liveInboundSpeeds    map[string]liveInboundSpeed
-	admissionLockMu      sync.Mutex
-	admissionLockRefs    map[int64]*sessionAdmissionLockRef
+	sessionAdmissionMu   sync.Mutex
 	loginLimiter         loginRateLimiter
-	trustedProxyCIDRs    []netip.Prefix
 	operators            *operatorResolver
 	recentActionsEnabled bool
 }
 
 func New(cfg Config) (*Server, error) {
-	trustedProxyCIDRs, err := parseTrustedProxyCIDRs(cfg.TrustedProxyCIDRs)
-	if err != nil {
-		return nil, fmt.Errorf("trusted proxy CIDRs: %w", err)
-	}
 	pool, err := db.Open(cfg.Database)
 	if err != nil {
 		return nil, err
@@ -117,7 +105,6 @@ func New(cfg Config) (*Server, error) {
 	applyRuntimeSettingsToConfig(&cfg, runtimeSettings)
 	telegramRepo := telegramapp.NewRepository(pool.DB, pool.Dialect)
 	telegramSender := telegramapp.NewSender(telegramRepo, cfg.TelegramAPIBase)
-	telegramOutboxKick := make(chan struct{}, 1)
 	webhookRepo := webhookapp.NewRepository(pool.DB, pool.Dialect)
 	webhookDispatch := webhookapp.NewDispatcher(webhookRepo, webhookapp.Config{
 		Addresses:     cfg.WebhookAddresses,
@@ -135,37 +122,28 @@ func New(cfg Config) (*Server, error) {
 	}
 	outboundSubs := outboundsubapp.NewService(pool.DB, pool.Dialect)
 	server := &Server{
-		cfg:               cfg,
-		db:                pool.DB,
-		dialect:           pool.Dialect,
-		adminRepo:         adminRepo,
-		adminAuth:         adminapp.NewAuthenticator(adminRepo),
-		nodeController:    nodecontroller.NewController(nodeRepo),
-		nodeMutations:     nodeMutationRepo,
-		systemService:     systemapp.NewService(pool.DB, pool.Dialect, ""),
-		maintenance:       systemapp.NewMaintenanceServiceWithDB(pool.DB, pool.Dialect),
-		usageService:      usage.NewService(usageRepo),
-		userService:       userapp.NewServiceWithTemplates(userRepo, settingsRepo),
-		warpService:       warpapp.NewService(warpRepo, warpapp.NewClient("")),
-		nordService:       nordvpnapp.NewService(nordRepo, nordvpnapp.NewClient("")),
-		outboundSubs:      outboundSubs,
-		trustedProxyCIDRs: trustedProxyCIDRs,
-		operators:         newOperatorResolver(),
-		settingsRepo:      settingsRepo,
-		telegramRepo:      telegramRepo,
-		telegramSender:    telegramSender,
-		telegramReports: telegramapp.NewReporterWithWake(
+		cfg:            cfg,
+		db:             pool.DB,
+		dialect:        pool.Dialect,
+		adminRepo:      adminRepo,
+		adminAuth:      adminapp.NewAuthenticator(adminRepo),
+		nodeController: nodecontroller.NewController(nodeRepo),
+		nodeMutations:  nodeMutationRepo,
+		systemService:  systemapp.NewService(pool.DB, pool.Dialect, systemapp.DefaultVersion),
+		maintenance:    systemapp.NewMaintenanceService(),
+		usageService:   usage.NewService(usageRepo),
+		userService:    userapp.NewServiceWithTemplates(userRepo, settingsRepo),
+		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient("")),
+		nordService:    nordvpnapp.NewService(nordRepo, nordvpnapp.NewClient("")),
+		outboundSubs:   outboundSubs,
+		operators:      newOperatorResolver(),
+		settingsRepo:   settingsRepo,
+		telegramRepo:   telegramRepo,
+		telegramSender: telegramSender,
+		telegramReports: telegramapp.NewReporter(
 			telegramRepo,
 			telegramSender,
-			func() {
-				select {
-				case telegramOutboxKick <- struct{}{}:
-				default:
-				}
-			},
 		),
-		telegramOutbox:     telegramapp.NewOutboxDispatcher(telegramRepo, telegramSender),
-		telegramOutboxKick: telegramOutboxKick,
 		telegramBackup:     telegramapp.NewBackupDelivery(telegramRepo, telegramSender),
 		webhookRepo:        webhookRepo,
 		webhookDispatch:    webhookDispatch,
@@ -209,9 +187,6 @@ func (s *Server) SubscriptionSettings(ctx context.Context) (settingsapp.Subscrip
 
 func (s *Server) StartBackground(ctx context.Context) {
 	s.backgroundOnce.Do(func() {
-		if err := s.nodeController.RecoverRollouts(ctx); err != nil {
-			logging.Warnf(logging.ComponentNode, "failed to recover persisted rollouts: %v", err)
-		}
 		cleared, err := s.nodeController.PrepareStartupFullSync(ctx)
 		if err != nil {
 			logging.Warnf(logging.ComponentNode, "failed to replace startup operation queue: %v", err)
@@ -225,7 +200,6 @@ func (s *Server) StartBackground(ctx context.Context) {
 		go s.runAdminLifecycleWorker(ctx)
 		s.runUserLifecycleWorkers(ctx)
 		go s.runTelegramBackupScheduler(ctx)
-		go s.runTelegramMessageWorker(ctx)
 		go s.runCertificateRenewalWorker(ctx)
 		go s.runWebhookWorker(ctx)
 		go s.runTelegramBot(ctx)
@@ -256,14 +230,9 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	includeMetrics := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("include_metrics")), "true") || r.URL.Query().Get("include_metrics") == "1"
-	timeout := 10 * time.Second
-	if includeMetrics {
-		timeout = 20 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	result, err := s.nodeController.List(ctx, nodecontroller.Request{IncludeMetrics: includeMetrics})
+	result, err := s.nodeController.List(ctx, nodecontroller.Request{})
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -329,7 +298,7 @@ func (s *Server) handleNodesServiceUpdate(w http.ResponseWriter, r *http.Request
 	}); err != nil {
 		logging.Warnf(logging.ComponentNode, "record bulk node service update: %v", err)
 	}
-	go s.updateNodeServices(targets, requestctx.ID(r.Context()), requestctx.Admin(r.Context()))
+	go s.updateNodeServices(targets)
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"status": "accepted",
 		"count":  len(targets),
@@ -337,7 +306,7 @@ func (s *Server) handleNodesServiceUpdate(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func (s *Server) updateNodeServices(targets []nodeServiceUpdateTarget, requestID, requestedBy string) {
+func (s *Server) updateNodeServices(targets []nodeServiceUpdateTarget) {
 	workers := 4
 	if len(targets) < workers {
 		workers = len(targets)
@@ -350,8 +319,6 @@ func (s *Server) updateNodeServices(targets []nodeServiceUpdateTarget, requestID
 			defer group.Done()
 			for target := range jobs {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				ctx = requestctx.WithID(ctx, requestID)
-				ctx = requestctx.WithAdmin(ctx, requestedBy)
 				_, err := s.nodeController.UpdateService(ctx, nodecontroller.Request{
 					NodeID: target.ID, Channel: target.Channel, Version: target.Version,
 				})
@@ -457,18 +424,6 @@ func (s *Server) handleNodePath(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleNodeSync(w, r, id)
-	case "stop":
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
-		defer cancel()
-		if err := s.nodeController.StopNodeRuntime(ctx, id); err != nil {
-			writeControllerError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"node_id": id, "phase": "completed"})
 	case "logs":
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -522,47 +477,6 @@ func (s *Server) handleNodePath(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleNodeServiceUpdate(w, r, id)
-	case "service/update/history":
-		if r.Method != http.MethodGet {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-		s.handleNodeServiceUpdateHistory(w, r, id)
-	case "service/rollback/backup":
-		if r.Method != http.MethodGet {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-		defer cancel()
-		backup, err := s.nodeController.NodeRollbackBackup(ctx, id, r.URL.Query().Get("source_operation_id"))
-		if err != nil {
-			writeUpdateControllerError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, backup)
-	case "service/rollback":
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-		var payload nodecontroller.NodeRollbackRequest
-		if err := decodeOptionalJSON(r, &payload); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid rollback request")
-			return
-		}
-		if !payload.Confirm {
-			writeError(w, http.StatusBadRequest, "explicit rollback confirmation is required")
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-		defer cancel()
-		operation, err := s.nodeController.RollbackService(ctx, id, payload)
-		if err != nil {
-			writeUpdateControllerError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusAccepted, map[string]any{"operation_id": operation.ID, "request_id": requestctx.ID(r.Context()), "target_version": operation.DesiredVersion, "operation": publicNodeUpdate(operation)})
 	case "host/reboot":
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -746,7 +660,7 @@ func (s *Server) handleNodeServiceRestart(w http.ResponseWriter, r *http.Request
 	defer cancel()
 	result, err := s.nodeController.RestartService(ctx, nodecontroller.Request{NodeID: nodeID})
 	if err != nil {
-		writeUpdateControllerError(w, err)
+		writeControllerError(w, err)
 		return
 	}
 	s.recordNodeRuntimeAction(r.Context(), nodeID, "node.service_restart", "Restarted node service")
@@ -762,7 +676,7 @@ func (s *Server) handleNodeServiceUpdate(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 9*time.Minute)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
 	result, err := s.nodeController.UpdateService(ctx, nodecontroller.Request{
 		NodeID:  nodeID,
@@ -770,34 +684,11 @@ func (s *Server) handleNodeServiceUpdate(w http.ResponseWriter, r *http.Request,
 		Version: payload.Version,
 	})
 	if err != nil {
-		writeUpdateControllerError(w, err)
+		writeControllerError(w, err)
 		return
 	}
 	s.recordNodeRuntimeAction(r.Context(), nodeID, "node.service_update", "Updated node service")
 	writeJSON(w, http.StatusOK, flattenRuntimeResult(result))
-}
-
-func (s *Server) handleNodeServiceUpdateHistory(w http.ResponseWriter, r *http.Request, nodeID int64) {
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-	limit := 25
-	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed < 1 || parsed > 100 {
-			writeError(w, http.StatusBadRequest, "limit must be between 1 and 100")
-			return
-		}
-		limit = parsed
-	}
-	updates, err := s.nodeController.NodeUpdateHistory(ctx, nodeID, limit)
-	if err != nil {
-		writeUpdateControllerError(w, err)
-		return
-	}
-	for index := range updates {
-		updates[index] = publicNodeUpdate(updates[index])
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"updates": updates})
 }
 
 func (s *Server) handleNodeHostReboot(w http.ResponseWriter, r *http.Request, nodeID int64) {
@@ -904,9 +795,7 @@ func decodeOptionalJSON(r *http.Request, target any) error {
 
 func writeControllerError(w http.ResponseWriter, err error) {
 	status := http.StatusBadGateway
-	if errors.Is(err, nodecontroller.ErrNodeOperationConflict) {
-		status = http.StatusConflict
-	} else if errors.Is(err, sql.ErrNoRows) || strings.Contains(strings.ToLower(err.Error()), "not found") {
+	if errors.Is(err, sql.ErrNoRows) || strings.Contains(strings.ToLower(err.Error()), "not found") {
 		status = http.StatusNotFound
 	}
 	writeError(w, status, err.Error())
@@ -919,9 +808,5 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 }
 
 func writeError(w http.ResponseWriter, status int, detail string) {
-	payload := map[string]any{"detail": detail}
-	if requestID := w.Header().Get("X-Request-ID"); requestID != "" {
-		payload["request_id"] = requestID
-	}
-	writeJSON(w, status, payload)
+	writeJSON(w, status, map[string]any{"detail": detail})
 }

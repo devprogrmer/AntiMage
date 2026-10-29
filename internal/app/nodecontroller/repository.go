@@ -9,10 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
-	operationapp "github.com/antimage/antimage/internal/app/operations"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
@@ -20,15 +18,6 @@ type Repository struct {
 	db              *sql.DB
 	dialect         string
 	certificateBase string
-	// schema caches positive table-existence checks. Migrations run before
-	// normal serving, so a table that exists stays present for the life of the
-	// process; caching only positives avoids stale negatives. A pointer keeps
-	// the cache shared across the value copies the Controller makes.
-	schema *schemaCache
-}
-
-type schemaCache struct {
-	tables sync.Map
 }
 
 type NodeRow struct {
@@ -81,7 +70,7 @@ func NewRepository(db *sql.DB, dialect string, certificateBase ...string) Reposi
 	if len(certificateBase) > 0 {
 		base = certificateBase[0]
 	}
-	return Repository{db: db, dialect: dialect, certificateBase: base, schema: &schemaCache{}}
+	return Repository{db: db, dialect: dialect, certificateBase: base}
 }
 
 func (r Repository) Node(ctx context.Context, nodeID int64) (NodeRow, error) {
@@ -147,7 +136,7 @@ func (r Repository) SetDesiredRevision(ctx context.Context, nodeID int64, revisi
 	if revision == 0 {
 		return nil
 	}
-	_, err := operationapp.ExecFencedTarget(ctx, r.db, "node", fmt.Sprint(nodeID), `UPDATE nodes
+	_, err := r.db.ExecContext(ctx, `UPDATE nodes
 SET desired_revision = CASE WHEN desired_revision < ? THEN ? ELSE desired_revision END
 WHERE id = ?`, revision, revision, nodeID)
 	return err
@@ -177,16 +166,9 @@ func (r Repository) SetRuntimeState(ctx context.Context, nodeID int64, state *no
 	if state.GetStarted() {
 		xrayStatus = "running"
 	}
-	agentStatus := "connected"
-	for _, capability := range state.GetCapabilities() {
-		switch capability {
-		case "accounting_degraded", "policy_degraded", "vpn_runtime_degraded":
-			agentStatus = "degraded"
-		}
-	}
-	_, err = operationapp.ExecFencedTarget(ctx, r.db, "node", fmt.Sprint(nodeID), `UPDATE nodes SET
-agent_status = ?, xray_status = ?, applied_revision = ?, node_capabilities = ?, last_seen_at = ?
-WHERE id = ?`, agentStatus, xrayStatus, state.GetAppliedRevision(), string(capabilities), r.timeArg(time.Now().UTC()), nodeID)
+	_, err = r.db.ExecContext(ctx, `UPDATE nodes SET
+agent_status = 'connected', xray_status = ?, applied_revision = ?, node_capabilities = ?, last_seen_at = ?
+WHERE id = ?`, xrayStatus, state.GetAppliedRevision(), string(capabilities), r.timeArg(time.Now().UTC()), nodeID)
 	return err
 }
 
@@ -226,90 +208,6 @@ func (r Repository) RuntimeUsersByID(ctx context.Context, userID int64) ([]runti
 		return nil, nil
 	}
 	return r.runtimeUsers(ctx, userID, nil)
-}
-
-func (r Repository) RuntimeProtocolsByUserIDs(ctx context.Context, userIDs []int64) (map[int64][]string, error) {
-	return r.runtimeProtocolsByUserIDs(ctx, userIDs, true)
-}
-
-// RuntimeMutationProtocolsByUserIDs retains protocol identity for deleted users
-// whose proxy rows still exist, so removal operations can use a safe targeted
-// runtime RPC instead of losing the protocol and forcing a full sync.
-func (r Repository) RuntimeMutationProtocolsByUserIDs(ctx context.Context, userIDs []int64) (map[int64][]string, error) {
-	return r.runtimeProtocolsByUserIDs(ctx, userIDs, false)
-}
-
-func (r Repository) runtimeProtocolsByUserIDs(ctx context.Context, userIDs []int64, activeOnly bool) (map[int64][]string, error) {
-	ids := uniquePositiveInt64(userIDs)
-	protocols := make(map[int64][]string, len(ids))
-	if len(ids) == 0 {
-		return protocols, nil
-	}
-	args := make([]any, 0, len(ids))
-	parts := make([]string, 0, len(ids))
-	for _, id := range ids {
-		args = append(args, id)
-		parts = append(parts, "?")
-	}
-	query := `
-SELECT DISTINCT p.user_id, LOWER(p.type)
-FROM proxies p
-JOIN users u ON u.id = p.user_id
-
-WHERE p.user_id IN (` + strings.Join(parts, ",") + `)`
-	if activeOnly {
-		query += ` AND COALESCE(u.status, '') <> 'deleted'`
-	}
-	rows, err := r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var userID int64
-		var protocol string
-		if err := rows.Scan(&userID, &protocol); err != nil {
-			return nil, err
-		}
-		protocols[userID] = append(protocols[userID], protocol)
-	}
-	return protocols, rows.Err()
-}
-
-func (r Repository) RuntimeCapabilitiesByNodeIDs(ctx context.Context, nodeIDs []int64) (map[int64]map[string]bool, error) {
-	ids := uniquePositiveInt64(nodeIDs)
-	capabilities := make(map[int64]map[string]bool, len(ids))
-	if len(ids) == 0 {
-		return capabilities, nil
-	}
-	args := make([]any, 0, len(ids))
-	parts := make([]string, 0, len(ids))
-	for _, id := range ids {
-		args = append(args, id)
-		parts = append(parts, "?")
-	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, COALESCE(node_capabilities, '[]') FROM nodes WHERE id IN (`+strings.Join(parts, ",")+")", args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var nodeID int64
-		var raw string
-		if err := rows.Scan(&nodeID, &raw); err != nil {
-			return nil, err
-		}
-		var values []string
-		if err := json.Unmarshal([]byte(raw), &values); err != nil {
-			values = nil
-		}
-		set := make(map[string]bool, len(values))
-		for _, value := range values {
-			set[strings.TrimSpace(value)] = true
-		}
-		capabilities[nodeID] = set
-	}
-	return capabilities, rows.Err()
 }
 
 func (r Repository) RuntimeUsersForProtocols(ctx context.Context, protocols []string) ([]runtimeUserRow, error) {
@@ -405,28 +303,11 @@ WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.servi
 	}
 	defer rows.Close()
 
-	// The query returns one row per (user, proxy protocol), so panels with
-	// thousands of users build a slice with thousands of entries. Seed the
-	// slice large enough to avoid the repeated grow-and-copy churn that the
-	// profile shows dominating this hot path; small panels pay only the
-	// modest reservation cost.
-	result := make([]runtimeUserRow, 0, 1024)
-	// Many rows repeat the same proxy settings JSON (for example the default
-	// "{}" for users without per-proxy overrides). Decode each distinct payload
-	// once and share the read-only map across rows instead of re-parsing it per
-	// user, which dominates the config-build hot path.
-	decodedSettings := make(map[string]map[string]any)
-	// sql.NullString.Scan fully overwrites the destination on every row
-	// (including NULL), so the scan targets can be hoisted out of the loop
-	// instead of allocating a fresh NullString per row.
-	var credentialKey, flow sql.NullString
-	var settings any
+	result := []runtimeUserRow{}
 	for rows.Next() {
-		// Scan straight into the slice slot instead of a loop-local struct.
-		// The row carries four strings plus a map, so the extra copy was a
-		// measurable share of this hot path's allocation.
-		result = append(result, runtimeUserRow{})
-		row := &result[len(result)-1]
+		var row runtimeUserRow
+		var credentialKey, flow sql.NullString
+		var settings any
 		if err := rows.Scan(
 			&row.ID,
 			&row.Username,
@@ -445,25 +326,10 @@ WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.servi
 			row.Flow = flow.String
 		}
 		row.Protocol = strings.ToLower(row.Protocol)
-		row.Settings = internRuntimeUserSettings(settings, decodedSettings)
+		row.Settings = jsonMap(settings)
+		result = append(result, row)
 	}
 	return result, rows.Err()
-}
-
-func internRuntimeUserSettings(value any, cache map[string]map[string]any) map[string]any {
-	var key string
-	switch typed := value.(type) {
-	case string:
-		key = typed
-	default:
-		return jsonMap(value)
-	}
-	if cached, ok := cache[key]; ok {
-		return cached
-	}
-	decoded := jsonMap(key)
-	cache[key] = decoded
-	return decoded
 }
 
 func runtimeProtocolsQuery(protocols []string) string {
@@ -583,23 +449,12 @@ func (r Repository) tableExists(ctx context.Context, table string) (bool, error)
 	if table == "" {
 		return false, nil
 	}
-	if r.schema != nil {
-		if _, ok := r.schema.tables.Load(table); ok {
-			return true, nil
-		}
-	}
 	var count int
 	if r.dialect == "mysql" || r.dialect == "mariadb" {
 		err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?`, table).Scan(&count)
-		if err == nil && count > 0 && r.schema != nil {
-			r.schema.tables.Store(table, struct{}{})
-		}
 		return count > 0, err
 	}
 	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count)
-	if err == nil && count > 0 && r.schema != nil {
-		r.schema.tables.Store(table, struct{}{})
-	}
 	return count > 0, err
 }
 
@@ -658,10 +513,8 @@ func (r Repository) SetConnected(ctx context.Context, nodeID int64, version stri
 	if len(message) > 1024 {
 		message = message[:1024]
 	}
-	if _, err := r.updateStatus(ctx, nodeID, "connected", message, version); err != nil {
-		return err
-	}
-	return r.setAgentStatus(ctx, nodeID, "connected")
+	_, err := r.updateStatus(ctx, nodeID, "connected", message, version)
+	return err
 }
 
 func (r Repository) SetError(ctx context.Context, nodeID int64, message string) error {
@@ -1088,13 +941,6 @@ func rowsAffectedOrDefault(res sql.Result, fallback int) int {
 	return int(affected)
 }
 
-// Unknown dispatched outcomes must not be selected by stale-running recovery
-// or the pending/retrying dispatcher. Reconciliation owns their next action.
-func (r Repository) MarkOperationOutcomeUnknown(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE node_operations SET status = 'outcome_unknown', last_error = ?, updated_at = ? WHERE id = ? AND status = 'running'`, "dispatched command requires external reconciliation", r.timeArg(time.Now().UTC()), id)
-	return err
-}
-
 func (r Repository) MarkOperationRetrying(ctx context.Context, id int64, message string) error {
 	if len(message) > 4096 {
 		message = message[:4096]
@@ -1416,9 +1262,8 @@ func isNodeOperationUniqueConstraint(err error) bool {
 }
 
 func (r Repository) updateStatus(ctx context.Context, nodeID int64, status string, message string, version string) (bool, error) {
-	result, err := operationapp.ExecFencedTarget(
+	result, err := r.db.ExecContext(
 		ctx,
-		r.db, "node", fmt.Sprint(nodeID),
 		`UPDATE nodes
 SET last_status_change = CASE WHEN COALESCE(status, '') <> ? THEN ? ELSE last_status_change END,
     status = ?,

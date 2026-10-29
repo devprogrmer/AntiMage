@@ -3,7 +3,6 @@ package nodeagent
 import (
 	"context"
 	"fmt"
-	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	"net/netip"
 	"os/exec"
 	"sort"
@@ -229,7 +228,7 @@ func (s *Server) terminateIKEv2SA(
 		)
 	defer cancel()
 
-	output, err := managedprocess.CommandContext(
+	output, err := exec.CommandContext(
 		commandCtx,
 		path,
 		"--terminate",

@@ -9,7 +9,6 @@ import (
 type runtimeUsageReflection struct {
 	UsedTraffic int64
 	BatchID     string
-	Ledger      string
 }
 
 // Usage and its marker must come from the same SQL statement. Reading the
@@ -28,7 +27,7 @@ func (r Repository) runtimeUsageReflections(ctx context.Context, nodeID int64, u
 			marks[i] = "?"
 			args = append(args, id)
 		}
-		rows, err := r.db.QueryContext(ctx, `SELECT u.id, COALESCE(u.used_traffic, 0), COALESCE(ref.batch_id, ''), COALESCE(ref.ledger_json, '')
+		rows, err := r.db.QueryContext(ctx, `SELECT u.id, COALESCE(u.used_traffic, 0), COALESCE(ref.batch_id, '')
 FROM users u LEFT JOIN node_wireguard_usage_reflection ref ON ref.node_id = ? AND ref.user_id = u.id
 WHERE u.id IN (`+strings.Join(marks, ",")+`)`, args...)
 		if err != nil {
@@ -37,7 +36,7 @@ WHERE u.id IN (`+strings.Join(marks, ",")+`)`, args...)
 		for rows.Next() {
 			var id int64
 			var reflected runtimeUsageReflection
-			if err := rows.Scan(&id, &reflected.UsedTraffic, &reflected.BatchID, &reflected.Ledger); err != nil {
+			if err := rows.Scan(&id, &reflected.UsedTraffic, &reflected.BatchID); err != nil {
 				rows.Close()
 				return nil, err
 			}
@@ -114,7 +113,6 @@ func (r Repository) attachNativeRuntimeUsageReflections(ctx context.Context, nod
 			ref := reflections[u.UserID]
 			u.UsedTraffic = ref.UsedTraffic
 			u.ReflectedUsageBatchID = ref.BatchID
-			u.ReflectedUsageLedger = ref.Ledger
 		}
 	}
 	for i := range l2.Inbounds {
@@ -123,7 +121,6 @@ func (r Repository) attachNativeRuntimeUsageReflections(ctx context.Context, nod
 			ref := reflections[u.UserID]
 			u.UsedTraffic = ref.UsedTraffic
 			u.ReflectedUsageBatchID = ref.BatchID
-			u.ReflectedUsageLedger = ref.Ledger
 		}
 	}
 	for i := range pptp.Inbounds {
@@ -132,7 +129,6 @@ func (r Repository) attachNativeRuntimeUsageReflections(ctx context.Context, nod
 			ref := reflections[u.UserID]
 			u.UsedTraffic = ref.UsedTraffic
 			u.ReflectedUsageBatchID = ref.BatchID
-			u.ReflectedUsageLedger = ref.Ledger
 		}
 	}
 	for i := range wg.Inbounds {
@@ -141,7 +137,6 @@ func (r Repository) attachNativeRuntimeUsageReflections(ctx context.Context, nod
 			ref := reflections[u.UserID]
 			u.UsedTraffic = ref.UsedTraffic
 			u.ReflectedUsageBatchID = ref.BatchID
-			u.ReflectedUsageLedger = ref.Ledger
 		}
 	}
 	for i := range awg.Inbounds {
@@ -150,7 +145,6 @@ func (r Repository) attachNativeRuntimeUsageReflections(ctx context.Context, nod
 			ref := reflections[u.UserID]
 			u.UsedTraffic = ref.UsedTraffic
 			u.ReflectedUsageBatchID = ref.BatchID
-			u.ReflectedUsageLedger = ref.Ledger
 		}
 	}
 	for i := range ike.Inbounds {
@@ -159,7 +153,6 @@ func (r Repository) attachNativeRuntimeUsageReflections(ctx context.Context, nod
 			ref := reflections[u.UserID]
 			u.UsedTraffic = ref.UsedTraffic
 			u.ReflectedUsageBatchID = ref.BatchID
-			u.ReflectedUsageLedger = ref.Ledger
 		}
 	}
 	for i := range ac.Inbounds {
@@ -168,7 +161,6 @@ func (r Repository) attachNativeRuntimeUsageReflections(ctx context.Context, nod
 			ref := reflections[u.UserID]
 			u.UsedTraffic = ref.UsedTraffic
 			u.ReflectedUsageBatchID = ref.BatchID
-			u.ReflectedUsageLedger = ref.Ledger
 		}
 	}
 	return nil

@@ -1,10 +1,7 @@
 package api
 
 import (
-	"fmt"
-	"net"
 	"net/http"
-	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,101 +26,11 @@ type loginRateLimiter struct {
 }
 
 func loginRateLimitKey(r *http.Request, username string) string {
-	return loginRateLimitKeyFromPeer(username, requestPeer(r))
-}
-
-func loginRateLimitKeyFromPeer(username, peer string) string {
-	remote := strings.TrimSpace(peer)
+	remote := strings.TrimSpace(requestPeer(r))
 	if remote == "" {
 		remote = "unknown"
 	}
 	return remote + "\x00" + strings.ToLower(strings.TrimSpace(username))
-}
-
-func parseTrustedProxyCIDRs(values []string) ([]netip.Prefix, error) {
-	result := make([]netip.Prefix, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		prefix, err := netip.ParsePrefix(value)
-		if err != nil {
-			return nil, fmt.Errorf("invalid CIDR %q: %w", value, err)
-		}
-		result = append(result, prefix.Masked())
-	}
-	return result, nil
-}
-
-func requestPeerFromTrustedProxies(r *http.Request, trusted []netip.Prefix) string {
-	if r == nil {
-		return ""
-	}
-	peer := requestPeer(r)
-	peerIP, ok := remoteIP(r.RemoteAddr)
-	if !ok || !isTrustedProxy(peerIP, trusted) {
-		return peer
-	}
-	forwardedHeader := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
-	if forwardedHeader == "" {
-		for _, header := range []string{"CF-Connecting-IP", "X-Real-IP"} {
-			if addr, ok := parseForwardedIP(r.Header.Get(header)); ok {
-				return addr.String()
-			}
-		}
-		return peerIP.String()
-	}
-	forwarded := strings.Split(forwardedHeader, ",")
-	current := peerIP
-	for index := len(forwarded) - 1; index >= 0; index-- {
-		if !isTrustedProxy(current, trusted) {
-			break
-		}
-		next, ok := parseForwardedIP(forwarded[index])
-		if !ok {
-			return current.String()
-		}
-		current = next
-	}
-	return current.String()
-}
-
-func remoteIP(remote string) (netip.Addr, bool) {
-	remote = strings.TrimSpace(remote)
-	if host, _, err := net.SplitHostPort(remote); err == nil {
-		remote = host
-	}
-	addr, err := netip.ParseAddr(strings.Trim(remote, "[]"))
-	if err != nil {
-		return netip.Addr{}, false
-	}
-	return addr.WithZone(""), true
-}
-
-func parseForwardedIP(value string) (netip.Addr, bool) {
-	value = strings.TrimSpace(value)
-	if host, _, err := net.SplitHostPort(value); err == nil {
-		value = host
-	}
-	addr, err := netip.ParseAddr(strings.Trim(value, "[]"))
-	if err != nil {
-		return netip.Addr{}, false
-	}
-	return addr.WithZone(""), true
-}
-
-func isTrustedProxy(addr netip.Addr, trusted []netip.Prefix) bool {
-	for _, prefix := range trusted {
-		if prefix.Contains(addr) {
-			return true
-		}
-	}
-	return false
-}
-
-func (s *Server) requestPeer(r *http.Request) string {
-	return requestPeerFromTrustedProxies(r, s.trustedProxyCIDRs)
 }
 
 func (l *loginRateLimiter) allowed(key string) bool {

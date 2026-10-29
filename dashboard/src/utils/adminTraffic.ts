@@ -88,17 +88,6 @@ export const isUserManagementLocked = (
 	return (admin.created_traffic ?? 0) >= limit;
 };
 
-export const canManageUserServiceScope = (
-	admin?: AdminTrafficLike | null,
-	serviceId?: number | null,
-): boolean => {
-	if (!admin || admin.role === AdminRole.FullAccess) return true;
-	if (admin.use_service_traffic_limits && !getServiceLimit(admin, serviceId)) {
-		return false;
-	}
-	return !isUserManagementLocked(admin, serviceId);
-};
-
 export const canDeleteUserByTrafficCap = (
 	admin: AdminTrafficLike | null | undefined,
 	user?: { used_traffic?: number | null; service_id?: number | null } | null,

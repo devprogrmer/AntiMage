@@ -54,30 +54,11 @@ var defaultEventToggles = map[string]bool{
 
 type Repository struct {
 	db      *sql.DB
-	tx      *sql.Tx
 	dialect string
-}
-
-type queryRunner interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
 func NewRepository(db *sql.DB, dialect string) Repository {
 	return Repository{db: db, dialect: dialect}
-}
-
-func (r Repository) WithTx(tx *sql.Tx) Repository {
-	r.tx = tx
-	return r
-}
-
-func (r Repository) queryRunner() queryRunner {
-	if r.tx != nil {
-		return r.tx
-	}
-	return r.db
 }
 
 func DefaultEventToggles() map[string]bool {
@@ -202,7 +183,7 @@ func (r Repository) UpdateSettings(ctx context.Context, raw map[string]json.RawM
 		sets = append(sets, "updated_at = ?")
 		args = append(args, dbTime(time.Now().UTC()))
 		args = append(args, r.recordID(ctx))
-		if _, err := r.queryRunner().ExecContext(ctx, "UPDATE telegram_settings SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
+		if _, err := r.db.ExecContext(ctx, "UPDATE telegram_settings SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
 			return Settings{}, err
 		}
 	}
@@ -217,7 +198,7 @@ func (r Repository) RecordError(ctx context.Context, message string) error {
 	if len(message) > 1024 {
 		message = message[:1024]
 	}
-	_, err := r.queryRunner().ExecContext(ctx, `UPDATE telegram_settings SET last_error = ?, last_error_at = ?, updated_at = ? WHERE id = ?`, nullableString(&message), dbTime(time.Now().UTC()), dbTime(time.Now().UTC()), r.recordID(ctx))
+	_, err := r.db.ExecContext(ctx, `UPDATE telegram_settings SET last_error = ?, last_error_at = ?, updated_at = ? WHERE id = ?`, nullableString(&message), dbTime(time.Now().UTC()), dbTime(time.Now().UTC()), r.recordID(ctx))
 	return err
 }
 
@@ -225,7 +206,7 @@ func (r Repository) ClearError(ctx context.Context) error {
 	if err := r.ensureRecord(ctx); err != nil {
 		return err
 	}
-	_, err := r.queryRunner().ExecContext(ctx, `UPDATE telegram_settings SET last_error = NULL, last_error_at = NULL, updated_at = ? WHERE id = ?`, dbTime(time.Now().UTC()), r.recordID(ctx))
+	_, err := r.db.ExecContext(ctx, `UPDATE telegram_settings SET last_error = NULL, last_error_at = NULL, updated_at = ? WHERE id = ?`, dbTime(time.Now().UTC()), r.recordID(ctx))
 	return err
 }
 
@@ -234,7 +215,7 @@ func (r Repository) RecordSent(ctx context.Context) error {
 		return err
 	}
 	now := dbTime(time.Now().UTC())
-	_, err := r.queryRunner().ExecContext(ctx, `UPDATE telegram_settings SET last_sent_at = ?, last_error = NULL, last_error_at = NULL, updated_at = ? WHERE id = ?`, now, now, r.recordID(ctx))
+	_, err := r.db.ExecContext(ctx, `UPDATE telegram_settings SET last_sent_at = ?, last_error = NULL, last_error_at = NULL, updated_at = ? WHERE id = ?`, now, now, r.recordID(ctx))
 	return err
 }
 
@@ -243,7 +224,7 @@ func (r Repository) RecordBackupSent(ctx context.Context) error {
 		return err
 	}
 	now := dbTime(time.Now().UTC())
-	_, err := r.queryRunner().ExecContext(ctx, `UPDATE telegram_settings SET backup_last_sent_at = ?, backup_last_error = NULL, last_sent_at = ?, last_error = NULL, last_error_at = NULL, updated_at = ? WHERE id = ?`, now, now, now, r.recordID(ctx))
+	_, err := r.db.ExecContext(ctx, `UPDATE telegram_settings SET backup_last_sent_at = ?, backup_last_error = NULL, last_sent_at = ?, last_error = NULL, last_error_at = NULL, updated_at = ? WHERE id = ?`, now, now, now, r.recordID(ctx))
 	return err
 }
 
@@ -256,7 +237,7 @@ func (r Repository) RecordBackupError(ctx context.Context, message string) error
 		message = message[:1024]
 	}
 	now := dbTime(time.Now().UTC())
-	_, err := r.queryRunner().ExecContext(ctx, `UPDATE telegram_settings SET backup_last_error = ?, last_error = ?, last_error_at = ?, updated_at = ? WHERE id = ?`, nullableString(&message), nullableString(&message), now, now, r.recordID(ctx))
+	_, err := r.db.ExecContext(ctx, `UPDATE telegram_settings SET backup_last_error = ?, last_error = ?, last_error_at = ?, updated_at = ? WHERE id = ?`, nullableString(&message), nullableString(&message), now, now, r.recordID(ctx))
 	return err
 }
 
@@ -270,7 +251,7 @@ func (r Repository) LastError(ctx context.Context) (*string, error) {
 		return nil, err
 	}
 	var value sql.NullString
-	if err := r.queryRunner().QueryRowContext(ctx, `SELECT last_error FROM telegram_settings ORDER BY id DESC LIMIT 1`).Scan(&value); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT last_error FROM telegram_settings ORDER BY id DESC LIMIT 1`).Scan(&value); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -331,7 +312,7 @@ SELECT
 FROM telegram_settings
 ORDER BY id DESC
 LIMIT 1`
-	err := r.queryRunner().QueryRowContext(ctx, query).Scan(
+	err := r.db.QueryRowContext(ctx, query).Scan(
 		&apiToken,
 		&useTelegram,
 		&proxyURL,
@@ -388,7 +369,7 @@ LIMIT 1`
 
 func (r Repository) ensureRecord(ctx context.Context) error {
 	var count int
-	if err := r.queryRunner().QueryRowContext(ctx, `SELECT COUNT(*) FROM telegram_settings`).Scan(&count); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM telegram_settings`).Scan(&count); err != nil {
 		return err
 	}
 	if count > 0 {
@@ -397,7 +378,7 @@ func (r Repository) ensureRecord(ctx context.Context) error {
 	topics, _ := json.Marshal(DefaultForumTopics())
 	toggles, _ := json.Marshal(DefaultEventToggles())
 	now := dbTime(time.Now().UTC())
-	_, err := r.queryRunner().ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 INSERT INTO telegram_settings (
 	api_token, use_telegram, proxy_url, admin_chat_ids, logs_chat_id, logs_chat_is_forum,
 	backup_chat_id, backup_chat_is_forum, default_vless_flow, forum_topics, event_toggles,
@@ -414,7 +395,7 @@ INSERT INTO telegram_settings (
 
 func (r Repository) recordID(ctx context.Context) int64 {
 	var id int64
-	_ = r.queryRunner().QueryRowContext(ctx, `SELECT id FROM telegram_settings ORDER BY id DESC LIMIT 1`).Scan(&id)
+	_ = r.db.QueryRowContext(ctx, `SELECT id FROM telegram_settings ORDER BY id DESC LIMIT 1`).Scan(&id)
 	return id
 }
 

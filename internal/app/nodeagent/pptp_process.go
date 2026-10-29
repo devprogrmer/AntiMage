@@ -2,9 +2,7 @@ package nodeagent
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
-	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,7 +17,7 @@ const (
 )
 
 var (
-	pptpCommandContext  = managedprocess.CommandContext
+	pptpCommandContext  = exec.CommandContext
 	pptpLookPath        = exec.LookPath
 	pptpStartupGrace    = 300 * time.Millisecond
 	pptpShutdownGrace   = 3 * time.Second
@@ -29,9 +27,8 @@ var (
 )
 
 type pptpProcess struct {
-	cmd        *exec.Cmd
-	done       chan struct{}
-	configHash [32]byte
+	cmd  *exec.Cmd
+	done chan struct{}
 
 	waitMu  sync.Mutex
 	waitErr error
@@ -228,11 +225,6 @@ func (s *Server) startPPTPInbound(tag, configPath, chapSecrets string) error {
 	if tag == "" {
 		return fmt.Errorf("pptp runtime tag is required")
 	}
-	config, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("pptp %q: read config: %w", tag, err)
-	}
-	configHash := sha256.Sum256(config)
 	if err := installPPTPSystemCHAPSecrets(chapSecrets); err != nil {
 		return fmt.Errorf("pptp %q: install chap secrets: %w", tag, err)
 	}
@@ -256,14 +248,6 @@ func (s *Server) startPPTPInbound(tag, configPath, chapSecrets string) error {
 	previous := s.pptpRuntimes[tag]
 	s.mu.Unlock()
 	if previous != nil {
-		select {
-		case <-previous.done:
-			// A dead process must be replaced even when its config hash matches.
-		default:
-			if previous.configHash == configHash {
-				return nil
-			}
-		}
 		if err := stopPPTPProcess(previous); err != nil {
 			return fmt.Errorf("pptp %q: stop previous runtime: %w", tag, err)
 		}
@@ -279,7 +263,7 @@ func (s *Server) startPPTPInbound(tag, configPath, chapSecrets string) error {
 		_ = clearPPTPSystemIPPreUpHook()
 		return fmt.Errorf("pptp %q: start: %w", tag, err)
 	}
-	runtime := &pptpProcess{cmd: cmd, done: make(chan struct{}), configHash: configHash}
+	runtime := &pptpProcess{cmd: cmd, done: make(chan struct{})}
 	go func() {
 		err := cmd.Wait()
 		runtime.setWaitError(err)
@@ -344,14 +328,11 @@ func stopPPTPProcess(runtime *pptpProcess) error {
 	_ = stopCommandProcess(runtime.cmd)
 	select {
 	case <-runtime.done:
-		// The supervisor may exit on INT while a worker ignores that signal.
-		// Finish termination of the still-owned group before reporting stopped.
-		_ = managedprocess.Kill(runtime.cmd)
 		return nil
 	case <-time.After(pptpShutdownGrace):
 	}
 	if runtime.cmd != nil && runtime.cmd.Process != nil {
-		_ = managedprocess.Kill(runtime.cmd)
+		_ = runtime.cmd.Process.Kill()
 	}
 	select {
 	case <-runtime.done:

@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
@@ -276,7 +275,7 @@ func compactOfflineBoot(previous map[string]uint64, boot string) (map[string]uin
 var ikev2OfflineSnapshot = func(ctx context.Context) ([]ikev2RawSA, error) {
 	queryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	raw, err := offlineCommandOutput(managedprocess.CommandContext(queryCtx, "swanctl", "--list-sas", "--raw"))
+	raw, err := offlineCommandOutput(exec.CommandContext(queryCtx, "swanctl", "--list-sas", "--raw"))
 	if err != nil {
 		return nil, fmt.Errorf("ikev2 accounting snapshot: %w", err)
 	}
@@ -433,13 +432,13 @@ func offlineUnackedUsage(baseline map[string]uint64, owner offlineUsageOwner, ca
 	return raw, nil
 }
 
-func (s *Server) offlineQuotaRaw(protocol string, owner offlineUsageOwner, baseline, captured map[string]uint64, samples []ikev2UsageSample, pendingID, reflectedID string, ledger ...string) (uint64, error) {
+func (s *Server) offlineQuotaRaw(protocol string, owner offlineUsageOwner, baseline, captured map[string]uint64, samples []ikev2UsageSample, pendingID, reflectedID string) (uint64, error) {
 	raw, err := offlineUnackedUsage(baseline, owner, captured, samples)
 	if err != nil {
 		return 0, err
 	}
 	if pendingID != "" {
-		reflected, err := s.localPendingUsageReflected(protocol, owner.UserID, pendingID, reflectedID, ledger...)
+		reflected, err := s.localPendingUsageReflected(protocol, owner.UserID, pendingID, reflectedID)
 		if err != nil {
 			return 0, err
 		}
@@ -454,7 +453,7 @@ func (s *Server) offlineQuotaRaw(protocol string, owner offlineUsageOwner, basel
 			}
 		}
 	}
-	credit, err := s.localAwaitingReflectionUsage(protocol, owner.UserID, owner.Tag, pendingID, reflectedID, ledger...)
+	credit, err := s.localAwaitingReflectionUsage(protocol, owner.UserID, owner.Tag, pendingID, reflectedID)
 	if err != nil {
 		return 0, err
 	}
@@ -541,7 +540,7 @@ func (s *Server) quotaCheckIKEv2Offline(ctx context.Context) error {
 			samples = p.Samples
 			pendingID = p.BatchID
 		}
-		raw, err := s.offlineQuotaRaw("ikev2", offlineUsageOwner{user.UserID, inbound.Tag}, next, captured, samples, pendingID, user.ReflectedUsageBatchID, user.ReflectedUsageLedger)
+		raw, err := s.offlineQuotaRaw("ikev2", offlineUsageOwner{user.UserID, inbound.Tag}, next, captured, samples, pendingID, user.ReflectedUsageBatchID)
 		if err != nil {
 			return err
 		}
@@ -549,7 +548,7 @@ func (s *Server) quotaCheckIKEv2Offline(ctx context.Context) error {
 			denials = append(denials, ikev2OfflineDenial{sa, reason})
 			continue
 		}
-		policy := nativeSessionUserPolicy{Status: user.Status, UsedTraffic: user.UsedTraffic, UsageCoefficient: user.UsageCoefficient, InboundCoefficient: user.InboundCoefficient, ReflectedUsageBatchID: user.ReflectedUsageBatchID, ReflectedUsageLedger: user.ReflectedUsageLedger}
+		policy := nativeSessionUserPolicy{Status: user.Status, UsedTraffic: user.UsedTraffic, UsageCoefficient: user.UsageCoefficient, InboundCoefficient: user.InboundCoefficient, ReflectedUsageBatchID: user.ReflectedUsageBatchID}
 		if policy.Status == "" {
 			policy.Status = "active"
 		}

@@ -8,21 +8,6 @@ import (
 	adminapp "github.com/antimage/antimage/internal/app/admin"
 )
 
-func TestBearerTokenRejectsQueryStringCredentials(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/admin?token=query-secret", nil)
-	if got := bearerToken(req); got != "" {
-		t.Fatalf("query-string credential was accepted: %q", got)
-	}
-	req.Header.Set("Authorization", "Bearer header-secret")
-	if got := bearerToken(req); got != "header-secret" {
-		t.Fatalf("Authorization bearer token = %q, want header-secret", got)
-	}
-	req.Header.Set("Authorization", "Basic invalid")
-	if got := bearerToken(req); got != "" {
-		t.Fatalf("invalid Authorization fell back to query credential: %q", got)
-	}
-}
-
 func TestRequestOriginAllowed(t *testing.T) {
 	tests := []struct {
 		name          string

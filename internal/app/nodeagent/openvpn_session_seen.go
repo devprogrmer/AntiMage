@@ -433,7 +433,10 @@ func openVPNManagementClientKill(
 		return err
 	}
 
-	command := fmt.Sprintf("client-kill %d\n", cid)
+	command := fmt.Sprintf(
+		"client-kill %d\nquit\n",
+		cid,
+	)
 
 	if _, err := io.WriteString(
 		conn,
@@ -445,21 +448,53 @@ func openVPNManagementClientKill(
 		)
 	}
 
-	reader := bufio.NewReader(io.LimitReader(conn, 32*1024))
-	for {
-		line, readErr := reader.ReadString('\n')
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "SUCCESS:") && strings.Contains(strings.ToLower(line), "client-kill") {
-			return nil
-		}
-		if strings.HasPrefix(line, "ERROR:") {
-			return fmt.Errorf("management interface: %s", line)
-		}
-		if readErr != nil {
-			if !errors.Is(readErr, io.EOF) {
-				return fmt.Errorf("read management response: %w", readErr)
-			}
-			return fmt.Errorf("management interface did not confirm client-kill")
+	response, readErr := io.ReadAll(
+		io.LimitReader(
+			conn,
+			32*1024,
+		),
+	)
+
+	text := string(response)
+
+	if strings.Contains(
+		text,
+		"SUCCESS:",
+	) && strings.Contains(
+		strings.ToLower(text),
+		"client-kill",
+	) {
+		return nil
+	}
+
+	if readErr != nil {
+		return fmt.Errorf(
+			"read management response: %w",
+			readErr,
+		)
+	}
+
+	scanner := bufio.NewScanner(
+		strings.NewReader(text),
+	)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(
+			scanner.Text(),
+		)
+
+		if strings.HasPrefix(
+			line,
+			"ERROR:",
+		) {
+			return fmt.Errorf(
+				"management interface: %s",
+				line,
+			)
 		}
 	}
+
+	return fmt.Errorf(
+		"management interface did not confirm client-kill",
+	)
 }

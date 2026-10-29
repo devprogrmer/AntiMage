@@ -1,7 +1,6 @@
 name: Test Database Migrations
 
 on:
-  workflow_dispatch:
   push:
     paths:
       - "cmd/**"
@@ -102,8 +101,3 @@ jobs:
         if: matrix.db != 'sqlite'
         run: |
           go test ./internal/app/nodecontroller -run TestRepositoryTouchesOnlineUsersExternalMySQL
-
-      - name: Verify destructive resource concurrency and stale executor fencing
-        if: matrix.db != 'sqlite'
-        run: |
-          go test -race ./internal/app/operations -run TestExternalDatabaseCrossOperationFencing -count=1 -v -timeout=10m

@@ -827,15 +827,6 @@ func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 			UNIQUE (inbound_tag, public_key),
 			UNIQUE (inbound_tag, address)
 		)`,
-		`CREATE TABLE wireguard_device_revocations (
-			inbound_tag TEXT NOT NULL,
-			user_id INTEGER NOT NULL,
-			device_index INTEGER NOT NULL,
-			public_key TEXT NOT NULL,
-			credential_fingerprint TEXT NOT NULL,
-			revoked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (inbound_tag, user_id, device_index)
-		)`,
 		`CREATE TABLE xray_config (
 			id INTEGER PRIMARY KEY,
 			data TEXT

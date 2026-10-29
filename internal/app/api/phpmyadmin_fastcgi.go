@@ -3,7 +3,6 @@ package api
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -18,19 +17,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const phpMyAdminDocumentRoot = "/usr/share/phpmyadmin"
-
-const (
-	phpMyAdminUploadLimitMiB     = 1024
-	phpMyAdminMemoryLimitMiB     = 512
-	phpMyAdminExecutionLimitSecs = 600
-	phpMyAdminFastCGIResponseMax = int64(128 << 20)
-	phpMyAdminFastCGIConnectWait = 5 * time.Second
-	phpMyAdminFastCGIMaxActive   = 1
-)
 
 const (
 	fcgiVersion1    = 1
@@ -92,20 +81,12 @@ func servePHPMyAdminStatic(w http.ResponseWriter, r *http.Request, fullPath stri
 }
 
 func (s *Server) servePHPMyAdminPHP(w http.ResponseWriter, r *http.Request, status phpMyAdminResponse, scriptRel string, scriptPath string) error {
-	release, err := s.acquirePHPMyAdminFastCGISlot(r.Context())
-	if err != nil {
-		return err
-	}
-	defer release()
-
 	network, address, err := findPHPFPMSocket()
 	if err != nil {
 		return err
 	}
 	params := phpMyAdminFastCGIParams(r, scriptRel, scriptPath)
-	bodyLimit := int64(phpMyAdminUploadLimitMiB+1) << 20
-	limitedBody := http.MaxBytesReader(w, r.Body, bodyLimit)
-	stdout, stderr, err := fastCGIRequestContextLimited(r.Context(), network, address, params, limitedBody, phpMyAdminFastCGIResponseMax)
+	stdout, stderr, err := fastCGIRequest(network, address, params, r.Body)
 	if err != nil {
 		return err
 	}
@@ -113,18 +94,6 @@ func (s *Server) servePHPMyAdminPHP(w http.ResponseWriter, r *http.Request, stat
 		return errors.New(strings.TrimSpace(string(stderr)))
 	}
 	return writePHPMyAdminFastCGIResponse(w, stdout, status)
-}
-
-func (s *Server) acquirePHPMyAdminFastCGISlot(ctx context.Context) (func(), error) {
-	s.phpMyAdminSlotOnce.Do(func() {
-		s.phpMyAdminSlots = make(chan struct{}, phpMyAdminFastCGIMaxActive)
-	})
-	select {
-	case s.phpMyAdminSlots <- struct{}{}:
-		return func() { <-s.phpMyAdminSlots }, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
 }
 
 func safePHPMyAdminPath(rel string) (string, error) {
@@ -208,11 +177,11 @@ func phpMyAdminFastCGIParams(r *http.Request, scriptRel string, scriptPath strin
 
 func phpMyAdminUploadPHPDirectives() []string {
 	return []string{
-		"upload_max_filesize=" + strconv.Itoa(phpMyAdminUploadLimitMiB) + "M",
-		"post_max_size=" + strconv.Itoa(phpMyAdminUploadLimitMiB) + "M",
-		"memory_limit=" + strconv.Itoa(phpMyAdminMemoryLimitMiB) + "M",
-		"max_execution_time=" + strconv.Itoa(phpMyAdminExecutionLimitSecs),
-		"max_input_time=" + strconv.Itoa(phpMyAdminExecutionLimitSecs),
+		"upload_max_filesize=1024M",
+		"post_max_size=1024M",
+		"memory_limit=4096M",
+		"max_execution_time=0",
+		"max_input_time=0",
 	}
 }
 
@@ -229,22 +198,11 @@ func fastCGIRequest(network string, address string, params map[string]string, bo
 }
 
 func fastCGIRequestLimited(network string, address string, params map[string]string, body io.Reader, maxOutput int64) ([]byte, []byte, error) {
-	return fastCGIRequestContextLimited(context.Background(), network, address, params, body, maxOutput)
-}
-
-func fastCGIRequestContextLimited(ctx context.Context, network string, address string, params map[string]string, body io.Reader, maxOutput int64) ([]byte, []byte, error) {
-	dialer := net.Dialer{Timeout: phpMyAdminFastCGIConnectWait}
-	conn, err := dialer.DialContext(ctx, network, address)
+	conn, err := net.Dial(network, address)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer conn.Close()
-	deadline := time.Now().Add(phpMyAdminExecutionLimitSecs * time.Second)
-	if err := conn.SetDeadline(deadline); err != nil {
-		return nil, nil, err
-	}
-	stopClose := context.AfterFunc(ctx, func() { _ = conn.Close() })
-	defer stopClose()
 	beginBody := make([]byte, 8)
 	binary.BigEndian.PutUint16(beginBody[0:2], fcgiResponder)
 	if err := writeFastCGIRecord(conn, fcgiBegin, beginBody); err != nil {
@@ -261,9 +219,6 @@ func fastCGIRequestContextLimited(ctx context.Context, network string, address s
 	for {
 		recordType, content, err := readFastCGIRecord(conn)
 		if err != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, nil, ctxErr
-			}
 			return nil, nil, err
 		}
 		switch recordType {

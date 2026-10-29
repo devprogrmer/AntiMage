@@ -294,9 +294,6 @@ LIMIT ?`, args...)
 		}
 		userIDs = append(userIDs, snapshot.ID)
 	}
-	if err := r.recordAccountingDeletionTx(ctx, tx, userIDs, now); err != nil {
-		return 0, nil, err
-	}
 	return int64(len(userIDs)), userIDs, nil
 }
 
@@ -477,35 +474,11 @@ func (r Repository) cleanupBulkStatusTx(ctx context.Context, tx *sql.Tx, targetA
 	filter.where = append(filter.where, "last_status_change IS NOT NULL", "last_status_change <= ?")
 	filter.args = append(filter.args, dbTime(cutoff))
 	whereSQL, args := filter.sql()
-	rows, err := tx.QueryContext(ctx, "SELECT id FROM users WHERE "+whereSQL, args...)
-	if err != nil {
-		return 0, err
-	}
-	var userIDs []int64
-	for rows.Next() {
-		var userID int64
-		if err := rows.Scan(&userID); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		userIDs = append(userIDs, userID)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return 0, err
-	}
-	if err := rows.Close(); err != nil {
-		return 0, err
-	}
 	res, err := tx.ExecContext(ctx, "UPDATE users SET status = ? WHERE "+whereSQL, append([]any{string(UserStatusDeleted)}, args...)...)
 	if err != nil {
 		return 0, err
 	}
-	changed := rowsAffected(res)
-	if err := r.recordAccountingDeletionTx(ctx, tx, userIDs, time.Now().UTC()); err != nil {
-		return 0, err
-	}
-	return changed, nil
+	return rowsAffected(res), nil
 }
 
 func (r Repository) updateBulkStatusTx(ctx context.Context, tx *sql.Tx, targetAdmin *adminapp.Admin, payload BulkUsersActionRequest, status UserStatus) (int64, error) {

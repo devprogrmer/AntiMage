@@ -306,14 +306,10 @@ func (x *ConnectResponse) GetRuntime() *RuntimeState {
 }
 
 type HealthRequest struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	IncludeMetrics      bool                   `protobuf:"varint,1,opt,name=include_metrics,json=includeMetrics,proto3" json:"include_metrics,omitempty"`
-	OperationId         string                 `protobuf:"bytes,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	CommandId           string                 `protobuf:"bytes,3,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
-	TransactionBackupId string                 `protobuf:"bytes,4,opt,name=transaction_backup_id,json=transactionBackupId,proto3" json:"transaction_backup_id,omitempty"`
-	InspectRestore      bool                   `protobuf:"varint,5,opt,name=inspect_restore,json=inspectRestore,proto3" json:"inspect_restore,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	IncludeMetrics bool                   `protobuf:"varint,1,opt,name=include_metrics,json=includeMetrics,proto3" json:"include_metrics,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *HealthRequest) Reset() {
@@ -349,34 +345,6 @@ func (*HealthRequest) Descriptor() ([]byte, []int) {
 func (x *HealthRequest) GetIncludeMetrics() bool {
 	if x != nil {
 		return x.IncludeMetrics
-	}
-	return false
-}
-
-func (x *HealthRequest) GetOperationId() string {
-	if x != nil {
-		return x.OperationId
-	}
-	return ""
-}
-
-func (x *HealthRequest) GetCommandId() string {
-	if x != nil {
-		return x.CommandId
-	}
-	return ""
-}
-
-func (x *HealthRequest) GetTransactionBackupId() string {
-	if x != nil {
-		return x.TransactionBackupId
-	}
-	return ""
-}
-
-func (x *HealthRequest) GetInspectRestore() bool {
-	if x != nil {
-		return x.InspectRestore
 	}
 	return false
 }
@@ -434,40 +402,18 @@ func (x *HealthResponse) GetMetrics() *MetricsResponse {
 }
 
 type RuntimeState struct {
-	state                            protoimpl.MessageState `protogen:"open.v1"`
-	Connected                        bool                   `protobuf:"varint,1,opt,name=connected,proto3" json:"connected,omitempty"`
-	Started                          bool                   `protobuf:"varint,2,opt,name=started,proto3" json:"started,omitempty"`
-	CoreVersion                      string                 `protobuf:"bytes,3,opt,name=core_version,json=coreVersion,proto3" json:"core_version,omitempty"`
-	NodeVersion                      string                 `protobuf:"bytes,4,opt,name=node_version,json=nodeVersion,proto3" json:"node_version,omitempty"`
-	InstallMode                      string                 `protobuf:"bytes,5,opt,name=install_mode,json=installMode,proto3" json:"install_mode,omitempty"`
-	UpdateChannel                    string                 `protobuf:"bytes,6,opt,name=update_channel,json=updateChannel,proto3" json:"update_channel,omitempty"`
-	Message                          string                 `protobuf:"bytes,7,opt,name=message,proto3" json:"message,omitempty"`
-	Capabilities                     []string               `protobuf:"bytes,8,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
-	AppliedRevision                  uint64                 `protobuf:"varint,9,opt,name=applied_revision,json=appliedRevision,proto3" json:"applied_revision,omitempty"`
-	ProcessStartedAtUnixNano         int64                  `protobuf:"varint,10,opt,name=process_started_at_unix_nano,json=processStartedAtUnixNano,proto3" json:"process_started_at_unix_nano,omitempty"`
-	SampledAtUnixNano                int64                  `protobuf:"varint,11,opt,name=sampled_at_unix_nano,json=sampledAtUnixNano,proto3" json:"sampled_at_unix_nano,omitempty"`
-	BinaryTag                        string                 `protobuf:"bytes,12,opt,name=binary_tag,json=binaryTag,proto3" json:"binary_tag,omitempty"`
-	CommitSha                        string                 `protobuf:"bytes,13,opt,name=commit_sha,json=commitSha,proto3" json:"commit_sha,omitempty"`
-	BuildChannel                     string                 `protobuf:"bytes,14,opt,name=build_channel,json=buildChannel,proto3" json:"build_channel,omitempty"`
-	OperatingSystem                  string                 `protobuf:"bytes,15,opt,name=operating_system,json=operatingSystem,proto3" json:"operating_system,omitempty"`
-	Architecture                     string                 `protobuf:"bytes,16,opt,name=architecture,proto3" json:"architecture,omitempty"`
-	InstalledVersion                 string                 `protobuf:"bytes,17,opt,name=installed_version,json=installedVersion,proto3" json:"installed_version,omitempty"`
-	ActiveConfigSha256               string                 `protobuf:"bytes,18,opt,name=active_config_sha256,json=activeConfigSha256,proto3" json:"active_config_sha256,omitempty"`
-	RunningCoreVersion               string                 `protobuf:"bytes,19,opt,name=running_core_version,json=runningCoreVersion,proto3" json:"running_core_version,omitempty"`
-	CoreProcessStartedAtUnixNano     int64                  `protobuf:"varint,20,opt,name=core_process_started_at_unix_nano,json=coreProcessStartedAtUnixNano,proto3" json:"core_process_started_at_unix_nano,omitempty"`
-	EvidenceOperationId              string                 `protobuf:"bytes,21,opt,name=evidence_operation_id,json=evidenceOperationId,proto3" json:"evidence_operation_id,omitempty"`
-	EvidenceCommandId                string                 `protobuf:"bytes,22,opt,name=evidence_command_id,json=evidenceCommandId,proto3" json:"evidence_command_id,omitempty"`
-	EvidenceResourceGeneration       int64                  `protobuf:"varint,23,opt,name=evidence_resource_generation,json=evidenceResourceGeneration,proto3" json:"evidence_resource_generation,omitempty"`
-	EvidenceCommandState             string                 `protobuf:"bytes,24,opt,name=evidence_command_state,json=evidenceCommandState,proto3" json:"evidence_command_state,omitempty"`
-	RuntimeStopVerified              bool                   `protobuf:"varint,25,opt,name=runtime_stop_verified,json=runtimeStopVerified,proto3" json:"runtime_stop_verified,omitempty"`
-	EvidenceProcessStartedAtUnixNano int64                  `protobuf:"varint,26,opt,name=evidence_process_started_at_unix_nano,json=evidenceProcessStartedAtUnixNano,proto3" json:"evidence_process_started_at_unix_nano,omitempty"`
-	GeoTransactionPhase              string                 `protobuf:"bytes,27,opt,name=geo_transaction_phase,json=geoTransactionPhase,proto3" json:"geo_transaction_phase,omitempty"`
-	GeoDatasetSha256                 string                 `protobuf:"bytes,28,opt,name=geo_dataset_sha256,json=geoDatasetSha256,proto3" json:"geo_dataset_sha256,omitempty"`
-	GeoReloadVerified                bool                   `protobuf:"varint,29,opt,name=geo_reload_verified,json=geoReloadVerified,proto3" json:"geo_reload_verified,omitempty"`
-	CurrentResourceGeneration        int64                  `protobuf:"varint,30,opt,name=current_resource_generation,json=currentResourceGeneration,proto3" json:"current_resource_generation,omitempty"`
-	MaintenanceTransactionJson       string                 `protobuf:"bytes,31,opt,name=maintenance_transaction_json,json=maintenanceTransactionJson,proto3" json:"maintenance_transaction_json,omitempty"`
-	unknownFields                    protoimpl.UnknownFields
-	sizeCache                        protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Connected       bool                   `protobuf:"varint,1,opt,name=connected,proto3" json:"connected,omitempty"`
+	Started         bool                   `protobuf:"varint,2,opt,name=started,proto3" json:"started,omitempty"`
+	CoreVersion     string                 `protobuf:"bytes,3,opt,name=core_version,json=coreVersion,proto3" json:"core_version,omitempty"`
+	NodeVersion     string                 `protobuf:"bytes,4,opt,name=node_version,json=nodeVersion,proto3" json:"node_version,omitempty"`
+	InstallMode     string                 `protobuf:"bytes,5,opt,name=install_mode,json=installMode,proto3" json:"install_mode,omitempty"`
+	UpdateChannel   string                 `protobuf:"bytes,6,opt,name=update_channel,json=updateChannel,proto3" json:"update_channel,omitempty"`
+	Message         string                 `protobuf:"bytes,7,opt,name=message,proto3" json:"message,omitempty"`
+	Capabilities    []string               `protobuf:"bytes,8,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	AppliedRevision uint64                 `protobuf:"varint,9,opt,name=applied_revision,json=appliedRevision,proto3" json:"applied_revision,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *RuntimeState) Reset() {
@@ -563,160 +509,6 @@ func (x *RuntimeState) GetAppliedRevision() uint64 {
 	return 0
 }
 
-func (x *RuntimeState) GetProcessStartedAtUnixNano() int64 {
-	if x != nil {
-		return x.ProcessStartedAtUnixNano
-	}
-	return 0
-}
-
-func (x *RuntimeState) GetSampledAtUnixNano() int64 {
-	if x != nil {
-		return x.SampledAtUnixNano
-	}
-	return 0
-}
-
-func (x *RuntimeState) GetBinaryTag() string {
-	if x != nil {
-		return x.BinaryTag
-	}
-	return ""
-}
-
-func (x *RuntimeState) GetCommitSha() string {
-	if x != nil {
-		return x.CommitSha
-	}
-	return ""
-}
-
-func (x *RuntimeState) GetBuildChannel() string {
-	if x != nil {
-		return x.BuildChannel
-	}
-	return ""
-}
-
-func (x *RuntimeState) GetOperatingSystem() string {
-	if x != nil {
-		return x.OperatingSystem
-	}
-	return ""
-}
-
-func (x *RuntimeState) GetArchitecture() string {
-	if x != nil {
-		return x.Architecture
-	}
-	return ""
-}
-
-func (x *RuntimeState) GetInstalledVersion() string {
-	if x != nil {
-		return x.InstalledVersion
-	}
-	return ""
-}
-
-func (x *RuntimeState) GetActiveConfigSha256() string {
-	if x != nil {
-		return x.ActiveConfigSha256
-	}
-	return ""
-}
-
-func (x *RuntimeState) GetRunningCoreVersion() string {
-	if x != nil {
-		return x.RunningCoreVersion
-	}
-	return ""
-}
-
-func (x *RuntimeState) GetCoreProcessStartedAtUnixNano() int64 {
-	if x != nil {
-		return x.CoreProcessStartedAtUnixNano
-	}
-	return 0
-}
-
-func (x *RuntimeState) GetEvidenceOperationId() string {
-	if x != nil {
-		return x.EvidenceOperationId
-	}
-	return ""
-}
-
-func (x *RuntimeState) GetEvidenceCommandId() string {
-	if x != nil {
-		return x.EvidenceCommandId
-	}
-	return ""
-}
-
-func (x *RuntimeState) GetEvidenceResourceGeneration() int64 {
-	if x != nil {
-		return x.EvidenceResourceGeneration
-	}
-	return 0
-}
-
-func (x *RuntimeState) GetEvidenceCommandState() string {
-	if x != nil {
-		return x.EvidenceCommandState
-	}
-	return ""
-}
-
-func (x *RuntimeState) GetRuntimeStopVerified() bool {
-	if x != nil {
-		return x.RuntimeStopVerified
-	}
-	return false
-}
-
-func (x *RuntimeState) GetEvidenceProcessStartedAtUnixNano() int64 {
-	if x != nil {
-		return x.EvidenceProcessStartedAtUnixNano
-	}
-	return 0
-}
-
-func (x *RuntimeState) GetGeoTransactionPhase() string {
-	if x != nil {
-		return x.GeoTransactionPhase
-	}
-	return ""
-}
-
-func (x *RuntimeState) GetGeoDatasetSha256() string {
-	if x != nil {
-		return x.GeoDatasetSha256
-	}
-	return ""
-}
-
-func (x *RuntimeState) GetGeoReloadVerified() bool {
-	if x != nil {
-		return x.GeoReloadVerified
-	}
-	return false
-}
-
-func (x *RuntimeState) GetCurrentResourceGeneration() int64 {
-	if x != nil {
-		return x.CurrentResourceGeneration
-	}
-	return 0
-}
-
-func (x *RuntimeState) GetMaintenanceTransactionJson() string {
-	if x != nil {
-		return x.MaintenanceTransactionJson
-	}
-	return ""
-}
-
 type RuntimeConfigRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	OperationId     string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
@@ -724,7 +516,6 @@ type RuntimeConfigRequest struct {
 	IncludeDbUsers  bool                   `protobuf:"varint,3,opt,name=include_db_users,json=includeDbUsers,proto3" json:"include_db_users,omitempty"`
 	OvRuntimeJson   string                 `protobuf:"bytes,4,opt,name=ov_runtime_json,json=ovRuntimeJson,proto3" json:"ov_runtime_json,omitempty"`
 	DesiredRevision uint64                 `protobuf:"varint,5,opt,name=desired_revision,json=desiredRevision,proto3" json:"desired_revision,omitempty"`
-	Fence           *DestructiveFence      `protobuf:"bytes,6,opt,name=fence,proto3" json:"fence,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -794,18 +585,10 @@ func (x *RuntimeConfigRequest) GetDesiredRevision() uint64 {
 	return 0
 }
 
-func (x *RuntimeConfigRequest) GetFence() *DestructiveFence {
-	if x != nil {
-		return x.Fence
-	}
-	return nil
-}
-
 type StopRuntimeRequest struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	OperationId            string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
 	CollectUsageBeforeStop bool                   `protobuf:"varint,2,opt,name=collect_usage_before_stop,json=collectUsageBeforeStop,proto3" json:"collect_usage_before_stop,omitempty"`
-	Fence                  *DestructiveFence      `protobuf:"bytes,3,opt,name=fence,proto3" json:"fence,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -854,108 +637,19 @@ func (x *StopRuntimeRequest) GetCollectUsageBeforeStop() bool {
 	return false
 }
 
-func (x *StopRuntimeRequest) GetFence() *DestructiveFence {
-	if x != nil {
-		return x.Fence
-	}
-	return nil
-}
-
-// Shared with installed binary update/rollback, never a Core/Geo-local counter.
-type DestructiveFence struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	OperationId        string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	CommandId          string                 `protobuf:"bytes,2,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
-	ResourceId         string                 `protobuf:"bytes,3,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
-	ResourceGeneration int64                  `protobuf:"varint,4,opt,name=resource_generation,json=resourceGeneration,proto3" json:"resource_generation,omitempty"`
-	LeaseGeneration    int64                  `protobuf:"varint,5,opt,name=lease_generation,json=leaseGeneration,proto3" json:"lease_generation,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
-}
-
-func (x *DestructiveFence) Reset() {
-	*x = DestructiveFence{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DestructiveFence) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DestructiveFence) ProtoMessage() {}
-
-func (x *DestructiveFence) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DestructiveFence.ProtoReflect.Descriptor instead.
-func (*DestructiveFence) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{10}
-}
-
-func (x *DestructiveFence) GetOperationId() string {
-	if x != nil {
-		return x.OperationId
-	}
-	return ""
-}
-
-func (x *DestructiveFence) GetCommandId() string {
-	if x != nil {
-		return x.CommandId
-	}
-	return ""
-}
-
-func (x *DestructiveFence) GetResourceId() string {
-	if x != nil {
-		return x.ResourceId
-	}
-	return ""
-}
-
-func (x *DestructiveFence) GetResourceGeneration() int64 {
-	if x != nil {
-		return x.ResourceGeneration
-	}
-	return 0
-}
-
-func (x *DestructiveFence) GetLeaseGeneration() int64 {
-	if x != nil {
-		return x.LeaseGeneration
-	}
-	return 0
-}
-
 type RuntimeActionResponse struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	OperationId        string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	Accepted           bool                   `protobuf:"varint,2,opt,name=accepted,proto3" json:"accepted,omitempty"`
-	Runtime            *RuntimeState          `protobuf:"bytes,3,opt,name=runtime,proto3" json:"runtime,omitempty"`
-	Message            string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
-	BackupJson         string                 `protobuf:"bytes,5,opt,name=backup_json,json=backupJson,proto3" json:"backup_json,omitempty"`
-	LeaseGeneration    int64                  `protobuf:"varint,6,opt,name=lease_generation,json=leaseGeneration,proto3" json:"lease_generation,omitempty"`
-	CommandId          string                 `protobuf:"bytes,7,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
-	ResourceGeneration int64                  `protobuf:"varint,8,opt,name=resource_generation,json=resourceGeneration,proto3" json:"resource_generation,omitempty"`
-	ResourceId         string                 `protobuf:"bytes,9,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Accepted      bool                   `protobuf:"varint,2,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	Runtime       *RuntimeState          `protobuf:"bytes,3,opt,name=runtime,proto3" json:"runtime,omitempty"`
+	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RuntimeActionResponse) Reset() {
 	*x = RuntimeActionResponse{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[11]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -967,7 +661,7 @@ func (x *RuntimeActionResponse) String() string {
 func (*RuntimeActionResponse) ProtoMessage() {}
 
 func (x *RuntimeActionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[11]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -980,7 +674,7 @@ func (x *RuntimeActionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeActionResponse.ProtoReflect.Descriptor instead.
 func (*RuntimeActionResponse) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{11}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RuntimeActionResponse) GetOperationId() string {
@@ -1011,41 +705,6 @@ func (x *RuntimeActionResponse) GetMessage() string {
 	return ""
 }
 
-func (x *RuntimeActionResponse) GetBackupJson() string {
-	if x != nil {
-		return x.BackupJson
-	}
-	return ""
-}
-
-func (x *RuntimeActionResponse) GetLeaseGeneration() int64 {
-	if x != nil {
-		return x.LeaseGeneration
-	}
-	return 0
-}
-
-func (x *RuntimeActionResponse) GetCommandId() string {
-	if x != nil {
-		return x.CommandId
-	}
-	return ""
-}
-
-func (x *RuntimeActionResponse) GetResourceGeneration() int64 {
-	if x != nil {
-		return x.ResourceGeneration
-	}
-	return 0
-}
-
-func (x *RuntimeActionResponse) GetResourceId() string {
-	if x != nil {
-		return x.ResourceId
-	}
-	return ""
-}
-
 type InboundUserRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
@@ -1057,7 +716,7 @@ type InboundUserRequest struct {
 
 func (x *InboundUserRequest) Reset() {
 	*x = InboundUserRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[12]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1069,7 +728,7 @@ func (x *InboundUserRequest) String() string {
 func (*InboundUserRequest) ProtoMessage() {}
 
 func (x *InboundUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[12]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1082,7 +741,7 @@ func (x *InboundUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InboundUserRequest.ProtoReflect.Descriptor instead.
 func (*InboundUserRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{12}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *InboundUserRequest) GetOperationId() string {
@@ -1117,7 +776,7 @@ type RemoveInboundUserRequest struct {
 
 func (x *RemoveInboundUserRequest) Reset() {
 	*x = RemoveInboundUserRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[13]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1129,7 +788,7 @@ func (x *RemoveInboundUserRequest) String() string {
 func (*RemoveInboundUserRequest) ProtoMessage() {}
 
 func (x *RemoveInboundUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[13]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1142,7 +801,7 @@ func (x *RemoveInboundUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveInboundUserRequest.ProtoReflect.Descriptor instead.
 func (*RemoveInboundUserRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{13}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RemoveInboundUserRequest) GetOperationId() string {
@@ -1177,7 +836,7 @@ type InboundUser struct {
 
 func (x *InboundUser) Reset() {
 	*x = InboundUser{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[14]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1189,7 +848,7 @@ func (x *InboundUser) String() string {
 func (*InboundUser) ProtoMessage() {}
 
 func (x *InboundUser) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[14]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1202,7 +861,7 @@ func (x *InboundUser) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InboundUser.ProtoReflect.Descriptor instead.
 func (*InboundUser) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{14}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *InboundUser) GetEmail() string {
@@ -1235,7 +894,7 @@ type MetricsRequest struct {
 
 func (x *MetricsRequest) Reset() {
 	*x = MetricsRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[15]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1247,7 +906,7 @@ func (x *MetricsRequest) String() string {
 func (*MetricsRequest) ProtoMessage() {}
 
 func (x *MetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[15]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1260,7 +919,7 @@ func (x *MetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetricsRequest.ProtoReflect.Descriptor instead.
 func (*MetricsRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{15}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *MetricsRequest) GetIncludeRuntime() bool {
@@ -1282,7 +941,7 @@ type MetricsResponse struct {
 
 func (x *MetricsResponse) Reset() {
 	*x = MetricsResponse{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[16]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1294,7 +953,7 @@ func (x *MetricsResponse) String() string {
 func (*MetricsResponse) ProtoMessage() {}
 
 func (x *MetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[16]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1307,7 +966,7 @@ func (x *MetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetricsResponse.ProtoReflect.Descriptor instead.
 func (*MetricsResponse) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{16}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *MetricsResponse) GetRuntime() *RuntimeState {
@@ -1346,7 +1005,7 @@ type PublicIPsRequest struct {
 
 func (x *PublicIPsRequest) Reset() {
 	*x = PublicIPsRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[17]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1358,7 +1017,7 @@ func (x *PublicIPsRequest) String() string {
 func (*PublicIPsRequest) ProtoMessage() {}
 
 func (x *PublicIPsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[17]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1371,7 +1030,7 @@ func (x *PublicIPsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicIPsRequest.ProtoReflect.Descriptor instead.
 func (*PublicIPsRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{17}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{16}
 }
 
 type PublicIPsResponse struct {
@@ -1384,7 +1043,7 @@ type PublicIPsResponse struct {
 
 func (x *PublicIPsResponse) Reset() {
 	*x = PublicIPsResponse{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[18]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1396,7 +1055,7 @@ func (x *PublicIPsResponse) String() string {
 func (*PublicIPsResponse) ProtoMessage() {}
 
 func (x *PublicIPsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[18]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1409,7 +1068,7 @@ func (x *PublicIPsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicIPsResponse.ProtoReflect.Descriptor instead.
 func (*PublicIPsResponse) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{18}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PublicIPsResponse) GetIpv4() string {
@@ -1440,7 +1099,7 @@ type OutboundTestRequest struct {
 
 func (x *OutboundTestRequest) Reset() {
 	*x = OutboundTestRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[19]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1452,7 +1111,7 @@ func (x *OutboundTestRequest) String() string {
 func (*OutboundTestRequest) ProtoMessage() {}
 
 func (x *OutboundTestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[19]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1465,7 +1124,7 @@ func (x *OutboundTestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutboundTestRequest.ProtoReflect.Descriptor instead.
 func (*OutboundTestRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{19}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *OutboundTestRequest) GetOperationId() string {
@@ -1526,7 +1185,7 @@ type OutboundTestResponse struct {
 
 func (x *OutboundTestResponse) Reset() {
 	*x = OutboundTestResponse{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[20]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1538,7 +1197,7 @@ func (x *OutboundTestResponse) String() string {
 func (*OutboundTestResponse) ProtoMessage() {}
 
 func (x *OutboundTestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[20]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1551,7 +1210,7 @@ func (x *OutboundTestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutboundTestResponse.ProtoReflect.Descriptor instead.
 func (*OutboundTestResponse) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{20}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *OutboundTestResponse) GetSuccess() bool {
@@ -1628,7 +1287,7 @@ type RouteTestRequest struct {
 
 func (x *RouteTestRequest) Reset() {
 	*x = RouteTestRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[21]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1640,7 +1299,7 @@ func (x *RouteTestRequest) String() string {
 func (*RouteTestRequest) ProtoMessage() {}
 
 func (x *RouteTestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[21]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1653,7 +1312,7 @@ func (x *RouteTestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteTestRequest.ProtoReflect.Descriptor instead.
 func (*RouteTestRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{21}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *RouteTestRequest) GetOperationId() string {
@@ -1742,7 +1401,7 @@ type RouteTestResponse struct {
 
 func (x *RouteTestResponse) Reset() {
 	*x = RouteTestResponse{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[22]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1754,7 +1413,7 @@ func (x *RouteTestResponse) String() string {
 func (*RouteTestResponse) ProtoMessage() {}
 
 func (x *RouteTestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[22]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1767,7 +1426,7 @@ func (x *RouteTestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteTestResponse.ProtoReflect.Descriptor instead.
 func (*RouteTestResponse) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{22}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *RouteTestResponse) GetMatched() bool {
@@ -1837,7 +1496,7 @@ type RouteTestTraffic struct {
 
 func (x *RouteTestTraffic) Reset() {
 	*x = RouteTestTraffic{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[23]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1849,7 +1508,7 @@ func (x *RouteTestTraffic) String() string {
 func (*RouteTestTraffic) ProtoMessage() {}
 
 func (x *RouteTestTraffic) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[23]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1862,7 +1521,7 @@ func (x *RouteTestTraffic) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteTestTraffic.ProtoReflect.Descriptor instead.
 func (*RouteTestTraffic) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{23}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *RouteTestTraffic) GetTag() string {
@@ -1890,14 +1549,13 @@ type RuntimeUpdateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
 	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
-	Fence         *DestructiveFence      `protobuf:"bytes,3,opt,name=fence,proto3" json:"fence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RuntimeUpdateRequest) Reset() {
 	*x = RuntimeUpdateRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[24]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1909,7 +1567,7 @@ func (x *RuntimeUpdateRequest) String() string {
 func (*RuntimeUpdateRequest) ProtoMessage() {}
 
 func (x *RuntimeUpdateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[24]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1922,7 +1580,7 @@ func (x *RuntimeUpdateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeUpdateRequest.ProtoReflect.Descriptor instead.
 func (*RuntimeUpdateRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{24}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *RuntimeUpdateRequest) GetOperationId() string {
@@ -1939,26 +1597,17 @@ func (x *RuntimeUpdateRequest) GetVersion() string {
 	return ""
 }
 
-func (x *RuntimeUpdateRequest) GetFence() *DestructiveFence {
-	if x != nil {
-		return x.Fence
-	}
-	return nil
-}
-
 type GeoUpdateRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	OperationId      string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	Files            []*GeoFile             `protobuf:"bytes,2,rep,name=files,proto3" json:"files,omitempty"`
-	Fence            *DestructiveFence      `protobuf:"bytes,3,opt,name=fence,proto3" json:"fence,omitempty"`
-	ResumeReloadOnly bool                   `protobuf:"varint,4,opt,name=resume_reload_only,json=resumeReloadOnly,proto3" json:"resume_reload_only,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Files         []*GeoFile             `protobuf:"bytes,2,rep,name=files,proto3" json:"files,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GeoUpdateRequest) Reset() {
 	*x = GeoUpdateRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[25]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1970,7 +1619,7 @@ func (x *GeoUpdateRequest) String() string {
 func (*GeoUpdateRequest) ProtoMessage() {}
 
 func (x *GeoUpdateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[25]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1983,7 +1632,7 @@ func (x *GeoUpdateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GeoUpdateRequest.ProtoReflect.Descriptor instead.
 func (*GeoUpdateRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{25}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GeoUpdateRequest) GetOperationId() string {
@@ -2000,20 +1649,6 @@ func (x *GeoUpdateRequest) GetFiles() []*GeoFile {
 	return nil
 }
 
-func (x *GeoUpdateRequest) GetFence() *DestructiveFence {
-	if x != nil {
-		return x.Fence
-	}
-	return nil
-}
-
-func (x *GeoUpdateRequest) GetResumeReloadOnly() bool {
-	if x != nil {
-		return x.ResumeReloadOnly
-	}
-	return false
-}
-
 type GeoFile struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -2024,7 +1659,7 @@ type GeoFile struct {
 
 func (x *GeoFile) Reset() {
 	*x = GeoFile{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[26]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2036,7 +1671,7 @@ func (x *GeoFile) String() string {
 func (*GeoFile) ProtoMessage() {}
 
 func (x *GeoFile) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[26]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2049,7 +1684,7 @@ func (x *GeoFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GeoFile.ProtoReflect.Descriptor instead.
 func (*GeoFile) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{26}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GeoFile) GetName() string {
@@ -2069,14 +1704,13 @@ func (x *GeoFile) GetUrl() string {
 type ServiceRestartRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	Fence         *DestructiveFence      `protobuf:"bytes,2,opt,name=fence,proto3" json:"fence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ServiceRestartRequest) Reset() {
 	*x = ServiceRestartRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[27]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2088,7 +1722,7 @@ func (x *ServiceRestartRequest) String() string {
 func (*ServiceRestartRequest) ProtoMessage() {}
 
 func (x *ServiceRestartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[27]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2101,7 +1735,7 @@ func (x *ServiceRestartRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServiceRestartRequest.ProtoReflect.Descriptor instead.
 func (*ServiceRestartRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{27}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ServiceRestartRequest) GetOperationId() string {
@@ -2111,33 +1745,18 @@ func (x *ServiceRestartRequest) GetOperationId() string {
 	return ""
 }
 
-func (x *ServiceRestartRequest) GetFence() *DestructiveFence {
-	if x != nil {
-		return x.Fence
-	}
-	return nil
-}
-
 type ServiceUpdateRequest struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	OperationId        string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	Channel            string                 `protobuf:"bytes,2,opt,name=channel,proto3" json:"channel,omitempty"`
-	Version            string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
-	ResolvedBuildJson  string                 `protobuf:"bytes,4,opt,name=resolved_build_json,json=resolvedBuildJson,proto3" json:"resolved_build_json,omitempty"`
-	Action             string                 `protobuf:"bytes,5,opt,name=action,proto3" json:"action,omitempty"`
-	BackupIdentity     string                 `protobuf:"bytes,6,opt,name=backup_identity,json=backupIdentity,proto3" json:"backup_identity,omitempty"`
-	LeaseGeneration    int64                  `protobuf:"varint,7,opt,name=lease_generation,json=leaseGeneration,proto3" json:"lease_generation,omitempty"`
-	CommandId          string                 `protobuf:"bytes,8,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
-	FenceOperationId   string                 `protobuf:"bytes,9,opt,name=fence_operation_id,json=fenceOperationId,proto3" json:"fence_operation_id,omitempty"`
-	ResourceGeneration int64                  `protobuf:"varint,10,opt,name=resource_generation,json=resourceGeneration,proto3" json:"resource_generation,omitempty"`
-	ResourceId         string                 `protobuf:"bytes,11,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Channel       string                 `protobuf:"bytes,2,opt,name=channel,proto3" json:"channel,omitempty"`
+	Version       string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ServiceUpdateRequest) Reset() {
 	*x = ServiceUpdateRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[28]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2149,7 +1768,7 @@ func (x *ServiceUpdateRequest) String() string {
 func (*ServiceUpdateRequest) ProtoMessage() {}
 
 func (x *ServiceUpdateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[28]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2162,7 +1781,7 @@ func (x *ServiceUpdateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServiceUpdateRequest.ProtoReflect.Descriptor instead.
 func (*ServiceUpdateRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{28}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ServiceUpdateRequest) GetOperationId() string {
@@ -2186,73 +1805,16 @@ func (x *ServiceUpdateRequest) GetVersion() string {
 	return ""
 }
 
-func (x *ServiceUpdateRequest) GetResolvedBuildJson() string {
-	if x != nil {
-		return x.ResolvedBuildJson
-	}
-	return ""
-}
-
-func (x *ServiceUpdateRequest) GetAction() string {
-	if x != nil {
-		return x.Action
-	}
-	return ""
-}
-
-func (x *ServiceUpdateRequest) GetBackupIdentity() string {
-	if x != nil {
-		return x.BackupIdentity
-	}
-	return ""
-}
-
-func (x *ServiceUpdateRequest) GetLeaseGeneration() int64 {
-	if x != nil {
-		return x.LeaseGeneration
-	}
-	return 0
-}
-
-func (x *ServiceUpdateRequest) GetCommandId() string {
-	if x != nil {
-		return x.CommandId
-	}
-	return ""
-}
-
-func (x *ServiceUpdateRequest) GetFenceOperationId() string {
-	if x != nil {
-		return x.FenceOperationId
-	}
-	return ""
-}
-
-func (x *ServiceUpdateRequest) GetResourceGeneration() int64 {
-	if x != nil {
-		return x.ResourceGeneration
-	}
-	return 0
-}
-
-func (x *ServiceUpdateRequest) GetResourceId() string {
-	if x != nil {
-		return x.ResourceId
-	}
-	return ""
-}
-
 type HostRebootRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	Fence         *DestructiveFence      `protobuf:"bytes,2,opt,name=fence,proto3" json:"fence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *HostRebootRequest) Reset() {
 	*x = HostRebootRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[29]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2264,7 +1826,7 @@ func (x *HostRebootRequest) String() string {
 func (*HostRebootRequest) ProtoMessage() {}
 
 func (x *HostRebootRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[29]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2277,7 +1839,7 @@ func (x *HostRebootRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HostRebootRequest.ProtoReflect.Descriptor instead.
 func (*HostRebootRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{29}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *HostRebootRequest) GetOperationId() string {
@@ -2285,13 +1847,6 @@ func (x *HostRebootRequest) GetOperationId() string {
 		return x.OperationId
 	}
 	return ""
-}
-
-func (x *HostRebootRequest) GetFence() *DestructiveFence {
-	if x != nil {
-		return x.Fence
-	}
-	return nil
 }
 
 type IPBlockRequest struct {
@@ -2306,7 +1861,7 @@ type IPBlockRequest struct {
 
 func (x *IPBlockRequest) Reset() {
 	*x = IPBlockRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[30]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2318,7 +1873,7 @@ func (x *IPBlockRequest) String() string {
 func (*IPBlockRequest) ProtoMessage() {}
 
 func (x *IPBlockRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[30]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2331,7 +1886,7 @@ func (x *IPBlockRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IPBlockRequest.ProtoReflect.Descriptor instead.
 func (*IPBlockRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{30}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *IPBlockRequest) GetOperationId() string {
@@ -2374,7 +1929,7 @@ type IPBlockEntry struct {
 
 func (x *IPBlockEntry) Reset() {
 	*x = IPBlockEntry{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[31]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2386,7 +1941,7 @@ func (x *IPBlockEntry) String() string {
 func (*IPBlockEntry) ProtoMessage() {}
 
 func (x *IPBlockEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[31]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2399,7 +1954,7 @@ func (x *IPBlockEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IPBlockEntry.ProtoReflect.Descriptor instead.
 func (*IPBlockEntry) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{31}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *IPBlockEntry) GetIp() string {
@@ -2442,7 +1997,7 @@ type TorProxyRequest struct {
 
 func (x *TorProxyRequest) Reset() {
 	*x = TorProxyRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[32]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2454,7 +2009,7 @@ func (x *TorProxyRequest) String() string {
 func (*TorProxyRequest) ProtoMessage() {}
 
 func (x *TorProxyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[32]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2467,7 +2022,7 @@ func (x *TorProxyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TorProxyRequest.ProtoReflect.Descriptor instead.
 func (*TorProxyRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{32}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *TorProxyRequest) GetOperationId() string {
@@ -2514,7 +2069,7 @@ type WindscribeProxyRequest struct {
 
 func (x *WindscribeProxyRequest) Reset() {
 	*x = WindscribeProxyRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[33]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2526,7 +2081,7 @@ func (x *WindscribeProxyRequest) String() string {
 func (*WindscribeProxyRequest) ProtoMessage() {}
 
 func (x *WindscribeProxyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[33]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2539,7 +2094,7 @@ func (x *WindscribeProxyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WindscribeProxyRequest.ProtoReflect.Descriptor instead.
 func (*WindscribeProxyRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{33}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *WindscribeProxyRequest) GetOperationId() string {
@@ -2608,7 +2163,7 @@ type WindscribeLocation struct {
 
 func (x *WindscribeLocation) Reset() {
 	*x = WindscribeLocation{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[34]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2620,7 +2175,7 @@ func (x *WindscribeLocation) String() string {
 func (*WindscribeLocation) ProtoMessage() {}
 
 func (x *WindscribeLocation) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[34]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2633,7 +2188,7 @@ func (x *WindscribeLocation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WindscribeLocation.ProtoReflect.Descriptor instead.
 func (*WindscribeLocation) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{34}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *WindscribeLocation) GetName() string {
@@ -2663,7 +2218,7 @@ type WindscribeProxyResponse struct {
 
 func (x *WindscribeProxyResponse) Reset() {
 	*x = WindscribeProxyResponse{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[35]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2675,7 +2230,7 @@ func (x *WindscribeProxyResponse) String() string {
 func (*WindscribeProxyResponse) ProtoMessage() {}
 
 func (x *WindscribeProxyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[35]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2688,7 +2243,7 @@ func (x *WindscribeProxyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WindscribeProxyResponse.ProtoReflect.Descriptor instead.
 func (*WindscribeProxyResponse) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{35}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *WindscribeProxyResponse) GetOperationId() string {
@@ -2739,7 +2294,7 @@ type PsiphonProxyRequest struct {
 
 func (x *PsiphonProxyRequest) Reset() {
 	*x = PsiphonProxyRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[36]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2751,7 +2306,7 @@ func (x *PsiphonProxyRequest) String() string {
 func (*PsiphonProxyRequest) ProtoMessage() {}
 
 func (x *PsiphonProxyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[36]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2764,7 +2319,7 @@ func (x *PsiphonProxyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PsiphonProxyRequest.ProtoReflect.Descriptor instead.
 func (*PsiphonProxyRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{36}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *PsiphonProxyRequest) GetOperationId() string {
@@ -2812,7 +2367,7 @@ type PsiphonProxyInstance struct {
 
 func (x *PsiphonProxyInstance) Reset() {
 	*x = PsiphonProxyInstance{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[37]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2824,7 +2379,7 @@ func (x *PsiphonProxyInstance) String() string {
 func (*PsiphonProxyInstance) ProtoMessage() {}
 
 func (x *PsiphonProxyInstance) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[37]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2837,7 +2392,7 @@ func (x *PsiphonProxyInstance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PsiphonProxyInstance.ProtoReflect.Descriptor instead.
 func (*PsiphonProxyInstance) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{37}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *PsiphonProxyInstance) GetLocation() string {
@@ -2868,7 +2423,7 @@ type PsiphonProxyResponse struct {
 
 func (x *PsiphonProxyResponse) Reset() {
 	*x = PsiphonProxyResponse{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[38]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2880,7 +2435,7 @@ func (x *PsiphonProxyResponse) String() string {
 func (*PsiphonProxyResponse) ProtoMessage() {}
 
 func (x *PsiphonProxyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[38]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2893,7 +2448,7 @@ func (x *PsiphonProxyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PsiphonProxyResponse.ProtoReflect.Descriptor instead.
 func (*PsiphonProxyResponse) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{38}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *PsiphonProxyResponse) GetOperationId() string {
@@ -2953,7 +2508,7 @@ type SystemMetrics struct {
 
 func (x *SystemMetrics) Reset() {
 	*x = SystemMetrics{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[39]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2965,7 +2520,7 @@ func (x *SystemMetrics) String() string {
 func (*SystemMetrics) ProtoMessage() {}
 
 func (x *SystemMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[39]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2978,7 +2533,7 @@ func (x *SystemMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemMetrics.ProtoReflect.Descriptor instead.
 func (*SystemMetrics) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{39}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *SystemMetrics) GetCpuCores() int32 {
@@ -3042,7 +2597,7 @@ type TransferMetrics struct {
 
 func (x *TransferMetrics) Reset() {
 	*x = TransferMetrics{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[40]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3054,7 +2609,7 @@ func (x *TransferMetrics) String() string {
 func (*TransferMetrics) ProtoMessage() {}
 
 func (x *TransferMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[40]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3067,7 +2622,7 @@ func (x *TransferMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferMetrics.ProtoReflect.Descriptor instead.
 func (*TransferMetrics) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{40}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *TransferMetrics) GetUplinkTotal() uint64 {
@@ -3099,17 +2654,16 @@ func (x *TransferMetrics) GetDownloadSpeed() uint64 {
 }
 
 type CollectUsageRequest struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	CollectorId       string                 `protobuf:"bytes,1,opt,name=collector_id,json=collectorId,proto3" json:"collector_id,omitempty"`
-	Reset_            bool                   `protobuf:"varint,2,opt,name=reset,proto3" json:"reset,omitempty"`
-	ReflectionVersion uint32                 `protobuf:"varint,3,opt,name=reflection_version,json=reflectionVersion,proto3" json:"reflection_version,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CollectorId   string                 `protobuf:"bytes,1,opt,name=collector_id,json=collectorId,proto3" json:"collector_id,omitempty"`
+	Reset_        bool                   `protobuf:"varint,2,opt,name=reset,proto3" json:"reset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CollectUsageRequest) Reset() {
 	*x = CollectUsageRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[41]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3121,7 +2675,7 @@ func (x *CollectUsageRequest) String() string {
 func (*CollectUsageRequest) ProtoMessage() {}
 
 func (x *CollectUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[41]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3134,7 +2688,7 @@ func (x *CollectUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectUsageRequest.ProtoReflect.Descriptor instead.
 func (*CollectUsageRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{41}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *CollectUsageRequest) GetCollectorId() string {
@@ -3151,28 +2705,19 @@ func (x *CollectUsageRequest) GetReset_() bool {
 	return false
 }
 
-func (x *CollectUsageRequest) GetReflectionVersion() uint32 {
-	if x != nil {
-		return x.ReflectionVersion
-	}
-	return 0
-}
-
 type UserUsageBatch struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	BatchId   string                 `protobuf:"bytes,1,opt,name=batch_id,json=batchId,proto3" json:"batch_id,omitempty"`
-	Stats     []*UserUsageSample     `protobuf:"bytes,2,rep,name=stats,proto3" json:"stats,omitempty"`
-	OnlineIps []*OnlineUserIP        `protobuf:"bytes,3,rep,name=online_ips,json=onlineIps,proto3" json:"online_ips,omitempty"`
-	Speeds    []*UserTrafficSpeed    `protobuf:"bytes,4,rep,name=speeds,proto3" json:"speeds,omitempty"`
-	// Per-user cumulative raw receipts; persisted with staged usage, reflected only on flush.
-	ReflectionReceipts map[int64]string `protobuf:"bytes,5,rep,name=reflection_receipts,json=reflectionReceipts,proto3" json:"reflection_receipts,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	BatchId       string                 `protobuf:"bytes,1,opt,name=batch_id,json=batchId,proto3" json:"batch_id,omitempty"`
+	Stats         []*UserUsageSample     `protobuf:"bytes,2,rep,name=stats,proto3" json:"stats,omitempty"`
+	OnlineIps     []*OnlineUserIP        `protobuf:"bytes,3,rep,name=online_ips,json=onlineIps,proto3" json:"online_ips,omitempty"`
+	Speeds        []*UserTrafficSpeed    `protobuf:"bytes,4,rep,name=speeds,proto3" json:"speeds,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UserUsageBatch) Reset() {
 	*x = UserUsageBatch{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[42]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3184,7 +2729,7 @@ func (x *UserUsageBatch) String() string {
 func (*UserUsageBatch) ProtoMessage() {}
 
 func (x *UserUsageBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[42]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3197,7 +2742,7 @@ func (x *UserUsageBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserUsageBatch.ProtoReflect.Descriptor instead.
 func (*UserUsageBatch) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{42}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *UserUsageBatch) GetBatchId() string {
@@ -3228,13 +2773,6 @@ func (x *UserUsageBatch) GetSpeeds() []*UserTrafficSpeed {
 	return nil
 }
 
-func (x *UserUsageBatch) GetReflectionReceipts() map[int64]string {
-	if x != nil {
-		return x.ReflectionReceipts
-	}
-	return nil
-}
-
 type UserTrafficSpeed struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Uid           string                 `protobuf:"bytes,1,opt,name=uid,proto3" json:"uid,omitempty"`
@@ -3246,7 +2784,7 @@ type UserTrafficSpeed struct {
 
 func (x *UserTrafficSpeed) Reset() {
 	*x = UserTrafficSpeed{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[43]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3258,7 +2796,7 @@ func (x *UserTrafficSpeed) String() string {
 func (*UserTrafficSpeed) ProtoMessage() {}
 
 func (x *UserTrafficSpeed) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[43]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3271,7 +2809,7 @@ func (x *UserTrafficSpeed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserTrafficSpeed.ProtoReflect.Descriptor instead.
 func (*UserTrafficSpeed) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{43}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *UserTrafficSpeed) GetUid() string {
@@ -3300,15 +2838,13 @@ type UserUsageSample struct {
 	Uid           string                 `protobuf:"bytes,1,opt,name=uid,proto3" json:"uid,omitempty"`
 	Value         uint64                 `protobuf:"varint,2,opt,name=value,proto3" json:"value,omitempty"`
 	InboundTag    string                 `protobuf:"bytes,3,opt,name=inbound_tag,json=inboundTag,proto3" json:"inbound_tag,omitempty"`
-	Protocol      string                 `protobuf:"bytes,4,opt,name=protocol,proto3" json:"protocol,omitempty"`
-	ChildBatchId  string                 `protobuf:"bytes,5,opt,name=child_batch_id,json=childBatchId,proto3" json:"child_batch_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UserUsageSample) Reset() {
 	*x = UserUsageSample{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[44]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3320,7 +2856,7 @@ func (x *UserUsageSample) String() string {
 func (*UserUsageSample) ProtoMessage() {}
 
 func (x *UserUsageSample) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[44]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3333,7 +2869,7 @@ func (x *UserUsageSample) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserUsageSample.ProtoReflect.Descriptor instead.
 func (*UserUsageSample) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{44}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *UserUsageSample) GetUid() string {
@@ -3357,20 +2893,6 @@ func (x *UserUsageSample) GetInboundTag() string {
 	return ""
 }
 
-func (x *UserUsageSample) GetProtocol() string {
-	if x != nil {
-		return x.Protocol
-	}
-	return ""
-}
-
-func (x *UserUsageSample) GetChildBatchId() string {
-	if x != nil {
-		return x.ChildBatchId
-	}
-	return ""
-}
-
 type OnlineUserIP struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Uid           string                 `protobuf:"bytes,1,opt,name=uid,proto3" json:"uid,omitempty"`
@@ -3382,7 +2904,7 @@ type OnlineUserIP struct {
 
 func (x *OnlineUserIP) Reset() {
 	*x = OnlineUserIP{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[45]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3394,7 +2916,7 @@ func (x *OnlineUserIP) String() string {
 func (*OnlineUserIP) ProtoMessage() {}
 
 func (x *OnlineUserIP) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[45]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3407,7 +2929,7 @@ func (x *OnlineUserIP) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OnlineUserIP.ProtoReflect.Descriptor instead.
 func (*OnlineUserIP) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{45}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *OnlineUserIP) GetUid() string {
@@ -3441,7 +2963,7 @@ type OnlineIP struct {
 
 func (x *OnlineIP) Reset() {
 	*x = OnlineIP{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[46]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3453,7 +2975,7 @@ func (x *OnlineIP) String() string {
 func (*OnlineIP) ProtoMessage() {}
 
 func (x *OnlineIP) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[46]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3466,7 +2988,7 @@ func (x *OnlineIP) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OnlineIP.ProtoReflect.Descriptor instead.
 func (*OnlineIP) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{46}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *OnlineIP) GetIp() string {
@@ -3494,7 +3016,7 @@ type OutboundUsageBatch struct {
 
 func (x *OutboundUsageBatch) Reset() {
 	*x = OutboundUsageBatch{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[47]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3506,7 +3028,7 @@ func (x *OutboundUsageBatch) String() string {
 func (*OutboundUsageBatch) ProtoMessage() {}
 
 func (x *OutboundUsageBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[47]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3519,7 +3041,7 @@ func (x *OutboundUsageBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutboundUsageBatch.ProtoReflect.Descriptor instead.
 func (*OutboundUsageBatch) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{47}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *OutboundUsageBatch) GetBatchId() string {
@@ -3554,7 +3076,7 @@ type OutboundUsageSample struct {
 
 func (x *OutboundUsageSample) Reset() {
 	*x = OutboundUsageSample{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[48]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3566,7 +3088,7 @@ func (x *OutboundUsageSample) String() string {
 func (*OutboundUsageSample) ProtoMessage() {}
 
 func (x *OutboundUsageSample) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[48]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3579,7 +3101,7 @@ func (x *OutboundUsageSample) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutboundUsageSample.ProtoReflect.Descriptor instead.
 func (*OutboundUsageSample) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{48}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *OutboundUsageSample) GetTag() string {
@@ -3614,7 +3136,7 @@ type InboundUsageSample struct {
 
 func (x *InboundUsageSample) Reset() {
 	*x = InboundUsageSample{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[49]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3626,7 +3148,7 @@ func (x *InboundUsageSample) String() string {
 func (*InboundUsageSample) ProtoMessage() {}
 
 func (x *InboundUsageSample) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[49]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3639,7 +3161,7 @@ func (x *InboundUsageSample) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InboundUsageSample.ProtoReflect.Descriptor instead.
 func (*InboundUsageSample) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{49}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *InboundUsageSample) GetTag() string {
@@ -3672,7 +3194,7 @@ type AckUsageRequest struct {
 
 func (x *AckUsageRequest) Reset() {
 	*x = AckUsageRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[50]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3684,7 +3206,7 @@ func (x *AckUsageRequest) String() string {
 func (*AckUsageRequest) ProtoMessage() {}
 
 func (x *AckUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[50]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3697,7 +3219,7 @@ func (x *AckUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckUsageRequest.ProtoReflect.Descriptor instead.
 func (*AckUsageRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{50}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *AckUsageRequest) GetBatchId() string {
@@ -3717,7 +3239,7 @@ type AckUsageResponse struct {
 
 func (x *AckUsageResponse) Reset() {
 	*x = AckUsageResponse{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[51]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3729,7 +3251,7 @@ func (x *AckUsageResponse) String() string {
 func (*AckUsageResponse) ProtoMessage() {}
 
 func (x *AckUsageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[51]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3742,7 +3264,7 @@ func (x *AckUsageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckUsageResponse.ProtoReflect.Descriptor instead.
 func (*AckUsageResponse) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{51}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *AckUsageResponse) GetBatchId() string {
@@ -3759,196 +3281,6 @@ func (x *AckUsageResponse) GetAcknowledged() bool {
 	return false
 }
 
-// Retirement proofs are panel-persisted only after the delete tombstone and
-// cumulative raw accounting state commit in the same durable database.
-type AccountingRetirementProof struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProofId       string                 `protobuf:"bytes,1,opt,name=proof_id,json=proofId,proto3" json:"proof_id,omitempty"`
-	UserId        int64                  `protobuf:"varint,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	Epoch         string                 `protobuf:"bytes,3,opt,name=epoch,proto3" json:"epoch,omitempty"`
-	OwnerKey      string                 `protobuf:"bytes,4,opt,name=owner_key,json=ownerKey,proto3" json:"owner_key,omitempty"`
-	TotalRaw      uint64                 `protobuf:"varint,5,opt,name=total_raw,json=totalRaw,proto3" json:"total_raw,omitempty"`
-	LegacyRaw     uint64                 `protobuf:"varint,6,opt,name=legacy_raw,json=legacyRaw,proto3" json:"legacy_raw,omitempty"`
-	NodeId        int64                  `protobuf:"varint,7,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AccountingRetirementProof) Reset() {
-	*x = AccountingRetirementProof{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[52]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AccountingRetirementProof) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AccountingRetirementProof) ProtoMessage() {}
-
-func (x *AccountingRetirementProof) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[52]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AccountingRetirementProof.ProtoReflect.Descriptor instead.
-func (*AccountingRetirementProof) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{52}
-}
-
-func (x *AccountingRetirementProof) GetProofId() string {
-	if x != nil {
-		return x.ProofId
-	}
-	return ""
-}
-
-func (x *AccountingRetirementProof) GetUserId() int64 {
-	if x != nil {
-		return x.UserId
-	}
-	return 0
-}
-
-func (x *AccountingRetirementProof) GetEpoch() string {
-	if x != nil {
-		return x.Epoch
-	}
-	return ""
-}
-
-func (x *AccountingRetirementProof) GetOwnerKey() string {
-	if x != nil {
-		return x.OwnerKey
-	}
-	return ""
-}
-
-func (x *AccountingRetirementProof) GetTotalRaw() uint64 {
-	if x != nil {
-		return x.TotalRaw
-	}
-	return 0
-}
-
-func (x *AccountingRetirementProof) GetLegacyRaw() uint64 {
-	if x != nil {
-		return x.LegacyRaw
-	}
-	return 0
-}
-
-func (x *AccountingRetirementProof) GetNodeId() int64 {
-	if x != nil {
-		return x.NodeId
-	}
-	return 0
-}
-
-type RetireAccountingAnchorsRequest struct {
-	state         protoimpl.MessageState       `protogen:"open.v1"`
-	Proofs        []*AccountingRetirementProof `protobuf:"bytes,1,rep,name=proofs,proto3" json:"proofs,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RetireAccountingAnchorsRequest) Reset() {
-	*x = RetireAccountingAnchorsRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[53]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RetireAccountingAnchorsRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RetireAccountingAnchorsRequest) ProtoMessage() {}
-
-func (x *RetireAccountingAnchorsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[53]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RetireAccountingAnchorsRequest.ProtoReflect.Descriptor instead.
-func (*RetireAccountingAnchorsRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{53}
-}
-
-func (x *RetireAccountingAnchorsRequest) GetProofs() []*AccountingRetirementProof {
-	if x != nil {
-		return x.Proofs
-	}
-	return nil
-}
-
-type RetireAccountingAnchorsResponse struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Acknowledged     bool                   `protobuf:"varint,1,opt,name=acknowledged,proto3" json:"acknowledged,omitempty"`
-	AcceptedProofIds []string               `protobuf:"bytes,2,rep,name=accepted_proof_ids,json=acceptedProofIds,proto3" json:"accepted_proof_ids,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
-
-func (x *RetireAccountingAnchorsResponse) Reset() {
-	*x = RetireAccountingAnchorsResponse{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[54]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RetireAccountingAnchorsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RetireAccountingAnchorsResponse) ProtoMessage() {}
-
-func (x *RetireAccountingAnchorsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[54]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RetireAccountingAnchorsResponse.ProtoReflect.Descriptor instead.
-func (*RetireAccountingAnchorsResponse) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{54}
-}
-
-func (x *RetireAccountingAnchorsResponse) GetAcknowledged() bool {
-	if x != nil {
-		return x.Acknowledged
-	}
-	return false
-}
-
-func (x *RetireAccountingAnchorsResponse) GetAcceptedProofIds() []string {
-	if x != nil {
-		return x.AcceptedProofIds
-	}
-	return nil
-}
-
 type StreamLogsRequest struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	StreamId             string                 `protobuf:"bytes,1,opt,name=stream_id,json=streamId,proto3" json:"stream_id,omitempty"`
@@ -3960,7 +3292,7 @@ type StreamLogsRequest struct {
 
 func (x *StreamLogsRequest) Reset() {
 	*x = StreamLogsRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[55]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3972,7 +3304,7 @@ func (x *StreamLogsRequest) String() string {
 func (*StreamLogsRequest) ProtoMessage() {}
 
 func (x *StreamLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[55]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3985,7 +3317,7 @@ func (x *StreamLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamLogsRequest.ProtoReflect.Descriptor instead.
 func (*StreamLogsRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{55}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *StreamLogsRequest) GetStreamId() string {
@@ -4020,7 +3352,7 @@ type LogLine struct {
 
 func (x *LogLine) Reset() {
 	*x = LogLine{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[56]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4032,7 +3364,7 @@ func (x *LogLine) String() string {
 func (*LogLine) ProtoMessage() {}
 
 func (x *LogLine) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[56]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4045,7 +3377,7 @@ func (x *LogLine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogLine.ProtoReflect.Descriptor instead.
 func (*LogLine) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{56}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *LogLine) GetStreamId() string {
@@ -4078,7 +3410,7 @@ type OnlineUsersResponse struct {
 
 func (x *OnlineUsersResponse) Reset() {
 	*x = OnlineUsersResponse{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[57]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4090,7 +3422,7 @@ func (x *OnlineUsersResponse) String() string {
 func (*OnlineUsersResponse) ProtoMessage() {}
 
 func (x *OnlineUsersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[57]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4103,7 +3435,7 @@ func (x *OnlineUsersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OnlineUsersResponse.ProtoReflect.Descriptor instead.
 func (*OnlineUsersResponse) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{57}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *OnlineUsersResponse) GetUids() []string {
@@ -4135,17 +3467,12 @@ const file_antimage_node_v1_node_proto_rawDesc = "" +
 	"\x12expected_node_name\x18\x03 \x01(\tR\x10expectedNodeName\"p\n" +
 	"\x0fConnectResponse\x12#\n" +
 	"\rconnection_id\x18\x01 \x01(\tR\fconnectionId\x128\n" +
-	"\aruntime\x18\x02 \x01(\v2\x1e.antimage.node.v1.RuntimeStateR\aruntime\"\xd7\x01\n" +
+	"\aruntime\x18\x02 \x01(\v2\x1e.antimage.node.v1.RuntimeStateR\aruntime\"8\n" +
 	"\rHealthRequest\x12'\n" +
-	"\x0finclude_metrics\x18\x01 \x01(\bR\x0eincludeMetrics\x12!\n" +
-	"\foperation_id\x18\x02 \x01(\tR\voperationId\x12\x1d\n" +
-	"\n" +
-	"command_id\x18\x03 \x01(\tR\tcommandId\x122\n" +
-	"\x15transaction_backup_id\x18\x04 \x01(\tR\x13transactionBackupId\x12'\n" +
-	"\x0finspect_restore\x18\x05 \x01(\bR\x0einspectRestore\"\x87\x01\n" +
+	"\x0finclude_metrics\x18\x01 \x01(\bR\x0eincludeMetrics\"\x87\x01\n" +
 	"\x0eHealthResponse\x128\n" +
 	"\aruntime\x18\x01 \x01(\v2\x1e.antimage.node.v1.RuntimeStateR\aruntime\x12;\n" +
-	"\ametrics\x18\x02 \x01(\v2!.antimage.node.v1.MetricsResponseR\ametrics\"\xb1\v\n" +
+	"\ametrics\x18\x02 \x01(\v2!.antimage.node.v1.MetricsResponseR\ametrics\"\xbf\x02\n" +
 	"\fRuntimeState\x12\x1c\n" +
 	"\tconnected\x18\x01 \x01(\bR\tconnected\x12\x18\n" +
 	"\astarted\x18\x02 \x01(\bR\astarted\x12!\n" +
@@ -4155,65 +3482,22 @@ const file_antimage_node_v1_node_proto_rawDesc = "" +
 	"\x0eupdate_channel\x18\x06 \x01(\tR\rupdateChannel\x12\x18\n" +
 	"\amessage\x18\a \x01(\tR\amessage\x12\"\n" +
 	"\fcapabilities\x18\b \x03(\tR\fcapabilities\x12)\n" +
-	"\x10applied_revision\x18\t \x01(\x04R\x0fappliedRevision\x12>\n" +
-	"\x1cprocess_started_at_unix_nano\x18\n" +
-	" \x01(\x03R\x18processStartedAtUnixNano\x12/\n" +
-	"\x14sampled_at_unix_nano\x18\v \x01(\x03R\x11sampledAtUnixNano\x12\x1d\n" +
-	"\n" +
-	"binary_tag\x18\f \x01(\tR\tbinaryTag\x12\x1d\n" +
-	"\n" +
-	"commit_sha\x18\r \x01(\tR\tcommitSha\x12#\n" +
-	"\rbuild_channel\x18\x0e \x01(\tR\fbuildChannel\x12)\n" +
-	"\x10operating_system\x18\x0f \x01(\tR\x0foperatingSystem\x12\"\n" +
-	"\farchitecture\x18\x10 \x01(\tR\farchitecture\x12+\n" +
-	"\x11installed_version\x18\x11 \x01(\tR\x10installedVersion\x120\n" +
-	"\x14active_config_sha256\x18\x12 \x01(\tR\x12activeConfigSha256\x120\n" +
-	"\x14running_core_version\x18\x13 \x01(\tR\x12runningCoreVersion\x12G\n" +
-	"!core_process_started_at_unix_nano\x18\x14 \x01(\x03R\x1ccoreProcessStartedAtUnixNano\x122\n" +
-	"\x15evidence_operation_id\x18\x15 \x01(\tR\x13evidenceOperationId\x12.\n" +
-	"\x13evidence_command_id\x18\x16 \x01(\tR\x11evidenceCommandId\x12@\n" +
-	"\x1cevidence_resource_generation\x18\x17 \x01(\x03R\x1aevidenceResourceGeneration\x124\n" +
-	"\x16evidence_command_state\x18\x18 \x01(\tR\x14evidenceCommandState\x122\n" +
-	"\x15runtime_stop_verified\x18\x19 \x01(\bR\x13runtimeStopVerified\x12O\n" +
-	"%evidence_process_started_at_unix_nano\x18\x1a \x01(\x03R evidenceProcessStartedAtUnixNano\x122\n" +
-	"\x15geo_transaction_phase\x18\x1b \x01(\tR\x13geoTransactionPhase\x12,\n" +
-	"\x12geo_dataset_sha256\x18\x1c \x01(\tR\x10geoDatasetSha256\x12.\n" +
-	"\x13geo_reload_verified\x18\x1d \x01(\bR\x11geoReloadVerified\x12>\n" +
-	"\x1bcurrent_resource_generation\x18\x1e \x01(\x03R\x19currentResourceGeneration\x12@\n" +
-	"\x1cmaintenance_transaction_json\x18\x1f \x01(\tR\x1amaintenanceTransactionJson\"\x91\x02\n" +
+	"\x10applied_revision\x18\t \x01(\x04R\x0fappliedRevision\"\xd7\x01\n" +
 	"\x14RuntimeConfigRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x1f\n" +
 	"\vconfig_json\x18\x02 \x01(\tR\n" +
 	"configJson\x12(\n" +
 	"\x10include_db_users\x18\x03 \x01(\bR\x0eincludeDbUsers\x12&\n" +
 	"\x0fov_runtime_json\x18\x04 \x01(\tR\rovRuntimeJson\x12)\n" +
-	"\x10desired_revision\x18\x05 \x01(\x04R\x0fdesiredRevision\x128\n" +
-	"\x05fence\x18\x06 \x01(\v2\".antimage.node.v1.DestructiveFenceR\x05fence\"\xac\x01\n" +
+	"\x10desired_revision\x18\x05 \x01(\x04R\x0fdesiredRevision\"r\n" +
 	"\x12StopRuntimeRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x129\n" +
-	"\x19collect_usage_before_stop\x18\x02 \x01(\bR\x16collectUsageBeforeStop\x128\n" +
-	"\x05fence\x18\x03 \x01(\v2\".antimage.node.v1.DestructiveFenceR\x05fence\"\xd1\x01\n" +
-	"\x10DestructiveFence\x12!\n" +
-	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x1d\n" +
-	"\n" +
-	"command_id\x18\x02 \x01(\tR\tcommandId\x12\x1f\n" +
-	"\vresource_id\x18\x03 \x01(\tR\n" +
-	"resourceId\x12/\n" +
-	"\x13resource_generation\x18\x04 \x01(\x03R\x12resourceGeneration\x12)\n" +
-	"\x10lease_generation\x18\x05 \x01(\x03R\x0fleaseGeneration\"\xe7\x02\n" +
+	"\x19collect_usage_before_stop\x18\x02 \x01(\bR\x16collectUsageBeforeStop\"\xaa\x01\n" +
 	"\x15RuntimeActionResponse\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x1a\n" +
 	"\baccepted\x18\x02 \x01(\bR\baccepted\x128\n" +
 	"\aruntime\x18\x03 \x01(\v2\x1e.antimage.node.v1.RuntimeStateR\aruntime\x12\x18\n" +
-	"\amessage\x18\x04 \x01(\tR\amessage\x12\x1f\n" +
-	"\vbackup_json\x18\x05 \x01(\tR\n" +
-	"backupJson\x12)\n" +
-	"\x10lease_generation\x18\x06 \x01(\x03R\x0fleaseGeneration\x12\x1d\n" +
-	"\n" +
-	"command_id\x18\a \x01(\tR\tcommandId\x12/\n" +
-	"\x13resource_generation\x18\b \x01(\x03R\x12resourceGeneration\x12\x1f\n" +
-	"\vresource_id\x18\t \x01(\tR\n" +
-	"resourceId\"\x8b\x01\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\"\x8b\x01\n" +
 	"\x12InboundUserRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x1f\n" +
 	"\vinbound_tag\x18\x02 \x01(\tR\n" +
@@ -4287,40 +3571,24 @@ const file_antimage_node_v1_node_proto_rawDesc = "" +
 	"\x10RouteTestTraffic\x12\x10\n" +
 	"\x03tag\x18\x01 \x01(\tR\x03tag\x12\x0e\n" +
 	"\x02up\x18\x02 \x01(\x03R\x02up\x12\x12\n" +
-	"\x04down\x18\x03 \x01(\x03R\x04down\"\x8d\x01\n" +
+	"\x04down\x18\x03 \x01(\x03R\x04down\"S\n" +
 	"\x14RuntimeUpdateRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\tR\aversion\x128\n" +
-	"\x05fence\x18\x03 \x01(\v2\".antimage.node.v1.DestructiveFenceR\x05fence\"\xce\x01\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\"f\n" +
 	"\x10GeoUpdateRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12/\n" +
-	"\x05files\x18\x02 \x03(\v2\x19.antimage.node.v1.GeoFileR\x05files\x128\n" +
-	"\x05fence\x18\x03 \x01(\v2\".antimage.node.v1.DestructiveFenceR\x05fence\x12,\n" +
-	"\x12resume_reload_only\x18\x04 \x01(\bR\x10resumeReloadOnly\"/\n" +
+	"\x05files\x18\x02 \x03(\v2\x19.antimage.node.v1.GeoFileR\x05files\"/\n" +
 	"\aGeoFile\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\"t\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\":\n" +
 	"\x15ServiceRestartRequest\x12!\n" +
-	"\foperation_id\x18\x01 \x01(\tR\voperationId\x128\n" +
-	"\x05fence\x18\x02 \x01(\v2\".antimage.node.v1.DestructiveFenceR\x05fence\"\xa8\x03\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\"m\n" +
 	"\x14ServiceUpdateRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x18\n" +
 	"\achannel\x18\x02 \x01(\tR\achannel\x12\x18\n" +
-	"\aversion\x18\x03 \x01(\tR\aversion\x12.\n" +
-	"\x13resolved_build_json\x18\x04 \x01(\tR\x11resolvedBuildJson\x12\x16\n" +
-	"\x06action\x18\x05 \x01(\tR\x06action\x12'\n" +
-	"\x0fbackup_identity\x18\x06 \x01(\tR\x0ebackupIdentity\x12)\n" +
-	"\x10lease_generation\x18\a \x01(\x03R\x0fleaseGeneration\x12\x1d\n" +
-	"\n" +
-	"command_id\x18\b \x01(\tR\tcommandId\x12,\n" +
-	"\x12fence_operation_id\x18\t \x01(\tR\x10fenceOperationId\x12/\n" +
-	"\x13resource_generation\x18\n" +
-	" \x01(\x03R\x12resourceGeneration\x12\x1f\n" +
-	"\vresource_id\x18\v \x01(\tR\n" +
-	"resourceId\"p\n" +
+	"\aversion\x18\x03 \x01(\tR\aversion\"6\n" +
 	"\x11HostRebootRequest\x12!\n" +
-	"\foperation_id\x18\x01 \x01(\tR\voperationId\x128\n" +
-	"\x05fence\x18\x02 \x01(\v2\".antimage.node.v1.DestructiveFenceR\x05fence\"\xa5\x01\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\"\xa5\x01\n" +
 	"\x0eIPBlockRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x126\n" +
 	"\x06blocks\x18\x02 \x03(\v2\x1e.antimage.node.v1.IPBlockEntryR\x06blocks\x12\x1b\n" +
@@ -4390,32 +3658,25 @@ const file_antimage_node_v1_node_proto_rawDesc = "" +
 	"\fuplink_total\x18\x01 \x01(\x04R\vuplinkTotal\x12%\n" +
 	"\x0edownlink_total\x18\x02 \x01(\x04R\rdownlinkTotal\x12!\n" +
 	"\fupload_speed\x18\x03 \x01(\x04R\vuploadSpeed\x12%\n" +
-	"\x0edownload_speed\x18\x04 \x01(\x04R\rdownloadSpeed\"}\n" +
+	"\x0edownload_speed\x18\x04 \x01(\x04R\rdownloadSpeed\"N\n" +
 	"\x13CollectUsageRequest\x12!\n" +
 	"\fcollector_id\x18\x01 \x01(\tR\vcollectorId\x12\x14\n" +
-	"\x05reset\x18\x02 \x01(\bR\x05reset\x12-\n" +
-	"\x12reflection_version\x18\x03 \x01(\rR\x11reflectionVersion\"\x91\x03\n" +
+	"\x05reset\x18\x02 \x01(\bR\x05reset\"\xdf\x01\n" +
 	"\x0eUserUsageBatch\x12\x19\n" +
 	"\bbatch_id\x18\x01 \x01(\tR\abatchId\x127\n" +
 	"\x05stats\x18\x02 \x03(\v2!.antimage.node.v1.UserUsageSampleR\x05stats\x12=\n" +
 	"\n" +
 	"online_ips\x18\x03 \x03(\v2\x1e.antimage.node.v1.OnlineUserIPR\tonlineIps\x12:\n" +
-	"\x06speeds\x18\x04 \x03(\v2\".antimage.node.v1.UserTrafficSpeedR\x06speeds\x12i\n" +
-	"\x13reflection_receipts\x18\x05 \x03(\v28.antimage.node.v1.UserUsageBatch.ReflectionReceiptsEntryR\x12reflectionReceipts\x1aE\n" +
-	"\x17ReflectionReceiptsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\x03R\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"X\n" +
+	"\x06speeds\x18\x04 \x03(\v2\".antimage.node.v1.UserTrafficSpeedR\x06speeds\"X\n" +
 	"\x10UserTrafficSpeed\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\tR\x03uid\x12\x16\n" +
 	"\x06upload\x18\x02 \x01(\x04R\x06upload\x12\x1a\n" +
-	"\bdownload\x18\x03 \x01(\x04R\bdownload\"\x9c\x01\n" +
+	"\bdownload\x18\x03 \x01(\x04R\bdownload\"Z\n" +
 	"\x0fUserUsageSample\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\tR\x03uid\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x04R\x05value\x12\x1f\n" +
 	"\vinbound_tag\x18\x03 \x01(\tR\n" +
-	"inboundTag\x12\x1a\n" +
-	"\bprotocol\x18\x04 \x01(\tR\bprotocol\x12$\n" +
-	"\x0echild_batch_id\x18\x05 \x01(\tR\fchildBatchId\"d\n" +
+	"inboundTag\"d\n" +
 	"\fOnlineUserIP\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\tR\x03uid\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12,\n" +
@@ -4439,21 +3700,7 @@ const file_antimage_node_v1_node_proto_rawDesc = "" +
 	"\bbatch_id\x18\x01 \x01(\tR\abatchId\"Q\n" +
 	"\x10AckUsageResponse\x12\x19\n" +
 	"\bbatch_id\x18\x01 \x01(\tR\abatchId\x12\"\n" +
-	"\facknowledged\x18\x02 \x01(\bR\facknowledged\"\xd7\x01\n" +
-	"\x19AccountingRetirementProof\x12\x19\n" +
-	"\bproof_id\x18\x01 \x01(\tR\aproofId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\x03R\x06userId\x12\x14\n" +
-	"\x05epoch\x18\x03 \x01(\tR\x05epoch\x12\x1b\n" +
-	"\towner_key\x18\x04 \x01(\tR\bownerKey\x12\x1b\n" +
-	"\ttotal_raw\x18\x05 \x01(\x04R\btotalRaw\x12\x1d\n" +
-	"\n" +
-	"legacy_raw\x18\x06 \x01(\x04R\tlegacyRaw\x12\x17\n" +
-	"\anode_id\x18\a \x01(\x03R\x06nodeId\"e\n" +
-	"\x1eRetireAccountingAnchorsRequest\x12C\n" +
-	"\x06proofs\x18\x01 \x03(\v2+.antimage.node.v1.AccountingRetirementProofR\x06proofs\"s\n" +
-	"\x1fRetireAccountingAnchorsResponse\x12\"\n" +
-	"\facknowledged\x18\x01 \x01(\bR\facknowledged\x12,\n" +
-	"\x12accepted_proof_ids\x18\x02 \x03(\tR\x10acceptedProofIds\"\x83\x01\n" +
+	"\facknowledged\x18\x02 \x01(\bR\facknowledged\"\x83\x01\n" +
 	"\x11StreamLogsRequest\x12\x1b\n" +
 	"\tstream_id\x18\x01 \x01(\tR\bstreamId\x12\x1b\n" +
 	"\tmax_lines\x18\x02 \x01(\rR\bmaxLines\x124\n" +
@@ -4492,14 +3739,13 @@ const file_antimage_node_v1_node_proto_rawDesc = "" +
 	"\rApplyIPBlocks\x12 .antimage.node.v1.IPBlockRequest\x1a'.antimage.node.v1.RuntimeActionResponse\x12[\n" +
 	"\rApplyTorProxy\x12!.antimage.node.v1.TorProxyRequest\x1a'.antimage.node.v1.RuntimeActionResponse\x12j\n" +
 	"\x13ConfigureWindscribe\x12(.antimage.node.v1.WindscribeProxyRequest\x1a).antimage.node.v1.WindscribeProxyResponse\x12a\n" +
-	"\x10ConfigurePsiphon\x12%.antimage.node.v1.PsiphonProxyRequest\x1a&.antimage.node.v1.PsiphonProxyResponse2\xdc\x04\n" +
+	"\x10ConfigurePsiphon\x12%.antimage.node.v1.PsiphonProxyRequest\x1a&.antimage.node.v1.PsiphonProxyResponse2\xdc\x03\n" +
 	"\x10NodeUsageService\x12T\n" +
 	"\x12CollectOnlineUsers\x12\x17.antimage.node.v1.Empty\x1a%.antimage.node.v1.OnlineUsersResponse\x12[\n" +
 	"\x10CollectUserUsage\x12%.antimage.node.v1.CollectUsageRequest\x1a .antimage.node.v1.UserUsageBatch\x12U\n" +
 	"\fAckUserUsage\x12!.antimage.node.v1.AckUsageRequest\x1a\".antimage.node.v1.AckUsageResponse\x12c\n" +
 	"\x14CollectOutboundUsage\x12%.antimage.node.v1.CollectUsageRequest\x1a$.antimage.node.v1.OutboundUsageBatch\x12Y\n" +
-	"\x10AckOutboundUsage\x12!.antimage.node.v1.AckUsageRequest\x1a\".antimage.node.v1.AckUsageResponse\x12~\n" +
-	"\x17RetireAccountingAnchors\x120.antimage.node.v1.RetireAccountingAnchorsRequest\x1a1.antimage.node.v1.RetireAccountingAnchorsResponse2a\n" +
+	"\x10AckOutboundUsage\x12!.antimage.node.v1.AckUsageRequest\x1a\".antimage.node.v1.AckUsageResponse2a\n" +
 	"\x0fNodeLogsService\x12N\n" +
 	"\n" +
 	"StreamLogs\x12#.antimage.node.v1.StreamLogsRequest\x1a\x19.antimage.node.v1.LogLine0\x01B<Z:github.com/antimage/antimage/internal/proto/node/v1;nodev1b\x06proto3"
@@ -4516,166 +3762,151 @@ func file_antimage_node_v1_node_proto_rawDescGZIP() []byte {
 	return file_antimage_node_v1_node_proto_rawDescData
 }
 
-var file_antimage_node_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 60)
+var file_antimage_node_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_antimage_node_v1_node_proto_goTypes = []any{
-	(*Empty)(nil),                           // 0: antimage.node.v1.Empty
-	(*HelloRequest)(nil),                    // 1: antimage.node.v1.HelloRequest
-	(*HelloResponse)(nil),                   // 2: antimage.node.v1.HelloResponse
-	(*ConnectRequest)(nil),                  // 3: antimage.node.v1.ConnectRequest
-	(*ConnectResponse)(nil),                 // 4: antimage.node.v1.ConnectResponse
-	(*HealthRequest)(nil),                   // 5: antimage.node.v1.HealthRequest
-	(*HealthResponse)(nil),                  // 6: antimage.node.v1.HealthResponse
-	(*RuntimeState)(nil),                    // 7: antimage.node.v1.RuntimeState
-	(*RuntimeConfigRequest)(nil),            // 8: antimage.node.v1.RuntimeConfigRequest
-	(*StopRuntimeRequest)(nil),              // 9: antimage.node.v1.StopRuntimeRequest
-	(*DestructiveFence)(nil),                // 10: antimage.node.v1.DestructiveFence
-	(*RuntimeActionResponse)(nil),           // 11: antimage.node.v1.RuntimeActionResponse
-	(*InboundUserRequest)(nil),              // 12: antimage.node.v1.InboundUserRequest
-	(*RemoveInboundUserRequest)(nil),        // 13: antimage.node.v1.RemoveInboundUserRequest
-	(*InboundUser)(nil),                     // 14: antimage.node.v1.InboundUser
-	(*MetricsRequest)(nil),                  // 15: antimage.node.v1.MetricsRequest
-	(*MetricsResponse)(nil),                 // 16: antimage.node.v1.MetricsResponse
-	(*PublicIPsRequest)(nil),                // 17: antimage.node.v1.PublicIPsRequest
-	(*PublicIPsResponse)(nil),               // 18: antimage.node.v1.PublicIPsResponse
-	(*OutboundTestRequest)(nil),             // 19: antimage.node.v1.OutboundTestRequest
-	(*OutboundTestResponse)(nil),            // 20: antimage.node.v1.OutboundTestResponse
-	(*RouteTestRequest)(nil),                // 21: antimage.node.v1.RouteTestRequest
-	(*RouteTestResponse)(nil),               // 22: antimage.node.v1.RouteTestResponse
-	(*RouteTestTraffic)(nil),                // 23: antimage.node.v1.RouteTestTraffic
-	(*RuntimeUpdateRequest)(nil),            // 24: antimage.node.v1.RuntimeUpdateRequest
-	(*GeoUpdateRequest)(nil),                // 25: antimage.node.v1.GeoUpdateRequest
-	(*GeoFile)(nil),                         // 26: antimage.node.v1.GeoFile
-	(*ServiceRestartRequest)(nil),           // 27: antimage.node.v1.ServiceRestartRequest
-	(*ServiceUpdateRequest)(nil),            // 28: antimage.node.v1.ServiceUpdateRequest
-	(*HostRebootRequest)(nil),               // 29: antimage.node.v1.HostRebootRequest
-	(*IPBlockRequest)(nil),                  // 30: antimage.node.v1.IPBlockRequest
-	(*IPBlockEntry)(nil),                    // 31: antimage.node.v1.IPBlockEntry
-	(*TorProxyRequest)(nil),                 // 32: antimage.node.v1.TorProxyRequest
-	(*WindscribeProxyRequest)(nil),          // 33: antimage.node.v1.WindscribeProxyRequest
-	(*WindscribeLocation)(nil),              // 34: antimage.node.v1.WindscribeLocation
-	(*WindscribeProxyResponse)(nil),         // 35: antimage.node.v1.WindscribeProxyResponse
-	(*PsiphonProxyRequest)(nil),             // 36: antimage.node.v1.PsiphonProxyRequest
-	(*PsiphonProxyInstance)(nil),            // 37: antimage.node.v1.PsiphonProxyInstance
-	(*PsiphonProxyResponse)(nil),            // 38: antimage.node.v1.PsiphonProxyResponse
-	(*SystemMetrics)(nil),                   // 39: antimage.node.v1.SystemMetrics
-	(*TransferMetrics)(nil),                 // 40: antimage.node.v1.TransferMetrics
-	(*CollectUsageRequest)(nil),             // 41: antimage.node.v1.CollectUsageRequest
-	(*UserUsageBatch)(nil),                  // 42: antimage.node.v1.UserUsageBatch
-	(*UserTrafficSpeed)(nil),                // 43: antimage.node.v1.UserTrafficSpeed
-	(*UserUsageSample)(nil),                 // 44: antimage.node.v1.UserUsageSample
-	(*OnlineUserIP)(nil),                    // 45: antimage.node.v1.OnlineUserIP
-	(*OnlineIP)(nil),                        // 46: antimage.node.v1.OnlineIP
-	(*OutboundUsageBatch)(nil),              // 47: antimage.node.v1.OutboundUsageBatch
-	(*OutboundUsageSample)(nil),             // 48: antimage.node.v1.OutboundUsageSample
-	(*InboundUsageSample)(nil),              // 49: antimage.node.v1.InboundUsageSample
-	(*AckUsageRequest)(nil),                 // 50: antimage.node.v1.AckUsageRequest
-	(*AckUsageResponse)(nil),                // 51: antimage.node.v1.AckUsageResponse
-	(*AccountingRetirementProof)(nil),       // 52: antimage.node.v1.AccountingRetirementProof
-	(*RetireAccountingAnchorsRequest)(nil),  // 53: antimage.node.v1.RetireAccountingAnchorsRequest
-	(*RetireAccountingAnchorsResponse)(nil), // 54: antimage.node.v1.RetireAccountingAnchorsResponse
-	(*StreamLogsRequest)(nil),               // 55: antimage.node.v1.StreamLogsRequest
-	(*LogLine)(nil),                         // 56: antimage.node.v1.LogLine
-	(*OnlineUsersResponse)(nil),             // 57: antimage.node.v1.OnlineUsersResponse
-	nil,                                     // 58: antimage.node.v1.InboundUser.FieldsEntry
-	nil,                                     // 59: antimage.node.v1.UserUsageBatch.ReflectionReceiptsEntry
+	(*Empty)(nil),                    // 0: antimage.node.v1.Empty
+	(*HelloRequest)(nil),             // 1: antimage.node.v1.HelloRequest
+	(*HelloResponse)(nil),            // 2: antimage.node.v1.HelloResponse
+	(*ConnectRequest)(nil),           // 3: antimage.node.v1.ConnectRequest
+	(*ConnectResponse)(nil),          // 4: antimage.node.v1.ConnectResponse
+	(*HealthRequest)(nil),            // 5: antimage.node.v1.HealthRequest
+	(*HealthResponse)(nil),           // 6: antimage.node.v1.HealthResponse
+	(*RuntimeState)(nil),             // 7: antimage.node.v1.RuntimeState
+	(*RuntimeConfigRequest)(nil),     // 8: antimage.node.v1.RuntimeConfigRequest
+	(*StopRuntimeRequest)(nil),       // 9: antimage.node.v1.StopRuntimeRequest
+	(*RuntimeActionResponse)(nil),    // 10: antimage.node.v1.RuntimeActionResponse
+	(*InboundUserRequest)(nil),       // 11: antimage.node.v1.InboundUserRequest
+	(*RemoveInboundUserRequest)(nil), // 12: antimage.node.v1.RemoveInboundUserRequest
+	(*InboundUser)(nil),              // 13: antimage.node.v1.InboundUser
+	(*MetricsRequest)(nil),           // 14: antimage.node.v1.MetricsRequest
+	(*MetricsResponse)(nil),          // 15: antimage.node.v1.MetricsResponse
+	(*PublicIPsRequest)(nil),         // 16: antimage.node.v1.PublicIPsRequest
+	(*PublicIPsResponse)(nil),        // 17: antimage.node.v1.PublicIPsResponse
+	(*OutboundTestRequest)(nil),      // 18: antimage.node.v1.OutboundTestRequest
+	(*OutboundTestResponse)(nil),     // 19: antimage.node.v1.OutboundTestResponse
+	(*RouteTestRequest)(nil),         // 20: antimage.node.v1.RouteTestRequest
+	(*RouteTestResponse)(nil),        // 21: antimage.node.v1.RouteTestResponse
+	(*RouteTestTraffic)(nil),         // 22: antimage.node.v1.RouteTestTraffic
+	(*RuntimeUpdateRequest)(nil),     // 23: antimage.node.v1.RuntimeUpdateRequest
+	(*GeoUpdateRequest)(nil),         // 24: antimage.node.v1.GeoUpdateRequest
+	(*GeoFile)(nil),                  // 25: antimage.node.v1.GeoFile
+	(*ServiceRestartRequest)(nil),    // 26: antimage.node.v1.ServiceRestartRequest
+	(*ServiceUpdateRequest)(nil),     // 27: antimage.node.v1.ServiceUpdateRequest
+	(*HostRebootRequest)(nil),        // 28: antimage.node.v1.HostRebootRequest
+	(*IPBlockRequest)(nil),           // 29: antimage.node.v1.IPBlockRequest
+	(*IPBlockEntry)(nil),             // 30: antimage.node.v1.IPBlockEntry
+	(*TorProxyRequest)(nil),          // 31: antimage.node.v1.TorProxyRequest
+	(*WindscribeProxyRequest)(nil),   // 32: antimage.node.v1.WindscribeProxyRequest
+	(*WindscribeLocation)(nil),       // 33: antimage.node.v1.WindscribeLocation
+	(*WindscribeProxyResponse)(nil),  // 34: antimage.node.v1.WindscribeProxyResponse
+	(*PsiphonProxyRequest)(nil),      // 35: antimage.node.v1.PsiphonProxyRequest
+	(*PsiphonProxyInstance)(nil),     // 36: antimage.node.v1.PsiphonProxyInstance
+	(*PsiphonProxyResponse)(nil),     // 37: antimage.node.v1.PsiphonProxyResponse
+	(*SystemMetrics)(nil),            // 38: antimage.node.v1.SystemMetrics
+	(*TransferMetrics)(nil),          // 39: antimage.node.v1.TransferMetrics
+	(*CollectUsageRequest)(nil),      // 40: antimage.node.v1.CollectUsageRequest
+	(*UserUsageBatch)(nil),           // 41: antimage.node.v1.UserUsageBatch
+	(*UserTrafficSpeed)(nil),         // 42: antimage.node.v1.UserTrafficSpeed
+	(*UserUsageSample)(nil),          // 43: antimage.node.v1.UserUsageSample
+	(*OnlineUserIP)(nil),             // 44: antimage.node.v1.OnlineUserIP
+	(*OnlineIP)(nil),                 // 45: antimage.node.v1.OnlineIP
+	(*OutboundUsageBatch)(nil),       // 46: antimage.node.v1.OutboundUsageBatch
+	(*OutboundUsageSample)(nil),      // 47: antimage.node.v1.OutboundUsageSample
+	(*InboundUsageSample)(nil),       // 48: antimage.node.v1.InboundUsageSample
+	(*AckUsageRequest)(nil),          // 49: antimage.node.v1.AckUsageRequest
+	(*AckUsageResponse)(nil),         // 50: antimage.node.v1.AckUsageResponse
+	(*StreamLogsRequest)(nil),        // 51: antimage.node.v1.StreamLogsRequest
+	(*LogLine)(nil),                  // 52: antimage.node.v1.LogLine
+	(*OnlineUsersResponse)(nil),      // 53: antimage.node.v1.OnlineUsersResponse
+	nil,                              // 54: antimage.node.v1.InboundUser.FieldsEntry
 }
 var file_antimage_node_v1_node_proto_depIdxs = []int32{
 	7,  // 0: antimage.node.v1.HelloResponse.runtime:type_name -> antimage.node.v1.RuntimeState
 	7,  // 1: antimage.node.v1.ConnectResponse.runtime:type_name -> antimage.node.v1.RuntimeState
 	7,  // 2: antimage.node.v1.HealthResponse.runtime:type_name -> antimage.node.v1.RuntimeState
-	16, // 3: antimage.node.v1.HealthResponse.metrics:type_name -> antimage.node.v1.MetricsResponse
-	10, // 4: antimage.node.v1.RuntimeConfigRequest.fence:type_name -> antimage.node.v1.DestructiveFence
-	10, // 5: antimage.node.v1.StopRuntimeRequest.fence:type_name -> antimage.node.v1.DestructiveFence
-	7,  // 6: antimage.node.v1.RuntimeActionResponse.runtime:type_name -> antimage.node.v1.RuntimeState
-	14, // 7: antimage.node.v1.InboundUserRequest.user:type_name -> antimage.node.v1.InboundUser
-	58, // 8: antimage.node.v1.InboundUser.fields:type_name -> antimage.node.v1.InboundUser.FieldsEntry
-	7,  // 9: antimage.node.v1.MetricsResponse.runtime:type_name -> antimage.node.v1.RuntimeState
-	39, // 10: antimage.node.v1.MetricsResponse.system:type_name -> antimage.node.v1.SystemMetrics
-	40, // 11: antimage.node.v1.MetricsResponse.transfer:type_name -> antimage.node.v1.TransferMetrics
-	23, // 12: antimage.node.v1.RouteTestResponse.outbound_traffic:type_name -> antimage.node.v1.RouteTestTraffic
-	10, // 13: antimage.node.v1.RuntimeUpdateRequest.fence:type_name -> antimage.node.v1.DestructiveFence
-	26, // 14: antimage.node.v1.GeoUpdateRequest.files:type_name -> antimage.node.v1.GeoFile
-	10, // 15: antimage.node.v1.GeoUpdateRequest.fence:type_name -> antimage.node.v1.DestructiveFence
-	10, // 16: antimage.node.v1.ServiceRestartRequest.fence:type_name -> antimage.node.v1.DestructiveFence
-	10, // 17: antimage.node.v1.HostRebootRequest.fence:type_name -> antimage.node.v1.DestructiveFence
-	31, // 18: antimage.node.v1.IPBlockRequest.blocks:type_name -> antimage.node.v1.IPBlockEntry
-	7,  // 19: antimage.node.v1.WindscribeProxyResponse.runtime:type_name -> antimage.node.v1.RuntimeState
-	34, // 20: antimage.node.v1.WindscribeProxyResponse.locations:type_name -> antimage.node.v1.WindscribeLocation
-	7,  // 21: antimage.node.v1.PsiphonProxyResponse.runtime:type_name -> antimage.node.v1.RuntimeState
-	37, // 22: antimage.node.v1.PsiphonProxyResponse.instances:type_name -> antimage.node.v1.PsiphonProxyInstance
-	44, // 23: antimage.node.v1.UserUsageBatch.stats:type_name -> antimage.node.v1.UserUsageSample
-	45, // 24: antimage.node.v1.UserUsageBatch.online_ips:type_name -> antimage.node.v1.OnlineUserIP
-	43, // 25: antimage.node.v1.UserUsageBatch.speeds:type_name -> antimage.node.v1.UserTrafficSpeed
-	59, // 26: antimage.node.v1.UserUsageBatch.reflection_receipts:type_name -> antimage.node.v1.UserUsageBatch.ReflectionReceiptsEntry
-	46, // 27: antimage.node.v1.OnlineUserIP.ips:type_name -> antimage.node.v1.OnlineIP
-	48, // 28: antimage.node.v1.OutboundUsageBatch.stats:type_name -> antimage.node.v1.OutboundUsageSample
-	49, // 29: antimage.node.v1.OutboundUsageBatch.inbound_stats:type_name -> antimage.node.v1.InboundUsageSample
-	52, // 30: antimage.node.v1.RetireAccountingAnchorsRequest.proofs:type_name -> antimage.node.v1.AccountingRetirementProof
-	1,  // 31: antimage.node.v1.NodeControlService.Hello:input_type -> antimage.node.v1.HelloRequest
-	3,  // 32: antimage.node.v1.NodeControlService.Connect:input_type -> antimage.node.v1.ConnectRequest
-	5,  // 33: antimage.node.v1.NodeControlService.Health:input_type -> antimage.node.v1.HealthRequest
-	8,  // 34: antimage.node.v1.NodeRuntimeService.StartRuntime:input_type -> antimage.node.v1.RuntimeConfigRequest
-	8,  // 35: antimage.node.v1.NodeRuntimeService.RestartRuntime:input_type -> antimage.node.v1.RuntimeConfigRequest
-	9,  // 36: antimage.node.v1.NodeRuntimeService.StopRuntime:input_type -> antimage.node.v1.StopRuntimeRequest
-	8,  // 37: antimage.node.v1.NodeRuntimeService.SyncConfig:input_type -> antimage.node.v1.RuntimeConfigRequest
-	12, // 38: antimage.node.v1.NodeRuntimeService.AddUser:input_type -> antimage.node.v1.InboundUserRequest
-	12, // 39: antimage.node.v1.NodeRuntimeService.UpdateUser:input_type -> antimage.node.v1.InboundUserRequest
-	13, // 40: antimage.node.v1.NodeRuntimeService.RemoveUser:input_type -> antimage.node.v1.RemoveInboundUserRequest
-	15, // 41: antimage.node.v1.NodeRuntimeService.Metrics:input_type -> antimage.node.v1.MetricsRequest
-	17, // 42: antimage.node.v1.NodeRuntimeService.PublicIPs:input_type -> antimage.node.v1.PublicIPsRequest
-	19, // 43: antimage.node.v1.NodeRuntimeService.TestOutbound:input_type -> antimage.node.v1.OutboundTestRequest
-	21, // 44: antimage.node.v1.NodeRuntimeService.TestRoute:input_type -> antimage.node.v1.RouteTestRequest
-	24, // 45: antimage.node.v1.NodeRuntimeService.UpdateRuntime:input_type -> antimage.node.v1.RuntimeUpdateRequest
-	25, // 46: antimage.node.v1.NodeRuntimeService.UpdateGeo:input_type -> antimage.node.v1.GeoUpdateRequest
-	27, // 47: antimage.node.v1.NodeRuntimeService.RestartService:input_type -> antimage.node.v1.ServiceRestartRequest
-	28, // 48: antimage.node.v1.NodeRuntimeService.UpdateService:input_type -> antimage.node.v1.ServiceUpdateRequest
-	29, // 49: antimage.node.v1.NodeRuntimeService.RebootHost:input_type -> antimage.node.v1.HostRebootRequest
-	30, // 50: antimage.node.v1.NodeRuntimeService.ApplyIPBlocks:input_type -> antimage.node.v1.IPBlockRequest
-	32, // 51: antimage.node.v1.NodeRuntimeService.ApplyTorProxy:input_type -> antimage.node.v1.TorProxyRequest
-	33, // 52: antimage.node.v1.NodeRuntimeService.ConfigureWindscribe:input_type -> antimage.node.v1.WindscribeProxyRequest
-	36, // 53: antimage.node.v1.NodeRuntimeService.ConfigurePsiphon:input_type -> antimage.node.v1.PsiphonProxyRequest
-	0,  // 54: antimage.node.v1.NodeUsageService.CollectOnlineUsers:input_type -> antimage.node.v1.Empty
-	41, // 55: antimage.node.v1.NodeUsageService.CollectUserUsage:input_type -> antimage.node.v1.CollectUsageRequest
-	50, // 56: antimage.node.v1.NodeUsageService.AckUserUsage:input_type -> antimage.node.v1.AckUsageRequest
-	41, // 57: antimage.node.v1.NodeUsageService.CollectOutboundUsage:input_type -> antimage.node.v1.CollectUsageRequest
-	50, // 58: antimage.node.v1.NodeUsageService.AckOutboundUsage:input_type -> antimage.node.v1.AckUsageRequest
-	53, // 59: antimage.node.v1.NodeUsageService.RetireAccountingAnchors:input_type -> antimage.node.v1.RetireAccountingAnchorsRequest
-	55, // 60: antimage.node.v1.NodeLogsService.StreamLogs:input_type -> antimage.node.v1.StreamLogsRequest
-	2,  // 61: antimage.node.v1.NodeControlService.Hello:output_type -> antimage.node.v1.HelloResponse
-	4,  // 62: antimage.node.v1.NodeControlService.Connect:output_type -> antimage.node.v1.ConnectResponse
-	6,  // 63: antimage.node.v1.NodeControlService.Health:output_type -> antimage.node.v1.HealthResponse
-	11, // 64: antimage.node.v1.NodeRuntimeService.StartRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
-	11, // 65: antimage.node.v1.NodeRuntimeService.RestartRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
-	11, // 66: antimage.node.v1.NodeRuntimeService.StopRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
-	11, // 67: antimage.node.v1.NodeRuntimeService.SyncConfig:output_type -> antimage.node.v1.RuntimeActionResponse
-	11, // 68: antimage.node.v1.NodeRuntimeService.AddUser:output_type -> antimage.node.v1.RuntimeActionResponse
-	11, // 69: antimage.node.v1.NodeRuntimeService.UpdateUser:output_type -> antimage.node.v1.RuntimeActionResponse
-	11, // 70: antimage.node.v1.NodeRuntimeService.RemoveUser:output_type -> antimage.node.v1.RuntimeActionResponse
-	16, // 71: antimage.node.v1.NodeRuntimeService.Metrics:output_type -> antimage.node.v1.MetricsResponse
-	18, // 72: antimage.node.v1.NodeRuntimeService.PublicIPs:output_type -> antimage.node.v1.PublicIPsResponse
-	20, // 73: antimage.node.v1.NodeRuntimeService.TestOutbound:output_type -> antimage.node.v1.OutboundTestResponse
-	22, // 74: antimage.node.v1.NodeRuntimeService.TestRoute:output_type -> antimage.node.v1.RouteTestResponse
-	11, // 75: antimage.node.v1.NodeRuntimeService.UpdateRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
-	11, // 76: antimage.node.v1.NodeRuntimeService.UpdateGeo:output_type -> antimage.node.v1.RuntimeActionResponse
-	11, // 77: antimage.node.v1.NodeRuntimeService.RestartService:output_type -> antimage.node.v1.RuntimeActionResponse
-	11, // 78: antimage.node.v1.NodeRuntimeService.UpdateService:output_type -> antimage.node.v1.RuntimeActionResponse
-	11, // 79: antimage.node.v1.NodeRuntimeService.RebootHost:output_type -> antimage.node.v1.RuntimeActionResponse
-	11, // 80: antimage.node.v1.NodeRuntimeService.ApplyIPBlocks:output_type -> antimage.node.v1.RuntimeActionResponse
-	11, // 81: antimage.node.v1.NodeRuntimeService.ApplyTorProxy:output_type -> antimage.node.v1.RuntimeActionResponse
-	35, // 82: antimage.node.v1.NodeRuntimeService.ConfigureWindscribe:output_type -> antimage.node.v1.WindscribeProxyResponse
-	38, // 83: antimage.node.v1.NodeRuntimeService.ConfigurePsiphon:output_type -> antimage.node.v1.PsiphonProxyResponse
-	57, // 84: antimage.node.v1.NodeUsageService.CollectOnlineUsers:output_type -> antimage.node.v1.OnlineUsersResponse
-	42, // 85: antimage.node.v1.NodeUsageService.CollectUserUsage:output_type -> antimage.node.v1.UserUsageBatch
-	51, // 86: antimage.node.v1.NodeUsageService.AckUserUsage:output_type -> antimage.node.v1.AckUsageResponse
-	47, // 87: antimage.node.v1.NodeUsageService.CollectOutboundUsage:output_type -> antimage.node.v1.OutboundUsageBatch
-	51, // 88: antimage.node.v1.NodeUsageService.AckOutboundUsage:output_type -> antimage.node.v1.AckUsageResponse
-	54, // 89: antimage.node.v1.NodeUsageService.RetireAccountingAnchors:output_type -> antimage.node.v1.RetireAccountingAnchorsResponse
-	56, // 90: antimage.node.v1.NodeLogsService.StreamLogs:output_type -> antimage.node.v1.LogLine
-	61, // [61:91] is the sub-list for method output_type
-	31, // [31:61] is the sub-list for method input_type
-	31, // [31:31] is the sub-list for extension type_name
-	31, // [31:31] is the sub-list for extension extendee
-	0,  // [0:31] is the sub-list for field type_name
+	15, // 3: antimage.node.v1.HealthResponse.metrics:type_name -> antimage.node.v1.MetricsResponse
+	7,  // 4: antimage.node.v1.RuntimeActionResponse.runtime:type_name -> antimage.node.v1.RuntimeState
+	13, // 5: antimage.node.v1.InboundUserRequest.user:type_name -> antimage.node.v1.InboundUser
+	54, // 6: antimage.node.v1.InboundUser.fields:type_name -> antimage.node.v1.InboundUser.FieldsEntry
+	7,  // 7: antimage.node.v1.MetricsResponse.runtime:type_name -> antimage.node.v1.RuntimeState
+	38, // 8: antimage.node.v1.MetricsResponse.system:type_name -> antimage.node.v1.SystemMetrics
+	39, // 9: antimage.node.v1.MetricsResponse.transfer:type_name -> antimage.node.v1.TransferMetrics
+	22, // 10: antimage.node.v1.RouteTestResponse.outbound_traffic:type_name -> antimage.node.v1.RouteTestTraffic
+	25, // 11: antimage.node.v1.GeoUpdateRequest.files:type_name -> antimage.node.v1.GeoFile
+	30, // 12: antimage.node.v1.IPBlockRequest.blocks:type_name -> antimage.node.v1.IPBlockEntry
+	7,  // 13: antimage.node.v1.WindscribeProxyResponse.runtime:type_name -> antimage.node.v1.RuntimeState
+	33, // 14: antimage.node.v1.WindscribeProxyResponse.locations:type_name -> antimage.node.v1.WindscribeLocation
+	7,  // 15: antimage.node.v1.PsiphonProxyResponse.runtime:type_name -> antimage.node.v1.RuntimeState
+	36, // 16: antimage.node.v1.PsiphonProxyResponse.instances:type_name -> antimage.node.v1.PsiphonProxyInstance
+	43, // 17: antimage.node.v1.UserUsageBatch.stats:type_name -> antimage.node.v1.UserUsageSample
+	44, // 18: antimage.node.v1.UserUsageBatch.online_ips:type_name -> antimage.node.v1.OnlineUserIP
+	42, // 19: antimage.node.v1.UserUsageBatch.speeds:type_name -> antimage.node.v1.UserTrafficSpeed
+	45, // 20: antimage.node.v1.OnlineUserIP.ips:type_name -> antimage.node.v1.OnlineIP
+	47, // 21: antimage.node.v1.OutboundUsageBatch.stats:type_name -> antimage.node.v1.OutboundUsageSample
+	48, // 22: antimage.node.v1.OutboundUsageBatch.inbound_stats:type_name -> antimage.node.v1.InboundUsageSample
+	1,  // 23: antimage.node.v1.NodeControlService.Hello:input_type -> antimage.node.v1.HelloRequest
+	3,  // 24: antimage.node.v1.NodeControlService.Connect:input_type -> antimage.node.v1.ConnectRequest
+	5,  // 25: antimage.node.v1.NodeControlService.Health:input_type -> antimage.node.v1.HealthRequest
+	8,  // 26: antimage.node.v1.NodeRuntimeService.StartRuntime:input_type -> antimage.node.v1.RuntimeConfigRequest
+	8,  // 27: antimage.node.v1.NodeRuntimeService.RestartRuntime:input_type -> antimage.node.v1.RuntimeConfigRequest
+	9,  // 28: antimage.node.v1.NodeRuntimeService.StopRuntime:input_type -> antimage.node.v1.StopRuntimeRequest
+	8,  // 29: antimage.node.v1.NodeRuntimeService.SyncConfig:input_type -> antimage.node.v1.RuntimeConfigRequest
+	11, // 30: antimage.node.v1.NodeRuntimeService.AddUser:input_type -> antimage.node.v1.InboundUserRequest
+	11, // 31: antimage.node.v1.NodeRuntimeService.UpdateUser:input_type -> antimage.node.v1.InboundUserRequest
+	12, // 32: antimage.node.v1.NodeRuntimeService.RemoveUser:input_type -> antimage.node.v1.RemoveInboundUserRequest
+	14, // 33: antimage.node.v1.NodeRuntimeService.Metrics:input_type -> antimage.node.v1.MetricsRequest
+	16, // 34: antimage.node.v1.NodeRuntimeService.PublicIPs:input_type -> antimage.node.v1.PublicIPsRequest
+	18, // 35: antimage.node.v1.NodeRuntimeService.TestOutbound:input_type -> antimage.node.v1.OutboundTestRequest
+	20, // 36: antimage.node.v1.NodeRuntimeService.TestRoute:input_type -> antimage.node.v1.RouteTestRequest
+	23, // 37: antimage.node.v1.NodeRuntimeService.UpdateRuntime:input_type -> antimage.node.v1.RuntimeUpdateRequest
+	24, // 38: antimage.node.v1.NodeRuntimeService.UpdateGeo:input_type -> antimage.node.v1.GeoUpdateRequest
+	26, // 39: antimage.node.v1.NodeRuntimeService.RestartService:input_type -> antimage.node.v1.ServiceRestartRequest
+	27, // 40: antimage.node.v1.NodeRuntimeService.UpdateService:input_type -> antimage.node.v1.ServiceUpdateRequest
+	28, // 41: antimage.node.v1.NodeRuntimeService.RebootHost:input_type -> antimage.node.v1.HostRebootRequest
+	29, // 42: antimage.node.v1.NodeRuntimeService.ApplyIPBlocks:input_type -> antimage.node.v1.IPBlockRequest
+	31, // 43: antimage.node.v1.NodeRuntimeService.ApplyTorProxy:input_type -> antimage.node.v1.TorProxyRequest
+	32, // 44: antimage.node.v1.NodeRuntimeService.ConfigureWindscribe:input_type -> antimage.node.v1.WindscribeProxyRequest
+	35, // 45: antimage.node.v1.NodeRuntimeService.ConfigurePsiphon:input_type -> antimage.node.v1.PsiphonProxyRequest
+	0,  // 46: antimage.node.v1.NodeUsageService.CollectOnlineUsers:input_type -> antimage.node.v1.Empty
+	40, // 47: antimage.node.v1.NodeUsageService.CollectUserUsage:input_type -> antimage.node.v1.CollectUsageRequest
+	49, // 48: antimage.node.v1.NodeUsageService.AckUserUsage:input_type -> antimage.node.v1.AckUsageRequest
+	40, // 49: antimage.node.v1.NodeUsageService.CollectOutboundUsage:input_type -> antimage.node.v1.CollectUsageRequest
+	49, // 50: antimage.node.v1.NodeUsageService.AckOutboundUsage:input_type -> antimage.node.v1.AckUsageRequest
+	51, // 51: antimage.node.v1.NodeLogsService.StreamLogs:input_type -> antimage.node.v1.StreamLogsRequest
+	2,  // 52: antimage.node.v1.NodeControlService.Hello:output_type -> antimage.node.v1.HelloResponse
+	4,  // 53: antimage.node.v1.NodeControlService.Connect:output_type -> antimage.node.v1.ConnectResponse
+	6,  // 54: antimage.node.v1.NodeControlService.Health:output_type -> antimage.node.v1.HealthResponse
+	10, // 55: antimage.node.v1.NodeRuntimeService.StartRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 56: antimage.node.v1.NodeRuntimeService.RestartRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 57: antimage.node.v1.NodeRuntimeService.StopRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 58: antimage.node.v1.NodeRuntimeService.SyncConfig:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 59: antimage.node.v1.NodeRuntimeService.AddUser:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 60: antimage.node.v1.NodeRuntimeService.UpdateUser:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 61: antimage.node.v1.NodeRuntimeService.RemoveUser:output_type -> antimage.node.v1.RuntimeActionResponse
+	15, // 62: antimage.node.v1.NodeRuntimeService.Metrics:output_type -> antimage.node.v1.MetricsResponse
+	17, // 63: antimage.node.v1.NodeRuntimeService.PublicIPs:output_type -> antimage.node.v1.PublicIPsResponse
+	19, // 64: antimage.node.v1.NodeRuntimeService.TestOutbound:output_type -> antimage.node.v1.OutboundTestResponse
+	21, // 65: antimage.node.v1.NodeRuntimeService.TestRoute:output_type -> antimage.node.v1.RouteTestResponse
+	10, // 66: antimage.node.v1.NodeRuntimeService.UpdateRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 67: antimage.node.v1.NodeRuntimeService.UpdateGeo:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 68: antimage.node.v1.NodeRuntimeService.RestartService:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 69: antimage.node.v1.NodeRuntimeService.UpdateService:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 70: antimage.node.v1.NodeRuntimeService.RebootHost:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 71: antimage.node.v1.NodeRuntimeService.ApplyIPBlocks:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 72: antimage.node.v1.NodeRuntimeService.ApplyTorProxy:output_type -> antimage.node.v1.RuntimeActionResponse
+	34, // 73: antimage.node.v1.NodeRuntimeService.ConfigureWindscribe:output_type -> antimage.node.v1.WindscribeProxyResponse
+	37, // 74: antimage.node.v1.NodeRuntimeService.ConfigurePsiphon:output_type -> antimage.node.v1.PsiphonProxyResponse
+	53, // 75: antimage.node.v1.NodeUsageService.CollectOnlineUsers:output_type -> antimage.node.v1.OnlineUsersResponse
+	41, // 76: antimage.node.v1.NodeUsageService.CollectUserUsage:output_type -> antimage.node.v1.UserUsageBatch
+	50, // 77: antimage.node.v1.NodeUsageService.AckUserUsage:output_type -> antimage.node.v1.AckUsageResponse
+	46, // 78: antimage.node.v1.NodeUsageService.CollectOutboundUsage:output_type -> antimage.node.v1.OutboundUsageBatch
+	50, // 79: antimage.node.v1.NodeUsageService.AckOutboundUsage:output_type -> antimage.node.v1.AckUsageResponse
+	52, // 80: antimage.node.v1.NodeLogsService.StreamLogs:output_type -> antimage.node.v1.LogLine
+	52, // [52:81] is the sub-list for method output_type
+	23, // [23:52] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_antimage_node_v1_node_proto_init() }
@@ -4689,7 +3920,7 @@ func file_antimage_node_v1_node_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_antimage_node_v1_node_proto_rawDesc), len(file_antimage_node_v1_node_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   60,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   4,
 		},

@@ -359,14 +359,6 @@ func newLifecycleTestDB(t *testing.T) *sql.DB {
 			created_at DATETIME,
 			updated_at DATETIME
 		)`,
-		`CREATE TABLE user_accounting_tombstones (user_id INTEGER PRIMARY KEY, deleted_at DATETIME NOT NULL)`,
-		`CREATE TABLE node_usage_user_queue (
-			id INTEGER PRIMARY KEY AUTOINCREMENT, node_id INTEGER NOT NULL, batch_id TEXT NOT NULL,
-			ledger_json TEXT NULL, user_id INTEGER NOT NULL, used_traffic INTEGER NOT NULL DEFAULT 0,
-			online INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, processed_at DATETIME NULL,
-			history_processed_at DATETIME NULL, retirement_pending INTEGER NOT NULL DEFAULT 0,
-			UNIQUE(node_id,batch_id,user_id)
-		)`,
 		`CREATE TABLE user_usage_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, used_traffic_at_reset BIGINT, reset_at DATETIME NULL)`,
 		`CREATE TABLE node_user_usages (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at DATETIME, user_id INTEGER, node_id INTEGER, used_traffic BIGINT)`,
 		`CREATE TABLE admins (id INTEGER PRIMARY KEY, username TEXT, created_by TEXT DEFAULT 'root', role TEXT, status TEXT DEFAULT 'active', use_service_traffic_limits INTEGER DEFAULT 0, created_traffic BIGINT DEFAULT 0, data_limit BIGINT NULL, traffic_limit_mode TEXT DEFAULT 'used_traffic')`,

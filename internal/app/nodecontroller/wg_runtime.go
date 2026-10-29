@@ -37,7 +37,6 @@ type WGRuntimePeer struct {
 	Status                string  `json:"status"`
 	UsedTraffic           int64   `json:"used_traffic"`
 	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
-	ReflectedUsageLedger  string  `json:"reflected_usage_ledger,omitempty"`
 	DataLimit             *int64  `json:"data_limit,omitempty"`
 	Expire                *int64  `json:"expire,omitempty"`
 	DeviceLimit           int64   `json:"device_limit,omitempty"`
@@ -168,7 +167,7 @@ func (r Repository) attachWGUsageReflections(
 	}
 
 	query := `
-SELECT user_id, batch_id, COALESCE(ledger_json, '')
+SELECT user_id, batch_id
 FROM node_wireguard_usage_reflection
 WHERE node_id = ?
   AND user_id IN (` + strings.Join(userPlaceholders, ",") + `)`
@@ -188,18 +187,16 @@ WHERE node_id = ?
 	defer rows.Close()
 
 	reflected := make(map[int64]string, len(userIDs))
-	reflectedLedger := make(map[int64]string, len(userIDs))
 
 	for rows.Next() {
 		var userID int64
-		var batchID, ledger string
+		var batchID string
 
-		if err := rows.Scan(&userID, &batchID, &ledger); err != nil {
+		if err := rows.Scan(&userID, &batchID); err != nil {
 			return err
 		}
 
 		reflected[userID] = strings.TrimSpace(batchID)
-		reflectedLedger[userID] = ledger
 	}
 
 	if err := rows.Err(); err != nil {
@@ -208,7 +205,6 @@ WHERE node_id = ?
 
 	for i := range peers {
 		peers[i].ReflectedUsageBatchID = reflected[peers[i].UserID]
-		peers[i].ReflectedUsageLedger = reflectedLedger[peers[i].UserID]
 	}
 
 	return nil

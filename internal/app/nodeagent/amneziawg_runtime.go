@@ -28,7 +28,6 @@ type amneziaWGRuntimeInbound struct {
 
 type amneziaWGRuntimePeer struct {
 	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
-	ReflectedUsageLedger  string  `json:"reflected_usage_ledger,omitempty"`
 	UserID                int64   `json:"user_id"`
 	Username              string  `json:"username"`
 	DeviceIndex           int     `json:"device_index"`
@@ -92,14 +91,6 @@ func amneziaWGGeneratedInterfaceName(tag string) (string, error) {
 }
 
 func (s *Server) prepareAmneziaWGInbound(inbound amneziaWGRuntimeInbound, callbacks ...nativeRuntimeSessionCallback) (preparedAmneziaWGRuntime, error) {
-	return s.prepareAmneziaWGInboundMode(inbound, true, callbacks...)
-}
-
-func (s *Server) prepareAmneziaWGMutation(inbound amneziaWGRuntimeInbound) (preparedAmneziaWGRuntime, error) {
-	return s.prepareAmneziaWGInboundMode(inbound, false)
-}
-
-func (s *Server) prepareAmneziaWGInboundMode(inbound amneziaWGRuntimeInbound, writeConfig bool, callbacks ...nativeRuntimeSessionCallback) (preparedAmneziaWGRuntime, error) {
 	tag := strings.TrimSpace(inbound.Tag)
 	if tag == "" {
 		return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg inbound tag is required")
@@ -162,14 +153,12 @@ func (s *Server) prepareAmneziaWGInboundMode(inbound amneziaWGRuntimeInbound, wr
 		return preparedAmneziaWGRuntime{}, fmt.Errorf("%s", strings.Replace(err.Error(), "wireguard", "amneziawg", 1))
 	}
 	dir := filepath.Join(s.cfg.DataDir, "amneziawg", "runtime", amneziaWGRuntimeDirName(tag))
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg %q: create runtime directory: %w", tag, err)
+	}
 	path := filepath.Join(dir, "interface.conf")
-	if writeConfig {
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg %q: create runtime directory: %w", tag, err)
-		}
-		if err := atomicWriteFile(path, []byte(configText), 0600); err != nil {
-			return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg %q: write runtime config: %w", tag, err)
-		}
+	if err := atomicWriteFile(path, []byte(configText), 0600); err != nil {
+		return preparedAmneziaWGRuntime{}, fmt.Errorf("amneziawg %q: write runtime config: %w", tag, err)
 	}
 	var callback nativeRuntimeSessionCallback
 	if len(callbacks) > 0 {
@@ -193,7 +182,7 @@ func filterAmneziaWGRuntimeInboundByPolicy(inbound amneziaWGRuntimeInbound, now 
 	filtered := inbound
 	filtered.Peers = make([]amneziaWGRuntimePeer, 0, len(inbound.Peers))
 	for _, peer := range inbound.Peers {
-		policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic, ReflectedUsageBatchID: peer.ReflectedUsageBatchID, ReflectedUsageLedger: peer.ReflectedUsageLedger}
+		policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic, ReflectedUsageBatchID: peer.ReflectedUsageBatchID}
 		if peer.DataLimit != nil {
 			policy.DataLimit = *peer.DataLimit
 		}
@@ -226,24 +215,20 @@ func amneziaWGPeerAddressMap(peers []amneziaWGRuntimePeer) map[string]string {
 func amneziaWGPeerPolicies(peers []amneziaWGRuntimePeer) map[string]nativeSessionUserPolicy {
 	out := map[string]nativeSessionUserPolicy{}
 	for _, peer := range peers {
-		out[peer.PublicKey] = amneziaWGPeerPolicy(peer)
+		policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic, ReflectedUsageBatchID: peer.ReflectedUsageBatchID}
+		if peer.DataLimit != nil {
+			policy.DataLimit = *peer.DataLimit
+		}
+		if peer.Expire != nil {
+			policy.Expire = *peer.Expire
+		}
+		policy.UsageCoefficient = peer.UsageCoefficient
+		policy.InboundCoefficient = peer.InboundCoefficient
+		policy.DeviceLimit, policy.IPLimit = peer.DeviceLimit, peer.IPLimit
+		policy.UploadSpeedLimit, policy.DownloadSpeedLimit = peer.UploadSpeedLimit, peer.DownloadSpeedLimit
+		out[peer.PublicKey] = policy
 	}
 	return out
-}
-
-func amneziaWGPeerPolicy(peer amneziaWGRuntimePeer) nativeSessionUserPolicy {
-	policy := nativeSessionUserPolicy{Status: peer.Status, UsedTraffic: peer.UsedTraffic, ReflectedUsageBatchID: peer.ReflectedUsageBatchID, ReflectedUsageLedger: peer.ReflectedUsageLedger}
-	if peer.DataLimit != nil {
-		policy.DataLimit = *peer.DataLimit
-	}
-	if peer.Expire != nil {
-		policy.Expire = *peer.Expire
-	}
-	policy.UsageCoefficient = peer.UsageCoefficient
-	policy.InboundCoefficient = peer.InboundCoefficient
-	policy.DeviceLimit, policy.IPLimit = peer.DeviceLimit, peer.IPLimit
-	policy.UploadSpeedLimit, policy.DownloadSpeedLimit = peer.UploadSpeedLimit, peer.DownloadSpeedLimit
-	return policy
 }
 
 func amneziaWGRuntimeAddressing(settings map[string]any) (netip.Prefix, string, error) {

@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	wgctrl "github.com/Jipok/wgctrl-go"
 	"github.com/Jipok/wgctrl-go/wgtypes"
@@ -197,92 +196,4 @@ func amneziaWGPlatformRemovePeer(interfaceName, publicKey string) error {
 	}
 	defer client.Close()
 	return client.ConfigureDevice(interfaceName, wgtypes.Config{Peers: []wgtypes.PeerConfig{{PublicKey: key, Remove: true}}})
-}
-
-func amneziaWGPlatformPeerSnapshot(interfaceName string) (map[string]wireGuardKernelPeer, error) {
-	client, err := wgctrl.New()
-	if err != nil {
-		return nil, err
-	}
-	defer client.Close()
-	device, err := client.Device(interfaceName)
-	if err != nil {
-		return nil, err
-	}
-	if !device.IsAmnezia {
-		return nil, fmt.Errorf("interface %q is not an AmneziaWG device", interfaceName)
-	}
-	snapshot := make(map[string]wireGuardKernelPeer, len(device.Peers))
-	for _, peer := range device.Peers {
-		allowed := make([]string, 0, len(peer.AllowedIPs))
-		for _, prefix := range peer.AllowedIPs {
-			allowed = append(allowed, prefix.String())
-		}
-		psk := ""
-		if peer.PresharedKey != (wgtypes.Key{}) {
-			psk = peer.PresharedKey.String()
-		}
-		endpoint := ""
-		if peer.Endpoint != nil {
-			endpoint = peer.Endpoint.String()
-		}
-		keepalive := uint16(0)
-		if peer.PersistentKeepaliveInterval > 0 {
-			seconds := int64(peer.PersistentKeepaliveInterval / time.Second)
-			if seconds > 65535 {
-				return nil, fmt.Errorf("AWG peer %q keepalive exceeds supported range", peer.PublicKey.String())
-			}
-			keepalive = uint16(seconds)
-		}
-		snapshot[peer.PublicKey.String()] = wireGuardKernelPeer{
-			PublicKey: peer.PublicKey.String(), PresharedKey: psk, Endpoint: endpoint,
-			AllowedIPs: allowed, PersistentKeepalive: keepalive,
-			ReceivedBytes: uint64(max(peer.ReceiveBytes, 0)), SentBytes: uint64(max(peer.TransmitBytes, 0)),
-		}
-	}
-	return snapshot, nil
-}
-
-func amneziaWGPlatformPeerApply(interfaceName string, step wireGuardPeerMutationStep) error {
-	publicKey, err := wgtypes.ParseKey(strings.TrimSpace(step.Peer.PublicKey))
-	if err != nil {
-		return err
-	}
-	client, err := wgctrl.New()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	device, err := client.Device(interfaceName)
-	if err != nil {
-		return err
-	}
-	if !device.IsAmnezia {
-		return fmt.Errorf("interface %q is not an AmneziaWG device", interfaceName)
-	}
-	peer := wgtypes.PeerConfig{PublicKey: publicKey}
-	switch step.Operation {
-	case "remove":
-		peer.Remove = true
-	case "set":
-		var psk wgtypes.Key
-		if strings.TrimSpace(step.Peer.PresharedKey) != "" {
-			psk, err = wgtypes.ParseKey(strings.TrimSpace(step.Peer.PresharedKey))
-			if err != nil {
-				return err
-			}
-		}
-		peer.PresharedKey = &psk // explicit zero clears a prior PSK
-		peer.ReplaceAllowedIPs = true
-		for _, value := range step.Peer.AllowedIPs {
-			_, prefix, parseErr := net.ParseCIDR(value)
-			if parseErr != nil {
-				return fmt.Errorf("invalid AWG peer allowed IP %q: %w", value, parseErr)
-			}
-			peer.AllowedIPs = append(peer.AllowedIPs, *prefix)
-		}
-	default:
-		return fmt.Errorf("unsupported AmneziaWG peer mutation %q", step.Operation)
-	}
-	return client.ConfigureDevice(interfaceName, wgtypes.Config{Peers: []wgtypes.PeerConfig{peer}})
 }

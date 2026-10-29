@@ -541,11 +541,9 @@ func l2TPUsageBatchProto(
 		stats = append(
 			stats,
 			&nodev1.UserUsageSample{
-				Uid:          statUID,
-				Value:        sample.Value,
-				InboundTag:   sample.InboundTag,
-				Protocol:     "l2tp",
-				ChildBatchId: pending.BatchID,
+				Uid:        statUID,
+				Value:      sample.Value,
+				InboundTag: sample.InboundTag,
 			},
 		)
 

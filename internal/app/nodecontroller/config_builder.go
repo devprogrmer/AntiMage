@@ -96,15 +96,6 @@ func (c Controller) prepareRuntimeConfigOperation(ctx context.Context, operation
 		if err != nil {
 			return nil, err
 		}
-		if required {
-			targeted, targetErr := c.runtimeUserOperationTargeted(ctx, node.ID, operation)
-			if targetErr != nil {
-				return nil, targetErr
-			}
-			if targeted {
-				required = false
-			}
-		}
 		inbounds = loadedInbounds
 		if !required && (operation.OperationType == "remove_user" || operation.OperationType == "disable_user") {
 			_, err = c.legacyOperationEmail(ctx, operation)
@@ -396,10 +387,11 @@ func serviceRequiresFullUserSync(
 
 func protocolRequiresFullUserSync(protocol string) bool {
 	switch strings.ToLower(strings.TrimSpace(protocol)) {
-	case "vless", "openvpn":
+	case xrayconfig.OVProtocol, xrayconfig.L2TPProtocol, xrayconfig.PPTPProtocol, xrayconfig.WGProtocol, xrayconfig.AWGProtocol, xrayconfig.IKEv2Protocol, xrayconfig.AnyConnectProtocol:
+		return true
+	default:
 		return false
 	}
-	return true
 }
 
 func (c Controller) loadRuntimeConfigData(ctx context.Context) (*runtimeConfigData, error) {

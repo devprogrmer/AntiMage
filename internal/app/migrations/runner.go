@@ -20,8 +20,7 @@ var gooseMu sync.Mutex
 var migrationDialect string
 
 const (
-	latestGooseVersion         int64 = 75
-	legacyGooseBaselineVersion int64 = 60
+	latestGooseVersion         int64 = 76
 	legacyAlembicFinalRevision       = "23_drop_access_insights"
 	legacyAlembicFinalBaseline int64 = 16
 )
@@ -218,10 +217,7 @@ func legacyGooseBaseline(ctx context.Context, db *sql.DB, dialect string, revisi
 			if !hasWGReflection {
 				return 53, nil
 			}
-			// A pre-Goose database can have the complete legacy schema without
-			// newer application tables. Seed through the last migration known to
-			// exist in the legacy schema so Goose applies all later migrations.
-			return legacyGooseBaselineVersion, nil
+			return latestGooseVersion, nil
 		}
 		return 0, err
 	}

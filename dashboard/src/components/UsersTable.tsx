@@ -59,7 +59,6 @@ import { AdminRole, AdminStatus, UserPermissionToggle } from "types/Admin";
 import type { User, UserListItem } from "types/User";
 import {
 	canDeleteUserByTrafficCap,
-	canManageUserServiceScope,
 	canViewUserTraffic,
 	isUserManagementLocked,
 } from "utils/adminTraffic";
@@ -591,7 +590,6 @@ export const UsersTable: FC<UsersTableProps> = ({
 	const [isBulkResetOpen, setIsBulkResetOpen] = useState(false);
 	const [ipDialog, setIPDialog] = useState<{
 		username: string;
-		service_id: number | null;
 		records: UserIPRecord[];
 		mode: "ips" | "devices";
 		error?: string;
@@ -787,7 +785,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 
 	const handleGetIPs = async (user: UserListItem) => {
 		setContextAction("ips");
-		setIPDialog({ username: user.username, service_id: user.service_id, records: [], mode: "ips" });
+		setIPDialog({ username: user.username, records: [], mode: "ips" });
 		closeContextMenu();
 		try {
 			const response = await fetch<UserIPsResponse>(
@@ -797,7 +795,6 @@ export const UsersTable: FC<UsersTableProps> = ({
 				current?.username === user.username
 					? {
 							username: user.username,
-							service_id: user.service_id,
 							records: deduplicateUserIPRecords(response.ips || []),
 							mode: "ips",
 						}
@@ -818,7 +815,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 
 	const handleGetDevices = async (user: UserListItem) => {
 		setContextAction("devices");
-		setIPDialog({ username: user.username, service_id: user.service_id, records: [], mode: "devices" });
+		setIPDialog({ username: user.username, records: [], mode: "devices" });
 		closeContextMenu();
 		try {
 			const response = await fetch<UserDevicesResponse>(
@@ -828,7 +825,6 @@ export const UsersTable: FC<UsersTableProps> = ({
 				current?.username === user.username
 					? {
 							username: user.username,
-							service_id: user.service_id,
 							records: response.devices || [],
 							mode: "devices",
 						}
@@ -2050,7 +2046,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 												{" · "}{record.online ? t("online") : t("offline")}
 											</Text>
 										)}
-										{ipDialog?.mode === "devices" && canRevokeSub && !isAdminDisabled && canManageUserServiceScope(userData, ipDialog.service_id) && record.device_id && ["wg", "wireguard", "awg", "amneziawg"].includes(record.protocol) && (
+										{ipDialog?.mode === "devices" && record.device_id && ["wg", "wireguard", "awg", "amneziawg"].includes(record.protocol) && (
 											<Button mt={2} size="xs" variant="outline" colorScheme="red" leftIcon={<RevokeIcon />} isLoading={contextAction === "revoke-device"} onClick={() => handleRevokeDevice(record)}>
 												{t("usersTable.revokeDevice")}
 											</Button>

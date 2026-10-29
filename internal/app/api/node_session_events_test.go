@@ -82,50 +82,6 @@ CREATE TABLE vpn_user_sessions (
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type IN ('disable_user', 'enable_user')`, 0)
 }
 
-func TestNodeSessionEventAcknowledgesDeletedUserReplayAndAllowsStopCleanup(t *testing.T) {
-	server, db := testAdminServer(t)
-	if _, err := db.Exec(`CREATE TABLE vpn_user_sessions (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		node_id INTEGER NOT NULL,
-		user_id INTEGER NOT NULL,
-		protocol TEXT NOT NULL,
-		inbound_tag TEXT NULL,
-		session_id TEXT NOT NULL,
-		assigned_ip TEXT NULL,
-		client_ip TEXT NULL,
-		device_id TEXT NULL,
-		device_type TEXT NOT NULL DEFAULT 'Unknown',
-		client_name TEXT NOT NULL DEFAULT 'Unknown',
-		platform TEXT NOT NULL DEFAULT 'Unknown',
-		started_at DATETIME NOT NULL,
-		last_seen_at DATETIME NOT NULL,
-		ended_at DATETIME NULL,
-		UNIQUE(node_id, session_id)
-	)`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`INSERT INTO nodes (id, name, status, certificate) VALUES (7, 'node-7', 'connected', 'node-cert')`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`INSERT INTO users (id, username, status, service_id) VALUES (8, 'deleted-user', 'deleted', 1)`); err != nil {
-		t.Fatal(err)
-	}
-	token := nodecontroller.NodeSessionEventToken("admin-secret", 7, "node-cert")
-	start := requestNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":8,"protocol":"l2tp","inbound_tag":"l2tp-main","session_id":"stale:start","assigned_ip":"10.67.0.8","event":"start"}`)
-	if start.Code != http.StatusOK {
-		t.Fatalf("deleted-user start replay was not acknowledged: status=%d body=%s", start.Code, start.Body.String())
-	}
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE node_id = 7 AND user_id = 8`, 0)
-	if _, err := db.Exec(`INSERT INTO vpn_user_sessions (node_id, user_id, protocol, inbound_tag, session_id, assigned_ip, device_type, client_name, platform, started_at, last_seen_at) VALUES (7, 8, 'l2tp', 'l2tp-main', 'stale:prior', '10.67.0.8', 'Unknown', 'L2TP', 'Unknown', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
-		t.Fatal(err)
-	}
-	stop := requestNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":8,"protocol":"l2tp","inbound_tag":"l2tp-main","session_id":"stale:prior","event":"stop"}`)
-	if stop.Code != http.StatusOK {
-		t.Fatalf("deleted-user stop cleanup was rejected: status=%d body=%s", stop.Code, stop.Body.String())
-	}
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE node_id = 7 AND user_id = 8 AND ended_at IS NULL`, 0)
-}
-
 // TestL2TPNativePanelSessionServer supplies the real production session-event
 // HTTP handler to the privileged native xl2tpd harness and verifies persisted
 // start/stop state after the driver shuts it down.
@@ -504,26 +460,6 @@ func TestNodeReadyQueuesFullSync(t *testing.T) {
 	token := nodecontroller.NodeSessionEventToken("admin-secret", 7, "node-cert")
 	postNodeSessionEvent(t, server, token, `{"node_id":7,"event":"ready"}`)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 7 AND operation_type = 'sync_config' AND status = 'pending'`, 1)
-}
-
-func TestNodeSessionCallbackUsesCurrentRotatedSecret(t *testing.T) {
-	server, db := testAdminServer(t)
-	if _, err := db.Exec(`INSERT INTO nodes (id, name, status, certificate) VALUES (7, 'node-7', 'connected', 'node-cert')`); err != nil {
-		t.Fatal(err)
-	}
-	oldToken := nodecontroller.NodeSessionEventToken("admin-secret", 7, "node-cert")
-	if _, err := db.Exec(`UPDATE jwt SET admin_secret_key = 'rotated-secret'`); err != nil {
-		t.Fatal(err)
-	}
-	oldRequest := requestNodeSessionEvent(t, server, oldToken, `{"node_id":7,"event":"ready"}`)
-	if oldRequest.Code != http.StatusForbidden {
-		t.Fatalf("old callback secret status = %d body=%s; want immediate rejection", oldRequest.Code, oldRequest.Body.String())
-	}
-	newToken := nodecontroller.NodeSessionEventToken("rotated-secret", 7, "node-cert")
-	newRequest := requestNodeSessionEvent(t, server, newToken, `{"node_id":7,"event":"ready"}`)
-	if newRequest.Code != http.StatusOK {
-		t.Fatalf("rotated callback secret status = %d body=%s", newRequest.Code, newRequest.Body.String())
-	}
 }
 
 func postNodeSessionEvent(t *testing.T, server *Server, token string, body string) *httptest.ResponseRecorder {

@@ -20,7 +20,6 @@ type XrayRuntimePolicy struct {
 	UsageCoefficient      float64 `json:"usage_coefficient"`
 	InboundCoefficient    float64 `json:"inbound_coefficient"`
 	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
-	ReflectedUsageLedger  string  `json:"reflected_usage_ledger,omitempty"`
 	UploadSpeedLimit      int64   `json:"upload_speed_limit"`
 	DownloadSpeedLimit    int64   `json:"download_speed_limit"`
 	DeviceLimit           int64   `json:"device_limit"`
@@ -78,14 +77,14 @@ func (r Repository) xrayRuntimePolicies(ctx context.Context, node NodeRow, confi
 			marks[i] = "?"
 			args = append(args, id)
 		}
-		rows, err := r.db.QueryContext(ctx, `SELECT u.id,u.status,COALESCE(u.used_traffic,0),COALESCE(u.data_limit,0),COALESCE(u.expire,0),COALESCE(u.upload_speed_limit,0),COALESCE(u.download_speed_limit,0),COALESCE(u.device_limit,0),COALESCE(u.ip_limit,0),COALESCE(ref.batch_id,''),COALESCE(ref.ledger_json,'')
+		rows, err := r.db.QueryContext(ctx, `SELECT u.id,u.status,COALESCE(u.used_traffic,0),COALESCE(u.data_limit,0),COALESCE(u.expire,0),COALESCE(u.upload_speed_limit,0),COALESCE(u.download_speed_limit,0),COALESCE(u.device_limit,0),COALESCE(u.ip_limit,0),COALESCE(ref.batch_id,'')
 FROM users u LEFT JOIN node_wireguard_usage_reflection ref ON ref.node_id=? AND ref.user_id=u.id WHERE u.id IN (`+strings.Join(marks, ",")+`)`, args...)
 		if err != nil {
 			return nil, fmt.Errorf("load xray offline policy: %w", err)
 		}
 		for rows.Next() {
 			var p XrayRuntimePolicy
-			if err := rows.Scan(&p.UserID, &p.Status, &p.UsedTraffic, &p.DataLimit, &p.Expire, &p.UploadSpeedLimit, &p.DownloadSpeedLimit, &p.DeviceLimit, &p.IPLimit, &p.ReflectedUsageBatchID, &p.ReflectedUsageLedger); err != nil {
+			if err := rows.Scan(&p.UserID, &p.Status, &p.UsedTraffic, &p.DataLimit, &p.Expire, &p.UploadSpeedLimit, &p.DownloadSpeedLimit, &p.DeviceLimit, &p.IPLimit, &p.ReflectedUsageBatchID); err != nil {
 				rows.Close()
 				return nil, err
 			}

@@ -101,67 +101,6 @@ func TestPrepareOpenVPNInboundRequiresCertificates(t *testing.T) {
 	}
 }
 
-func TestPrepareOpenVPNInboundPreservesCCDOnRejectedUpdateAndRemovesStaleEntries(t *testing.T) {
-	server := New(Config{DataDir: t.TempDir()})
-	inbound := openVPNRuntimeInbound{
-		Tag:       "ccd-update",
-		Port:      1194,
-		Transport: "udp",
-		Settings: map[string]any{
-			"ipv4_pool_cidr":     "10.66.0.0/16",
-			"ca":                 "TEST-CA",
-			"server_certificate": "TEST-CERT",
-			"server_key":         "TEST-KEY",
-		},
-		Users: []openVPNRuntimeUser{{
-			UserID: 1, Username: "alice", VPNUsername: "alice", Password: "alice-secret", Status: "active", IPv4Address: "10.66.0.10",
-		}},
-	}
-	configPath, err := server.prepareOpenVPNInbound(inbound)
-	if err != nil {
-		t.Fatal(err)
-	}
-	alicePath := filepath.Join(filepath.Dir(configPath), "ccd", "alice")
-	initial, err := os.ReadFile(alicePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// A rejected update must not remove valid per-client routing data from an
-	// already running daemon's stable client-config-dir.
-	inbound.Users = append(inbound.Users, openVPNRuntimeUser{
-		UserID: 2, Username: "bob", VPNUsername: "bob", Status: "active", IPv4Address: "10.66.0.11",
-	})
-	if _, err := server.prepareOpenVPNInbound(inbound); err == nil {
-		t.Fatal("expected invalid credential update to fail")
-	}
-	afterFailure, err := os.ReadFile(alicePath)
-	if err != nil || string(afterFailure) != string(initial) {
-		t.Fatalf("existing CCD changed after rejected update: %q, %v", afterFailure, err)
-	}
-
-	inbound.Users[1].Password = "bob-secret"
-	if _, err := server.prepareOpenVPNInbound(inbound); err != nil {
-		t.Fatal(err)
-	}
-	bobPath := filepath.Join(filepath.Dir(configPath), "ccd", "bob")
-	if _, err := os.Stat(bobPath); err != nil {
-		t.Fatalf("new user's CCD was not installed: %v", err)
-	}
-
-	inbound.Users = inbound.Users[:1]
-	if _, err := server.prepareOpenVPNInbound(inbound); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(bobPath); !os.IsNotExist(err) {
-		t.Fatalf("removed user's stale CCD still exists: err=%v", err)
-	}
-	finalAlice, err := os.ReadFile(alicePath)
-	if err != nil || string(finalAlice) != string(initial) {
-		t.Fatalf("unmodified user's CCD changed: %q, %v", finalAlice, err)
-	}
-}
-
 func TestValidateOpenVPNUsernameRejectsTraversal(t *testing.T) {
 	for _, username := range []string{
 		"../root",

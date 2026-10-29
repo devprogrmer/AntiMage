@@ -88,10 +88,6 @@ start_ip_limit_client() {
   PIDS+=("$ip_limit_client_pid")
   for _ in $(seq 1 120); do ip netns exec "$ns" ip link show vpn-ip-limit >/dev/null 2>&1 && break; sleep .25; done
   ip netns exec "$ns" ip link show vpn-ip-limit >/dev/null
-  for _ in $(seq 1 80); do
-    ip netns exec "$ns" ip -4 addr show dev vpn-ip-limit | grep -q '192.0.2.' && break
-    sleep .25
-  done
   ip netns exec "$ns" ip -4 addr show dev vpn-ip-limit | grep -q '192.0.2.'
 }
 start_reconnect_attempt() {
@@ -102,33 +98,6 @@ start_reconnect_attempt() {
     https://10.253.0.1:4433 >"$output" 2>&1 <<< 'native-password' &
   client_pid=$!
   PIDS+=("$client_pid")
-}
-run_targeted_mutation_stage() {
-  echo '=== ocserv targeted Add/Update/Remove without daemon restart ==='
-  env ANTIMAGE_ANYCONNECT_MUTATION_E2E=1 \
-    ANTIMAGE_ANYCONNECT_MUTATION_ROOT="$ROOT/anyconnect-mutation-e2e" \
-    ANTIMAGE_ANYCONNECT_MUTATION_NS="$NS" \
-    ANTIMAGE_ANYCONNECT_MUTATION_ENDPOINT="10.253.0.1:4434" \
-    ANTIMAGE_ANYCONNECT_MUTATION_NS2="$NS2" \
-    ANTIMAGE_ANYCONNECT_MUTATION_ENDPOINT2="10.254.0.1:4434" \
-    ANTIMAGE_ANYCONNECT_MUTATION_PORT=4434 \
-    ANTIMAGE_ANYCONNECT_MUTATION_CERT="$ROOT/cert.pem" \
-    ANTIMAGE_ANYCONNECT_MUTATION_KEY="$ROOT/key.pem" \
-    ANTIMAGE_ANYCONNECT_MUTATION_VPN_SCRIPT="$VPNSCRIPT" \
-    "$ANTIMAGE_ANYCONNECT_TEST_BINARY" -test.run='^TestAnyConnectTargetedMutationNativeE2E$' -test.count=1 -test.v
-}
-run_controller_mutation_stage() {
-  [ -n "${ANTIMAGE_ANYCONNECT_CONTROLLER_TEST_BINARY:-}" ] || return 0
-  echo '=== Controller -> NodeAgent -> ocserv targeted mutation E2E ==='
-  env ANTIMAGE_ANYCONNECT_MUTATION_E2E=1 \
-    ANTIMAGE_ANYCONNECT_CONTROLLER_ROOT="$ROOT/anyconnect-controller-e2e" \
-    ANTIMAGE_ANYCONNECT_MUTATION_NS="$NS" \
-    ANTIMAGE_ANYCONNECT_MUTATION_NS2="$NS2" \
-    ANTIMAGE_ANYCONNECT_MUTATION_PORT=4435 \
-    ANTIMAGE_ANYCONNECT_MUTATION_CERT="$ROOT/cert.pem" \
-    ANTIMAGE_ANYCONNECT_MUTATION_KEY="$ROOT/key.pem" \
-    ANTIMAGE_ANYCONNECT_MUTATION_VPN_SCRIPT="$VPNSCRIPT" \
-    "$ANTIMAGE_ANYCONNECT_CONTROLLER_TEST_BINARY" -test.run='^TestControllerAnyConnectTargetedMutationNativeE2E$' -test.count=1 -test.v
 }
 run_accounting() {
   local action="$1" quota_bytes="${2:-52428800}"
@@ -186,10 +155,6 @@ start_speed_client() {
   speed_client_pid=$!
   PIDS+=("$speed_client_pid")
   for _ in $(seq 1 120); do ip netns exec "$NS" ip link show vpn-speed >/dev/null 2>&1 && break; sleep .25; done
-  for _ in $(seq 1 80); do
-    ip netns exec "$NS" ip -4 addr show dev vpn-speed | grep -q '192.0.2.3/' && break
-    sleep .25
-  done
   ip netns exec "$NS" ip -4 addr show dev vpn-speed | grep -q '192.0.2.3/'
 }
 measure_speed_upload() {
@@ -428,10 +393,6 @@ if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
 fi
 start_client "$ROOT/openconnect.log"
 ip netns exec "$NS" ping -c 3 -W 2 192.0.2.1
-if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
-  run_targeted_mutation_stage
-  run_controller_mutation_stage
-fi
 if [ -n "${ANTIMAGE_ANYCONNECT_TEST_BINARY:-}" ]; then
   transfer_tunnel_payload initial
   echo '=== AnyConnect real remote-IP reporting and native IP limit ==='

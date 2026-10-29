@@ -8,15 +8,8 @@ import (
 func (s *Server) wireGuardAwaitingReflectionUsageLocked(
 	inboundTag string,
 	userID int64,
-	reflectedBatchID string, ledger ...string,
+	reflectedBatchID string,
 ) (uint64, error) {
-	if firstReflectionLedger(ledger) != "" {
-		pending := ""
-		if s.wireGuardUsagePending != nil {
-			pending = s.wireGuardUsagePending.BatchID
-		}
-		return s.localAwaitingReflectionUsage("wireguard", userID, inboundTag, pending, reflectedBatchID, ledger...)
-	}
 	inboundTag = strings.TrimSpace(inboundTag)
 	reflectedBatchID = strings.TrimSpace(reflectedBatchID)
 

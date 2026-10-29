@@ -213,7 +213,6 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			port INTEGER NOT NULL DEFAULT 62050,
 			api_port INTEGER NOT NULL DEFAULT 62051,
 			xray_version TEXT NULL,
-			node_binary_tag TEXT NULL,
 			status TEXT DEFAULT 'connected',
 			last_status_change DATETIME NULL,
 			message TEXT NULL,
@@ -332,14 +331,6 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			idempotency_key TEXT NOT NULL UNIQUE,
 			created_at DATETIME NULL,
 			updated_at DATETIME NULL
-		)`,
-		`CREATE TABLE user_accounting_tombstones (user_id INTEGER PRIMARY KEY, deleted_at DATETIME NOT NULL)`,
-		`CREATE TABLE node_usage_user_queue (
-			id INTEGER PRIMARY KEY AUTOINCREMENT, node_id INTEGER NOT NULL, batch_id TEXT NOT NULL,
-			ledger_json TEXT NULL, user_id INTEGER NOT NULL, used_traffic INTEGER NOT NULL DEFAULT 0,
-			online INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, processed_at DATETIME NULL,
-			history_processed_at DATETIME NULL, retirement_pending INTEGER NOT NULL DEFAULT 0,
-			UNIQUE(node_id,batch_id,user_id)
 		)`,
 		`INSERT INTO jwt (id, admin_secret_key, secret_key) VALUES (1, 'admin-secret', 'legacy-secret')`,
 		`INSERT INTO tls (id, key, certificate) VALUES (1, 'legacy-key', 'legacy-cert')`,

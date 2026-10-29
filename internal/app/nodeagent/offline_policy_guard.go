@@ -11,7 +11,7 @@ import (
 
 // Activation consults durable totals before restoring credentials. No native
 // counter query is needed here; watchdogs account subsequent live deltas.
-func (s *Server) durablePolicyRaw(protocol string, uid int64, tag, reflected string, ledger ...string) (uint64, error) {
+func (s *Server) durablePolicyRaw(protocol string, uid int64, tag, reflected string) (uint64, error) {
 	var baseline map[string]uint64
 	var pendingID string
 	var pendingRaw uint64
@@ -88,7 +88,7 @@ func (s *Server) durablePolicyRaw(protocol string, uid int64, tag, reflected str
 				}
 			}
 		}
-		return s.offlineQuotaRaw(protocol, offlineUsageOwner{uid, tag}, baseline, captured, samples, pendingID, reflected, ledger...)
+		return s.offlineQuotaRaw(protocol, offlineUsageOwner{uid, tag}, baseline, captured, samples, pendingID, reflected)
 	case "amneziawg":
 		s.amneziaWGUsageMu.Lock()
 		defer s.amneziaWGUsageMu.Unlock()
@@ -105,7 +105,7 @@ func (s *Server) durablePolicyRaw(protocol string, uid int64, tag, reflected str
 		}
 		if p := s.amneziaWGUsagePending; p != nil {
 			pendingID = p.BatchID
-			matched, err := s.localPendingUsageReflected(protocol, uid, pendingID, reflected, ledger...)
+			matched, err := s.localPendingUsageReflected(protocol, uid, pendingID, reflected)
 			if err != nil {
 				return 0, err
 			}
@@ -120,7 +120,7 @@ func (s *Server) durablePolicyRaw(protocol string, uid int64, tag, reflected str
 				}
 			}
 		}
-		credit, err := s.localAwaitingReflectionUsage(protocol, uid, tag, pendingID, reflected, ledger...)
+		credit, err := s.localAwaitingReflectionUsage(protocol, uid, tag, pendingID, reflected)
 		if err != nil {
 			return 0, err
 		}
@@ -134,7 +134,7 @@ func (s *Server) durablePolicyRaw(protocol string, uid int64, tag, reflected str
 		if err := s.ensureWireGuardUsageStateLoadedLocked(); err != nil {
 			return 0, err
 		}
-		cfg := wireGuardUsageRuntimeConfig{InboundTag: tag, Peers: map[string]int64{"durable": uid}, Policies: map[string]nativeSessionUserPolicy{"durable": {ReflectedUsageBatchID: reflected, ReflectedUsageLedger: firstReflectionLedger(ledger)}}}
+		cfg := wireGuardUsageRuntimeConfig{InboundTag: tag, Peers: map[string]int64{"durable": uid}, Policies: map[string]nativeSessionUserPolicy{"durable": {ReflectedUsageBatchID: reflected}}}
 		return s.wireGuardLiveUnackedUsageLocked(cfg, "durable-policy", nil, uid)
 	case "xray":
 		s.xrayUsageMu.Lock()
@@ -160,7 +160,7 @@ func (s *Server) durablePolicyRaw(protocol string, uid int64, tag, reflected str
 		}
 		if p := s.xrayUsagePending; p != nil {
 			pendingID = p.BatchID
-			matched, err := s.localPendingUsageReflected(protocol, uid, pendingID, reflected, ledger...)
+			matched, err := s.localPendingUsageReflected(protocol, uid, pendingID, reflected)
 			if err != nil {
 				return 0, err
 			}
@@ -177,7 +177,7 @@ func (s *Server) durablePolicyRaw(protocol string, uid int64, tag, reflected str
 				}
 			}
 		}
-		credit, err := s.localAwaitingReflectionUsage(protocol, uid, tag, pendingID, reflected, ledger...)
+		credit, err := s.localAwaitingReflectionUsage(protocol, uid, tag, pendingID, reflected)
 		if err != nil {
 			return 0, err
 		}
@@ -188,7 +188,7 @@ func (s *Server) durablePolicyRaw(protocol string, uid int64, tag, reflected str
 	default:
 		return 0, fmt.Errorf("unknown durable policy protocol %q", protocol)
 	}
-	return s.offlinePolicyRaw(baseline, protocol, uid, tag, pendingID, reflected, pendingRaw, ledger...)
+	return s.offlinePolicyRaw(baseline, protocol, uid, tag, pendingID, reflected, pendingRaw)
 }
 
 func (s *Server) guardOfflineRuntimePolicy(req *nodev1.RuntimeConfigRequest) (*nodev1.RuntimeConfigRequest, error) {
@@ -354,7 +354,7 @@ func (s *Server) offlineGuardEffectiveTotals(native map[string]json.RawMessage) 
 					continue
 				}
 				seen[owner] = true
-				raw, err := s.durablePolicyRaw(protocol, p.UserID, tag, p.ReflectedUsageBatchID, p.ReflectedUsageLedger)
+				raw, err := s.durablePolicyRaw(protocol, p.UserID, tag, p.ReflectedUsageBatchID)
 				if err != nil {
 					return nil, err
 				}

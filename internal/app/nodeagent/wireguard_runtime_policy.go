@@ -21,17 +21,13 @@ func wireGuardRuntimePeerPolicy(
 	}
 
 	return nativeSessionUserPolicy{
-		DeviceLimit:           peer.DeviceLimit,
-		IPLimit:               peer.IPLimit,
 		Status:                strings.ToLower(strings.TrimSpace(peer.Status)),
 		UsedTraffic:           peer.UsedTraffic,
-		ReflectedUsageBatchID: strings.TrimSpace(peer.ReflectedUsageBatchID), ReflectedUsageLedger: peer.ReflectedUsageLedger,
-		DataLimit:          dataLimit,
-		Expire:             expire,
-		UploadSpeedLimit:   peer.UploadSpeedLimit,
-		DownloadSpeedLimit: peer.DownloadSpeedLimit,
-		UsageCoefficient:   peer.UsageCoefficient,
-		InboundCoefficient: peer.InboundCoefficient,
+		ReflectedUsageBatchID: strings.TrimSpace(peer.ReflectedUsageBatchID),
+		DataLimit:             dataLimit,
+		Expire:                expire,
+		UsageCoefficient:      peer.UsageCoefficient,
+		InboundCoefficient:    peer.InboundCoefficient,
 	}
 }
 

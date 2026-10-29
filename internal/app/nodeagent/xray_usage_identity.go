@@ -7,59 +7,6 @@ import (
 	"strings"
 )
 
-const xrayStatSeparator = ">>>"
-
-// cutXrayStatField splits off the leading ">>>"-delimited field. It mirrors the
-// first element of strings.Split(name, ">>>") without allocating a slice.
-func cutXrayStatField(name string) (field, rest string, ok bool) {
-	index := strings.Index(name, xrayStatSeparator)
-	if index < 0 {
-		return "", "", false
-	}
-	return name[:index], name[index+len(xrayStatSeparator):], true
-}
-
-// asciiLowerTrim trims ASCII space and lowercases ASCII letters. The Xray stat
-// type, metric and direction fields are ASCII literals, so this matches
-// strings.ToLower(strings.TrimSpace(...)) for every value we accept, without
-// the Unicode tables and allocations strings.ToLower would pull in.
-func asciiLowerTrim(value string) string {
-	start, end := 0, len(value)
-	for start < end && isASCIIStatSpace(value[start]) {
-		start++
-	}
-	for end > start && isASCIIStatSpace(value[end-1]) {
-		end--
-	}
-	trimmed := value[start:end]
-	hasUpper := false
-	for index := 0; index < len(trimmed); index++ {
-		if trimmed[index] >= 'A' && trimmed[index] <= 'Z' {
-			hasUpper = true
-			break
-		}
-	}
-	if !hasUpper {
-		return trimmed
-	}
-	lowered := []byte(trimmed)
-	for index, char := range lowered {
-		if char >= 'A' && char <= 'Z' {
-			lowered[index] = char + ('a' - 'A')
-		}
-	}
-	return string(lowered)
-}
-
-func isASCIIStatSpace(char byte) bool {
-	switch char {
-	case ' ', '\t', '\n', '\v', '\f', '\r':
-		return true
-	default:
-		return false
-	}
-}
-
 // xrayUserIdentity represents a parsed Xray user identity from the email field
 type xrayUserIdentity struct {
 	UserID     int64
@@ -76,51 +23,48 @@ func parseXrayUserEmail(email string) (xrayUserIdentity, error) {
 		return xrayUserIdentity{}, fmt.Errorf("empty email")
 	}
 
-	// Field walk instead of strings.Split/Join: this runs once per accounting
-	// series on every quota and checkpoint tick, where the slice plus the two
-	// joined substrings were the dominant remaining allocation.
-	dot := strings.IndexByte(email, '.')
-	if dot < 0 {
+	// Split by dots
+	parts := strings.Split(email, ".")
+	if len(parts) < 2 {
 		return xrayUserIdentity{}, fmt.Errorf("invalid email format: %q", email)
 	}
 
 	// First part must be user ID
-	userIDStr := strings.TrimSpace(email[:dot])
+	userIDStr := strings.TrimSpace(parts[0])
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil || userID <= 0 {
 		return xrayUserIdentity{}, fmt.Errorf("invalid user ID in email %q: %w", email, err)
 	}
-	remainder := email[dot+1:]
 
 	// Check if this is the new tagged format: userID.rb1_<encodedTag>.username
-	if strings.HasPrefix(remainder, "rb1_") {
-		if encodedDot := strings.IndexByte(remainder, '.'); encodedDot >= 0 {
-			encodedTag := remainder[len("rb1_"):encodedDot]
-			tagBytes, err := base64.RawURLEncoding.DecodeString(encodedTag)
-			if err != nil {
-				return xrayUserIdentity{}, fmt.Errorf("invalid tag encoding in email %q: %w", email, err)
-			}
-
-			tag := string(tagBytes)
-			if strings.TrimSpace(tag) == "" {
-				return xrayUserIdentity{}, fmt.Errorf("decoded tag is empty in email %q", email)
-			}
-
-			// Username is the remainder, dots intact.
-			username := remainder[encodedDot+1:]
-
-			return xrayUserIdentity{
-				UserID:     userID,
-				Username:   username,
-				InboundTag: tag,
-			}, nil
+	if len(parts) >= 3 && strings.HasPrefix(parts[1], "rb1_") {
+		encodedTag := strings.TrimPrefix(parts[1], "rb1_")
+		tagBytes, err := base64.RawURLEncoding.DecodeString(encodedTag)
+		if err != nil {
+			return xrayUserIdentity{}, fmt.Errorf("invalid tag encoding in email %q: %w", email, err)
 		}
+
+		tag := string(tagBytes)
+		if strings.TrimSpace(tag) == "" {
+			return xrayUserIdentity{}, fmt.Errorf("decoded tag is empty in email %q", email)
+		}
+
+		// Username is the remaining parts joined
+		username := strings.Join(parts[2:], ".")
+
+		return xrayUserIdentity{
+			UserID:     userID,
+			Username:   username,
+			InboundTag: tag,
+		}, nil
 	}
 
 	// Legacy format: userID.username
+	username := strings.Join(parts[1:], ".")
+
 	return xrayUserIdentity{
 		UserID:     userID,
-		Username:   remainder,
+		Username:   username,
 		InboundTag: "",
 	}, nil
 }
@@ -143,29 +87,14 @@ type xrayStatName struct {
 // - "inbound>>>tag>>>traffic>>>uplink"
 // - "inbound>>>tag>>>traffic>>>downlink"
 func parseXrayStatName(name string) (xrayStatName, bool) {
-	// Allocation-free field walk: this runs once per series on every quota and
-	// checkpoint tick, and strings.Split here allocates a slice plus trimmed
-	// substrings for each of possibly tens of thousands of stats.
-	first, rest, ok := cutXrayStatField(name)
-	if !ok {
+	parts := strings.Split(name, ">>>")
+	if len(parts) < 3 {
 		return xrayStatName{}, false
-	}
-	second, rest, ok := cutXrayStatField(rest)
-	if !ok {
-		return xrayStatName{}, false
-	}
-	// The final field is whatever remains; there may be either three fields
-	// (user>>>email>>>online) or four (…>>>traffic>>>direction).
-	third, fourth, hasFourth := rest, "", false
-	if index := strings.Index(rest, xrayStatSeparator); index >= 0 {
-		third = rest[:index]
-		fourth = rest[index+len(xrayStatSeparator):]
-		hasFourth = true
 	}
 
-	statType := asciiLowerTrim(first)
-	identity := strings.TrimSpace(second)
-	metric := asciiLowerTrim(third)
+	statType := strings.ToLower(strings.TrimSpace(parts[0]))
+	identity := strings.TrimSpace(parts[1])
+	metric := strings.ToLower(strings.TrimSpace(parts[2]))
 
 	switch statType {
 	case "user":
@@ -184,10 +113,10 @@ func parseXrayStatName(name string) (xrayStatName, bool) {
 
 		if metric == "traffic" {
 			// user>>>email>>>traffic>>>uplink|downlink
-			if !hasFourth || strings.Contains(fourth, xrayStatSeparator) {
+			if len(parts) != 4 {
 				return xrayStatName{}, false
 			}
-			direction := asciiLowerTrim(fourth)
+			direction := strings.ToLower(strings.TrimSpace(parts[3]))
 			if direction != "uplink" && direction != "downlink" {
 				return xrayStatName{}, false
 			}
@@ -205,10 +134,10 @@ func parseXrayStatName(name string) (xrayStatName, bool) {
 		if identity == "" || metric != "traffic" {
 			return xrayStatName{}, false
 		}
-		if !hasFourth || strings.Contains(fourth, xrayStatSeparator) {
+		if len(parts) != 4 {
 			return xrayStatName{}, false
 		}
-		direction := asciiLowerTrim(fourth)
+		direction := strings.ToLower(strings.TrimSpace(parts[3]))
 		if direction != "uplink" && direction != "downlink" {
 			return xrayStatName{}, false
 		}

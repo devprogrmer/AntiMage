@@ -54,7 +54,7 @@ func NewService(db *sql.DB, dialect string, version string) *Service {
 
 func NewServiceWithProvider(db *sql.DB, dialect string, version string, provider MetricsProvider) *Service {
 	if version == "" {
-		version = BuildVersion
+		version = DefaultVersion
 	}
 	if provider == nil {
 		provider = NewGopsutilMetricsProvider()

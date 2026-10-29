@@ -3,7 +3,6 @@ package nodeagent
 import (
 	"context"
 	"fmt"
-	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	"net/netip"
 	"os/exec"
 	"runtime"
@@ -31,7 +30,7 @@ var (
 		name string,
 		args ...string,
 	) ([]byte, error) {
-		return managedprocess.CommandContext(ctx, name, args...).CombinedOutput()
+		return exec.CommandContext(ctx, name, args...).CombinedOutput()
 	}
 
 	nativeSpeedLimitLookPath = exec.LookPath

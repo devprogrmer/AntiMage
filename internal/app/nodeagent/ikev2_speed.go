@@ -3,7 +3,6 @@ package nodeagent
 import (
 	"context"
 	"fmt"
-	managedprocess "github.com/antimage/antimage/internal/platform/process"
 	"net/netip"
 	"os/exec"
 	"sort"
@@ -186,7 +185,7 @@ func clearIKEv2SpeedLimits() {
 		)
 	defer cancel()
 
-	_, _ = managedprocess.CommandContext(
+	_, _ = exec.CommandContext(
 		ctx,
 		path,
 		"delete",
@@ -235,7 +234,7 @@ func reconcileIKEv2SpeedLimits(
 		)
 	defer cancel()
 
-	cmd := managedprocess.CommandContext(
+	cmd := exec.CommandContext(
 		ctx,
 		path,
 		"-f",

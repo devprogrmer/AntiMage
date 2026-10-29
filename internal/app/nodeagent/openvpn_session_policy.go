@@ -43,13 +43,13 @@ func buildNativeSessionUserPolicies(
 			UsedTraffic:           user.UsedTraffic,
 			DeviceLimit:           user.DeviceLimit,
 			IPLimit:               user.IPLimit,
-			ReflectedUsageBatchID: user.ReflectedUsageBatchID, ReflectedUsageLedger: user.ReflectedUsageLedger,
-			DataLimit:          dataLimit,
-			Expire:             expire,
-			UploadSpeedLimit:   user.UploadSpeedLimit,
-			DownloadSpeedLimit: user.DownloadSpeedLimit,
-			UsageCoefficient:   user.UsageCoefficient,
-			InboundCoefficient: user.InboundCoefficient,
+			ReflectedUsageBatchID: user.ReflectedUsageBatchID,
+			DataLimit:             dataLimit,
+			Expire:                expire,
+			UploadSpeedLimit:      user.UploadSpeedLimit,
+			DownloadSpeedLimit:    user.DownloadSpeedLimit,
+			UsageCoefficient:      user.UsageCoefficient,
+			InboundCoefficient:    user.InboundCoefficient,
 		}
 	}
 

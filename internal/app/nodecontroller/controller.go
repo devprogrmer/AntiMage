@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -17,7 +16,6 @@ import (
 
 	"github.com/antimage/antimage/internal/app/logging"
 	"github.com/antimage/antimage/internal/app/nodeclient"
-	operationapp "github.com/antimage/antimage/internal/app/operations"
 	outboundsubapp "github.com/antimage/antimage/internal/app/outboundsub"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	"google.golang.org/grpc"
@@ -25,10 +23,6 @@ import (
 )
 
 type Controller struct {
-	recoveryLifetime  *atomic.Pointer[controllerRecoveryContext]
-	recoveryWorkers   *sync.Map
-	rolloutWorkers    *sync.Map
-	rolloutApply      func(context.Context, Request) (RuntimeResult, error)
 	repo              Repository
 	outboundSubs      outboundsubapp.Service
 	nodeLocks         *sync.Map
@@ -47,9 +41,6 @@ const (
 
 func NewController(repo Repository) Controller {
 	return Controller{
-		recoveryLifetime:  &atomic.Pointer[controllerRecoveryContext]{},
-		recoveryWorkers:   &sync.Map{},
-		rolloutWorkers:    &sync.Map{},
 		repo:              repo,
 		outboundSubs:      outboundsubapp.NewService(repo.db, repo.dialect),
 		nodeLocks:         &sync.Map{},
@@ -58,8 +49,6 @@ func NewController(repo Repository) Controller {
 		runtimeConfigPrep: make(chan struct{}, 1),
 	}
 }
-
-func (c Controller) Configured() bool { return c.repo.db != nil }
 
 // WGRuntime returns the normalized WireGuard runtime payload for a node.  The
 // payload is shared by the dashboard and node agents so protocol-specific
@@ -169,6 +158,9 @@ func (c Controller) ConnectedNodeIDs(ctx context.Context) ([]int64, error) {
 func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, error) {
 	unlock := c.lockNode(req.NodeID)
 	defer unlock()
+	if err := c.repo.QueueSyncConfig(ctx, &req.NodeID, nil); err != nil {
+		return RuntimeResult{}, err
+	}
 	if err := c.repo.SetConnecting(ctx, req.NodeID); err != nil {
 		return RuntimeResult{}, err
 	}
@@ -177,26 +169,17 @@ func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, er
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("connect", req.NodeID, err)
 	}
-	connection, err := client.Control().Connect(ctx, &nodev1.ConnectRequest{MasterId: "antimage-master"})
-	if err != nil {
-		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
-		return RuntimeResult{}, friendlyNodeError("connect", req.NodeID, err)
-	}
-	if !client.Supports("shared_fencing_v1") || !client.Supports("command_idempotency_v1") {
-		// A legacy handshake remains a valid read-only connection. Do not enqueue
-		// an unexecutable config mutation or imply that its remote runtime is fenced.
-		return c.finishRuntime(ctx, node, connection.GetRuntime(), "Legacy agent connected; upgrade required for destructive maintenance and configuration sync")
-	}
-	if err := c.repo.SetRuntimeState(ctx, node.ID, connection.GetRuntime()); err != nil {
-		return RuntimeResult{}, err
-	}
-	if err := c.repo.QueueSyncConfig(ctx, &req.NodeID, nil); err != nil {
-		return RuntimeResult{}, err
-	}
 	supersededIDs, err := c.fullSyncOperationIDs(ctx, node.ID)
 	if err != nil {
 		return RuntimeResult{}, err
 	}
+
+	connect, err := client.Control().Connect(ctx, &nodev1.ConnectRequest{MasterId: "antimage-master"})
+	if err != nil {
+		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
+		return RuntimeResult{}, friendlyNodeError("connect", req.NodeID, err)
+	}
+	state := connect.GetRuntime()
 	configJSON := strings.TrimSpace(req.ConfigJSON)
 	if configJSON == "" {
 		configJSON, err = c.buildRuntimeConfig(ctx, node)
@@ -213,20 +196,20 @@ func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, er
 	if err := c.prepareRuntimeRevision(ctx, client, node.ID, syncReq); err != nil {
 		return RuntimeResult{}, err
 	}
-	var result RuntimeResult
-	err = c.executeLegacyNodeCommand(legacyConfigEvidence(ctx, syncReq.ConfigJson), node.ID, syncReq.OperationId, "sync_config", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
-		syncReq.Fence = fence
-		return client.Runtime().SyncConfig(worker, syncReq)
-	}, func(worker context.Context, response *nodev1.RuntimeActionResponse) error {
-		var finishErr error
-		result, finishErr = c.finishRuntime(worker, node, response.GetRuntime(), "connected")
-		if finishErr != nil {
-			return finishErr
-		}
-		_, finishErr = c.repo.MarkOperationsDone(worker, supersededIDs)
-		return finishErr
-	})
-	return result, err
+	syncRes, err := client.Runtime().SyncConfig(ctx, syncReq)
+	if err != nil {
+		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
+		return RuntimeResult{}, friendlyNodeError("sync", req.NodeID, err)
+	}
+	state = syncRes.GetRuntime()
+	result, err := c.finishRuntime(ctx, node, state, "connected")
+	if err != nil {
+		return RuntimeResult{}, err
+	}
+	if _, err := c.repo.MarkOperationsDone(ctx, supersededIDs); err != nil {
+		return RuntimeResult{}, err
+	}
+	return result, nil
 }
 
 func (c Controller) Reconnect(ctx context.Context, req Request) (RuntimeResult, error) {
@@ -240,10 +223,11 @@ func (c Controller) StopNodeRuntime(ctx context.Context, nodeID int64) error {
 	if err != nil {
 		return friendlyNodeError("stop runtime", nodeID, err)
 	}
-	id := newOperationID("stop", nodeID)
-	return c.executeLegacyNodeCommand(ctx, nodeID, id, "stop_runtime", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
-		return client.Runtime().StopRuntime(worker, &nodev1.StopRuntimeRequest{OperationId: id, Fence: fence})
-	}, nil)
+	_, err = client.Runtime().StopRuntime(ctx, &nodev1.StopRuntimeRequest{OperationId: newOperationID("stop", nodeID)})
+	if err != nil {
+		return friendlyNodeError("stop runtime", nodeID, err)
+	}
+	return nil
 }
 
 func (c Controller) Restart(ctx context.Context, req Request) (result RuntimeResult, err error) {
@@ -286,20 +270,19 @@ func (c Controller) restartNow(ctx context.Context, req Request) (RuntimeResult,
 	if err := c.prepareRuntimeRevision(ctx, client, node.ID, runtimeReq); err != nil {
 		return RuntimeResult{}, err
 	}
-	var result RuntimeResult
-	err = c.executeLegacyNodeCommand(legacyConfigEvidence(ctx, runtimeReq.ConfigJson), node.ID, runtimeReq.OperationId, "core_restart", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
-		runtimeReq.Fence = fence
-		return client.Runtime().RestartRuntime(worker, runtimeReq)
-	}, func(worker context.Context, res *nodev1.RuntimeActionResponse) error {
-		var finishErr error
-		result, finishErr = c.finishRuntime(worker, node, res.GetRuntime(), res.GetMessage())
-		if finishErr != nil {
-			return finishErr
-		}
-		_, finishErr = c.repo.MarkOperationsDone(worker, supersededIDs)
-		return finishErr
-	})
-	return result, err
+	res, err := client.Runtime().RestartRuntime(ctx, runtimeReq)
+	if err != nil {
+		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
+		return RuntimeResult{}, friendlyNodeError("restart", req.NodeID, err)
+	}
+	result, err := c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
+	if err != nil {
+		return RuntimeResult{}, err
+	}
+	if _, err := c.repo.MarkOperationsDone(ctx, supersededIDs); err != nil {
+		return RuntimeResult{}, err
+	}
+	return result, nil
 }
 
 func (c Controller) fullSyncOperationIDs(ctx context.Context, nodeID int64) ([]int64, error) {
@@ -528,26 +511,7 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 	}
 	result := ProcessOperationsResult{}
 	blockedNodes := map[int64]bool{}
-	bulkCandidates := bulkRuntimeUserOperationNodes(operations)
-	bulkUserIDs := make([]int64, 0)
-	bulkNodeIDs := make([]int64, 0, len(bulkCandidates))
-	for _, operation := range operations {
-		if operation.NodeID.Valid && bulkCandidates[operation.NodeID.Int64] && operation.UserID.Valid {
-			bulkUserIDs = append(bulkUserIDs, operation.UserID.Int64)
-		}
-	}
-	for nodeID := range bulkCandidates {
-		bulkNodeIDs = append(bulkNodeIDs, nodeID)
-	}
-	userProtocols, err := c.repo.RuntimeMutationProtocolsByUserIDs(ctx, bulkUserIDs)
-	if err != nil {
-		return result, err
-	}
-	nodeCapabilities, err := c.repo.RuntimeCapabilitiesByNodeIDs(ctx, bulkNodeIDs)
-	if err != nil {
-		return result, err
-	}
-	foldedNodes := bulkRuntimeUserOperationNodesWithProtocols(operations, userProtocols, nodeCapabilities)
+	foldedNodes := bulkRuntimeUserOperationNodes(operations)
 	for nodeID := range foldedNodes {
 		if err := c.repo.QueueSyncConfig(ctx, &nodeID, nil); err != nil {
 			return result, err
@@ -598,164 +562,6 @@ func bulkRuntimeUserOperationNodes(operations []OperationRow) map[int64]bool {
 		}
 	}
 	return result
-}
-
-func bulkRuntimeUserOperationNodesWithProtocols(operations []OperationRow, protocolsByUser map[int64][]string, capabilitiesByNode map[int64]map[string]bool) map[int64]bool {
-	candidates := bulkRuntimeUserOperationNodes(operations)
-	result := make(map[int64]bool, len(candidates))
-	for nodeID := range candidates {
-		for _, operation := range operations {
-			if !operation.NodeID.Valid || operation.NodeID.Int64 != nodeID || !isRuntimeUserOperation(operation.OperationType) {
-				continue
-			}
-			if !operation.UserID.Valid {
-				result[nodeID] = true
-				break
-			}
-			protocols := protocolsByUser[operation.UserID.Int64]
-			if len(protocols) == 0 {
-				result[nodeID] = true
-				break
-			}
-			for _, protocol := range protocols {
-				capability := targetedUserCapability(protocol, operation.OperationType)
-				if capability == "" || !capabilitiesByNode[nodeID][capability] {
-					result[nodeID] = true
-					break
-				}
-			}
-			if result[nodeID] {
-				break
-			}
-		}
-	}
-	return result
-}
-
-func targetedUserCapability(protocol, operation string) string {
-	protocol = strings.ToLower(strings.TrimSpace(protocol))
-	operation = strings.ToLower(strings.TrimSpace(operation))
-	switch protocol {
-	case "vless":
-		switch operation {
-		case "update_user":
-			return "targeted_user_update_vless"
-		case "add_user", "remove_user", "disable_user", "enable_user":
-			return "targeted_user_add_remove_vless"
-		}
-	case "vmess":
-		switch operation {
-		case "update_user":
-			return "targeted_user_update_vmess"
-		case "add_user", "remove_user", "disable_user", "enable_user":
-			return "targeted_user_add_remove_vmess"
-		}
-	case "trojan":
-		switch operation {
-		case "update_user":
-			return "targeted_user_update_trojan"
-		case "add_user", "remove_user", "disable_user", "enable_user":
-			return "targeted_user_add_remove_trojan"
-		}
-	case "shadowsocks":
-		// Both Shadowsocks AEAD and multi-user 2022 users carry proxies.type
-		// "shadowsocks"; the method decides which account message the nodeagent
-		// encodes, so one capability covers them.
-		switch operation {
-		case "update_user":
-			return "targeted_user_update_shadowsocks"
-		case "add_user", "remove_user", "disable_user", "enable_user":
-			return "targeted_user_add_remove_shadowsocks"
-		}
-	case "hysteria", "hysteria2":
-		switch operation {
-		case "update_user":
-			return "targeted_user_update_hysteria"
-		case "add_user", "remove_user", "disable_user", "enable_user":
-			return "targeted_user_add_remove_hysteria"
-		}
-	case "wireguard":
-		switch operation {
-		case "update_user":
-			return "targeted_user_update_wireguard"
-		case "add_user", "remove_user", "disable_user", "enable_user":
-			return "targeted_user_add_remove_wireguard"
-		}
-	case "amneziawg":
-		switch operation {
-		case "update_user":
-			return "targeted_user_update_amneziawg"
-		case "add_user", "remove_user", "disable_user", "enable_user":
-			return "targeted_user_add_remove_amneziawg"
-		}
-	case "openvpn":
-		switch operation {
-		case "update_user":
-			return "targeted_user_update_openvpn"
-		case "add_user", "remove_user", "disable_user", "enable_user":
-			return "targeted_user_add_remove_openvpn"
-		}
-	case "l2tp":
-		switch operation {
-		case "update_user":
-			return "targeted_user_update_l2tp"
-		case "add_user", "remove_user", "disable_user", "enable_user":
-			return "targeted_user_add_remove_l2tp"
-		}
-	case "pptp":
-		switch operation {
-		case "update_user":
-			return "targeted_user_update_pptp"
-		case "add_user", "remove_user", "disable_user", "enable_user":
-			return "targeted_user_add_remove_pptp"
-		}
-	case "ikev2":
-		switch operation {
-		case "update_user":
-			return "targeted_user_update_ikev2"
-		case "add_user", "remove_user", "disable_user", "enable_user":
-			return "targeted_user_add_remove_ikev2"
-		}
-	case "anyconnect", "cisco":
-		switch operation {
-		case "update_user":
-			return "targeted_user_update_anyconnect"
-		case "add_user", "remove_user", "disable_user", "enable_user":
-			return "targeted_user_add_remove_anyconnect"
-		}
-	}
-	return ""
-}
-
-func supportsTargetedUserMutation(client *nodeclient.Client, protocols []string, operation string, assignedToNode bool) bool {
-	if client == nil || !assignedToNode || len(protocols) != 1 {
-		return false
-	}
-	capability := targetedUserCapability(protocols[0], operation)
-	return capability != "" && client.Supports(capability)
-}
-
-func (c Controller) runtimeUserOperationTargeted(ctx context.Context, nodeID int64, operation OperationRow) (bool, error) {
-	if !operation.UserID.Valid || operation.UserID.Int64 <= 0 {
-		return false, nil
-	}
-	protocols, err := c.repo.RuntimeMutationProtocolsByUserIDs(ctx, []int64{operation.UserID.Int64})
-	if err != nil {
-		return false, err
-	}
-	userProtocols := protocols[operation.UserID.Int64]
-	if len(userProtocols) != 1 {
-		return false, nil
-	}
-	capability := targetedUserCapability(userProtocols[0], operation.OperationType)
-	if capability == "" {
-		return false, nil
-	}
-	capabilities, err := c.repo.RuntimeCapabilitiesByNodeIDs(ctx, []int64{nodeID})
-	if err != nil {
-		return false, err
-	}
-	return capabilities[nodeID][capability], nil
 }
 
 func (c Controller) ProcessRuntimeUserOperations(ctx context.Context, req ProcessUserOperationsRequest) (ProcessOperationsResult, error) {
@@ -896,14 +702,6 @@ func (c Controller) processSingleOperation(ctx context.Context, operation Operat
 	result.Processed++
 	err = c.runOperation(ctx, operation)
 	if err != nil {
-		if errors.Is(err, ErrCommandOutcomeUnknown) || errors.Is(err, operationapp.ErrLeaseLost) {
-			if operation.NodeID.Valid {
-				blockedNodes[operation.NodeID.Int64] = true
-			}
-			statusCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			defer cancel()
-			return c.repo.MarkOperationOutcomeUnknown(statusCtx, operation.ID)
-		}
 		if isPermanentOperationError(err) {
 			_ = c.repo.MarkOperationFailed(ctx, operation.ID, err.Error())
 			result.Failed++
@@ -1034,15 +832,6 @@ func (c Controller) runOperation(ctx context.Context, operation OperationRow) er
 		unlock = c.lockNode(operation.NodeID.Int64)
 	}
 	defer unlock()
-	if operation.NodeID.Valid && isRuntimeSyncOperation(operation.OperationType) && isDeviceRevokeSync(operation) {
-		node, err := c.repo.Node(ctx, operation.NodeID.Int64)
-		if err != nil {
-			return err
-		}
-		if !strings.EqualFold(strings.TrimSpace(node.Status), "connected") {
-			return fmt.Errorf("node %d is %s; waiting for reconnect before runtime sync", node.ID, strings.TrimSpace(node.Status))
-		}
-	}
 	prepared, err := c.prepareRuntimeConfigOperation(ctx, operation)
 	if err != nil {
 		if operation.NodeID.Valid && !isRuntimeUserOperation(operation.OperationType) {
@@ -1108,21 +897,8 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow, 
 					return err
 				}
 			}
-			targeted, targetErr := c.runtimeUserOperationTargeted(ctx, node.ID, operation)
-			if targetErr != nil {
-				return targetErr
-			}
-			protocols, protocolErr := c.repo.RuntimeMutationProtocolsByUserIDs(ctx, []int64{operation.UserID.Int64})
-			if protocolErr != nil {
-				return protocolErr
-			}
-			userProtocols := protocols[operation.UserID.Int64]
-			// Require an explicit node capability and a single protocol before
-			// using any targeted path; mixed or legacy nodes stay on SyncConfig.
-			if !supportsTargetedUserMutation(client, userProtocols, operation.OperationType, targeted) {
+			if operation.OperationType == "update_user" && !client.Supports("targeted_user_update") {
 				syncConfig = true
-			} else {
-				syncConfig = false
 			}
 			if !syncConfig {
 				return c.grpcApplyUserOperation(ctx, client, node, operation, prepared)
@@ -1159,13 +935,15 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow, 
 		if err := c.prepareRuntimeRevision(ctx, client, node.ID, runtimeReq); err != nil {
 			return err
 		}
-		return c.executeLegacyNodeCommand(legacyConfigEvidence(ctx, runtimeReq.ConfigJson), node.ID, runtimeReq.OperationId, "sync_config", func(worker context.Context, fence *nodev1.DestructiveFence) (*nodev1.RuntimeActionResponse, error) {
-			runtimeReq.Fence = fence
-			return client.Runtime().SyncConfig(worker, runtimeReq)
-		}, func(worker context.Context, res *nodev1.RuntimeActionResponse) error {
-			_, finishErr := c.finishRuntime(worker, node, res.GetRuntime(), res.GetMessage())
-			return finishErr
-		})
+		res, err := client.Runtime().SyncConfig(ctx, runtimeReq)
+		if err != nil {
+			if !isRuntimeUserOperation(operation.OperationType) {
+				_ = c.repo.SetError(ctx, operation.NodeID.Int64, err.Error())
+			}
+			return err
+		}
+		_, err = c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
+		return err
 	case "update_runtime", "update_geo", "restart_service", "update_service", "reboot_host", "apply_tor_proxy", "configure_windscribe", "configure_psiphon":
 		var req Request
 		if err := json.Unmarshal(operation.Payload, &req); err != nil {
@@ -1252,12 +1030,6 @@ func runtimeHasCapability(state *nodev1.RuntimeState, capability string) bool {
 
 func (c Controller) fanOutGlobalRuntimeSyncOperation(ctx context.Context, operation OperationRow) error {
 	nodes, err := c.repo.UsageNodes(ctx, 0, 0)
-	if isDeviceRevokeSync(operation) {
-		// Revocation needs durable delivery to every enabled node, including
-		// disconnected nodes. PendingOperations defers their dispatch until
-		// reconnect; a successful recovery sync acknowledges their queued work.
-		nodes, err = c.repo.UsageCollectionNodes(ctx, 0, 0)
-	}
 	if err != nil {
 		return err
 	}
@@ -1273,13 +1045,6 @@ func (c Controller) fanOutGlobalRuntimeSyncOperation(ctx context.Context, operat
 		}
 	}
 	return nil
-}
-
-func isDeviceRevokeSync(operation OperationRow) bool {
-	var payload struct {
-		Source string `json:"source"`
-	}
-	return json.Unmarshal(operation.Payload, &payload) == nil && payload.Source == "device_revoke"
 }
 
 func (c Controller) queueNodeSpecificSyncRetry(ctx context.Context, nodeID int64, payload []byte) error {
@@ -1306,13 +1071,10 @@ func operationContext(parent context.Context, operation OperationRow) (context.C
 
 func isPermanentOperationError(err error) bool {
 	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "conflicting maintenance operation") ||
-		strings.Contains(message, "already has an active update operation") ||
-		strings.Contains(message, "unsupported node operation") ||
+	return strings.Contains(message, "unsupported node operation") ||
 		strings.Contains(message, "config_json is required") ||
 		strings.Contains(message, "invalid character") ||
 		strings.Contains(message, "node update required for safe user reconciliation") ||
-		strings.Contains(message, "node agent upgrade required for shared destructive fencing") ||
 		strings.Contains(message, "unable to locate antimage-node cli") ||
 		strings.Contains(message, "node not found")
 }
@@ -1451,8 +1213,6 @@ func runtimeResult(node NodeRow, state *nodev1.RuntimeState, metrics *nodev1.Met
 		result.Started = state.GetStarted()
 		result.XrayVersion = firstNonEmpty(state.GetCoreVersion(), result.XrayVersion)
 		result.NodeServiceVersion = state.GetNodeVersion()
-		result.RunningNodeVersion = state.GetNodeVersion()
-		result.InstalledNodeVersion = state.GetInstalledVersion()
 		result.InstallMode = state.GetInstallMode()
 		result.UpdateChannel = state.GetUpdateChannel()
 		result.Message = state.GetMessage()
@@ -1464,12 +1224,6 @@ func runtimeResult(node NodeRow, state *nodev1.RuntimeState, metrics *nodev1.Met
 		result.AppliedRevision = state.GetAppliedRevision()
 		result.DesiredRevision = state.GetAppliedRevision()
 		result.Capabilities = append([]string(nil), state.GetCapabilities()...)
-		for _, capability := range result.Capabilities {
-			switch capability {
-			case "accounting_degraded", "policy_degraded", "vpn_runtime_degraded":
-				result.AgentStatus = "degraded"
-			}
-		}
 	}
 	if metrics != nil {
 		system := metrics.GetSystem()

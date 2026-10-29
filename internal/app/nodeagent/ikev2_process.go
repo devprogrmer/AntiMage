@@ -1,7 +1,6 @@
 package nodeagent
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,14 +18,7 @@ const (
 type ikev2Process struct {
 	tag     string
 	inbound ikev2RuntimeInbound
-	files   ikev2RuntimeFiles
 }
-
-var (
-	ikev2CACertDir     = "/etc/ipsec.d/cacerts"
-	ikev2ServerCertDir = "/etc/ipsec.d/certs"
-	ikev2ServerKeyDir  = "/etc/ipsec.d/private"
-)
 
 func preflightIKEv2Runtimes(
 	runtimes []preparedIKEv2Runtime,
@@ -70,8 +62,7 @@ func (s *Server) applyIKEv2Runtimes(
 		return nil
 	}
 
-	configChanged, err := installIKEv2SystemConfig(runtimes)
-	if err != nil {
+	if err := installIKEv2SystemConfig(runtimes); err != nil {
 		return err
 	}
 
@@ -91,15 +82,25 @@ func (s *Server) applyIKEv2Runtimes(
 		return fmt.Errorf("ikev2 enable ip forwarding: %w", err)
 	}
 
-	if configChanged || !l2TPIPSecActive() {
-		if err := runL2TPCommand(s, "ipsec", "rereadsecrets"); err == nil {
-			if err := runL2TPCommand(s, "ipsec", "reload"); err != nil {
-				return fmt.Errorf("ikev2 reload strongSwan: %w", err)
-			}
-		} else {
-			if err := runL2TPCommand(s, "ipsec", "start"); err != nil {
-				return fmt.Errorf("ikev2 start strongSwan: %w", err)
-			}
+	if err := runL2TPCommand(
+		s,
+		"ipsec",
+		"rereadsecrets",
+	); err == nil {
+		if err := runL2TPCommand(
+			s,
+			"ipsec",
+			"reload",
+		); err != nil {
+			return fmt.Errorf("ikev2 reload strongSwan: %w", err)
+		}
+	} else {
+		if err := runL2TPCommand(
+			s,
+			"ipsec",
+			"start",
+		); err != nil {
+			return fmt.Errorf("ikev2 start strongSwan: %w", err)
 		}
 	}
 
@@ -108,7 +109,6 @@ func (s *Server) applyIKEv2Runtimes(
 		next[runtime.Tag] = &ikev2Process{
 			tag:     runtime.Tag,
 			inbound: runtime.Inbound,
-			files:   runtime.Files,
 		}
 	}
 
@@ -126,27 +126,26 @@ func (s *Server) applyIKEv2Runtimes(
 
 func installIKEv2SystemConfig(
 	runtimes []preparedIKEv2Runtime,
-) (bool, error) {
-	if err := os.MkdirAll(ikev2CACertDir, 0755); err != nil {
-		return false, err
+) error {
+	if err := os.MkdirAll("/etc/ipsec.d/cacerts", 0755); err != nil {
+		return err
 	}
-	if err := os.MkdirAll(ikev2ServerCertDir, 0755); err != nil {
-		return false, err
+	if err := os.MkdirAll("/etc/ipsec.d/certs", 0755); err != nil {
+		return err
 	}
-	if err := os.MkdirAll(ikev2ServerKeyDir, 0700); err != nil {
-		return false, err
+	if err := os.MkdirAll("/etc/ipsec.d/private", 0700); err != nil {
+		return err
 	}
 
 	var configs strings.Builder
 	var secrets strings.Builder
 
 	desiredFiles := make(map[string]struct{})
-	changed := false
 
 	for _, runtime := range runtimes {
 		rawConfig, err := os.ReadFile(runtime.Files.IPSecConfig)
 		if err != nil {
-			return false, fmt.Errorf(
+			return fmt.Errorf(
 				"ikev2 %q: read config: %w",
 				runtime.Tag,
 				err,
@@ -154,7 +153,7 @@ func installIKEv2SystemConfig(
 		}
 		rawSecret, err := os.ReadFile(runtime.Files.IPSecSecret)
 		if err != nil {
-			return false, fmt.Errorf(
+			return fmt.Errorf(
 				"ikev2 %q: read secrets: %w",
 				runtime.Tag,
 				err,
@@ -178,17 +177,17 @@ func installIKEv2SystemConfig(
 		}{
 			{
 				runtime.Files.CACert,
-				filepath.Join(ikev2CACertDir, runtime.Files.CAName),
+				filepath.Join("/etc/ipsec.d/cacerts", runtime.Files.CAName),
 				0644,
 			},
 			{
 				runtime.Files.ServerCert,
-				filepath.Join(ikev2ServerCertDir, runtime.Files.CertName),
+				filepath.Join("/etc/ipsec.d/certs", runtime.Files.CertName),
 				0644,
 			},
 			{
 				runtime.Files.ServerKey,
-				filepath.Join(ikev2ServerKeyDir, runtime.Files.KeyName),
+				filepath.Join("/etc/ipsec.d/private", runtime.Files.KeyName),
 				0600,
 			},
 		}
@@ -196,82 +195,57 @@ func installIKEv2SystemConfig(
 		for _, pair := range copyPairs {
 			raw, err := os.ReadFile(pair.src)
 			if err != nil {
-				return false, err
+				return err
 			}
-			before, err := readFileIfExists(pair.dst)
-			if err != nil {
-				return false, err
-			}
-			if !bytes.Equal(before, raw) {
-				if err := atomicWriteFile(pair.dst, raw, pair.mode); err != nil {
-					return false, err
-				}
-				changed = true
+			if err := os.WriteFile(pair.dst, raw, pair.mode); err != nil {
+				return err
 			}
 			desiredFiles[pair.dst] = struct{}{}
 		}
 	}
 
-	configBefore, err := readFileIfExists(l2TPIPSecConfigPath)
-	if err != nil {
-		return false, err
-	}
 	if err := updateL2TPManagedBlock(
 		l2TPIPSecConfigPath,
 		ikev2IPSecBlockStart,
 		ikev2IPSecBlockEnd,
 		configs.String(),
 	); err != nil {
-		return false, fmt.Errorf("install ikev2 ipsec config: %w", err)
+		return fmt.Errorf("install ikev2 ipsec config: %w", err)
 	}
-	configAfter, err := readFileIfExists(l2TPIPSecConfigPath)
-	if err != nil {
-		return false, err
-	}
-	changed = changed || !bytes.Equal(configBefore, configAfter)
 
-	secretsBefore, err := readFileIfExists(l2TPIPSecSecretsPath)
-	if err != nil {
-		return false, err
-	}
 	if err := updateL2TPManagedBlock(
 		l2TPIPSecSecretsPath,
 		ikev2SecretBlockStart,
 		ikev2SecretBlockEnd,
 		secrets.String(),
 	); err != nil {
-		return false, fmt.Errorf("install ikev2 secrets: %w", err)
+		return fmt.Errorf("install ikev2 secrets: %w", err)
 	}
-	secretsAfter, err := readFileIfExists(l2TPIPSecSecretsPath)
-	if err != nil {
-		return false, err
-	}
-	changed = changed || !bytes.Equal(secretsBefore, secretsAfter)
 
-	changed = cleanupIKEv2CredentialDir(ikev2CACertDir, desiredFiles) || changed
-	changed = cleanupIKEv2CredentialDir(ikev2ServerCertDir, desiredFiles) || changed
-	changed = cleanupIKEv2CredentialDir(ikev2ServerKeyDir, desiredFiles) || changed
+	cleanupIKEv2CredentialDir(
+		"/etc/ipsec.d/cacerts",
+		desiredFiles,
+	)
+	cleanupIKEv2CredentialDir(
+		"/etc/ipsec.d/certs",
+		desiredFiles,
+	)
+	cleanupIKEv2CredentialDir(
+		"/etc/ipsec.d/private",
+		desiredFiles,
+	)
 
-	return changed, nil
-}
-
-func readFileIfExists(path string) ([]byte, error) {
-	raw, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	return raw, err
+	return nil
 }
 
 func cleanupIKEv2CredentialDir(
 	dir string,
 	desired map[string]struct{},
-) bool {
+) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return false
+		return
 	}
-	changed := false
 
 	for _, entry := range entries {
 		if entry.IsDir() ||
@@ -284,11 +258,8 @@ func cleanupIKEv2CredentialDir(
 			continue
 		}
 
-		if os.Remove(path) == nil {
-			changed = true
-		}
+		_ = os.Remove(path)
 	}
-	return changed
 }
 
 func clearIKEv2SystemConfig(s *Server) {
@@ -311,9 +282,9 @@ func clearIKEv2SystemConfig(s *Server) {
 	}
 
 	desired := map[string]struct{}{}
-	cleanupIKEv2CredentialDir(ikev2CACertDir, desired)
-	cleanupIKEv2CredentialDir(ikev2ServerCertDir, desired)
-	cleanupIKEv2CredentialDir(ikev2ServerKeyDir, desired)
+	cleanupIKEv2CredentialDir("/etc/ipsec.d/cacerts", desired)
+	cleanupIKEv2CredentialDir("/etc/ipsec.d/certs", desired)
+	cleanupIKEv2CredentialDir("/etc/ipsec.d/private", desired)
 
 	if _, err := l2TPLookPath("ipsec"); err == nil {
 		_ = runL2TPCommand(s, "ipsec", "rereadsecrets")

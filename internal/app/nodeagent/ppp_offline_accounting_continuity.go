@@ -151,7 +151,7 @@ func offlineAccountingAckBaseline(current, snapshot map[string]uint64) map[strin
 
 // ACK is transport confirmation, not proof that UsedTraffic reflects the batch.
 // Only an exact reflected snapshot permits subtraction from retained raw totals.
-func (s *Server) offlinePolicyRaw(baseline map[string]uint64, protocol string, uid int64, tag, pending, reflected string, pendingRaw uint64, ledger ...string) (uint64, error) {
+func (s *Server) offlinePolicyRaw(baseline map[string]uint64, protocol string, uid int64, tag, pending, reflected string, pendingRaw uint64) (uint64, error) {
 	key := offlineAccountingTotalKey(uid, tag)
 	total, hasRetainedTotal := baseline[key]
 	sent := baseline[offlineAccountingSentKey(key)]
@@ -165,7 +165,7 @@ func (s *Server) offlinePolicyRaw(baseline map[string]uint64, protocol string, u
 		return 0, fmt.Errorf("invalid offline quota baseline")
 	}
 	raw := total - sent
-	reflectedPending, err := s.localPendingUsageReflected(protocol, uid, pending, reflected, ledger...)
+	reflectedPending, err := s.localPendingUsageReflected(protocol, uid, pending, reflected)
 	if err != nil {
 		return 0, err
 	}
@@ -175,7 +175,7 @@ func (s *Server) offlinePolicyRaw(baseline map[string]uint64, protocol string, u
 		}
 		raw -= pendingRaw
 	}
-	credit, err := s.localAwaitingReflectionUsage(protocol, uid, tag, pending, reflected, ledger...)
+	credit, err := s.localAwaitingReflectionUsage(protocol, uid, tag, pending, reflected)
 	if err != nil {
 		return 0, err
 	}

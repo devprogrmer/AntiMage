@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	adminapp "github.com/antimage/antimage/internal/app/admin"
-	operationapp "github.com/antimage/antimage/internal/app/operations"
-	"github.com/antimage/antimage/internal/platform/requestctx"
 )
 
 type contextKey string
@@ -38,10 +36,6 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		ctx := context.WithValue(r.Context(), adminContextKey, principal)
-		ctx = requestctx.WithAdmin(ctx, principal.Username)
-		if principal.Context.Source == adminapp.AuthSourceAPIKey && r.Header.Get("X-AntiMage-Origin") == "cli" {
-			ctx = operationapp.WithAuditOrigin(ctx, "cli")
-		}
 		if batchID := recentActionBatchID(r); batchID != "" {
 			ctx = context.WithValue(ctx, recentActionBatchContextKey, batchID)
 		}
@@ -165,6 +159,9 @@ func bearerToken(r *http.Request) string {
 	header := strings.TrimSpace(r.Header.Get("Authorization"))
 	if strings.HasPrefix(strings.ToLower(header), "bearer ") {
 		return strings.TrimSpace(header[7:])
+	}
+	if token := strings.TrimSpace(r.URL.Query().Get("token")); token != "" {
+		return token
 	}
 	return ""
 }

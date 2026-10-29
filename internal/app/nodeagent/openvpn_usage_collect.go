@@ -412,11 +412,9 @@ func openVPNUsageBatchProto(
 		stats = append(
 			stats,
 			&nodev1.UserUsageSample{
-				Uid:          uid,
-				Value:        sample.Value,
-				InboundTag:   sample.InboundTag,
-				Protocol:     "openvpn",
-				ChildBatchId: pending.BatchID,
+				Uid:        uid,
+				Value:      sample.Value,
+				InboundTag: sample.InboundTag,
 			},
 		)
 	}

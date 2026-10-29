@@ -26,7 +26,6 @@ inbound_tag TEXT, user_id INTEGER, pool TEXT, server_address TEXT, address TEXT,
 PRIMARY KEY (inbound_tag, user_id), UNIQUE (inbound_tag, address)
 );
 CREATE TABLE wireguard_devices (inbound_tag TEXT NOT NULL,user_id INTEGER NOT NULL,device_index INTEGER NOT NULL,private_key TEXT NOT NULL,public_key TEXT NOT NULL,address TEXT NOT NULL,generation INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(inbound_tag,user_id,device_index),UNIQUE(inbound_tag,public_key),UNIQUE(inbound_tag,address));
-CREATE TABLE wireguard_device_revocations (inbound_tag TEXT NOT NULL,user_id INTEGER NOT NULL,device_index INTEGER NOT NULL,credential_fingerprint TEXT NOT NULL,revoked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(inbound_tag,user_id,device_index));
 CREATE TABLE amneziawg_devices (inbound_tag TEXT NOT NULL,user_id INTEGER NOT NULL,device_index INTEGER NOT NULL,private_key TEXT NOT NULL,public_key TEXT NOT NULL,preshared_key TEXT NOT NULL DEFAULT '',address TEXT NOT NULL,generation INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(inbound_tag,user_id,device_index),UNIQUE(inbound_tag,address));
 INSERT INTO users VALUES
 (1, 'one-one', '0123456789abcdef0123456789abcdef', 'active', 0, NULL, NULL, 1, 1, 0, 0, 7),

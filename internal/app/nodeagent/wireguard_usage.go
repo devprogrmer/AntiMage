@@ -24,7 +24,6 @@ type wireGuardRuntimeInbound struct {
 
 type wireGuardRuntimePeer struct {
 	UserID                int64   `json:"user_id"`
-	DeviceIndex           int     `json:"device_index,omitempty"`
 	Username              string  `json:"username"`
 	PublicKey             string  `json:"public_key"`
 	PresharedKey          string  `json:"preshared_key,omitempty"`
@@ -32,7 +31,6 @@ type wireGuardRuntimePeer struct {
 	Status                string  `json:"status"`
 	UsedTraffic           int64   `json:"used_traffic"`
 	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
-	ReflectedUsageLedger  string  `json:"reflected_usage_ledger,omitempty"`
 	DataLimit             *int64  `json:"data_limit,omitempty"`
 	Expire                *int64  `json:"expire,omitempty"`
 	DeviceLimit           int64   `json:"device_limit,omitempty"`
@@ -63,25 +61,6 @@ type wireGuardPeerCounters struct {
 }
 
 var wireGuardInterfaceNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,15}$`)
-
-// wireGuardUsageConfigWrite is replaceable in tests so transactional peer
-// mutations can prove that a failed helper-policy write leaves the previous
-// durable configuration intact.
-var wireGuardUsageConfigWrite = atomicWriteFile
-
-func writeWireGuardUsageConfig(path string, cfg wireGuardUsageRuntimeConfig) error {
-	raw, err := json.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("marshal wireguard usage config: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return fmt.Errorf("create wireguard usage config directory: %w", err)
-	}
-	if err := wireGuardUsageConfigWrite(path, raw, 0600); err != nil {
-		return fmt.Errorf("replace wireguard usage config: %w", err)
-	}
-	return nil
-}
 
 var wireGuardDumpInterface = func(
 	ctx context.Context,
@@ -448,7 +427,7 @@ func (s *Server) syncWireGuardUsageConfigs(
 				),
 
 				UsedTraffic:           peer.UsedTraffic,
-				ReflectedUsageBatchID: strings.TrimSpace(peer.ReflectedUsageBatchID), ReflectedUsageLedger: peer.ReflectedUsageLedger,
+				ReflectedUsageBatchID: strings.TrimSpace(peer.ReflectedUsageBatchID),
 
 				DataLimit: dataLimit,
 
@@ -470,7 +449,7 @@ func (s *Server) syncWireGuardUsageConfigs(
 			return fmt.Errorf("create wireguard usage config dir: %w", err)
 		}
 
-		usageConfig := wireGuardUsageRuntimeConfig{
+		raw, err := json.Marshal(wireGuardUsageRuntimeConfig{
 			InboundTag:        tag,
 			InterfaceName:     interfaceName,
 			ListenPort:        inbound.ListenPort,
@@ -479,11 +458,27 @@ func (s *Server) syncWireGuardUsageConfigs(
 			Policies:          policies,
 			AccountingEnabled: &accountingEnabled,
 			Callback:          callback,
+		})
+		if err != nil {
+			return fmt.Errorf(
+				"wireguard %q: marshal usage config: %w",
+				tag,
+				err,
+			)
 		}
 		path := filepath.Join(dir, "usage-helper.json")
-		if err := writeWireGuardUsageConfig(path, usageConfig); err != nil {
+		tmp := path + ".tmp"
+		if err := os.WriteFile(tmp, raw, 0600); err != nil {
 			return fmt.Errorf(
-				"wireguard %q: %w",
+				"wireguard %q: write usage config: %w",
+				tag,
+				err,
+			)
+		}
+		if err := os.Rename(tmp, path); err != nil {
+			_ = os.Remove(tmp)
+			return fmt.Errorf(
+				"wireguard %q: replace usage config: %w",
 				tag,
 				err,
 			)
