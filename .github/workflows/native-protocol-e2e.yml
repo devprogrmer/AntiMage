@@ -65,8 +65,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
-          sudo python3 scripts/ci/test-native-isolated-run.py
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils cloud-image-utils
+          python3 scripts/ci/test-native-linux-guest.py
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           api_test="$RUNNER_TEMP/antimage-api.test"
@@ -75,12 +75,12 @@ jobs:
           go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           go test -c -o "$api_test" ./internal/app/api
           go build -o "$node_helper" ./cmd/antimage_node
-          sudo python3 scripts/ci/native-isolated-run.py env RUNNER_TEMP="$RUNNER_TEMP" \
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
-            bash scripts/ci/native-l2tp-driver.sh
+            bash scripts/ci/native-linux-guest.sh l2tp
 
       - name: Run real Xray protocol E2E
         if: ${{ matrix.protocol == 'xray' }}
@@ -250,10 +250,11 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             iproute2 iptables nftables iputils-ping tcpdump ppp xl2tpd strongswan pptp-linux wireguard-tools openvpn openssl netcat-openbsd
           sudo apt-get install -y --no-install-recommends pptpd
-          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils cloud-image-utils
       - name: Run real combined native lifecycle and SQLite lost-ACK replay
         run: |
           set -euo pipefail
+          python3 scripts/ci/test-native-linux-guest.py
           sudo python3 scripts/ci/test-native-isolated-run.py
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
@@ -263,25 +264,12 @@ jobs:
           go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           go test -c -o "$api_test" ./internal/app/api
           go build -o "$node_helper" ./cmd/antimage_node
-          sudo python3 scripts/ci/native-isolated-run.py env \
-            RUNNER_TEMP="$RUNNER_TEMP" \
-            ANTIMAGE_WIREGUARD_TEST_BINARY="$nodeagent_test" \
-            ANTIMAGE_OPENVPN_TEST_BINARY="$nodeagent_test" \
-            ANTIMAGE_VPN_PANEL_TEST_BINARY="$nodecontroller_test" \
-            ANTIMAGE_VPN_API_TEST_BINARY="$api_test" \
-            bash scripts/ci/native-vpn-drivers.sh
-          sudo python3 scripts/ci/native-isolated-run.py env RUNNER_TEMP="$RUNNER_TEMP" \
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_L2TP_TEST_BINARY="$nodeagent_test" \
             ANTIMAGE_L2TP_PANEL_TEST_BINARY="$nodecontroller_test" \
             ANTIMAGE_L2TP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
-            bash scripts/ci/native-l2tp-driver.sh
-          sudo python3 scripts/ci/native-isolated-run.py env RUNNER_TEMP="$RUNNER_TEMP" \
-            ANTIMAGE_PPTP_TEST_BINARY="$nodeagent_test" \
-            ANTIMAGE_PPTP_PANEL_TEST_BINARY="$nodecontroller_test" \
-            ANTIMAGE_PPTP_API_TEST_BINARY="$api_test" \
-            ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
-            bash scripts/ci/native-pptp-driver.sh
+            bash scripts/ci/native-linux-guest.sh combined
       - name: Prepare lifecycle evidence permissions
         if: failure()
         run: |
@@ -299,6 +287,7 @@ jobs:
             ${{ runner.temp }}/antimage-native-vpn-failure/**
             ${{ runner.temp }}/antimage-l2tp-failure/**
             ${{ runner.temp }}/antimage-pptp-failure/**
+            ${{ runner.temp }}/antimage-guest-failure/**
           if-no-files-found: ignore
           retention-days: 7
 
