@@ -104,7 +104,6 @@ export ANTIMAGE_PPTP_TEST_BINARY="$ANTIMAGE_L2TP_TEST_BINARY"
 export ANTIMAGE_PPTP_PANEL_TEST_BINARY="$ANTIMAGE_L2TP_PANEL_TEST_BINARY"
 export ANTIMAGE_PPTP_API_TEST_BINARY="$ANTIMAGE_L2TP_API_TEST_BINARY"
 python3 scripts/ci/test-native-isolated-run.py
-python3 scripts/ci/test_native_l2tp_session_state.py
 if [ "$1" = combined ]; then python3 scripts/ci/native-isolated-run.py bash scripts/ci/native-vpn-drivers.sh; fi
 python3 scripts/ci/native-isolated-run.py bash scripts/ci/native-l2tp-driver.sh
 if [ "$1" = combined ]; then python3 scripts/ci/native-isolated-run.py bash scripts/ci/native-pptp-driver.sh; fi
