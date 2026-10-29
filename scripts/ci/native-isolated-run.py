@@ -43,7 +43,8 @@ def main():
     child = subprocess.Popen(
         ["unshare", "--mount", "--net", "--pid", "--fork",
          "--kill-child=SIGKILL", "--mount-proc", "bash", "-euc",
-         'mount --make-rprivate /; mount -t tmpfs -o mode=755 tmpfs /run; '
+         'mount --make-rprivate /; mount -t sysfs -o nosuid,nodev,noexec sysfs /sys; '
+         'mount -t tmpfs -o mode=755 tmpfs /run; '
          'mkdir -p /run/lock /run/netns; ip link set lo up; exec "$@"',
          "native-isolated-run", *sys.argv[1:]],
         start_new_session=True, preexec_fn=parent_death_signal,

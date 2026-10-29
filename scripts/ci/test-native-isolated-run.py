@@ -54,6 +54,18 @@ class NativeIsolationTest(unittest.TestCase):
         )
         return proc, marker
 
+    def test_network_interfaces_are_visible_in_private_sysfs_only(self):
+        name = "audit" + uuid.uuid4().hex[:8]
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "bash", "-euc",
+             'ip link add "$1" type dummy; test -s "/sys/class/net/$1/ifindex"; '
+             'cat "/sys/class/net/$1/ifindex"', "test", name],
+            capture_output=True, text=True, timeout=5,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertGreater(int(result.stdout), 0)
+        self.assertFalse(pathlib.Path("/sys/class/net", name).exists())
+
     def assert_clean(self, marker):
         self.assertEqual(marker_pids(marker), [], "orphan still holds runtime resources")
 

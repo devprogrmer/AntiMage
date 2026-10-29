@@ -66,6 +66,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
+          sudo python3 scripts/ci/test-native-isolated-run.py
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           api_test="$RUNNER_TEMP/antimage-api.test"
@@ -253,6 +254,7 @@ jobs:
       - name: Run real combined native lifecycle and SQLite lost-ACK replay
         run: |
           set -euo pipefail
+          sudo python3 scripts/ci/test-native-isolated-run.py
           nodeagent_test="$RUNNER_TEMP/antimage-nodeagent.test"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           api_test="$RUNNER_TEMP/antimage-api.test"
@@ -280,6 +282,14 @@ jobs:
             ANTIMAGE_PPTP_API_TEST_BINARY="$api_test" \
             ANTIMAGE_NODE_HELPER_BINARY="$node_helper" \
             bash scripts/ci/native-pptp-driver.sh
+      - name: Prepare lifecycle evidence permissions
+        if: failure()
+        run: |
+          for evidence in "$RUNNER_TEMP"/antimage-*-failure; do
+            [ -e "$evidence" ] || continue
+            sudo chown -R "$(id -u):$(id -g)" "$evidence"
+            sudo chmod -R u+rwX "$evidence"
+          done
       - name: Upload lifecycle evidence
         if: failure()
         uses: actions/upload-artifact@v4
