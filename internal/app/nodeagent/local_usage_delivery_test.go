@@ -40,6 +40,9 @@ func TestLocalDeliveryReflectionLostACKRestartAndCompaction(t *testing.T) {
 	if len(restarted.localUsageDeliveries) != 1 || restarted.localUsageDeliveries[0].Rows[0].UserID != 11 {
 		t.Fatal("reflected rows not safely compacted")
 	}
+	if restarted.localUsageDeliveryIndex != nil {
+		t.Fatal("reflection compaction kept a stale derived index")
+	}
 }
 
 func TestLocalDeliveryCorruptionPreserved(t *testing.T) {

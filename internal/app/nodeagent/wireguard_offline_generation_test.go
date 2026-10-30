@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -42,6 +43,40 @@ func wireGuardGenerationAck(t *testing.T, server *Server, batch *nodev1.UserUsag
 	response, err := server.ackWireGuardUserUsage(context.Background(), &nodev1.AckUsageRequest{BatchId: batch.BatchId})
 	if err != nil || !response.GetAcknowledged() {
 		t.Fatalf("ACK: %v %v", response, err)
+	}
+}
+
+func TestWireGuardUnchangedCheckpointSkipsAtomicRewrite(t *testing.T) {
+	server, _, _ := wireGuardGenerationFixture(t)
+	oldWrite := wireGuardAccountingWrite
+	writes := 0
+	wireGuardAccountingWrite = func(path string, raw []byte) error {
+		writes++
+		return oldWrite(path, raw)
+	}
+	t.Cleanup(func() { wireGuardAccountingWrite = oldWrite })
+	if err := server.checkpointWireGuardOfflineGeneration(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	path := server.wireGuardUsageStatePath()
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.checkpointWireGuardOfflineGeneration(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if writes != 1 || string(before) != string(after) {
+		t.Fatalf("unchanged checkpoint rewrote snapshot: writes=%d contentChanged=%t", writes, string(before) != string(after))
+	}
+	restarted := New(Config{DataDir: server.cfg.DataDir})
+	state, err := restarted.readWireGuardGenerationStateLocked()
+	if err != nil || state[wireGuardUsageBaselineKey("wg", "wg-test", "peer")].Total != 10_000_000_000 {
+		t.Fatalf("restart generation=%v err=%v", state, err)
 	}
 }
 

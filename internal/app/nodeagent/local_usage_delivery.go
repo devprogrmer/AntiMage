@@ -61,6 +61,7 @@ func (s *Server) ensureLocalUsageDeliveriesLocked() error {
 		}
 	}
 	s.localUsageDeliveries = state.Deliveries
+	s.localUsageDeliveryIndex = nil
 	s.localUsageLoaded = true
 	return nil
 }
@@ -272,6 +273,7 @@ func (s *Server) recordLocalUsageDelivery(batchID string) error {
 		return err
 	}
 	s.localUsageDeliveries = next
+	s.localUsageDeliveryIndex = nil
 	return nil
 }
 
@@ -280,6 +282,9 @@ func (s *Server) localAwaitingReflectionUsage(protocol string, userID int64, inb
 	defer s.localUsageMu.Unlock()
 	if err := s.ensureLocalUsageDeliveriesLocked(); err != nil {
 		return 0, err
+	}
+	if total, indexed, err := s.localUsageReflectionIndexedLocked(protocol, userID, inboundTag, pendingChildID, reflectedRootBatchID); indexed || err != nil {
+		return total, err
 	}
 	reflectedThrough := -1
 	for index, delivery := range s.localUsageDeliveries {
@@ -349,6 +354,7 @@ readOnly:
 			return 0, err
 		}
 		s.localUsageDeliveries = next
+		s.localUsageDeliveryIndex = nil
 	}
 	return total, nil
 }
@@ -362,14 +368,15 @@ func (s *Server) localPendingUsageReflected(protocol string, userID int64, pendi
 	if err := s.ensureLocalUsageDeliveriesLocked(); err != nil {
 		return false, err
 	}
-	for _, delivery := range s.localUsageDeliveries {
-		if delivery.BatchID != reflectedRootBatchID {
-			continue
-		}
-		for _, row := range delivery.Rows {
-			if row.UserID == userID && row.Protocol == protocol && row.ChildID == pendingChildID {
-				return true, nil
-			}
+	index := s.localUsageIndexLocked()
+	position, found := index.Batches[reflectedRootBatchID]
+	if !found {
+		return false, nil
+	}
+	for _, entry := range index.Users[userID] {
+		row := s.localUsageDeliveries[entry.Position].Rows[entry.RowPosition]
+		if entry.Position == position && row.Protocol == protocol && row.ChildID == pendingChildID {
+			return true, nil
 		}
 	}
 	return false, nil

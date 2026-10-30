@@ -115,6 +115,7 @@ func (s *Server) amneziaWGOfflineLocked(ctx context.Context, enforce, checkpoint
 	if err != nil {
 		return state, err
 	}
+	stateChanged := false
 	root := filepath.Join(s.cfg.DataDir, "amneziawg", "runtime")
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
@@ -176,9 +177,10 @@ func (s *Server) amneziaWGOfflineLocked(ctx context.Context, enforce, checkpoint
 		if !ok {
 			prefix := cfg.InboundTag + "\x00" + cfg.InterfaceName + "\x00"
 			for key, c := range state.Counters {
-				if strings.HasPrefix(key, prefix) {
+				if strings.HasPrefix(key, prefix) && !c.Absent {
 					c.Absent = true
 					state.Counters[key] = c
+					stateChanged = true
 				}
 			}
 			continue
@@ -206,6 +208,7 @@ func (s *Server) amneziaWGOfflineLocked(ctx context.Context, enforce, checkpoint
 			if exists && c.UserID != 0 && c.UserID != uid {
 				return state, fmt.Errorf("AWG peer ownership changed without accounting migration")
 			}
+			previousCounter := c
 			generation := cfg.Generation + "\x00" + cfg.PeerGenerations[peer.PublicKey]
 			rx, tx := peer.ReceivedBytes, peer.SentBytes
 			dr, dt := rx, tx
@@ -238,11 +241,15 @@ func (s *Server) amneziaWGOfflineLocked(ctx context.Context, enforce, checkpoint
 			c.InterfaceIdentity = identity
 			c.Received, c.Sent, c.Absent = rx, tx, false
 			state.Counters[key] = c
+			if !exists || c != previousCounter {
+				stateChanged = true
+			}
 		}
 		for key, c := range state.Counters {
-			if strings.HasPrefix(key, prefix) && !seen[key] {
+			if strings.HasPrefix(key, prefix) && !seen[key] && !c.Absent {
 				c.Absent = true
 				state.Counters[key] = c
+				stateChanged = true
 			}
 		}
 	}
@@ -250,7 +257,7 @@ func (s *Server) amneziaWGOfflineLocked(ctx context.Context, enforce, checkpoint
 	if len(state.Counters) > maxAccountingCounterSeries {
 		return state, fmt.Errorf("AWG accounting capacity exceeded")
 	}
-	if checkpoint {
+	if checkpoint && stateChanged {
 		if err := s.persistAmneziaWGOfflineState(state); err != nil {
 			return state, err
 		}

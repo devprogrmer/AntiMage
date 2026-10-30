@@ -45,6 +45,7 @@ type Server struct {
 	localUsageMu                     sync.Mutex
 	localUsageLoaded                 bool
 	localUsageDeliveries             []localUsageDelivery
+	localUsageDeliveryIndex          *localUsageDeliveryIndex
 	localQuotaViews                  map[localQuotaOwner]localQuotaView
 	localQuotaAggregates             map[localQuotaAggregateKey]uint64
 	runtimePolicy                    *runtimePolicySnapshot
@@ -108,6 +109,10 @@ type Server struct {
 	xrayUsagePending                 *xrayUsagePendingBatch
 	xrayAccountingCounters           map[string]accountingCounter
 	xrayQuotaRevoked                 map[string]xrayQuotaRevocation
+	xrayQuotaPolicyIndex             *xrayQuotaPolicyIndex
+	xrayNativeScratch                map[string]uint64
+	xrayCounterScratch               map[string]accountingCounter
+	xrayStatKeyCache                 map[string]xrayStatNativeKey
 	xrayAccountingGeneration         string
 	xrayUsageLoaded                  bool
 	xrayUsageLastAckedBatchID        string

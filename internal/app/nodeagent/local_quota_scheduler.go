@@ -169,7 +169,9 @@ func (s *Server) runLocalAccountingWorker(ctx context.Context, name string, quot
 			}
 			sampleCtx, cancel := context.WithTimeout(ctx, timeout)
 			var err error
-			if checkpoint {
+			if name == "xray" && checkpoint && enforce {
+				err = s.xrayLocalAccountingTick(sampleCtx, true, true)
+			} else if checkpoint {
 				err = checkpointFn(sampleCtx)
 			}
 			if enforce && err == nil {

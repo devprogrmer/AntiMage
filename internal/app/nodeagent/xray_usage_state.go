@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+var xrayAccountingWrite = writeAccountingState
+
 // xrayUsageSample represents a single user's usage sample
 type xrayUsageSample struct {
 	UserID     int64
@@ -153,5 +155,5 @@ func (s *Server) persistXrayUsageStateLocked() error {
 		)
 	}
 
-	return writeAccountingState(s.xrayUsageStatePath(), raw)
+	return xrayAccountingWrite(s.xrayUsageStatePath(), raw)
 }
