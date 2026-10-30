@@ -27,7 +27,8 @@ func (s *Server) checkpointXrayGenerationLocked(stats []xrayStat, generation str
 	if generation == "" {
 		generation = s.xrayAccountingGeneration
 	}
-	next, err := s.previewXrayAccountingCountersLocked(stats, generation)
+	scratch := s.xrayCounterScratch
+	next, err := s.previewXrayAccountingCountersLockedInto(stats, generation, scratch)
 	if err != nil {
 		return err
 	}
@@ -39,45 +40,61 @@ func (s *Server) checkpointXrayGenerationLocked(stats []xrayStat, generation str
 		}
 	}
 	if !changed {
+		s.xrayCounterScratch = next
 		return nil
 	}
 	previous, previousGeneration := s.xrayAccountingCounters, s.xrayAccountingGeneration
 	s.xrayAccountingCounters, s.xrayAccountingGeneration = next, generation
+	s.xrayCounterScratch = previous
 	if err := s.persistXrayUsageStateLocked(); err != nil {
 		s.xrayAccountingCounters, s.xrayAccountingGeneration = previous, previousGeneration
+		s.xrayCounterScratch = scratch
 		return err
 	}
 	return nil
 }
 
 func (s *Server) previewXrayAccountingCountersLocked(stats []xrayStat, generation string) (map[string]accountingCounter, error) {
+	return s.previewXrayAccountingCountersLockedInto(stats, generation, nil)
+}
+
+func (s *Server) previewXrayAccountingCountersLockedInto(stats []xrayStat, generation string, next map[string]accountingCounter) (map[string]accountingCounter, error) {
 	if generation == "" {
 		generation = s.xrayAccountingGeneration
 	}
-	native := make(map[string]uint64)
-	seeds := make(map[string]uint64, len(s.xrayUsageBaseline))
-	for key, value := range s.xrayUsageBaseline {
-		seeds[key] = value
+	native := s.xrayNativeScratch
+	if native == nil {
+		native = make(map[string]uint64, len(s.xrayAccountingCounters))
+		s.xrayNativeScratch = native
 	}
-	// Existing pre-journal batches contain native counters. Seed from their
-	// snapshot so migration cannot count their pending bytes a second time.
-	if s.xrayUsagePending != nil {
-		for key, value := range s.xrayUsagePending.NextBaseline {
-			if value > seeds[key] {
-				seeds[key] = value
-			}
-		}
+	clear(native)
+	if s.xrayStatKeyCache == nil {
+		s.xrayStatKeyCache = make(map[string]xrayStatNativeKey, len(s.xrayAccountingCounters))
 	}
 	for _, stat := range stats {
-		name, ok := parseXrayStatName(stat.Name)
-		if !ok || name.Type != "user" || name.Metric != "traffic" || stat.Value < 0 {
+		resolved, cached := s.xrayStatKeyCache[stat.Name]
+		if !cached {
+			if len(s.xrayStatKeyCache) >= xrayStatKeyCacheMaxSeries {
+				clear(s.xrayStatKeyCache)
+			}
+			resolved = resolveXrayStatNativeKey(stat.Name)
+			s.xrayStatKeyCache[stat.Name] = resolved
+		}
+		if !resolved.OK || stat.Value < 0 {
 			continue
 		}
-		identity, err := parseXrayUserEmail(name.Email)
-		if err != nil || identity.UserID <= 0 {
-			continue
+		native[resolved.Key] = uint64(stat.Value)
+	}
+	pendingSeeds := map[string]uint64(nil)
+	if s.xrayUsagePending != nil {
+		pendingSeeds = s.xrayUsagePending.NextBaseline
+	}
+	seed := func(key string) uint64 {
+		value := s.xrayUsageBaseline[key]
+		if pending := pendingSeeds[key]; pending > value {
+			return pending
 		}
-		native[name.Email+":"+name.Direction] = uint64(stat.Value)
+		return value
 	}
 	previousCounters := s.xrayAccountingCounters
 	generationChanged := generation != "" && generation != s.xrayAccountingGeneration && len(s.xrayAccountingCounters) > 0
@@ -88,15 +105,10 @@ func (s *Server) previewXrayAccountingCountersLocked(stats []xrayStat, generatio
 			previousCounters[key] = counter
 		}
 	}
-	return advanceAccountingCounters(previousCounters, native, seeds)
+	return advanceAccountingCountersInto(next, previousCounters, native, seed)
 }
 
 func (s *Server) checkpointXrayAccounting(ctx context.Context) error {
-	s.xrayUsageMu.Lock()
-	defer s.xrayUsageMu.Unlock()
-	if err := s.ensureXrayUsageStateLoadedLocked(); err != nil {
-		return err
-	}
 	s.mu.Lock()
 	running := s.lastRuntime != nil
 	path, port := s.cfg.XrayPath, s.cfg.XrayAPIPort
@@ -109,6 +121,15 @@ func (s *Server) checkpointXrayAccounting(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	return s.checkpointXrayAccountingSample(stats, generation)
+}
+
+func (s *Server) checkpointXrayAccountingSample(stats []xrayStat, generation string) error {
+	s.xrayUsageMu.Lock()
+	defer s.xrayUsageMu.Unlock()
+	if err := s.ensureXrayUsageStateLoadedLocked(); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	unchanged := generation == s.xrayRuntimeGeneration
 	s.mu.Unlock()
@@ -116,6 +137,45 @@ func (s *Server) checkpointXrayAccounting(ctx context.Context) error {
 		return fmt.Errorf("xray runtime changed during accounting snapshot")
 	}
 	return s.checkpointXrayGenerationLocked(stats, generation)
+}
+
+// xrayLocalAccountingTick reuses one daemon stats snapshot when the checkpoint
+// and quota deadlines coincide. Both consumers still commit through their
+// existing serialized accounting paths.
+func (s *Server) xrayLocalAccountingTick(ctx context.Context, checkpoint, enforce bool) error {
+	s.mu.Lock()
+	snapshot := s.runtimePolicy
+	running := s.lastRuntime != nil
+	path, port, generation := s.cfg.XrayPath, s.cfg.XrayAPIPort, s.xrayRuntimeGeneration
+	s.mu.Unlock()
+	if !running || (!checkpoint && !enforce) {
+		return nil
+	}
+	var policyIndex *xrayQuotaPolicyIndex
+	if enforce {
+		var err error
+		policyIndex, err = s.xrayQuotaPolicyIndexFor(snapshot)
+		if err != nil {
+			return err
+		}
+		enforce = len(policyIndex.Policies) > 0
+	}
+	if !checkpoint && !enforce {
+		return nil
+	}
+	stats, err := s.cachedXrayStatsClient(path, port).queryStats(ctx, "user>>>", false)
+	if err != nil {
+		return err
+	}
+	if checkpoint {
+		if err := s.checkpointXrayAccountingSample(stats, generation); err != nil {
+			return err
+		}
+	}
+	if enforce {
+		return s.quotaCheckXrayOfflineWithStats(ctx, snapshot, generation, policyIndex, stats)
+	}
+	return nil
 }
 
 func (s *Server) runXrayAccountingCheckpoints(ctx context.Context, interval time.Duration) {

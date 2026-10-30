@@ -3,6 +3,8 @@ package nodeagent
 import (
 	"context"
 	"net"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -67,5 +69,44 @@ func TestXrayCachedStatsRPCAndRemovalErrors(t *testing.T) {
 	}
 	if status.Code(client.removeUserRPC(ctx, "inbound", "10.inbound")) != codes.PermissionDenied {
 		t.Fatal("native RPC removal failure was hidden")
+	}
+}
+
+func TestXrayLocalAccountingTickSharesStatsSnapshot(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var queries atomic.Int32
+	server := grpc.NewServer(grpc.UnknownServiceHandler(func(_ any, stream grpc.ServerStream) error {
+		request := dynamicpb.NewMessage(xrayStatsWireDescriptor.Messages().ByName("QueryStatsRequest"))
+		if err := stream.RecvMsg(request); err != nil {
+			return err
+		}
+		queries.Add(1)
+		response := dynamicpb.NewMessage(xrayStatsWireDescriptor.Messages().ByName("QueryStatsResponse"))
+		stat := dynamicpb.NewMessage(xrayStatsWireDescriptor.Messages().ByName("Stat"))
+		stat.Set(stat.Descriptor().Fields().ByNumber(1), protoreflect.ValueOfString("user>>>10.inbound>>>traffic>>>uplink"))
+		stat.Set(stat.Descriptor().Fields().ByNumber(2), protoreflect.ValueOfInt64(100))
+		response.Mutable(response.Descriptor().Fields().ByNumber(1)).List().Append(protoreflect.ValueOfMessage(stat))
+		return stream.SendMsg(response)
+	}))
+	go server.Serve(listener)
+	t.Cleanup(server.Stop)
+	serverState := &Server{cfg: Config{
+		DataDir:     filepath.Join(t.TempDir(), "data"),
+		XrayAPIPort: listener.Addr().(*net.TCPAddr).Port,
+		XrayPath:    "unused-by-rpc",
+	}}
+	serverState.lastRuntime = &exec.Cmd{}
+	serverState.xrayRuntimeGeneration = "generation-1"
+	serverState.runtimePolicy = &runtimePolicySnapshot{Revision: 1, Checksum: "policy-1", NativeJSON: `{"xray_policies":[{"user_id":10,"email":"10.inbound","inbound_tag":"inbound","status":"active"}]}`}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := serverState.xrayLocalAccountingTick(ctx, true, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := queries.Load(); got != 1 {
+		t.Fatalf("same-deadline checkpoint and quota made %d stats calls, want one", got)
 	}
 }

@@ -78,6 +78,25 @@ type xrayStatName struct {
 	Direction string // "uplink", "downlink" (for traffic only)
 }
 
+type xrayStatNativeKey struct {
+	Key string
+	OK  bool
+}
+
+const xrayStatKeyCacheMaxSeries = 65536
+
+func resolveXrayStatNativeKey(statName string) xrayStatNativeKey {
+	name, ok := parseXrayStatName(statName)
+	if !ok || name.Type != "user" || name.Metric != "traffic" {
+		return xrayStatNativeKey{}
+	}
+	identity, err := parseXrayUserEmail(name.Email)
+	if err != nil || identity.UserID <= 0 {
+		return xrayStatNativeKey{}
+	}
+	return xrayStatNativeKey{Key: name.Email + ":" + name.Direction, OK: true}
+}
+
 // parseXrayStatName parses Xray stat names such as:
 // - "user>>>email>>>traffic>>>uplink"
 // - "user>>>email>>>traffic>>>downlink"
