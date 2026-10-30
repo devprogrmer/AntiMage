@@ -85,12 +85,14 @@ describe("inbound enforced per-user speed", () => {
 			download_speed_limit: 4000000,
 		};
 		const values = rawInboundToFormValues(raw);
-		expect(values.uploadSpeedLimit).toBe("8000000");
-		expect(values.downloadSpeedLimit).toBe("4000000");
+		expect(values.uploadSpeedLimit).toBe("8");
+		expect(values.downloadSpeedLimit).toBe("4");
 
 		const payload = buildInboundPayload(values);
 		expect(payload.upload_speed_limit).toBe(8000000);
 		expect(payload.download_speed_limit).toBe(4000000);
+		values.uploadSpeedLimit = "8.5";
+		expect(buildInboundPayload(values).upload_speed_limit).toBe(8500000);
 	});
 
 	it("sends an explicit zero when the operator clears the cap", () => {
@@ -101,12 +103,16 @@ describe("inbound enforced per-user speed", () => {
 		expect(payload.download_speed_limit).toBe(0);
 	});
 
-	it("rejects negative or fractional caps", () => {
+	it("rejects negative or unrepresentable caps", () => {
 		const values = createDefaultInboundForm();
 		values.uploadSpeedLimit = "-1";
 		expect(validateInboundFormFields(values).uploadSpeedLimit).toBeTruthy();
 		values.uploadSpeedLimit = "0";
 		values.downloadSpeedLimit = "1.5";
+		expect(validateInboundFormFields(values).downloadSpeedLimit).toBeUndefined();
+		values.downloadSpeedLimit = "0.0000001";
+		expect(validateInboundFormFields(values).downloadSpeedLimit).toBeTruthy();
+		values.downloadSpeedLimit = "9007199255";
 		expect(validateInboundFormFields(values).downloadSpeedLimit).toBeTruthy();
 		values.downloadSpeedLimit = "0";
 		const errors = validateInboundFormFields(values);

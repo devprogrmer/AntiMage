@@ -680,6 +680,47 @@ func TestHTMLSubscriptionIncludesProxyOpenVPNAndWireGuardMaterial(t *testing.T) 
 	}
 }
 
+func TestXraySubscriptionEnforcesHWIDDeviceSlots(t *testing.T) {
+	service, key := newSubscriptionClientTestService(t)
+	ctx := context.Background()
+	if _, err := service.repo.db.ExecContext(ctx, `UPDATE users SET device_limit = 2 WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.repo.db.ExecContext(ctx, `CREATE TABLE vpn_device_metadata (
+		user_id INTEGER NOT NULL, protocol TEXT NOT NULL, inbound_tag TEXT NOT NULL DEFAULT '', device_id TEXT NOT NULL,
+		device_type TEXT NOT NULL DEFAULT 'Unknown', manufacturer TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '',
+		os_name TEXT NOT NULL DEFAULT '', os_version TEXT NOT NULL DEFAULT '', client_name TEXT NOT NULL DEFAULT 'Unknown',
+		client_version TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL DEFAULT 'Unknown',
+		metadata_source TEXT NOT NULL DEFAULT 'subscription', client_ip TEXT NOT NULL DEFAULT '', last_seen_at DATETIME NOT NULL,
+		PRIMARY KEY (user_id, protocol, inbound_tag, device_id)
+	)`); err != nil {
+		t.Fatal(err)
+	}
+
+	base := SubscriptionRenderRequest{Identifier: key, ClientType: "v2ray", ReadOnly: true}
+	if _, err := service.RenderSubscription(ctx, base); err == nil {
+		t.Fatal("subscription without X-HWID unexpectedly bypassed the configured device limit")
+	}
+
+	for _, hwid := range []string{"phone-a", "phone-a", "phone-b"} {
+		req := base
+		req.DeviceHWID = hwid
+		response, err := service.RenderSubscription(ctx, req)
+		if err != nil {
+			t.Fatalf("subscription for %q: %v", hwid, err)
+		}
+		if response.Headers["subscription-always-hwid-enable"] != "1" {
+			t.Fatalf("subscription for %q did not require HWID on refresh: %#v", hwid, response.Headers)
+		}
+	}
+
+	third := base
+	third.DeviceHWID = "phone-c"
+	if _, err := service.RenderSubscription(ctx, third); err == nil {
+		t.Fatal("third distinct HWID unexpectedly exceeded the two-device limit")
+	}
+}
+
 func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "subscription-clients.db")+"?_pragma=busy_timeout(30000)")

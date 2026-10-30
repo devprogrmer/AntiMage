@@ -297,7 +297,7 @@ run_wireguard() {
 
 run_openvpn() {
   echo '=== OpenVPN native tun/traffic/restart ==='
-  local quota_bytes="${ANTIMAGE_OPENVPN_QUOTA_BYTES:-$((50 * 1024 * 1024))}"
+  local quota_bytes="${ANTIMAGE_OPENVPN_QUOTA_BYTES:-$((256 * 1024 * 1024))}"
   local ca_key="$ROOT/ca.key" ca_cert="$ROOT/ca.crt"
   local server_key="$ROOT/server.key" server_csr="$ROOT/server.csr" server_cert="$ROOT/server.crt"
   local client_key="$ROOT/client.key" client_csr="$ROOT/client.csr" client_cert="$ROOT/client.crt"
@@ -391,7 +391,9 @@ EOF
     fi
     echo "OpenVPN speed test assigned client IPv4: $openvpn_client_ip"
     native_speed_policy_stage "$ANTIMAGE_OPENVPN_TEST_BINARY" tun-native "$openvpn_client_ip"
-    measure_native_tunnel_speed openvpn 10.210.0.1 "$openvpn_client_ip" "$ANTIMAGE_OPENVPN_TEST_BINARY" tun-native
+    ANTIMAGE_NATIVE_SPEED_TEST_BYTES="$((64 * 1024 * 1024))" \
+      ANTIMAGE_NATIVE_SPEED_TEST_LIMIT_MBPS=8 \
+      measure_native_tunnel_speed openvpn 10.210.0.1 "$openvpn_client_ip" "$ANTIMAGE_OPENVPN_TEST_BINARY" tun-native
     env ANTIMAGE_OPENVPN_NATIVE_ROOT="$ROOT" ANTIMAGE_OPENVPN_NATIVE_STATE="$ROOT/openvpn-accounting" \
       ANTIMAGE_OPENVPN_NATIVE_PID="$server_pid" \
       "$ANTIMAGE_OPENVPN_TEST_BINARY" -test.run='^TestOpenVPNNativeAccountingStage$' -test.v
@@ -412,7 +414,7 @@ PY
     echo "OpenVPN quota remaining after lifecycle and speed traffic: ${remaining_raw_quota} raw bytes (used=${previous_raw_quota_usage})"
     local successful_handshakes_before_quota
     successful_handshakes_before_quota="$(grep -cF 'Initialization Sequence Completed' "$ROOT/openvpn-client.log" || true)"
-    timeout 120 nc -l -p 19092 >"$ROOT/openvpn-quota-received" 2>&1 &
+    timeout 360 nc -l -p 19092 >"$ROOT/openvpn-quota-received" 2>&1 &
     local quota_listener_pid=$!
     PIDS+=("$quota_listener_pid")
     wait_for 'OpenVPN quota receiver' sh -c 'ss -lnt "( sport = :19092 )" | grep -q 19092'
@@ -424,7 +426,7 @@ PY
     local quota_watch_pid=$!
     PIDS+=("$quota_watch_pid")
     sleep .2
-    ip netns exec "$NS" sh -c 'dd if=/dev/zero bs=64K count=1024 2>/dev/null | nc -N -w 5 10.210.0.1 19092' >"$ROOT/openvpn-quota-sender.log" 2>&1 &
+    ip netns exec "$NS" sh -c 'dd if=/dev/zero bs=64K count=8192 2>/dev/null | nc -N -w 5 10.210.0.1 19092' >"$ROOT/openvpn-quota-sender.log" 2>&1 &
     local quota_sender_pid=$!
     PIDS+=("$quota_sender_pid")
     wait "$quota_watch_pid"
