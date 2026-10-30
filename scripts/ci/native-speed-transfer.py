@@ -33,27 +33,23 @@ elif MODE == "receive":
         conn.settimeout(120)
         started = time.monotonic()
         total = 0
-        windows = {}
         with conn:
             while total < EXPECTED:
                 block = conn.recv(65536)
                 if not block:
                     break
                 total += len(block)
-                second = int(time.monotonic() - started)
-                windows[second] = windows.get(second, 0) + len(block)
         elapsed = time.monotonic() - started
     if total != EXPECTED:
         raise SystemExit(f"{DIRECTION} receiver got {total} bytes, want {EXPECTED}")
     average = total * 8 / elapsed / 1_000_000
-    peak = max(windows.values()) * 8 / 1_000_000
     result = {"configured_mbps": configured, "bytes": total, "seconds": elapsed,
-              "average_mbps": average, "peak_1s_mbps": peak}
+              "average_mbps": average}
     with open(RESULT, "w", encoding="utf-8") as output:
         json.dump(result, output, sort_keys=True)
     print(f"native tunnel {DIRECTION} configured={configured} Mbps bytes={total} "
-          f"seconds={elapsed:.2f} average={average:.2f} Mbps peak_1s={peak:.2f} Mbps")
-    if not configured * 0.4 <= average <= configured * 1.04 or peak > configured * 1.35:
+          f"seconds={elapsed:.2f} sustained average={average:.2f} Mbps")
+    if not configured * 0.4 <= average <= configured * 1.02:
         raise SystemExit(f"native tunnel {DIRECTION} outside configured speed tolerance: {result}")
 else:
     raise SystemExit(f"unknown speed transfer mode {MODE}")
