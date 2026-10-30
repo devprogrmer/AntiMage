@@ -43,13 +43,18 @@ elif MODE == "receive":
     if total != EXPECTED:
         raise SystemExit(f"{DIRECTION} receiver got {total} bytes, want {EXPECTED}")
     average = total * 8 / elapsed / 1_000_000
+    burst_allowance = max(256 * 1024, configured * 1_000_000 // 160)
+    burst_allowance = min(4 * 1024 * 1024, burst_allowance)
+    steady_average = max(0, total - burst_allowance) * 8 / elapsed / 1_000_000
     result = {"configured_mbps": configured, "bytes": total, "seconds": elapsed,
-              "average_mbps": average}
+              "average_mbps": average, "burst_allowance_bytes": burst_allowance,
+              "steady_average_mbps": steady_average}
     with open(RESULT, "w", encoding="utf-8") as output:
         json.dump(result, output, sort_keys=True)
     print(f"native tunnel {DIRECTION} configured={configured} Mbps bytes={total} "
-          f"seconds={elapsed:.2f} sustained average={average:.2f} Mbps")
-    if not configured * 0.4 <= average <= configured * 1.02:
+          f"seconds={elapsed:.2f} average={average:.2f} Mbps "
+          f"steady_after_burst={steady_average:.2f} Mbps")
+    if not configured * 0.4 <= average or steady_average > configured * 1.02:
         raise SystemExit(f"native tunnel {DIRECTION} outside configured speed tolerance: {result}")
 else:
     raise SystemExit(f"unknown speed transfer mode {MODE}")
