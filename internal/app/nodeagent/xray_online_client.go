@@ -25,7 +25,7 @@ func newXrayOnlineClient(xrayPath string, apiPort int) *xrayOnlineClient {
 	}
 }
 
-// Xray v26.7.11 statsonline returns app.stats.command.GetStatsResponse:
+// Xray statsonline returns app.stats.command.GetStatsResponse:
 //
 //	{
 //	 "stat": {

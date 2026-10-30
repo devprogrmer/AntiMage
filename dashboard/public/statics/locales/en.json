@@ -1909,7 +1909,7 @@
 	"userDialog.ipLimitHint": "Maximum unique IPs allowed per user. Leave empty or '-' for unlimited.",
 	"userDialog.ipLimitLabel": "IP limit",
 	"userDialog.deviceLimitLabel": "Device limit",
-	"userDialog.deviceLimitHint": "Maximum stable device identities for supported protocols. Independent from IP limit. Leave empty for unlimited.",
+	"userDialog.deviceLimitHint": "Maximum stable device identities for supported protocols. Xray requires a client that sends X-HWID (such as Happ). Independent from IP limit. Leave empty for unlimited.",
 	"userDialog.deviceLimitPlaceholder": "Unlimited",
 	"userDialog.deviceLimitValidation": "Enter a non-negative whole number.",
 	"userDialog.downloadSpeedLimit": "Download speed limit (Mbps)",

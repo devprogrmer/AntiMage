@@ -16,12 +16,12 @@ func TestNativeSpeedLimitNativeStage(t *testing.T) {
 		t.Skip("requires isolated native tunnel speed harness")
 	}
 	const userID int64 = 17
-	const uploadRate int64 = 4_000_000
-	const downloadRate int64 = 6_000_000
+	const uploadRate int64 = 8_000_000
+	const downloadRate int64 = 8_000_000
 	if err := nativeSpeedAttachIPv4(interfaceName, address, userID, uploadRate, downloadRate); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("production tc policy applied to %s user=%d upload=4 Mbps download=6 Mbps", interfaceName, userID)
+	t.Logf("production tc policy applied to %s user=%d upload=8 Mbps download=8 Mbps", interfaceName, userID)
 }
 
 // TestNativeSpeedLimitNativeCleanupStage removes the policy after the native

@@ -51,9 +51,9 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read Xray version: %v\n%s", err, versionOutput)
 	}
-	if !strings.Contains(string(versionOutput), "26.7.11") {
+	if !strings.Contains(string(versionOutput), "26.10.29") {
 		t.Fatalf(
-			"real E2E must run against pinned Xray v26.7.11; got:\n%s",
+			"real E2E must run against pinned Xray v26.10.29; got:\n%s",
 			versionOutput,
 		)
 	}

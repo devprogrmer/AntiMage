@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 import json
+import os
 import socket
 import sys
 import time
 
 MODE, ADDRESS, PORT = sys.argv[1:4]
 PORT = int(PORT)
-EXPECTED = 4 * 1024 * 1024
+EXPECTED = int(os.environ.get("ANTIMAGE_NATIVE_SPEED_TEST_BYTES", str(16 * 1024 * 1024)))
+CONFIGURED_MBPS = int(os.environ.get("ANTIMAGE_NATIVE_SPEED_TEST_LIMIT_MBPS", "8"))
 
 if MODE == "send":
     with socket.create_connection((ADDRESS, PORT), timeout=10) as conn:
@@ -20,7 +22,7 @@ if MODE == "send":
         conn.shutdown(socket.SHUT_WR)
 elif MODE == "receive":
     RESULT, DIRECTION = sys.argv[4:6]
-    configured = 4 if DIRECTION == "upload" else 6
+    configured = CONFIGURED_MBPS
     with socket.socket() as listener:
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind((ADDRESS, PORT))
@@ -49,8 +51,7 @@ elif MODE == "receive":
         json.dump(result, output, sort_keys=True)
     print(f"native tunnel {DIRECTION} configured={configured} Mbps bytes={total} "
           f"seconds={elapsed:.2f} average={average:.2f} Mbps peak_1s={peak:.2f} Mbps")
-    lower, upper = (2.5, 5.5) if configured == 4 else (4.0, 8.0)
-    if not lower <= average <= upper or peak > configured * 2:
+    if not configured * 0.65 <= average <= configured * 1.04 or peak > configured * 1.35:
         raise SystemExit(f"native tunnel {DIRECTION} outside configured speed tolerance: {result}")
 else:
     raise SystemExit(f"unknown speed transfer mode {MODE}")
