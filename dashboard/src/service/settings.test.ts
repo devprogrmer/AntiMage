@@ -35,10 +35,18 @@ class UploadRequest {
 		this.body = body instanceof FormData ? body : null;
 		this.upload.onprogress?.({
 			lengthComputable: true,
-			loaded: 5,
+			loaded: 8,
 			total: 10,
 		} as ProgressEvent);
 		this.upload.onload?.();
+		// Some browser/proxy combinations can deliver a late progress event with
+		// a changed total after upload completion. The displayed progress must not
+		// move backwards while the server is importing the archive.
+		this.upload.onprogress?.({
+			lengthComputable: true,
+			loaded: 1,
+			total: 10,
+		} as ProgressEvent);
 		this.onload?.();
 	}
 }
@@ -57,7 +65,7 @@ describe("importAntiMageBackup", () => {
 			(percent) => progress.push(percent),
 		);
 
-		expect(progress).toEqual([0, 50, 100]);
+		expect(progress).toEqual([0, 80, 100]);
 		expect(UploadRequest.current.url).toBe("/api/settings/backup/import");
 		expect(UploadRequest.current.withCredentials).toBe(true);
 		expect(result.rows_restored).toBe(2);

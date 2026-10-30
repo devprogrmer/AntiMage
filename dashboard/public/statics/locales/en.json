@@ -690,7 +690,7 @@
 	"inbounds.usageCoefficientHelp": "Billed usage equals raw traffic × inbound coefficient × node coefficient. Upgrade selected nodes before using a value other than 1.",
 	"inbounds.usageCoefficientNodeWarning": "Older nodes cannot identify which inbound produced user traffic and will apply 1×. Update every selected node before saving this coefficient.",
 	"inbounds.enforcedSpeedLimit": "Enforced per-user speed",
-	"inbounds.enforcedSpeedLimitHelp": "Maximum speed per user, in bits per second (0 means unlimited). On supported native protocols, each user independently receives this cap and a user's lower limit wins. Xray does not enforce per-user speed limits.",
+	"inbounds.enforcedSpeedLimitHelp": "Maximum speed per user, in Mbps (0 means unlimited). On supported native protocols, each user independently receives this cap and a user's lower limit wins. Xray does not enforce per-user speed limits.",
 	"inbounds.upload": "Upload",
 	"inbounds.download": "Download",
 	"inbounds.totalTraffic": "Total",

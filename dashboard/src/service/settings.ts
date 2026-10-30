@@ -655,18 +655,25 @@ export const importAntiMageBackup = async (
 		const body = new FormData();
 		body.append("file", file);
 		const xhr = new XMLHttpRequest();
+		let lastProgress = 0;
+		let hasReportedProgress = false;
+		const reportProgress = (value: number) => {
+			const next = Math.max(lastProgress, Math.min(100, Math.max(0, Math.round(value))));
+			if (hasReportedProgress && next === lastProgress) return;
+			lastProgress = next;
+			hasReportedProgress = true;
+			onProgress?.(next);
+		};
 		const baseURL = (apiBaseURL || "/api").replace(/\/$/, "");
 		xhr.open("POST", `${baseURL}/settings/backup/import`);
 		xhr.withCredentials = true;
 		xhr.responseType = "json";
 		xhr.upload.onprogress = (event) => {
 			if (event.lengthComputable) {
-				onProgress?.(
-					Math.min(100, Math.round((event.loaded / event.total) * 100)),
-				);
+				reportProgress((event.loaded / event.total) * 100);
 			}
 		};
-		xhr.upload.onload = () => onProgress?.(100);
+		xhr.upload.onload = () => reportProgress(100);
 		xhr.onload = () => {
 			if (xhr.status >= 200 && xhr.status < 300) {
 				resolve(xhr.response as AntiMageBackupImportResponse);
@@ -675,7 +682,7 @@ export const importAntiMageBackup = async (
 			reject({ response: { _data: xhr.response } });
 		};
 		xhr.onerror = () => reject(new Error("Backup upload failed"));
-		onProgress?.(0);
+		reportProgress(0);
 		xhr.send(body);
 	});
 };
@@ -692,16 +699,25 @@ export const importVPNUIBackup = async (
 		body.append("service_id", String(serviceId));
 		body.append("duplicate_policy", duplicatePolicy);
 		const xhr = new XMLHttpRequest();
+		let lastProgress = 0;
+		let hasReportedProgress = false;
+		const reportProgress = (value: number) => {
+			const next = Math.max(lastProgress, Math.min(100, Math.max(0, Math.round(value))));
+			if (hasReportedProgress && next === lastProgress) return;
+			lastProgress = next;
+			hasReportedProgress = true;
+			onProgress?.(next);
+		};
 		const baseURL = (apiBaseURL || "/api").replace(/\/$/, "");
 		xhr.open("POST", `${baseURL}/settings/backup/import/vpn-ui`);
 		xhr.withCredentials = true;
 		xhr.responseType = "json";
 		xhr.upload.onprogress = (event) => {
 			if (event.lengthComputable) {
-				onProgress?.(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+			reportProgress((event.loaded / event.total) * 100);
 			}
 		};
-		xhr.upload.onload = () => onProgress?.(100);
+		xhr.upload.onload = () => reportProgress(100);
 		xhr.onload = () => {
 			if (xhr.status >= 200 && xhr.status < 300) {
 				resolve(xhr.response as VPNUIBackupImportResponse);
@@ -710,7 +726,7 @@ export const importVPNUIBackup = async (
 			reject({ response: { _data: xhr.response } });
 		};
 		xhr.onerror = () => reject(new Error("vpn-ui backup upload failed"));
-		onProgress?.(0);
+		reportProgress(0);
 		xhr.send(body);
 	});
 };
