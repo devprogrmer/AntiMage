@@ -18,6 +18,13 @@ func BenchmarkAccountingSnapshotMarshal(b *testing.B) {
 		state := xrayUsageDiskState{Counters: counters, Baseline: map[string]uint64{}, Generation: "generation-1"}
 		benchmarkJSONMarshal(b, state)
 	})
+	b.Run("xray-delta-12-series", func(b *testing.B) {
+		entries := make([]xrayAccountingJournalEntry, 12)
+		for i := range entries {
+			entries[i] = xrayAccountingJournalEntry{Key: fmt.Sprintf("%d.user%d@example.test:uplink", i+1, i+1), Counter: accountingCounter{Native: 110, Total: 1010}}
+		}
+		benchmarkJSONMarshal(b, xrayAccountingJournalRecord{Sequence: 42, Generation: "generation-1", Entries: entries})
+	})
 	b.Run("wireguard-516-carry-782-generations", func(b *testing.B) {
 		carry := make(map[string]wireGuardUsageCarry, 516)
 		generations := make(map[string]wireGuardOfflineGeneration, 782)
@@ -29,6 +36,16 @@ func BenchmarkAccountingSnapshotMarshal(b *testing.B) {
 		}
 		state := wireGuardUsageDiskState{Generations: generations, Carry: carry, Baseline: map[string]uint64{}}
 		benchmarkJSONMarshal(b, state)
+	})
+	b.Run("wireguard-delta-2-series", func(b *testing.B) {
+		generations := make(map[string]wireGuardOfflineGeneration, 2)
+		carry := make(map[string]wireGuardUsageCarry, 2)
+		for i := range 2 {
+			key := fmt.Sprintf("in\x00wg\x00peer-%d", i)
+			generations[key] = wireGuardOfflineGeneration{Identity: "boot:3", UserID: int64(i + 1), Total: 20_001, Reference: 10_000}
+			carry[key] = wireGuardUsageCarry{Value: 10_001, NextBaseline: 20_000, UserID: int64(i + 1), InboundTag: "in"}
+		}
+		benchmarkJSONMarshal(b, wireGuardAccountingJournalRecord{Sequence: 42, Generations: generations, Carry: carry})
 	})
 	b.Run("amneziawg-1000-counters", func(b *testing.B) {
 		counters := make(map[string]amneziaWGOfflineCounter, 1000)
@@ -53,4 +70,5 @@ func benchmarkJSONMarshal(b *testing.B, state any) {
 			b.Fatal(err)
 		}
 	}
+	b.ReportMetric(float64(len(raw)), "json-bytes/op")
 }

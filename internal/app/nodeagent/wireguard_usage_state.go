@@ -21,6 +21,7 @@ type wireGuardUsageAwaitingReflectionBatch struct {
 }
 
 type wireGuardUsageDiskState struct {
+	JournalSequence    uint64                                  `json:"journal_sequence,omitempty"`
 	Generations        map[string]wireGuardOfflineGeneration   `json:"generations,omitempty"`
 	Baseline           map[string]uint64                       `json:"baseline,omitempty"`
 	Pending            *wireGuardUsagePendingBatch             `json:"pending,omitempty"`
@@ -28,6 +29,22 @@ type wireGuardUsageDiskState struct {
 	AwaitingReflection []wireGuardUsageAwaitingReflectionBatch `json:"awaiting_reflection,omitempty"`
 	LastAckedBatchID   string                                  `json:"last_acked_batch_id,omitempty"`
 }
+
+type wireGuardAccountingJournalRecord struct {
+	Sequence          uint64                                `json:"sequence"`
+	Generations       map[string]wireGuardOfflineGeneration `json:"generations,omitempty"`
+	RemovedGeneration []string                              `json:"removed_generations,omitempty"`
+	Carry             map[string]wireGuardUsageCarry        `json:"carry,omitempty"`
+	RemovedCarry      []string                              `json:"removed_carry,omitempty"`
+}
+
+const (
+	wireGuardJournalCompactRecords = 128
+	wireGuardJournalCompactBytes   = 256 << 10
+)
+
+var wireGuardAccountingJournalAppend = appendAccountingWAL
+var wireGuardAccountingJournalCompact = compactAccountingWAL
 
 func (s *Server) wireGuardUsageStatePath() string {
 	return filepath.Join(
@@ -50,6 +67,14 @@ func (s *Server) ensureWireGuardUsageStateLoadedLocked() error {
 			}
 			if s.wireGuardUsageCarry == nil {
 				s.wireGuardUsageCarry = make(map[string]wireGuardUsageCarry)
+			}
+			if s.wireGuardUsageGenerations == nil {
+				s.wireGuardUsageGenerations = make(map[string]wireGuardOfflineGeneration)
+			}
+			s.wireGuardGenerationsLoaded = true
+			s.wireGuardSnapshotPresent = false
+			if err := s.replayWireGuardAccountingJournalLocked(); err != nil {
+				return fmt.Errorf("replay wireguard accounting journal: %w", err)
 			}
 			s.wireGuardUsageLoaded = true
 			return nil
@@ -80,6 +105,17 @@ func (s *Server) ensureWireGuardUsageStateLoadedLocked() error {
 	s.wireGuardUsageCarry = state.Carry
 	s.wireGuardUsageAwaitingReflection = state.AwaitingReflection
 	s.wireGuardUsageLastAckedBatchID = state.LastAckedBatchID
+	s.wireGuardUsageGenerations = state.Generations
+	if s.wireGuardUsageGenerations == nil {
+		s.wireGuardUsageGenerations = make(map[string]wireGuardOfflineGeneration)
+	}
+	s.wireGuardGenerationsLoaded = true
+	s.wireGuardSnapshotPresent = true
+	s.wireGuardSnapshotSequence = state.JournalSequence
+	s.wireGuardJournalSequence = state.JournalSequence
+	if err := s.replayWireGuardAccountingJournalLocked(); err != nil {
+		return fmt.Errorf("replay wireguard accounting journal: %w", err)
+	}
 	s.wireGuardUsageLoaded = true
 	return nil
 }
@@ -93,6 +129,8 @@ func (s *Server) persistWireGuardUsageStateLocked() error {
 }
 
 func (s *Server) persistWireGuardGenerationStateLocked(generations map[string]wireGuardOfflineGeneration) error {
+	// Callers receive a working copy from readWireGuardGenerationStateLocked;
+	// keep the committed cache untouched until the replacement is durable.
 	for key, generation := range generations {
 		if value, ok := s.wireGuardUsageBaseline[key]; ok {
 			generation.Reference = value
@@ -116,6 +154,7 @@ func (s *Server) persistWireGuardGenerationStateLocked(generations map[string]wi
 	}
 
 	raw, err := json.Marshal(wireGuardUsageDiskState{
+		JournalSequence:    s.wireGuardJournalSequence,
 		Generations:        generations,
 		Baseline:           s.wireGuardUsageBaseline,
 		Pending:            s.wireGuardUsagePending,
@@ -128,5 +167,73 @@ func (s *Server) persistWireGuardGenerationStateLocked(generations map[string]wi
 	}
 
 	path := s.wireGuardUsageStatePath()
-	return wireGuardAccountingWrite(path, raw)
+	if err := wireGuardAccountingWrite(path, raw); err != nil {
+		return err
+	}
+	s.wireGuardUsageGenerations = generations
+	s.wireGuardGenerationsLoaded = true
+	s.wireGuardSnapshotPresent = true
+	s.wireGuardSnapshotSequence = s.wireGuardJournalSequence
+	if err := wireGuardAccountingJournalCompact(s.wireGuardUsageJournalPath()); err != nil {
+		info, statErr := os.Stat(s.wireGuardUsageJournalPath())
+		if os.IsNotExist(statErr) || (statErr == nil && info.Size() == 0) {
+			s.wireGuardJournalOffset = 0
+			s.wireGuardJournalRecords = 0
+		}
+		s.appendLog("wireguard accounting journal compaction deferred: " + err.Error())
+		return nil // The snapshot is already durable and includes this sequence.
+	}
+	s.wireGuardJournalOffset = 0
+	s.wireGuardJournalRecords = 0
+	return nil
+}
+
+func (s *Server) wireGuardUsageJournalPath() string {
+	return s.wireGuardUsageStatePath() + ".wal"
+}
+
+func (s *Server) replayWireGuardAccountingJournalLocked() error {
+	sequence := s.wireGuardSnapshotSequence
+	offset, records, err := replayAccountingWAL(s.wireGuardUsageJournalPath(), func(raw []byte) error {
+		var record wireGuardAccountingJournalRecord
+		if err := json.Unmarshal(raw, &record); err != nil {
+			return fmt.Errorf("decode wireguard accounting journal record: %w", err)
+		}
+		if record.Sequence == 0 {
+			return fmt.Errorf("wireguard accounting journal has zero sequence")
+		}
+		if record.Sequence <= s.wireGuardSnapshotSequence {
+			return nil
+		}
+		if record.Sequence != sequence+1 {
+			return fmt.Errorf("wireguard accounting journal sequence %d follows %d", record.Sequence, sequence)
+		}
+		for _, key := range record.RemovedGeneration {
+			delete(s.wireGuardUsageGenerations, key)
+		}
+		for key, generation := range record.Generations {
+			s.wireGuardUsageGenerations[key] = generation
+		}
+		for _, key := range record.RemovedCarry {
+			delete(s.wireGuardUsageCarry, key)
+		}
+		for key, carry := range record.Carry {
+			s.wireGuardUsageCarry[key] = carry
+		}
+		if len(s.wireGuardUsageGenerations) > maxAccountingCounterSeries || len(s.wireGuardUsageCarry) > maxAccountingCounterSeries {
+			return fmt.Errorf("replayed wireguard accounting exceeds capacity")
+		}
+		sequence = record.Sequence
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if !s.wireGuardSnapshotPresent && records > 0 {
+		return fmt.Errorf("wireguard accounting journal exists without a base snapshot")
+	}
+	s.wireGuardJournalSequence = sequence
+	s.wireGuardJournalOffset = offset
+	s.wireGuardJournalRecords = records
+	return nil
 }

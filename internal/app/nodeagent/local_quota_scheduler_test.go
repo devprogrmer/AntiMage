@@ -145,9 +145,17 @@ func TestWireGuardNormalQuotaTicksDoNotWriteAccountingState(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := wireGuardAccountingWrite
-	writes := 0
+	originalAppend := wireGuardAccountingJournalAppend
+	writes, journalAppends := 0, 0
 	wireGuardAccountingWrite = func(path string, raw []byte) error { writes++; return original(path, raw) }
-	t.Cleanup(func() { wireGuardAccountingWrite = original })
+	wireGuardAccountingJournalAppend = func(path string, offset int64, raw []byte) (int64, error) {
+		journalAppends++
+		return originalAppend(path, offset, raw)
+	}
+	t.Cleanup(func() {
+		wireGuardAccountingWrite = original
+		wireGuardAccountingJournalAppend = originalAppend
+	})
 	for i := 0; i < 10; i++ {
 		counter += 100
 		if err := s.wireGuardOfflineTick(context.Background(), true, false); err != nil {
@@ -160,7 +168,7 @@ func TestWireGuardNormalQuotaTicksDoNotWriteAccountingState(t *testing.T) {
 	if err := s.wireGuardOfflineTick(context.Background(), false, true); err != nil {
 		t.Fatal(err)
 	}
-	if writes != 1 {
-		t.Fatalf("periodic checkpoint writes=%d", writes)
+	if writes != 0 || journalAppends != 1 {
+		t.Fatalf("periodic checkpoint writes: snapshots=%d journal=%d, want 0 and 1", writes, journalAppends)
 	}
 }
