@@ -80,7 +80,7 @@ for INSTALLER in "$ROOT/../../scripts/install_latest_xray.sh" "$ROOT/install_lat
     ZIP_FILE="$TMP/xray.zip"
     printf 'trusted xray archive fixture' >"$ZIP_FILE"
     expected="$(sha256sum "$ZIP_FILE" | awk '{print $1}')"
-    printf '256= %s\n' "$expected" >"${ZIP_FILE}.dgst"
+    printf 'SHA2-256= %s\n' "$expected" >"${ZIP_FILE}.dgst"
     verify_xray_archive
 
     printf 'corrupted archive fixture' >"$ZIP_FILE"

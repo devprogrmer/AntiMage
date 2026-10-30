@@ -102,7 +102,7 @@ download_xray() {
 
 verify_xray_archive() {
     local expected actual
-    expected="$(awk -F '= ' '$1 == "256" { print $2; exit }' "${ZIP_FILE}.dgst")"
+    expected="$(awk -F '= ' '$1 == "SHA2-256" { print $2; exit }' "${ZIP_FILE}.dgst")"
     if [[ ! "$expected" =~ ^[[:xdigit:]]{64}$ ]]; then
         echo 'error: Xray release has no valid SHA-256 checksum.' >&2
         return 1

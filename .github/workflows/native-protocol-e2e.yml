@@ -94,7 +94,7 @@ jobs:
             "https://github.com/XTLS/Xray-core/releases/download/${version}/Xray-linux-64.zip"
           curl --fail --location --retry 3 --output "$archive.dgst" \
             "https://github.com/XTLS/Xray-core/releases/download/${version}/Xray-linux-64.zip.dgst"
-          xray_sha256="$(awk -F '= ' '$1 == "256" { print $2; exit }' "$archive.dgst")"
+          xray_sha256="$(awk -F '= ' '$1 == "SHA2-256" { print $2; exit }' "$archive.dgst")"
           [[ "$xray_sha256" =~ ^[[:xdigit:]]{64}$ ]]
           echo "$xray_sha256  $archive" | sha256sum --check -
           mkdir -p "$dir"
