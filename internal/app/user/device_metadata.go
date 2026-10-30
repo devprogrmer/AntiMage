@@ -388,6 +388,12 @@ func genericSubscriptionDeviceID(
 	req SubscriptionRenderRequest,
 	meta subscriptionDeviceMetadata,
 ) string {
+	if hwid := cleanDeviceHint(req.DeviceHWID); hwid != "" {
+		sum := sha256.Sum256([]byte(strings.Join([]string{
+			normalizeMetadataProtocol(protocol), strings.TrimSpace(inboundTag), hwid,
+		}, "\x00")))
+		return metadataDevicePrefix(protocol) + "-hwid-" + hex.EncodeToString(sum[:16])
+	}
 	parts := []string{
 		normalizeMetadataProtocol(protocol),
 		strings.TrimSpace(inboundTag),
@@ -498,6 +504,61 @@ func (s Service) recordGenericSubscriptionDeviceMetadata(
 		req,
 		meta,
 	)
+}
+
+// registerXraySubscriptionHWID atomically reserves an Xray subscription slot.
+// This only governs clients that send a stable X-HWID on subscription fetch;
+// Xray's VLESS authentication protocol itself does not carry device identity.
+func (s Service) registerXraySubscriptionHWID(
+	ctx context.Context,
+	user UserDetail,
+	req SubscriptionRenderRequest,
+) error {
+	hwid := cleanDeviceHint(req.DeviceHWID)
+	if user.ID <= 0 || user.DeviceLimit <= 0 || hwid == "" {
+		return nil
+	}
+	meta := subscriptionMetadataFromRequest(req, "xray")
+	deviceID := genericSubscriptionDeviceID("xray", "", req, meta)
+	tx, err := s.repo.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// Serialize slot allocation per user across concurrent subscription fetches.
+	if strings.EqualFold(s.repo.dialect, "mysql") || strings.EqualFold(s.repo.dialect, "mariadb") {
+		var id int64
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id = ? FOR UPDATE`, user.ID).Scan(&id); err != nil {
+			return err
+		}
+	} else {
+		if _, err := tx.ExecContext(ctx, `UPDATE users SET device_limit = device_limit WHERE id = ?`, user.ID); err != nil {
+			return err
+		}
+	}
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM vpn_device_metadata WHERE user_id = ? AND protocol = 'xray' AND inbound_tag = '' AND device_id = ?)`, user.ID, deviceID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		var count int64
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM vpn_device_metadata WHERE user_id = ? AND protocol = 'xray' AND inbound_tag = '' AND device_id LIKE 'xray-hwid-%'`, user.ID).Scan(&count); err != nil {
+			return err
+		}
+		if count >= user.DeviceLimit {
+			return clientError(403, "Xray device limit reached")
+		}
+	}
+	query := `INSERT INTO vpn_device_metadata (user_id,protocol,inbound_tag,device_id,device_type,manufacturer,model,os_name,os_version,client_name,client_version,platform,metadata_source,client_ip,last_seen_at) VALUES (?,'xray','',?,?,?,?,?,?,?,?,?,'subscription',?,?) ON CONFLICT(user_id,protocol,inbound_tag,device_id) DO UPDATE SET device_type=COALESCE(NULLIF(excluded.device_type,'Unknown'),vpn_device_metadata.device_type), manufacturer=COALESCE(NULLIF(excluded.manufacturer,''),vpn_device_metadata.manufacturer), model=COALESCE(NULLIF(excluded.model,''),vpn_device_metadata.model), os_name=COALESCE(NULLIF(excluded.os_name,''),vpn_device_metadata.os_name), os_version=COALESCE(NULLIF(excluded.os_version,''),vpn_device_metadata.os_version), client_name=COALESCE(NULLIF(excluded.client_name,'Unknown'),vpn_device_metadata.client_name), client_version=COALESCE(NULLIF(excluded.client_version,''),vpn_device_metadata.client_version), platform=COALESCE(NULLIF(excluded.platform,'Unknown'),vpn_device_metadata.platform), client_ip=COALESCE(NULLIF(excluded.client_ip,''),vpn_device_metadata.client_ip), last_seen_at=excluded.last_seen_at`
+	if strings.EqualFold(s.repo.dialect, "mysql") || strings.EqualFold(s.repo.dialect, "mariadb") {
+		query = `INSERT INTO vpn_device_metadata (user_id,protocol,inbound_tag,device_id,device_type,manufacturer,model,os_name,os_version,client_name,client_version,platform,metadata_source,client_ip,last_seen_at) VALUES (?,'xray','',?,?,?,?,?,?,?,?,?,'subscription',?,?) ON DUPLICATE KEY UPDATE device_type=COALESCE(NULLIF(VALUES(device_type),'Unknown'),device_type), manufacturer=COALESCE(NULLIF(VALUES(manufacturer),''),manufacturer), model=COALESCE(NULLIF(VALUES(model),''),model), os_name=COALESCE(NULLIF(VALUES(os_name),''),os_name), os_version=COALESCE(NULLIF(VALUES(os_version),''),os_version), client_name=COALESCE(NULLIF(VALUES(client_name),'Unknown'),client_name), client_version=COALESCE(NULLIF(VALUES(client_version),''),client_version), platform=COALESCE(NULLIF(VALUES(platform),'Unknown'),platform), client_ip=COALESCE(NULLIF(VALUES(client_ip),''),client_ip), last_seen_at=VALUES(last_seen_at)`
+	}
+	_, err = tx.ExecContext(ctx, query,
+		user.ID, deviceID, meta.DeviceType, meta.Manufacturer, meta.Model, meta.OSName, meta.OSVersion, meta.ClientName, meta.ClientVersion, meta.Platform, cleanDeviceHint(req.ClientIP), time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s Service) storeSubscriptionDeviceMetadata(

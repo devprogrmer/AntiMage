@@ -1,5 +1,14 @@
 import { ALPN_OPTION, UTLS_FINGERPRINT } from "utils/outbound";
 
+const BITS_PER_MEGABIT = 1_000_000;
+
+const mbpsToBitsPerSecond = (value: string | number): number => {
+	const mbps = Number(value);
+	return Number.isFinite(mbps) && mbps >= 0
+		? Math.round(mbps * BITS_PER_MEGABIT)
+		: 0;
+};
+
 export type Protocol =
 	| "vmess"
 	| "vless"
@@ -149,7 +158,8 @@ export type InboundFormValues = {
 	port: string;
 	protocol: Protocol;
 	usageCoefficient: string;
-	// Enforced per-user speed caps for the inbound, in bits per second.
+	// Enforced per-user speed caps for the inbound, entered in Mbps and
+	// persisted in bits per second.
 	// "0" means unlimited. The cap applies to each user independently.
 	uploadSpeedLimit: string;
 	downloadSpeedLimit: string;
@@ -861,26 +871,28 @@ export const validateInboundFormFields = (
 	) {
 		errors.usageCoefficient = "Usage coefficient must be between 0.01 and 100.";
 	}
-	// Enforced per-user inbound speed caps, expressed in bits per second. 0
+	// Enforced per-user inbound speed caps, entered in Mbps. 0
 	// means unlimited. The caps apply independently to each user on the
 	// inbound, so a 8/8 cap lets every user reach 8/8.
 	const uploadSpeedLimit = Number(values.uploadSpeedLimit);
 	const downloadSpeedLimit = Number(values.downloadSpeedLimit);
 	if (
 		!Number.isFinite(uploadSpeedLimit) ||
-		!Number.isInteger(uploadSpeedLimit) ||
-		uploadSpeedLimit < 0
+		uploadSpeedLimit < 0 ||
+		!Number.isSafeInteger(mbpsToBitsPerSecond(values.uploadSpeedLimit)) ||
+		(uploadSpeedLimit > 0 && mbpsToBitsPerSecond(uploadSpeedLimit) === 0)
 	) {
 		errors.uploadSpeedLimit =
-			"Enforced upload speed must be a whole number of bits per second (0 for unlimited).";
+			"Enforced upload speed must be a non-negative Mbps value (0 for unlimited).";
 	}
 	if (
 		!Number.isFinite(downloadSpeedLimit) ||
-		!Number.isInteger(downloadSpeedLimit) ||
-		downloadSpeedLimit < 0
+		downloadSpeedLimit < 0 ||
+		!Number.isSafeInteger(mbpsToBitsPerSecond(values.downloadSpeedLimit)) ||
+		(downloadSpeedLimit > 0 && mbpsToBitsPerSecond(downloadSpeedLimit) === 0)
 	) {
 		errors.downloadSpeedLimit =
-			"Enforced download speed must be a whole number of bits per second (0 for unlimited).";
+			"Enforced download speed must be a non-negative Mbps value (0 for unlimited).";
 	}
 	if (values.protocol === "pptp" && values.port.trim() !== "1723") {
 		errors.port = "PPTP port must be 1723.";
@@ -3244,10 +3256,10 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			? String(raw.usage_coefficient)
 			: base.usageCoefficient,
 		uploadSpeedLimit: Number.isFinite(Number(raw.upload_speed_limit))
-			? String(raw.upload_speed_limit)
+			? String(Number(raw.upload_speed_limit) / BITS_PER_MEGABIT)
 			: base.uploadSpeedLimit,
 		downloadSpeedLimit: Number.isFinite(Number(raw.download_speed_limit))
-			? String(raw.download_speed_limit)
+			? String(Number(raw.download_speed_limit) / BITS_PER_MEGABIT)
 			: base.downloadSpeedLimit,
 	};
 };
@@ -4320,10 +4332,10 @@ export const buildInboundPayload = (
 			? Number(values.usageCoefficient)
 			: 1,
 		upload_speed_limit: Number.isFinite(Number(values.uploadSpeedLimit))
-			? Number(values.uploadSpeedLimit)
+			? mbpsToBitsPerSecond(values.uploadSpeedLimit)
 			: 0,
 		download_speed_limit: Number.isFinite(Number(values.downloadSpeedLimit))
-			? Number(values.downloadSpeedLimit)
+			? mbpsToBitsPerSecond(values.downloadSpeedLimit)
 			: 0,
 		settings: buildSettings(values),
 	};
