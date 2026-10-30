@@ -21,21 +21,32 @@ func (s *Server) updateWireGuardUsageCarryLocked(
 	total uint64,
 	persist bool,
 ) error {
+	_, err := s.updateWireGuardUsageCarryLockedWithChange(inboundTag, interfaceName, publicKey, userID, total, persist, nil)
+	return err
+}
+
+func (s *Server) updateWireGuardUsageCarryLockedWithChange(
+	inboundTag, interfaceName, publicKey string,
+	userID int64,
+	total uint64,
+	persist bool,
+	beforeChange func(string, wireGuardUsageCarry, bool),
+) (bool, error) {
 	inboundTag = strings.TrimSpace(inboundTag)
 	interfaceName = strings.TrimSpace(interfaceName)
 	publicKey = strings.TrimSpace(publicKey)
 
 	if inboundTag == "" {
-		return fmt.Errorf("wireguard carry inbound tag is empty")
+		return false, fmt.Errorf("wireguard carry inbound tag is empty")
 	}
 	if interfaceName == "" {
-		return fmt.Errorf("wireguard carry interface is empty")
+		return false, fmt.Errorf("wireguard carry interface is empty")
 	}
 	if publicKey == "" {
-		return fmt.Errorf("wireguard carry public key is empty")
+		return false, fmt.Errorf("wireguard carry public key is empty")
 	}
 	if userID <= 0 {
-		return fmt.Errorf("wireguard carry user id is invalid")
+		return false, fmt.Errorf("wireguard carry user id is invalid")
 	}
 
 	if s.wireGuardUsageBaseline == nil {
@@ -63,7 +74,7 @@ func (s *Server) updateWireGuardUsageCarryLocked(
 	previous, hasCarry := s.wireGuardUsageCarry[key]
 	if hasCarry {
 		if previous.UserID != 0 && previous.UserID != userID {
-			return fmt.Errorf(
+			return false, fmt.Errorf(
 				"wireguard carry ownership changed for %q: user %d -> %d",
 				publicKey,
 				previous.UserID,
@@ -86,7 +97,7 @@ func (s *Server) updateWireGuardUsageCarryLocked(
 	}
 
 	if !hasCarry && delta == 0 {
-		return nil
+		return false, nil
 	}
 
 	updated := previous
@@ -95,7 +106,7 @@ func (s *Server) updateWireGuardUsageCarryLocked(
 
 	if delta > 0 {
 		if ^uint64(0)-updated.Value < delta {
-			return fmt.Errorf(
+			return false, fmt.Errorf(
 				"wireguard carry byte counter overflow for user %d",
 				userID,
 			)
@@ -112,12 +123,15 @@ func (s *Server) updateWireGuardUsageCarryLocked(
 		updated.NextBaseline == previous.NextBaseline &&
 		updated.UserID == previous.UserID &&
 		updated.InboundTag == previous.InboundTag {
-		return nil
+		return false, nil
 	}
 
+	if beforeChange != nil {
+		beforeChange(key, previous, hasCarry)
+	}
 	s.wireGuardUsageCarry[key] = updated
 	if !persist {
-		return nil
+		return true, nil
 	}
 
 	if err := s.persistWireGuardUsageStateLocked(); err != nil {
@@ -126,10 +140,10 @@ func (s *Server) updateWireGuardUsageCarryLocked(
 		} else {
 			delete(s.wireGuardUsageCarry, key)
 		}
-		return err
+		return false, err
 	}
 
-	return nil
+	return true, nil
 }
 func cloneWireGuardUsageCarryMap(
 	source map[string]wireGuardUsageCarry,

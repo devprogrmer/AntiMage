@@ -87,10 +87,12 @@ func TestAmneziaWGQuotaTickAggregateAndDiskWriteCounts(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(s.cfg.DataDir, "amneziawg", "offline-accounting.json")); !os.IsNotExist(err) {
 		t.Fatalf("normal quota created checkpoint: %v", err)
 	}
-	if err := s.checkpointAmneziaWGOffline(context.Background()); err != nil {
-		t.Fatal(err)
+	for range 8 {
+		if err := s.checkpointAmneziaWGOffline(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if writes != 1 || snapshots != 11 {
+	if writes != 1 || snapshots != 18 {
 		t.Fatalf("periodic checkpoint writes=%d snapshots=%d", writes, snapshots)
 	}
 	value = 25
@@ -110,7 +112,7 @@ func TestAmneziaWGQuotaTickAggregateAndDiskWriteCounts(t *testing.T) {
 	if err := s.quotaCheckAmneziaWGOffline(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if writes != 2 || snapshots != 13 || identities != 26 || *removed != 64 {
+	if writes != 2 || snapshots != 20 || identities != 40 || *removed != 64 {
 		t.Fatalf("quota removal: writes=%d snapshots=%d identities=%d removals=%d", writes, snapshots, identities, *removed)
 	}
 	state, err = s.readAmneziaWGOfflineState()
@@ -411,6 +413,50 @@ func awgCollectValue(t *testing.T, s *Server) *nodev1.UserUsageBatch {
 		t.Fatal(err)
 	}
 	return b
+}
+
+func TestAmneziaWGUnchangedCheckpointSkipsAtomicRewrite(t *testing.T) {
+	s, _, value, _ := awgOfflineFixture(t)
+	*value = 100
+	oldWrite := amneziaWGOfflineWrite
+	writes := 0
+	amneziaWGOfflineWrite = func(path string, raw []byte) error {
+		writes++
+		return oldWrite(path, raw)
+	}
+	t.Cleanup(func() { amneziaWGOfflineWrite = oldWrite })
+	if err := s.checkpointAmneziaWGOffline(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(s.cfg.DataDir, "amneziawg", "offline-accounting.json")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 8 {
+		if err := s.checkpointAmneziaWGOffline(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if writes != 1 || string(before) != string(after) {
+		t.Fatalf("unchanged checkpoint rewrote snapshot: writes=%d contentChanged=%t", writes, string(before) != string(after))
+	}
+	*value = 120
+	if err := s.checkpointAmneziaWGOffline(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if writes != 2 {
+		t.Fatalf("changed checkpoint writes=%d, want 2", writes)
+	}
+	restarted := New(Config{DataDir: s.cfg.DataDir})
+	state, err := restarted.readAmneziaWGOfflineState()
+	if err != nil || state.Counters["awg\x00awg0\x00key"].Total != 120 {
+		t.Fatalf("restart state=%v err=%v", state, err)
+	}
 }
 
 func TestAmneziaWGOfflineGenerationReload(t *testing.T) {

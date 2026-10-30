@@ -69,8 +69,29 @@ func (s *Server) checkpointWireGuardGenerationLocked(cfg wireGuardUsageRuntimeCo
 	if err != nil {
 		return fmt.Errorf("wireguard generation identity: %w", err)
 	}
-	previous := cloneWireGuardUsageCarryMap(s.wireGuardUsageCarry)
-	changed := capture
+	type carryUndo struct {
+		value  wireGuardUsageCarry
+		exists bool
+	}
+	var carryUndoByKey map[string]carryUndo
+	rememberCarry := func(key string, previous wireGuardUsageCarry, existed bool) {
+		if carryUndoByKey == nil {
+			carryUndoByKey = make(map[string]carryUndo)
+		}
+		if _, recorded := carryUndoByKey[key]; !recorded {
+			carryUndoByKey[key] = carryUndo{value: previous, exists: existed}
+		}
+	}
+	restoreCarry := func() {
+		for key, previous := range carryUndoByKey {
+			if previous.exists {
+				s.wireGuardUsageCarry[key] = previous.value
+			} else {
+				delete(s.wireGuardUsageCarry, key)
+			}
+		}
+	}
+	changed := false
 	seen := map[string]bool{}
 	for _, peer := range peers {
 		publicKey := strings.TrimSpace(peer.PublicKey)
@@ -82,11 +103,11 @@ func (s *Server) checkpointWireGuardGenerationLocked(cfg wireGuardUsageRuntimeCo
 		seen[key] = true
 		old, exists := generations[key]
 		if old.Transitioning {
-			s.wireGuardUsageCarry = previous
+			restoreCarry()
 			return fmt.Errorf("wireguard interrupted peer generation transition")
 		}
 		if exists && old.UserID != uid {
-			s.wireGuardUsageCarry = previous
+			restoreCarry()
 			return fmt.Errorf("wireguard generation ownership changed")
 		}
 		if exists && (old.Absent || old.Identity != identity) {
@@ -113,28 +134,48 @@ func (s *Server) checkpointWireGuardGenerationLocked(cfg wireGuardUsageRuntimeCo
 				delta = old.Total - reference
 			}
 			if ^uint64(0)-carry.Value < delta {
-				s.wireGuardUsageCarry = previous
+				restoreCarry()
 				return fmt.Errorf("wireguard generation carry overflow")
 			}
 			carry.Value += delta
 			carry.UserID, carry.InboundTag, carry.NextBaseline = uid, cfg.InboundTag, 0
-			if s.wireGuardUsageCarry == nil {
-				s.wireGuardUsageCarry = map[string]wireGuardUsageCarry{}
+			previousCarry, carryExists := s.wireGuardUsageCarry[key]
+			if !carryExists || previousCarry != carry {
+				rememberCarry(key, previousCarry, carryExists)
+				if s.wireGuardUsageCarry == nil {
+					s.wireGuardUsageCarry = map[string]wireGuardUsageCarry{}
+				}
+				s.wireGuardUsageCarry[key] = carry
+				changed = true
 			}
-			s.wireGuardUsageCarry[key] = carry
 		}
 		total, err := wireGuardPeerTotalBytes(peer)
 		if err == nil && (capture || (exists && (old.Absent || old.Identity != identity))) {
-			err = s.updateWireGuardUsageCarryLocked(cfg.InboundTag, name, publicKey, uid, total, false)
+			var carryChanged bool
+			carryChanged, err = s.updateWireGuardUsageCarryLockedWithChange(cfg.InboundTag, name, publicKey, uid, total, false, rememberCarry)
+			changed = changed || carryChanged
 		}
 		if err != nil {
-			s.wireGuardUsageCarry = previous
+			restoreCarry()
 			return err
 		}
-		if !capture && exists && !old.Absent && old.Identity == identity {
-			generations[key] = old
-		} else {
-			generations[key] = wireGuardOfflineGeneration{Identity: identity, UserID: uid, Total: total, Reference: old.Reference}
+		nextGeneration := old
+		if capture || !exists || old.Absent || old.Identity != identity {
+			nextGeneration = wireGuardOfflineGeneration{Identity: identity, UserID: uid, Total: total, Reference: old.Reference}
+		}
+		if reference, ok := s.wireGuardUsageBaseline[key]; ok {
+			nextGeneration.Reference = reference
+		}
+		if pending := s.wireGuardUsagePending; pending != nil {
+			if reference, ok := pending.NextBaseline[key]; ok {
+				nextGeneration.Reference = reference
+			}
+		}
+		if carry, ok := s.wireGuardUsageCarry[key]; ok {
+			nextGeneration.Reference = carry.NextBaseline
+		}
+		if !exists || nextGeneration != old {
+			generations[key] = nextGeneration
 			changed = true
 		}
 	}
@@ -143,20 +184,20 @@ func (s *Server) checkpointWireGuardGenerationLocked(cfg wireGuardUsageRuntimeCo
 		if strings.HasPrefix(key, prefix) && !seen[key] {
 			if !generation.Absent {
 				changed = true
+				generation.Absent = true
+				generations[key] = generation
 			}
-			generation.Absent = true
-			generations[key] = generation
 		}
 	}
 	if len(generations) > maxAccountingCounterSeries {
-		s.wireGuardUsageCarry = previous
+		restoreCarry()
 		return fmt.Errorf("wireguard generation capacity exceeded")
 	}
 	if !changed {
 		return nil
 	}
 	if err := s.persistWireGuardGenerationStateLocked(generations); err != nil {
-		s.wireGuardUsageCarry = previous
+		restoreCarry()
 		return err
 	}
 	return nil
