@@ -1194,7 +1194,7 @@ func subscriptionHeaders(user UserDetail, req SubscriptionRenderRequest, setting
 	if user.SubscriptionMessage != nil && strings.TrimSpace(*user.SubscriptionMessage) != "" {
 		title = strings.Join(strings.Fields(*user.SubscriptionMessage), " ")
 	}
-	return map[string]string{
+	headers := map[string]string{
 		"content-disposition":     `attachment; filename="` + user.Username + `"`,
 		"profile-web-page-url":    req.URL,
 		"support-url":             strings.TrimSpace(settings.SubscriptionSupportURL),
@@ -1202,6 +1202,12 @@ func subscriptionHeaders(user UserDetail, req SubscriptionRenderRequest, setting
 		"profile-update-interval": firstNonEmptyString(settings.SubscriptionUpdateInterval, "12"),
 		"subscription-userinfo":   fmt.Sprintf("upload=0; download=%d; total=%d; expire=%d", user.UsedTraffic, int64OrZero(user.DataLimit), int64OrZero(user.Expire)),
 	}
+	if user.DeviceLimit > 0 {
+		// Happ-compatible clients enforce this response directive by requiring
+		// themselves to send their stable X-HWID on future subscription checks.
+		headers["subscription-always-hwid-enable"] = "1"
+	}
+	return headers
 }
 
 func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, req SubscriptionRenderRequest, settings SubscriptionSettings) (string, error) {

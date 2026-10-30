@@ -515,8 +515,11 @@ func (s Service) registerXraySubscriptionHWID(
 	req SubscriptionRenderRequest,
 ) error {
 	hwid := cleanDeviceHint(req.DeviceHWID)
-	if user.ID <= 0 || user.DeviceLimit <= 0 || hwid == "" {
+	if user.ID <= 0 || user.DeviceLimit <= 0 {
 		return nil
+	}
+	if hwid == "" {
+		return clientError(403, "This Xray subscription requires a client that sends the X-HWID header")
 	}
 	meta := subscriptionMetadataFromRequest(req, "xray")
 	deviceID := genericSubscriptionDeviceID("xray", "", req, meta)
