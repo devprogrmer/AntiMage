@@ -8,7 +8,7 @@ trap 'rm -rf "$TMP"' EXIT
 colorized_echo() { :; }
 
 for SCRIPT in "$ROOT/antimage-node.sh" "$ROOT/antimage-node-binary.sh"; do
-    grep -Fq 'DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-v26.10.29}"' "$SCRIPT"
+    grep -Fq 'DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-latest}"' "$SCRIPT"
     eval "$(sed -n '/^select_node_version() {$/,/^}$/p' "$SCRIPT")"
     select_node_version dev
     [ "$SELECTED_NODE_VERSION" = "dev" ]
@@ -74,7 +74,7 @@ for SCRIPT in "$ROOT/antimage-node.sh" "$ROOT/antimage-node-binary.sh"; do
 done
 
 for INSTALLER in "$ROOT/../../scripts/install_latest_xray.sh" "$ROOT/install_latest_xray.sh"; do
-    grep -Fq 'DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-v26.10.29}"' "$INSTALLER"
+    grep -Fq 'DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-latest}"' "$INSTALLER"
     bash -n "$INSTALLER"
     eval "$(sed -n '/^verify_xray_archive() {$/,/^}$/p' "$INSTALLER")"
     ZIP_FILE="$TMP/xray.zip"

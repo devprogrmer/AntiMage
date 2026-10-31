@@ -87,13 +87,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version='v26.10.29'
+          version='latest'
           archive="$RUNNER_TEMP/Xray-linux-64-${version}.zip"
           dir="$RUNNER_TEMP/xray-${version}"
           curl --fail --location --retry 3 --output "$archive" \
-            "https://github.com/XTLS/Xray-core/releases/download/${version}/Xray-linux-64.zip"
+            "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip"
           curl --fail --location --retry 3 --output "$archive.dgst" \
-            "https://github.com/XTLS/Xray-core/releases/download/${version}/Xray-linux-64.zip.dgst"
+            "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip.dgst"
           xray_sha256="$(awk -F '= ' '$1 == "SHA2-256" { print $2; exit }' "$archive.dgst")"
           [[ "$xray_sha256" =~ ^[[:xdigit:]]{64}$ ]]
           echo "$xray_sha256  $archive" | sha256sum --check -
