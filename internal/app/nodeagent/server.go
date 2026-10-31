@@ -97,6 +97,13 @@ type Server struct {
 	wireGuardUsageBaseline           map[string]uint64
 	wireGuardUsagePending            *wireGuardUsagePendingBatch
 	wireGuardUsageCarry              map[string]wireGuardUsageCarry
+	wireGuardUsageGenerations        map[string]wireGuardOfflineGeneration
+	wireGuardGenerationsLoaded       bool
+	wireGuardJournalSequence         uint64
+	wireGuardSnapshotSequence        uint64
+	wireGuardJournalOffset           int64
+	wireGuardJournalRecords          uint64
+	wireGuardSnapshotPresent         bool
 	wireGuardUsageAwaitingReflection []wireGuardUsageAwaitingReflectionBatch
 	wireGuardUsageLoaded             bool
 	wireGuardUsageLastAckedBatchID   string
@@ -115,6 +122,11 @@ type Server struct {
 	xrayCounterScratch               map[string]accountingCounter
 	xrayStatKeyCache                 map[string]xrayStatNativeKey
 	xrayAccountingGeneration         string
+	xrayAccountingJournalSequence    uint64
+	xrayAccountingSnapshotSequence   uint64
+	xrayAccountingSnapshotPresent    bool
+	xrayAccountingJournalOffset      int64
+	xrayAccountingJournalRecords     uint64
 	xrayUsageLoaded                  bool
 	xrayUsageLastAckedBatchID        string
 	xrayUsageBaselineAt              time.Time

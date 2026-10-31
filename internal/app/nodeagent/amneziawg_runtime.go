@@ -324,7 +324,7 @@ func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
 		_ = tmp.Close()
 		return err
 	}
-	if err := tmp.Sync(); err != nil {
+	if err := accountingAtomicFileSync(tmp); err != nil {
 		_ = tmp.Close()
 		return err
 	}

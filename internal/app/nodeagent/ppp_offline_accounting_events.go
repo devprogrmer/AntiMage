@@ -217,7 +217,6 @@ func pppOfflineActiveSession(root, iface, peer string, uid int64) (pppOfflineSes
 		return pppOfflineSession{}, err
 	}
 	paths = append(paths, filepath.Join(root, "ppp-accounting", "active", iface+".json"))
-	var mismatch bool
 	for _, path := range paths {
 		raw, err := os.ReadFile(path)
 		if os.IsNotExist(err) {
@@ -233,11 +232,11 @@ func pppOfflineActiveSession(root, iface, peer string, uid int64) (pppOfflineSes
 		if record.ID != "" && record.UserID == uid && record.PeerIP == peer && record.Interface == iface && record.Identity == identity {
 			return record, nil
 		}
-		mismatch = true
 	}
-	if mismatch {
-		return pppOfflineSession{}, fmt.Errorf("PPP session identity mismatch")
-	}
+	// A PPP interface can be reused after a daemon or node restart while its
+	// previous active-session file remains durable. A file that does not match
+	// the kernel identity is stale, so callers account live counters under the
+	// current interface identity instead of treating that file as active.
 	return pppOfflineSession{}, os.ErrNotExist
 }
 

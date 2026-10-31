@@ -17,6 +17,7 @@ import {
 	PopoverHeader,
 	PopoverTrigger,
 	Progress,
+	Spinner,
 	Stack,
 	Text,
 	useToast,
@@ -300,13 +301,11 @@ export const DashboardBackupControls = ({
 												})
 											: t("settings.backup.processing")}
 									</Text>
-									<Progress
-										value={uploadProgress}
-										isIndeterminate={uploadProgress >= 100}
-										colorScheme="pink"
-										borderRadius="full"
-										size="sm"
-									/>
+									{uploadProgress < 100 ? (
+										<Progress value={uploadProgress} colorScheme="pink" borderRadius="full" size="sm" />
+									) : (
+										<Spinner size="sm" color="pink.400" />
+									)}
 								</Stack>
 							)}
 						</Stack>

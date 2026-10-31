@@ -8,6 +8,7 @@ trap 'rm -rf "$TMP"' EXIT
 colorized_echo() { :; }
 
 for SCRIPT in "$ROOT/antimage-node.sh" "$ROOT/antimage-node-binary.sh"; do
+    grep -Fq 'DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-latest}"' "$SCRIPT"
     eval "$(sed -n '/^select_node_version() {$/,/^}$/p' "$SCRIPT")"
     select_node_version dev
     [ "$SELECTED_NODE_VERSION" = "dev" ]
@@ -70,6 +71,24 @@ for SCRIPT in "$ROOT/antimage-node.sh" "$ROOT/antimage-node-binary.sh"; do
     grep -Fq '    cap_add:' "$SCRIPT"
     grep -Fq '      - NET_ADMIN' "$SCRIPT"
     grep -Fq '      - /dev/net/tun:/dev/net/tun' "$SCRIPT"
+done
+
+for INSTALLER in "$ROOT/../../scripts/install_latest_xray.sh" "$ROOT/install_latest_xray.sh"; do
+    grep -Fq 'DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-latest}"' "$INSTALLER"
+    bash -n "$INSTALLER"
+    eval "$(sed -n '/^verify_xray_archive() {$/,/^}$/p' "$INSTALLER")"
+    ZIP_FILE="$TMP/xray.zip"
+    printf 'trusted xray archive fixture' >"$ZIP_FILE"
+    expected="$(sha256sum "$ZIP_FILE" | awk '{print $1}')"
+    printf 'SHA2-256= %s\n' "$expected" >"${ZIP_FILE}.dgst"
+    verify_xray_archive
+
+    printf 'corrupted archive fixture' >"$ZIP_FILE"
+    if verify_xray_archive >/dev/null 2>&1; then
+        echo "Xray installer accepted an archive with a mismatched SHA-256: $INSTALLER" >&2
+        exit 1
+    fi
+    unset -f verify_xray_archive
 done
 
 for SCRIPT in "$ROOT/antimage.sh" "$ROOT/antimage-binary.sh"; do

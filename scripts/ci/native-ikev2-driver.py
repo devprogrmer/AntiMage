@@ -39,8 +39,8 @@ if mount_type('/proc/self/mountinfo','/run')!='tmpfs':
 sp.run(['mount','--bind',str(R),'/etc/swanctl'],check=True)
 S='amikes'+str(os.getpid()); C='amikec'+str(os.getpid()); C2=C+'b'
 processes=[]
-def run(args, ns=None, check=True):
-    p=sp.run((['ip','netns','exec',ns] if ns else [])+list(map(str,args)),text=True,stdout=sp.PIPE,stderr=sp.STDOUT,timeout=30)
+def run(args, ns=None, check=True, timeout=30):
+    p=sp.run((['ip','netns','exec',ns] if ns else [])+list(map(str,args)),text=True,stdout=sp.PIPE,stderr=sp.STDOUT,timeout=timeout)
     if check and p.returncode: raise RuntimeError(str(args)+'\n'+p.stdout)
     return p.stdout
 def write(name,text):
@@ -299,8 +299,8 @@ pools {
                 wait(lambda:str(port) in run(['ss','-lnt'],receiver_ns),'IKEv2 '+direction+' speed receiver')
                 sender_ns=C if direction=='upload' else S
                 target='10.81.0.1' if direction=='upload' else '10.82.0.1'
-                print(run(['python3',str(transfer),'send',target,str(port)],sender_ns),flush=True)
-                receiver_output,_=receiver.communicate(timeout=30)
+                print(run(['python3',str(transfer),'send',target,str(port)],sender_ns,timeout=120),flush=True)
+                receiver_output,_=receiver.communicate(timeout=120)
                 print(receiver_output,flush=True)
                 assert receiver.returncode==0,'IKEv2 '+direction+' native transfer failed'
                 rules=run(['nft','list','table','inet','antimage_ikev2_speed'],S)

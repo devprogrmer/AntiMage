@@ -165,7 +165,8 @@ export type InboundFormValues = {
 	port: string;
 	protocol: Protocol;
 	usageCoefficient: string;
-	// Enforced per-user speed caps for the inbound, in bits per second.
+	// Enforced per-user speed caps for the inbound, entered in Mbps and
+	// persisted in bits per second.
 	// "0" means unlimited. The cap applies to each user independently.
 	uploadSpeedLimit: string;
 	downloadSpeedLimit: string;
@@ -885,7 +886,7 @@ export const validateInboundFormFields = (
 	if (
 		!Number.isFinite(uploadSpeedLimit) ||
 		uploadSpeedLimit < 0 ||
-		!Number.isSafeInteger(Math.round(uploadSpeedLimit * BITS_PER_MEGABIT)) ||
+		!Number.isSafeInteger(mbpsToBitsPerSecond(values.uploadSpeedLimit)) ||
 		(uploadSpeedLimit > 0 && mbpsToBitsPerSecond(uploadSpeedLimit) === 0)
 	) {
 		errors.uploadSpeedLimit =
@@ -894,7 +895,7 @@ export const validateInboundFormFields = (
 	if (
 		!Number.isFinite(downloadSpeedLimit) ||
 		downloadSpeedLimit < 0 ||
-		!Number.isSafeInteger(Math.round(downloadSpeedLimit * BITS_PER_MEGABIT)) ||
+		!Number.isSafeInteger(mbpsToBitsPerSecond(values.downloadSpeedLimit)) ||
 		(downloadSpeedLimit > 0 && mbpsToBitsPerSecond(downloadSpeedLimit) === 0)
 	) {
 		errors.downloadSpeedLimit =

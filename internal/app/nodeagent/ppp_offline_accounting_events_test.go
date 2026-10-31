@@ -125,6 +125,76 @@ func TestPPPFinalCaptureDisappearedInterfaceRestartLostACK(t *testing.T) {
 	}
 }
 
+func TestPPPOfflineCollectorIgnoresStaleSessionIdentityAfterRestart(t *testing.T) {
+	previousQuery, previousCounter, previousIdentity := pppOfflineQuery, pppOfflineReadCounter, pppOfflineReadIdentity
+	t.Cleanup(func() {
+		pppOfflineQuery = previousQuery
+		pppOfflineReadCounter = previousCounter
+		pppOfflineReadIdentity = previousIdentity
+	})
+	for _, protocol := range []string{"l2tp", "pptp"} {
+		t.Run(protocol, func(t *testing.T) {
+			dir := t.TempDir()
+			root := filepath.Join(dir, protocol, "fixture")
+			if err := offlineDurableJSON(filepath.Join(root, "usage-helper.json"), map[string]any{
+				"inbound_tag": "tag",
+				"users":       map[string]int64{"10.0.0.2": 42},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			stale := pppOfflineSession{ID: "old-session", UserID: 42, InboundTag: "tag", Interface: "ppp0", PeerIP: "10.0.0.2", Identity: "old-interface-generation", Process: "boot:123:456"}
+			if err := pppOfflineSessionEvent(root, "start", stale); err != nil {
+				t.Fatal(err)
+			}
+
+			pppOfflineQuery = func(context.Context) ([]byte, error) {
+				return []byte("20: ppp0 inet 10.0.0.1 peer 10.0.0.2/32 scope global ppp0"), nil
+			}
+			pppOfflineReadCounter = func(_ string, counter string) (uint64, error) {
+				if counter == "rx_bytes" {
+					return 100, nil
+				}
+				return 0, nil
+			}
+			pppOfflineReadIdentity = func(string) (string, error) { return "new-interface-generation", nil }
+
+			s := New(Config{DataDir: dir})
+			if protocol == "l2tp" {
+				s.l2TPUsageMu.Lock()
+				if err := s.ensureL2TPUsageStateLoadedLocked(); err != nil {
+					s.l2TPUsageMu.Unlock()
+					t.Fatal(err)
+				}
+				s.l2TPUsageBaseline[l2TPUsageBaselineKey("tag", "ppp0", "10.0.0.2")+"\x00new-interface-generation"] = 40
+				s.l2TPUsageMu.Unlock()
+				batch, err := s.collectL2TPUserUsage(context.Background(), nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(batch.Stats) != 1 || batch.Stats[0].Value != 60 {
+					t.Fatalf("new L2TP session delta = %v, want 60 bytes", batch.Stats)
+				}
+				return
+			}
+
+			s.pptpUsageMu.Lock()
+			if err := s.ensurePPTPUsageStateLoadedLocked(); err != nil {
+				s.pptpUsageMu.Unlock()
+				t.Fatal(err)
+			}
+			s.pptpUsageBaseline[pptpUsageBaselineKey("tag", "ppp0", "10.0.0.2")+"\x00new-interface-generation"] = 40
+			s.pptpUsageMu.Unlock()
+			batch, err := s.collectPPTPUserUsage(context.Background(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(batch.Stats) != 1 || batch.Stats[0].Value != 60 {
+				t.Fatalf("new PPTP session delta = %v, want 60 bytes", batch.Stats)
+			}
+		})
+	}
+}
+
 func TestPPPFinalRejectsMismatchedStopMetadata(t *testing.T) {
 	root := t.TempDir()
 	record := pppOfflineSession{ID: "a", UserID: 42, InboundTag: "tag", Interface: "ppp0", PeerIP: "peer", Process: "boot:123:456"}
