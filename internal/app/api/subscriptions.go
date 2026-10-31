@@ -31,6 +31,7 @@ func (s *Server) handleSubscriptionPath(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleResolvedSubscription(w http.ResponseWriter, r *http.Request, req userapp.SubscriptionRenderRequest) {
 	setSubscriptionNoCacheHeaders(w)
 	req.UserAgent = r.Header.Get("User-Agent")
+	req.HWID = r.Header.Get("X-HWID")
 	req.ClientIP = subscriptionRequestClientIP(r)
 	req.DeviceType = r.Header.Get("X-AntiMage-Device-Type")
 	req.DeviceManufacturer = r.Header.Get("X-AntiMage-Manufacturer")

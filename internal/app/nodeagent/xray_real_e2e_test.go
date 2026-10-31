@@ -433,7 +433,29 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 	if !bytes.Equal(gotContinued, continuedAfterRemoval) {
 		t.Fatalf("existing stream payload=%q, want %q", gotContinued, continuedAfterRemoval)
 	}
-	t.Log("native user removal succeeded, but the existing VLESS stream still transfers traffic; hard per-user quota requires a stream termination hook")
+	t.Log("native user removal revokes future authentication but does not terminate an existing stream")
+
+	quotaRuntime := New(Config{DataDir: tmp, XrayPath: xrayPath, XrayAPIPort: apiPort})
+	quotaSnapshot := &runtimePolicySnapshot{NativeJSON: fmt.Sprintf(`{"xray_policies":[{"user_id":7,"email":%q,"inbound_tag":"vless-e2e","status":"active"}]}`, userEmail)}
+	quotaRuntime.mu.Lock()
+	quotaRuntime.lastRuntime = serverProcess.cmd
+	quotaRuntime.lastConfig = serverConfigPath
+	quotaRuntime.xrayRuntimeGeneration = realXrayRuntimeGeneration(serverProcess)
+	quotaRuntime.runtimePolicy = quotaSnapshot
+	quotaRuntime.mu.Unlock()
+	t.Cleanup(func() { _ = quotaRuntime.stopRuntime() })
+	t.Cleanup(quotaRuntime.closeXrayStatsClient)
+	if err := quotaRuntime.restartXrayAfterQuotaRevocation(context.Background(), quotaSnapshot, realXrayRuntimeGeneration(serverProcess), map[string]struct{}{userEmail: {}}); err != nil {
+		t.Fatalf("restart Xray after quota revocation: %v", err)
+	}
+	realXrayWaitForTCP(t, apiPort, &realXrayLogBuffer{})
+	if err := upstreamConn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := upstreamConn.Read(make([]byte, 1)); err == nil {
+		t.Fatal("existing VLESS stream survived quota-filtered Xray restart")
+	}
+	t.Log("real Xray restart closed the previously active stream after durably removing the exhausted client from config")
 
 	if err := clientConn.Close(); err != nil {
 		t.Fatalf("close client connection: %v", err)
@@ -442,7 +464,12 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 		t.Fatalf("close upstream connection: %v", err)
 	}
 
-	realXrayWaitForOffline(t, onlineClient, userEmail)
+	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	offlineCount, _ := onlineClient.queryOnlineCount(ctx, userEmail)
+	cancel()
+	if offlineCount > 0 {
+		t.Fatalf("quota-revoked user remained online after Xray restart: count=%d", offlineCount)
+	}
 }
 
 func newNativeXrayAccountingServer(t *testing.T, dataDir, xrayPath string, apiPort int, generation string) *Server {

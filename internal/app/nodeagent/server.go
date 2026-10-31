@@ -36,6 +36,7 @@ type Server struct {
 	xrayAPIPortFallback              int
 	mu                               sync.Mutex
 	maintenanceMu                    sync.Mutex
+	xrayTransitionMu                 sync.Mutex
 	startedAt                        time.Time
 	lastConfig                       string
 	lastRuntime                      *exec.Cmd
@@ -325,7 +326,9 @@ func (s *Server) RestartRuntime(
 	s.stopAllWireGuardRuntimes()
 	s.stopAllAmneziaWGRuntimes()
 	s.clearNativeSpeedLimitsLogged()
+	s.xrayTransitionMu.Lock()
 	_ = s.stopRuntime()
+	s.xrayTransitionMu.Unlock()
 
 	return s.applyConfig(ctx, req, "restarted")
 }
@@ -356,7 +359,9 @@ func (s *Server) StopRuntime(
 	s.stopAllWireGuardRuntimes()
 	s.stopAllAmneziaWGRuntimes()
 	s.clearNativeSpeedLimitsLogged()
+	s.xrayTransitionMu.Lock()
 	_ = s.stopRuntime()
+	s.xrayTransitionMu.Unlock()
 
 	return s.action("", "stopped"), nil
 }
@@ -750,6 +755,8 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 		return nil, err
 	}
 
+	s.xrayTransitionMu.Lock()
+	defer s.xrayTransitionMu.Unlock()
 	configPath := filepath.Join(s.cfg.DataDir, "xray-config.json")
 	if err := writeAccountingState(configPath, []byte(configJSON)); err != nil {
 		return nil, err

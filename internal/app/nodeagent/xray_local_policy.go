@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 )
@@ -169,7 +170,12 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 	s.mu.Unlock()
 	client := s.cachedXrayStatsClient(path, port)
 	s.xrayUsageMu.Lock()
-	defer s.xrayUsageMu.Unlock()
+	usageLocked := true
+	defer func() {
+		if usageLocked {
+			s.xrayUsageMu.Unlock()
+		}
+	}()
 	if err := s.ensureXrayUsageStateLoadedLocked(); err != nil {
 		return err
 	}
@@ -188,6 +194,7 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 		return err
 	}
 	var enforcementErr error
+	restartEmails := make(map[string]struct{})
 	for _, policy := range policyIndex.Policies {
 		raw := policyIndex.UsageTotal[policy.Email]
 		pendingID := ""
@@ -222,7 +229,7 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 		}
 		if revoked, ok := s.xrayQuotaRevoked[policy.Email]; ok && revoked.Generation == generation {
 			if revoked.ExistingStreams {
-				enforcementErr = errors.Join(enforcementErr, fmt.Errorf("xray %s authentication revoked; existing-stream termination unavailable", policy.Email))
+				restartEmails[policy.Email] = struct{}{}
 			}
 			continue
 		}
@@ -237,9 +244,128 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 			s.xrayQuotaRevoked = map[string]xrayQuotaRevocation{}
 		}
 		s.xrayQuotaRevoked[policy.Email] = xrayQuotaRevocation{Generation: generation, ExistingStreams: true}
-		// Native removal revokes authentication, but upstream Xray exposes no
-		// per-user close-all-streams API. Do not claim hard cutoff of old streams.
-		enforcementErr = errors.Join(enforcementErr, fmt.Errorf("xray %s authentication revoked; existing-stream termination unavailable", policy.Email))
+		restartEmails[policy.Email] = struct{}{}
+	}
+	if len(restartEmails) > 0 {
+		s.xrayUsageMu.Unlock()
+		usageLocked = false
+		if err := s.restartXrayAfterQuotaRevocation(ctx, snapshot, generation, restartEmails); err != nil {
+			enforcementErr = errors.Join(enforcementErr, fmt.Errorf("restart xray after quota revocation: %w", err))
+		}
 	}
 	return enforcementErr
+}
+
+// restartXrayAfterQuotaRevocation persists the quota-filtered config before
+// restarting Xray. Upstream Xray has no per-user active-stream close API, so
+// this closes all current Xray streams once when one or more users exhaust quota.
+func (s *Server) restartXrayAfterQuotaRevocation(ctx context.Context, snapshot *runtimePolicySnapshot, generation string, emails map[string]struct{}) error {
+	s.xrayTransitionMu.Lock()
+	defer s.xrayTransitionMu.Unlock()
+	s.mu.Lock()
+	if s.lastRuntime == nil || s.xrayRuntimeGeneration != generation || s.runtimePolicy != snapshot {
+		s.mu.Unlock()
+		return fmt.Errorf("xray runtime or policy changed before quota cutoff restart")
+	}
+	configPath := s.lastConfig
+	s.mu.Unlock()
+	if strings.TrimSpace(configPath) == "" {
+		return fmt.Errorf("xray runtime config path is unavailable")
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	configJSON, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	filtered, removed, err := removeXrayConfigClients(string(configJSON), emails)
+	if err != nil {
+		return err
+	}
+	if !removed {
+		return fmt.Errorf("quota-revoked Xray clients were absent from runtime config")
+	}
+	if err := writeAccountingState(configPath, []byte(filtered)); err != nil {
+		return fmt.Errorf("persist quota-filtered Xray config: %w", err)
+	}
+	if err := s.startXray(ctx, configPath); err != nil {
+		return err
+	}
+	if snapshot != nil {
+		if err := s.markRestoredXrayRevocations(snapshot.NativeJSON, filtered); err != nil {
+			return fmt.Errorf("record Xray quota revocations after restart: %w", err)
+		}
+	}
+	s.appendLog("xray restarted after quota cutoff; existing Xray connections were disconnected")
+	return nil
+}
+
+func removeXrayConfigClients(configJSON string, emails map[string]struct{}) (string, bool, error) {
+	var config map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
+		return "", false, err
+	}
+	var inbounds []map[string]json.RawMessage
+	if err := json.Unmarshal(config["inbounds"], &inbounds); err != nil {
+		return "", false, err
+	}
+	removed := false
+	for _, inbound := range inbounds {
+		var settings map[string]json.RawMessage
+		if len(inbound["settings"]) == 0 {
+			continue
+		}
+		if err := json.Unmarshal(inbound["settings"], &settings); err != nil {
+			return "", false, err
+		}
+		var clients []json.RawMessage
+		if len(settings["clients"]) == 0 {
+			continue
+		}
+		if err := json.Unmarshal(settings["clients"], &clients); err != nil {
+			return "", false, err
+		}
+		kept := make([]json.RawMessage, 0, len(clients))
+		for _, client := range clients {
+			var identity struct {
+				Email string `json:"email"`
+			}
+			if err := json.Unmarshal(client, &identity); err != nil {
+				return "", false, err
+			}
+			if _, revoke := emails[identity.Email]; revoke {
+				removed = true
+				continue
+			}
+			kept = append(kept, client)
+		}
+		if len(kept) != len(clients) {
+			encoded, err := json.Marshal(kept)
+			if err != nil {
+				return "", false, err
+			}
+			settings["clients"] = encoded
+			encoded, err = json.Marshal(settings)
+			if err != nil {
+				return "", false, err
+			}
+			inbound["settings"] = encoded
+		}
+	}
+	if !removed {
+		return configJSON, false, nil
+	}
+	encodedInbounds, err := json.Marshal(inbounds)
+	if err != nil {
+		return "", false, err
+	}
+	config["inbounds"] = encodedInbounds
+	encoded, err := json.Marshal(config)
+	if err != nil {
+		return "", false, err
+	}
+	return string(encoded), true, nil
 }

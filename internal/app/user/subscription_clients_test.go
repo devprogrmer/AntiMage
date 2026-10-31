@@ -47,6 +47,22 @@ func TestSubscriptionMessageIsScopedToUser(t *testing.T) {
 	}
 }
 
+func TestSubscriptionRenderAppliesHWIDLimit(t *testing.T) {
+	service, key := newSubscriptionClientTestService(t)
+	ctx := context.Background()
+	if _, err := service.repo.db.ExecContext(ctx, `CREATE TABLE user_subscription_hwids (user_id INTEGER NOT NULL, hwid_hash TEXT NOT NULL, first_used_at DATETIME NOT NULL, last_used_at DATETIME NOT NULL, PRIMARY KEY(user_id, hwid_hash)); UPDATE users SET device_limit = 2 WHERE username = 'alice'`); err != nil {
+		t.Fatal(err)
+	}
+	for _, hwid := range []string{"phone-a", "phone-a", "phone-b"} {
+		if _, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: "v2ray", HWID: hwid}); err != nil {
+			t.Fatalf("render subscription for %q: %v", hwid, err)
+		}
+	}
+	if _, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: "v2ray", HWID: "phone-c"}); err == nil || !strings.Contains(err.Error(), "Device limit reached") {
+		t.Fatalf("third device response error=%v", err)
+	}
+}
+
 func TestSubscriptionMessageIsEscapedInHTML(t *testing.T) {
 	template := readTestTemplateFile(t, filepath.Join("templates", "subscription", "index.html"))
 	message := `<script>alert("x")</script>`

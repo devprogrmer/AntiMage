@@ -1,6 +1,44 @@
 package nodeagent
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestRemoveXrayConfigClientsPreservesOtherUsersAndConfig(t *testing.T) {
+	input := `{"log":{"loglevel":"warning"},"inbounds":[{"tag":"vless","protocol":"vless","settings":{"clients":[{"email":"quota-user","id":"one"},{"email":"other-user","id":"two"}],"decryption":"none"}}]}`
+	got, removed, err := removeXrayConfigClients(input, map[string]struct{}{"quota-user": {}})
+	if err != nil || !removed {
+		t.Fatalf("remove quota user: removed=%v err=%v", removed, err)
+	}
+	var config struct {
+		Log struct {
+			LogLevel string `json:"loglevel"`
+		} `json:"log"`
+		Inbounds []struct {
+			Protocol string `json:"protocol"`
+			Settings struct {
+				Clients []struct {
+					Email string `json:"email"`
+				} `json:"clients"`
+				Decryption string `json:"decryption"`
+			} `json:"settings"`
+		} `json:"inbounds"`
+	}
+	if err := json.Unmarshal([]byte(got), &config); err != nil {
+		t.Fatal(err)
+	}
+	if config.Log.LogLevel != "warning" || len(config.Inbounds) != 1 || config.Inbounds[0].Protocol != "vless" || config.Inbounds[0].Settings.Decryption != "none" {
+		t.Fatalf("unrelated Xray config was not preserved: %s", got)
+	}
+	if len(config.Inbounds[0].Settings.Clients) != 1 || config.Inbounds[0].Settings.Clients[0].Email != "other-user" {
+		t.Fatalf("unexpected surviving clients: %#v", config.Inbounds[0].Settings.Clients)
+	}
+	unchanged, removed, err := removeXrayConfigClients(got, map[string]struct{}{"absent": {}})
+	if err != nil || removed || unchanged != got {
+		t.Fatalf("absent user removal changed config: removed=%v err=%v", removed, err)
+	}
+}
 
 func TestXrayQuotaUsageTotalsIntoAggregatesEachEmailOncePerSeries(t *testing.T) {
 	index := &xrayQuotaPolicyIndex{
