@@ -93,6 +93,8 @@ describe("inbound enforced per-user speed", () => {
 		const payload = buildInboundPayload(values);
 		expect(payload.upload_speed_limit).toBe(8000000);
 		expect(payload.download_speed_limit).toBe(4000000);
+		values.uploadSpeedLimit = "8.5";
+		expect(buildInboundPayload(values).upload_speed_limit).toBe(8500000);
 	});
 
 	it("converts Mbps to the enforced bps value and back", () => {
@@ -116,6 +118,10 @@ describe("inbound enforced per-user speed", () => {
 		values.uploadSpeedLimit = "0";
 		values.downloadSpeedLimit = "1.5";
 		expect(validateInboundFormFields(values).downloadSpeedLimit).toBeUndefined();
+		values.downloadSpeedLimit = "0.0000001";
+		expect(validateInboundFormFields(values).downloadSpeedLimit).toBeTruthy();
+		values.downloadSpeedLimit = "9007199255";
+		expect(validateInboundFormFields(values).downloadSpeedLimit).toBeTruthy();
 		values.downloadSpeedLimit = "0";
 		const errors = validateInboundFormFields(values);
 		expect(errors.uploadSpeedLimit).toBeUndefined();

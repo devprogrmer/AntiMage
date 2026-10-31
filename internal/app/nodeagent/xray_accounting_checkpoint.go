@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -41,15 +42,50 @@ func (s *Server) checkpointXrayGenerationLocked(stats []xrayStat, generation str
 	}
 	if !changed {
 		s.xrayCounterScratch = next
+		if s.xrayAccountingJournalRecords >= xrayAccountingJournalCompactRecords || s.xrayAccountingJournalOffset >= xrayAccountingJournalCompactBytes {
+			return s.persistXrayUsageStateLocked()
+		}
 		return nil
 	}
 	previous, previousGeneration := s.xrayAccountingCounters, s.xrayAccountingGeneration
-	s.xrayAccountingCounters, s.xrayAccountingGeneration = next, generation
-	s.xrayCounterScratch = previous
-	if err := s.persistXrayUsageStateLocked(); err != nil {
-		s.xrayAccountingCounters, s.xrayAccountingGeneration = previous, previousGeneration
+	record := xrayAccountingJournalRecord{Sequence: s.xrayAccountingJournalSequence + 1, Generation: generation}
+	if generation != previousGeneration || (!s.xrayAccountingSnapshotPresent && s.xrayAccountingJournalSequence == 0) {
+		record.Full = true
+		record.Entries = make([]xrayAccountingJournalEntry, 0, len(next))
+		for key, counter := range next {
+			record.Entries = append(record.Entries, xrayAccountingJournalEntry{Key: key, Counter: counter})
+		}
+	} else {
+		record.Entries = make([]xrayAccountingJournalEntry, 0, 16)
+		for key, counter := range next {
+			previousCounter, exists := previous[key]
+			if !exists || previousCounter != counter {
+				record.Entries = append(record.Entries, xrayAccountingJournalEntry{Key: key, Counter: counter})
+			}
+		}
+		for key := range previous {
+			if _, ok := next[key]; !ok {
+				record.Removed = append(record.Removed, key)
+			}
+		}
+	}
+	raw, err := json.Marshal(record)
+	if err != nil {
+		s.xrayCounterScratch = scratch
+		return fmt.Errorf("marshal xray accounting journal: %w", err)
+	}
+	newOffset, err := xrayAccountingJournalAppend(s.xrayUsageJournalPath(), s.xrayAccountingJournalOffset, raw)
+	if err != nil {
 		s.xrayCounterScratch = scratch
 		return err
+	}
+	s.xrayAccountingCounters, s.xrayAccountingGeneration = next, generation
+	s.xrayCounterScratch = previous
+	s.xrayAccountingJournalSequence = record.Sequence
+	s.xrayAccountingJournalOffset = newOffset
+	s.xrayAccountingJournalRecords++
+	if s.xrayAccountingJournalRecords >= xrayAccountingJournalCompactRecords || s.xrayAccountingJournalOffset >= xrayAccountingJournalCompactBytes {
+		return s.persistXrayUsageStateLocked()
 	}
 	return nil
 }

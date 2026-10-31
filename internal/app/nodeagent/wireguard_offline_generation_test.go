@@ -80,6 +80,69 @@ func TestWireGuardUnchangedCheckpointSkipsAtomicRewrite(t *testing.T) {
 	}
 }
 
+func TestWireGuardChangedCheckpointUsesJournalAndReplaysAfterRestart(t *testing.T) {
+	server, counter, _ := wireGuardGenerationFixture(t)
+	oldWrite, oldAppend := wireGuardAccountingWrite, wireGuardAccountingJournalAppend
+	snapshotWrites, journalAppends := 0, 0
+	wireGuardAccountingWrite = func(path string, raw []byte) error {
+		snapshotWrites++
+		return oldWrite(path, raw)
+	}
+	wireGuardAccountingJournalAppend = func(path string, offset int64, raw []byte) (int64, error) {
+		journalAppends++
+		return oldAppend(path, offset, raw)
+	}
+	t.Cleanup(func() {
+		wireGuardAccountingWrite = oldWrite
+		wireGuardAccountingJournalAppend = oldAppend
+	})
+	if err := server.checkpointWireGuardOfflineGeneration(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	*counter += 500
+	if err := server.checkpointWireGuardOfflineGeneration(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if snapshotWrites != 1 || journalAppends != 1 {
+		t.Fatalf("writes: snapshots=%d journal=%d, want 1 and 1", snapshotWrites, journalAppends)
+	}
+	restarted := New(Config{DataDir: server.cfg.DataDir})
+	if err := restarted.ensureWireGuardUsageStateLoadedLocked(); err != nil {
+		t.Fatal(err)
+	}
+	key := wireGuardUsageBaselineKey("wg", "wg-test", "peer")
+	if got := restarted.wireGuardUsageGenerations[key].Total; got != 10_000_000_500 {
+		t.Fatalf("replayed generation total=%d, want 10000000500", got)
+	}
+}
+
+func TestWireGuardJournalCompactionPreservesGenerationAndCarry(t *testing.T) {
+	server, counter, _ := wireGuardGenerationFixture(t)
+	if err := server.checkpointWireGuardOfflineGeneration(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for range wireGuardJournalCompactRecords {
+		*counter++
+		if err := server.checkpointWireGuardOfflineGeneration(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if server.wireGuardJournalRecords != 0 || server.wireGuardJournalOffset != 0 {
+		t.Fatalf("journal not compacted: records=%d offset=%d", server.wireGuardJournalRecords, server.wireGuardJournalOffset)
+	}
+	restarted := New(Config{DataDir: server.cfg.DataDir})
+	if err := restarted.ensureWireGuardUsageStateLoadedLocked(); err != nil {
+		t.Fatal(err)
+	}
+	key := wireGuardUsageBaselineKey("wg", "wg-test", "peer")
+	if got, want := restarted.wireGuardUsageGenerations[key].Total, uint64(10_000_000_000+wireGuardJournalCompactRecords); got != want {
+		t.Fatalf("recovered generation total=%d, want %d", got, want)
+	}
+	if got, want := restarted.wireGuardUsageCarry[key].Value, uint64(10_000_000_000+wireGuardJournalCompactRecords); got != want {
+		t.Fatalf("recovered carry=%d, want %d", got, want)
+	}
+}
+
 func TestWireGuardOfflineGenerationRestartPreservesImmutablePending(t *testing.T) {
 	server, value, identity := wireGuardGenerationFixture(t)
 	first := wireGuardGenerationCollect(t, server)
@@ -196,9 +259,9 @@ func TestWireGuardOfflineGenerationPersistenceFailureRollsBack(t *testing.T) {
 	server, value, identity := wireGuardGenerationFixture(t)
 	first := wireGuardGenerationCollect(t, server)
 	*value, *identity = 11_000_000_000, "boot-b:7"
-	oldWrite := wireGuardAccountingWrite
-	wireGuardAccountingWrite = func(string, []byte) error { return errors.New("disk full") }
-	t.Cleanup(func() { wireGuardAccountingWrite = oldWrite })
+	oldAppend := wireGuardAccountingJournalAppend
+	wireGuardAccountingJournalAppend = func(string, int64, []byte) (int64, error) { return 0, errors.New("disk full") }
+	t.Cleanup(func() { wireGuardAccountingJournalAppend = oldAppend })
 	before := cloneWireGuardUsageCarryMap(server.wireGuardUsageCarry)
 	if _, err := server.collectWireGuardUserUsage(context.Background(), &nodev1.CollectUsageRequest{}); err == nil {
 		t.Fatal("write failure ignored")
@@ -209,7 +272,7 @@ func TestWireGuardOfflineGenerationPersistenceFailureRollsBack(t *testing.T) {
 	if server.wireGuardUsagePending.BatchID != first.BatchId || server.wireGuardUsagePending.Samples[0].Value != 10_000_000_000 {
 		t.Fatal("pending mutated after failed persistence")
 	}
-	wireGuardAccountingWrite = oldWrite
+	wireGuardAccountingJournalAppend = oldAppend
 	retry := wireGuardGenerationCollect(t, server)
 	wireGuardGenerationAck(t, server, retry)
 	second := wireGuardGenerationCollect(t, server)

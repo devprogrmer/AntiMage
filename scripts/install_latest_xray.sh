@@ -92,6 +92,26 @@ download_xray() {
         echo "error: Download failed! Please check your network or try again."
         return 1
     fi
+
+    if ! curl -fRL -H 'Cache-Control: no-cache' -o "${ZIP_FILE}.dgst" "${DOWNLOAD_LINK}.dgst"; then
+        echo 'error: Xray checksum download failed; refusing to install an unverified archive.' >&2
+        return 1
+    fi
+    verify_xray_archive
+}
+
+verify_xray_archive() {
+    local expected actual
+    expected="$(awk -F '= ' '$1 == "SHA2-256" { print $2; exit }' "${ZIP_FILE}.dgst")"
+    if [[ ! "$expected" =~ ^[[:xdigit:]]{64}$ ]]; then
+        echo 'error: Xray release has no valid SHA-256 checksum.' >&2
+        return 1
+    fi
+    actual="$(sha256sum "$ZIP_FILE" | awk '{print $1}')"
+    if [[ "${expected,,}" != "${actual,,}" ]]; then
+        echo 'error: Xray archive SHA-256 mismatch; refusing to install.' >&2
+        return 1
+    fi
 }
 
 extract_xray() {

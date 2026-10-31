@@ -158,7 +158,7 @@ interval, command latency and disconnect completion; it cannot guarantee zero.
   IKEv2 and AnyConnect require native final-byte event integration for no-tail-loss.
 - External WG peer recreation entirely between observations on the same interface
   can evade managed generation fences.
-- Real Xray v26.7.11 VLESS testing proves HandlerService user removal succeeds
+- Real Xray v26.10.29 VLESS testing proves HandlerService user removal succeeds
   while an already-authenticated stream continues transferring bytes. Hard quota
   requires core stream termination, not just authentication removal.
 - Xray's `HandlerService.RemoveUser` removes credentials but does not terminate
@@ -204,4 +204,4 @@ interval, command latency and disconnect completion; it cannot guarantee zero.
 
 Primary references: [StatsService schema](https://github.com/XTLS/Xray-core/blob/main/app/stats/command/command.proto),
 [HandlerService schema](https://github.com/XTLS/Xray-core/blob/main/app/proxyman/command/command.proto),
-[pinned Xray release](https://github.com/XTLS/Xray-core/releases/tag/v26.7.11).
+[pinned Xray release](https://github.com/XTLS/Xray-core/releases/tag/v26.10.29).

@@ -39,9 +39,17 @@ var wireGuardInterfaceIdentity = func(name string) (string, error) {
 var wireGuardAccountingWrite = writeAccountingState
 
 func (s *Server) readWireGuardGenerationStateLocked() (map[string]wireGuardOfflineGeneration, error) {
+	if err := s.ensureWireGuardUsageStateLoadedLocked(); err != nil {
+		return nil, err
+	}
+	if s.wireGuardGenerationsLoaded {
+		return cloneWireGuardGenerations(s.wireGuardUsageGenerations), nil
+	}
 	raw, err := readOfflineAccountingState(s.wireGuardUsageStatePath())
 	if os.IsNotExist(err) {
-		return map[string]wireGuardOfflineGeneration{}, nil
+		s.wireGuardUsageGenerations = make(map[string]wireGuardOfflineGeneration)
+		s.wireGuardGenerationsLoaded = true
+		return cloneWireGuardGenerations(s.wireGuardUsageGenerations), nil
 	}
 	if err != nil {
 		return nil, err
@@ -53,7 +61,17 @@ func (s *Server) readWireGuardGenerationStateLocked() (map[string]wireGuardOffli
 	if state.Generations == nil {
 		state.Generations = map[string]wireGuardOfflineGeneration{}
 	}
-	return state.Generations, nil
+	s.wireGuardUsageGenerations = state.Generations
+	s.wireGuardGenerationsLoaded = true
+	return cloneWireGuardGenerations(s.wireGuardUsageGenerations), nil
+}
+
+func cloneWireGuardGenerations(source map[string]wireGuardOfflineGeneration) map[string]wireGuardOfflineGeneration {
+	clone := make(map[string]wireGuardOfflineGeneration, len(source))
+	for key, generation := range source {
+		clone[key] = generation
+	}
+	return clone
 }
 
 // Caller holds usageMu. Carry and generation are committed in the same durable write.
@@ -196,9 +214,55 @@ func (s *Server) checkpointWireGuardGenerationLocked(cfg wireGuardUsageRuntimeCo
 	if !changed {
 		return nil
 	}
-	if err := s.persistWireGuardGenerationStateLocked(generations); err != nil {
+	if !s.wireGuardSnapshotPresent {
+		if err := s.persistWireGuardGenerationStateLocked(generations); err != nil {
+			restoreCarry()
+			return err
+		}
+		return nil
+	}
+	record := wireGuardAccountingJournalRecord{Sequence: s.wireGuardJournalSequence + 1}
+	for key, generation := range generations {
+		if previous, exists := s.wireGuardUsageGenerations[key]; !exists || previous != generation {
+			if record.Generations == nil {
+				record.Generations = make(map[string]wireGuardOfflineGeneration, 4)
+			}
+			record.Generations[key] = generation
+		}
+	}
+	for key := range s.wireGuardUsageGenerations {
+		if _, exists := generations[key]; !exists {
+			record.RemovedGeneration = append(record.RemovedGeneration, key)
+		}
+	}
+	for key := range carryUndoByKey {
+		if carry, exists := s.wireGuardUsageCarry[key]; exists {
+			if record.Carry == nil {
+				record.Carry = make(map[string]wireGuardUsageCarry, len(carryUndoByKey))
+			}
+			record.Carry[key] = carry
+		} else {
+			record.RemovedCarry = append(record.RemovedCarry, key)
+		}
+	}
+	journalRaw, err := json.Marshal(record)
+	if err != nil {
+		restoreCarry()
+		return fmt.Errorf("marshal wireguard accounting journal: %w", err)
+	}
+	newOffset, err := wireGuardAccountingJournalAppend(s.wireGuardUsageJournalPath(), s.wireGuardJournalOffset, journalRaw)
+	if err != nil {
 		restoreCarry()
 		return err
+	}
+	s.wireGuardUsageGenerations = generations
+	s.wireGuardJournalSequence = record.Sequence
+	s.wireGuardJournalOffset = newOffset
+	s.wireGuardJournalRecords++
+	if s.wireGuardJournalRecords >= wireGuardJournalCompactRecords || s.wireGuardJournalOffset >= wireGuardJournalCompactBytes {
+		if err := s.persistWireGuardGenerationStateLocked(generations); err != nil {
+			return err
+		}
 	}
 	return nil
 }

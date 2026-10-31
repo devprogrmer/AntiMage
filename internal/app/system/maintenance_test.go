@@ -10,6 +10,36 @@ import (
 	"time"
 )
 
+type staticRuntimeDetector struct{ info RuntimeInfo }
+
+func (d staticRuntimeDetector) Info() RuntimeInfo { return d.info }
+
+type recordingUpdateChecker struct{ repos []string }
+
+func (c *recordingUpdateChecker) Status(_ context.Context, repo string, _ *string, _ string) UpdateStatus {
+	c.repos = append(c.repos, repo)
+	return UpdateStatus{Repo: repo}
+}
+
+func TestMaintenanceInfoUsesCurrentRepositoryForUpdates(t *testing.T) {
+	checker := &recordingUpdateChecker{}
+	service := NewMaintenanceServiceWithDeps(staticRuntimeDetector{}, checker, nil)
+	info, err := service.Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "devprogrmer/AntiMage"
+	if info.Panel.Update == nil || info.Panel.Update.Repo != want {
+		t.Fatalf("panel update repo = %#v, want %q", info.Panel.Update, want)
+	}
+	if info.NodeUpdate.Repo != want {
+		t.Fatalf("node update repo = %q, want %q", info.NodeUpdate.Repo, want)
+	}
+	if len(checker.repos) != 2 || checker.repos[0] != want || checker.repos[1] != want {
+		t.Fatalf("update repositories = %#v, want two entries for %q", checker.repos, want)
+	}
+}
+
 func TestGitHubUpdateCheckerCachesSuccessfulStatus(t *testing.T) {
 	var requests int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

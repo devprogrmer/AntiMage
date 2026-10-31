@@ -49,6 +49,9 @@ func (s *Server) handleResolvedSubscription(w http.ResponseWriter, r *http.Reque
 	}
 	req.DeviceClientName = r.Header.Get("X-AntiMage-Client")
 	req.DeviceClientVersion = r.Header.Get("X-AntiMage-Client-Version")
+	// Happ and compatible clients send a stable device identifier for
+	// subscription-level device limits. Store only its server-side hash.
+	req.DeviceHWID = r.Header.Get("X-HWID")
 	req.Accept = r.Header.Get("Accept")
 	req.URL = requestAbsoluteURL(r)
 	req.Start = r.URL.Query().Get("start")
