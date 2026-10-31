@@ -156,6 +156,10 @@ func (s *Server) handleUserPath(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+		if suffix == "hwids" {
+			s.handleUserSubscriptionHWIDs(w, r, username)
+			return
+		}
 		s.handleUserMutationAction(w, r, username, suffix)
 		return
 	}
@@ -166,6 +170,38 @@ func (s *Server) handleUserPath(w http.ResponseWriter, r *http.Request) {
 		s.handleUserUpdate(w, r, username)
 	case http.MethodDelete:
 		s.handleUserDelete(w, r, username)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (s *Server) handleUserSubscriptionHWIDs(w http.ResponseWriter, r *http.Request, username string) {
+	principal, ok := r.Context().Value(adminContextKey).(adminPrincipal)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "missing admin context")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	user, err := s.userService.UserGet(ctx, userapp.UserGetRequest{Username: username, RequestOrigin: requestOrigin(r), Admin: s.userAdminContext(principal, nil)})
+	if err != nil {
+		writeUserReadError(w, err)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		items, err := s.userService.ListSubscriptionHWIDs(ctx, user.ID)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"username": user.Username, "limit": user.DeviceLimit, "count": len(items), "hwids": items})
+	case http.MethodDelete:
+		if err := s.userService.ResetSubscriptionHWIDs(ctx, user.ID); err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"username": user.Username, "reset": true})
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}

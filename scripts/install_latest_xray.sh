@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-v26.7.11}"
+DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-latest}"
 RELEASE_TAG="${XRAY_CORE_VERSION:-$DEFAULT_XRAY_CORE_VERSION}"
 DATA_DIR="${ANTIMAGE_DATA_DIR:-/var/lib/antimage}"
 INSTALL_DIR="${XRAY_INSTALL_DIR:-$DATA_DIR/xray-core}"
@@ -122,14 +122,31 @@ place_xray() {
     echo "Xray files installed"
 }
 
+validate_staged_xray() {
+    local staged_binary="${TMP_DIRECTORY}/xray"
+    if [[ ! -x "$staged_binary" ]]; then
+        echo "error: downloaded Xray binary is missing or not executable."
+        return 1
+    fi
+    "$staged_binary" version || return 1
+    if [[ -n "${XRAY_CONFIG_PATH:-}" ]]; then
+        if [[ ! -s "$XRAY_CONFIG_PATH" ]]; then
+            echo "error: configured Xray config is missing or empty: $XRAY_CONFIG_PATH"
+            return 1
+        fi
+        echo "Validating existing Xray config with the staged core"
+        XRAY_LOCATION_ASSET="$ASSETS_DIR" "$staged_binary" run -test -config "$XRAY_CONFIG_PATH" || return 1
+    fi
+}
+
 check_if_running_as_root
 identify_the_operating_system_and_architecture
 
 TMP_DIRECTORY="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIRECTORY"' EXIT
 ZIP_FILE="${TMP_DIRECTORY}/Xray-linux-$ARCH.zip"
 
 download_xray || exit 1
 extract_xray || exit 1
+validate_staged_xray || exit 1
 place_xray || exit 1
-
-rm -rf "$TMP_DIRECTORY"

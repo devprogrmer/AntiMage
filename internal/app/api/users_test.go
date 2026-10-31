@@ -140,6 +140,54 @@ func TestUsersReadRoutesScopeAndSanitizeTraffic(t *testing.T) {
 	}
 }
 
+func TestUserSubscriptionHWIDAdminRoutesListAndReset(t *testing.T) {
+	server, db := testUserReadServer(t)
+	insertMasterAPIAdmin(t, db, 1, "owner", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+	if _, err := db.Exec(`CREATE TABLE user_subscription_hwids (
+		user_id INTEGER NOT NULL,
+		hwid_hash TEXT NOT NULL,
+		first_used_at DATETIME NOT NULL,
+		last_used_at DATETIME NOT NULL,
+		PRIMARY KEY (user_id, hwid_hash)
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO users (id, username, admin_id, status, device_limit) VALUES (10, 'alice', 1, 'active', 2)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO user_subscription_hwids (user_id, hwid_hash, first_used_at, last_used_at) VALUES
+		(10, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+		(10, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	token := adminBearerToken(t, server, "owner", "pass123")
+	rec := userReadRequest(t, server, http.MethodGet, "/api/user/alice/hwids", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list HWIDs status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var listed struct {
+		Limit int64 `json:"limit"`
+		Count int   `json:"count"`
+		HWIDs []struct {
+			Hash string `json:"hwid_hash"`
+		} `json:"hwids"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if listed.Limit != 2 || listed.Count != 2 || len(listed.HWIDs) != 2 {
+		t.Fatalf("unexpected HWID listing: %#v", listed)
+	}
+	if listed.HWIDs[0].Hash == "" || listed.HWIDs[1].Hash == "" {
+		t.Fatalf("expected only hashed identifiers: %#v", listed.HWIDs)
+	}
+	rec = userReadRequest(t, server, http.MethodDelete, "/api/user/alice/hwids", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reset HWIDs status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM user_subscription_hwids WHERE user_id = 10`, 0)
+}
+
 func TestOnlineUsersRouteUsesLiveSetAndAdminScope(t *testing.T) {
 	server, db := testUserReadServer(t)
 	insertMasterAPIAdmin(t, db, 1, "owner", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)

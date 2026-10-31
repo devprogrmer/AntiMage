@@ -62,8 +62,11 @@ func (s *Server) UpdateRuntime(ctx context.Context, req *nodev1.RuntimeUpdateReq
 	if _, err := os.Stat(script); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "Xray installer is unavailable: %v", err)
 	}
+	s.mu.Lock()
+	configPath := s.lastConfig
+	s.mu.Unlock()
 	cmd := maintenanceCommandContext(ctx, "bash", script, version)
-	cmd.Env = append(os.Environ(), "ANTIMAGE_DATA_DIR="+s.cfg.DataDir, "XRAY_INSTALL_DIR="+filepath.Dir(s.cfg.XrayPath), "XRAY_ASSETS_DIR="+s.cfg.XrayAssetsDir)
+	cmd.Env = append(os.Environ(), "ANTIMAGE_DATA_DIR="+s.cfg.DataDir, "XRAY_INSTALL_DIR="+filepath.Dir(s.cfg.XrayPath), "XRAY_ASSETS_DIR="+s.cfg.XrayAssetsDir, "XRAY_CONFIG_PATH="+configPath)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return nil, status.Errorf(codes.Internal, "Xray installation failed: %v: %s", err, strings.TrimSpace(string(output)))
 	}
@@ -74,9 +77,6 @@ func (s *Server) UpdateRuntime(ctx context.Context, req *nodev1.RuntimeUpdateReq
 	if version != "latest" && installedVersion != strings.TrimPrefix(version, "v") {
 		return nil, status.Errorf(codes.Internal, "Xray version mismatch: requested %s, installed %s", version, installedVersion)
 	}
-	s.mu.Lock()
-	configPath := s.lastConfig
-	s.mu.Unlock()
 	if configPath != "" {
 		if err := s.startXray(ctx, configPath); err != nil {
 			return nil, status.Errorf(codes.Internal, "Xray installed but runtime restart failed: %v", err)

@@ -51,6 +51,7 @@ type SubscriptionRenderRequest struct {
 	DevicePlatformVersion string
 	DeviceClientName      string
 	DeviceClientVersion   string
+	HWID                  string
 	Accept                string
 	URL                   string
 	Start                 string
@@ -162,6 +163,11 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	config, ok := subscriptionClientConfigs[clientType]
 	if !ok {
 		return SubscriptionHTTPResponse{}, clientError(404, "Unsupported client type")
+	}
+	if config.Format == "v2ray" || config.Format == "v2ray-json" || config.Format == "xray-json" || config.Format == "clash" || config.Format == "clash-meta" || config.Format == "sing-box" || config.Format == "outline" {
+		if err := s.repo.registerSubscriptionHWID(ctx, user.ID, req.HWID); err != nil {
+			return SubscriptionHTTPResponse{}, err
+		}
 	}
 	config.AutoCurrent = req.ClientType == "" && config.Format == "v2ray-json"
 	body, err := s.generateSubscriptionConfig(ctx, user, config)

@@ -1661,7 +1661,7 @@ export const InboundFormModal: FC<Props> = ({
 													)}
 												>
 													<FormLabel fontSize="sm">
-														{t("userDialog.uploadSpeedLimit")}
+														{t("userDialog.uploadSpeedLimit")} (Mbps)
 													</FormLabel>
 													<Controller
 														control={control}
@@ -1671,7 +1671,7 @@ export const InboundFormModal: FC<Props> = ({
 																value={field.value ?? "0"}
 																onChange={(value) => field.onChange(value)}
 																min={0}
-																step={1000}
+																step={0.1}
 															/>
 														)}
 													/>
@@ -1687,7 +1687,7 @@ export const InboundFormModal: FC<Props> = ({
 													)}
 												>
 													<FormLabel fontSize="sm">
-														{t("userDialog.downloadSpeedLimit")}
+														{t("userDialog.downloadSpeedLimit")} (Mbps)
 													</FormLabel>
 													<Controller
 														control={control}
@@ -1697,7 +1697,7 @@ export const InboundFormModal: FC<Props> = ({
 																value={field.value ?? "0"}
 																onChange={(value) => field.onChange(value)}
 																min={0}
-																step={1000}
+																step={0.1}
 															/>
 														)}
 													/>
