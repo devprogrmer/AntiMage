@@ -164,7 +164,7 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	if !ok {
 		return SubscriptionHTTPResponse{}, clientError(404, "Unsupported client type")
 	}
-	if config.Format == "v2ray" || config.Format == "v2ray-json" || config.Format == "clash" || config.Format == "clash-meta" || config.Format == "sing-box" || config.Format == "outline" {
+	if config.Format == "v2ray" || config.Format == "v2ray-json" || config.Format == "xray-json" || config.Format == "clash" || config.Format == "clash-meta" || config.Format == "sing-box" || config.Format == "outline" {
 		if err := s.repo.registerSubscriptionHWID(ctx, user.ID, req.HWID); err != nil {
 			return SubscriptionHTTPResponse{}, err
 		}

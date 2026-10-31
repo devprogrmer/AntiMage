@@ -58,6 +58,9 @@ func TestSubscriptionRenderAppliesHWIDLimit(t *testing.T) {
 			t.Fatalf("render subscription for %q: %v", hwid, err)
 		}
 	}
+	if _, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: "xray-json", HWID: "phone-c"}); err == nil || !strings.Contains(err.Error(), "Device limit reached") {
+		t.Fatalf("xray-json bypassed the device limit: error=%v", err)
+	}
 	if _, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: "v2ray", HWID: "phone-c"}); err == nil || !strings.Contains(err.Error(), "Device limit reached") {
 		t.Fatalf("third device response error=%v", err)
 	}
