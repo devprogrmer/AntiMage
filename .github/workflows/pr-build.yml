@@ -53,15 +53,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          XRAY_VERSION="v26.7.11"
-          XRAY_SHA256="aa11c3685c71da0ffc71e511db50404609e7e963bb914b048f59a6a00af8930e"
+          XRAY_VERSION="v26.10.29"
           XRAY_ARCHIVE="${RUNNER_TEMP}/Xray-linux-64-${XRAY_VERSION}.zip"
           XRAY_DIR="${RUNNER_TEMP}/antimage-xray-e2e-${XRAY_VERSION}"
 
           curl --fail --location --retry 3 --retry-delay 2 \
             --output "${XRAY_ARCHIVE}" \
             "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-64.zip"
-
+          curl --fail --location --retry 3 --retry-delay 2 \
+            --output "${XRAY_ARCHIVE}.dgst" \
+            "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-64.zip.dgst"
+          XRAY_SHA256="$(awk -F '= ' '$1 == "SHA2-256" { print $2; exit }' "${XRAY_ARCHIVE}.dgst")"
+          [[ "${XRAY_SHA256}" =~ ^[[:xdigit:]]{64}$ ]]
           echo "${XRAY_SHA256}  ${XRAY_ARCHIVE}" | sha256sum --check -
 
           rm -rf "${XRAY_DIR}"

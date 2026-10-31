@@ -388,6 +388,12 @@ func genericSubscriptionDeviceID(
 	req SubscriptionRenderRequest,
 	meta subscriptionDeviceMetadata,
 ) string {
+	if hwid := cleanDeviceHint(req.DeviceHWID); hwid != "" {
+		sum := sha256.Sum256([]byte(strings.Join([]string{
+			normalizeMetadataProtocol(protocol), strings.TrimSpace(inboundTag), hwid,
+		}, "\x00")))
+		return metadataDevicePrefix(protocol) + "-hwid-" + hex.EncodeToString(sum[:16])
+	}
 	parts := []string{
 		normalizeMetadataProtocol(protocol),
 		strings.TrimSpace(inboundTag),
@@ -498,6 +504,24 @@ func (s Service) recordGenericSubscriptionDeviceMetadata(
 		req,
 		meta,
 	)
+}
+
+// registerXraySubscriptionHWID atomically reserves an Xray subscription slot.
+// This only governs clients that send a stable X-HWID on subscription fetch;
+// Xray's VLESS authentication protocol itself does not carry device identity.
+func (s Service) registerXraySubscriptionHWID(
+	ctx context.Context,
+	user UserDetail,
+	req SubscriptionRenderRequest,
+) error {
+	if strings.TrimSpace(req.HWID) == "" {
+		req.HWID = req.DeviceHWID
+	}
+	if err := s.repo.registerSubscriptionHWID(ctx, user.ID, req.HWID); err != nil {
+		return err
+	}
+	_ = s.recordGenericSubscriptionDeviceMetadata(ctx, user.ID, "xray", "", req)
+	return nil
 }
 
 func (s Service) storeSubscriptionDeviceMetadata(
