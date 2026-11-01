@@ -121,7 +121,7 @@
 	"settings.panel.updateTargetUnknown": "Целевая версия пока недоступна.",
 	"settings.panel.devChannelWarning": "Сборки Dev нестабильны: они могут содержать незавершённые изменения, миграции и временные ошибки.",
 	"settings.save": "Сохранить настройки",
-	"settings.savedSuccess": "Настройки Telegram обновлены.",
+	"settings.savedSuccess": "Настройки успешно сохранены.",
 	"settings.tabs.comingSoon": "Скоро",
 	"usersTable.copyKeyLink": "Скопировать ссылку подписки (ключ)",
 	"usersTable.copyLegacyLink": "Скопировать старую ссылку подписки",
