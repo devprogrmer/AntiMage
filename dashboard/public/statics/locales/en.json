@@ -1588,7 +1588,7 @@
 	"settings.panel.saved": "Panel settings saved",
 	"settings.panel.versionUnknown": "Unknown",
 	"settings.save": "Save Settings",
-	"settings.savedSuccess": "Telegram settings updated.",
+	"settings.savedSuccess": "Settings saved successfully.",
 	"settings.tabs.comingSoon": "Coming Soon",
 	"settings.telegram": "Telegram",
 	"settings.telegram.disabledOverlay": "Telegram bot is disabled. Enable it to edit these settings.",
