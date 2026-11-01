@@ -184,7 +184,7 @@ export function AppLayout() {
 	);
 	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
 	const isRTL = i18n.dir(activeLanguage) === "rtl";
-	const tutorialsUrl = "/tutorials";
+	const tutorialsUrl = "/guide";
 	const sectionAccess = userData.permissions?.sections;
 	const userMenuContentRef = useRef<HTMLDivElement | null>(null);
 	const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);

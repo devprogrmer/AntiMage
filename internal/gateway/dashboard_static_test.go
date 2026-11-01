@@ -10,9 +10,8 @@ import (
 
 func TestResolveDashboardFile(t *testing.T) {
 	files := fstest.MapFS{
-		"index.html":                       {},
-		"tutorial-content/docs/index.html": {},
-		"tutorial-content/app.css":         {},
+		"index.html":                {},
+		"statics/guide.abcdef12.js": {},
 	}
 
 	tests := []struct {
@@ -20,9 +19,8 @@ func TestResolveDashboardFile(t *testing.T) {
 		expected string
 		found    bool
 	}{
-		{name: "tutorial-content/docs", expected: "tutorial-content/docs/index.html", found: true},
-		{name: "tutorial-content/app.css", expected: "tutorial-content/app.css", found: true},
-		{name: "tutorial-content/missing", found: false},
+		{name: "statics/guide.abcdef12.js", expected: "statics/guide.abcdef12.js", found: true},
+		{name: "missing", expected: "", found: false},
 	}
 
 	for _, test := range tests {
@@ -33,41 +31,28 @@ func TestResolveDashboardFile(t *testing.T) {
 	}
 }
 
-func TestDashboardFilesServesTutorialDirectories(t *testing.T) {
+func TestDashboardFilesRedirectsLegacyTutorialContent(t *testing.T) {
 	dashboard := &dashboardFiles{
 		root: "/custom",
 		fs: fstest.MapFS{
-			"index.html":                       {Data: []byte("panel")},
-			"tutorial-content/docs/index.html": {Data: []byte("tutorials")},
+			"index.html": {Data: []byte("panel")},
 		},
 	}
 
 	request := httptest.NewRequest(http.MethodGet, "/custom/tutorial-content/docs/", nil)
 	response := httptest.NewRecorder()
 	dashboard.serve(response, request)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "tutorials") {
-		t.Fatalf("tutorial page status=%d body=%q", response.Code, response.Body.String())
-	}
-	if response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("tutorial HTML cache control=%q", response.Header().Get("Cache-Control"))
+	if response.Code != http.StatusMovedPermanently || response.Header().Get("Location") != "/custom/guide" {
+		t.Fatalf("legacy guide status=%d location=%q", response.Code, response.Header().Get("Location"))
 	}
 
 	shell := httptest.NewRecorder()
 	dashboard.serve(
 		shell,
-		httptest.NewRequest(http.MethodGet, "/custom/tutorials", nil),
+		httptest.NewRequest(http.MethodGet, "/custom/guide", nil),
 	)
 	if shell.Code != http.StatusOK || !strings.Contains(shell.Body.String(), "panel") {
-		t.Fatalf("tutorial shell status=%d body=%q", shell.Code, shell.Body.String())
-	}
-
-	missing := httptest.NewRecorder()
-	dashboard.serve(
-		missing,
-		httptest.NewRequest(http.MethodGet, "/custom/tutorial-content/missing/", nil),
-	)
-	if missing.Code != http.StatusNotFound || strings.Contains(missing.Body.String(), "panel") {
-		t.Fatalf("missing tutorial status=%d body=%q", missing.Code, missing.Body.String())
+		t.Fatalf("guide shell status=%d body=%q", shell.Code, shell.Body.String())
 	}
 }
 

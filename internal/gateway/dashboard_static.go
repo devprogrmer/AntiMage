@@ -64,6 +64,10 @@ func (d *dashboardFiles) serve(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, d.root+"/login", http.StatusTemporaryRedirect)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, d.root+"/tutorial-content/") {
+		http.Redirect(w, r, d.root+"/guide", http.StatusMovedPermanently)
+		return
+	}
 	name := ""
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/statics/"):
@@ -82,14 +86,13 @@ func (d *dashboardFiles) serve(w http.ResponseWriter, r *http.Request) {
 	if name == "." || name == "" {
 		name = "index.html"
 	}
-	tutorialAsset := name == "tutorial-content" || strings.HasPrefix(name, "tutorial-content/")
 	staticAsset := strings.HasPrefix(name, "assets/") || strings.HasPrefix(name, "statics/")
 	if staticAsset && path.Ext(name) == "" {
 		http.NotFound(w, r)
 		return
 	}
 	resolved, found := resolveDashboardFile(d.fs, name)
-	if !found && (tutorialAsset || staticAsset) {
+	if !found && staticAsset {
 		http.NotFound(w, r)
 		return
 	}

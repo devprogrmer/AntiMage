@@ -350,7 +350,7 @@ export default function HAProxyPage() {
 							leftIcon={<BookOpenIcon width={17} />}
 							onClick={() =>
 								navigate(
-									`/tutorials?doc=${encodeURIComponent("admin/haproxy/")}`,
+									"/guide?topic=haproxy",
 								)
 							}
 						>

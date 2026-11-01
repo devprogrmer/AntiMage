@@ -2633,9 +2633,7 @@ export const NodesPage: FC = () => {
 							w="full"
 							onClick={() =>
 								navigate(
-									`/tutorials?doc=${encodeURIComponent(
-										"admin/nodes/#section-nodes-admin-guide",
-									)}`,
+									"/guide?topic=nodes",
 								)
 							}
 						>

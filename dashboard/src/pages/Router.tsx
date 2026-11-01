@@ -135,6 +135,7 @@ const routeSegments = new Set([
 	"myaccount",
 	"usage",
 	"tutorials",
+	"guide",
 	"services",
 	"hosts",
 	"haproxy",
@@ -245,10 +246,6 @@ export const router = createBrowserRouter(
 					element: <LazyPage Page={UsagePage} />,
 				},
 				{
-					path: "tutorials",
-					element: <LazyPage Page={TutorialsPage} />,
-				},
-				{
 					path: "services",
 					element: <LazyPage Page={ServicesPage} />,
 				},
@@ -289,10 +286,6 @@ export const router = createBrowserRouter(
 					element: <LazyPage Page={RecentActionsPage} />,
 				},
 				{
-					path: "api-docs",
-					element: <LazyPage Page={ApiDocsPage} />,
-				},
-				{
 					path: "phpmyadmin",
 					element: <LazyPage Page={PhpMyAdminPage} />,
 				},
@@ -301,6 +294,22 @@ export const router = createBrowserRouter(
 					element: <LazyPage Page={ExternalAppsPage} />,
 				},
 			],
+		},
+		{
+			path: "/guide",
+			element: <LazyPage Page={TutorialsPage} />,
+		},
+		{
+			path: "/guide/api",
+			element: <LazyPage Page={ApiDocsPage} />,
+		},
+		{
+			path: "/api-docs",
+			element: <LazyPage Page={ApiDocsPage} />,
+		},
+		{
+			path: "/tutorials",
+			element: <Navigate to="/guide" replace />,
 		},
 		{
 			path: "/login",
