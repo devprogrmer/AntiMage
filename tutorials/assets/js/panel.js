@@ -4,12 +4,18 @@
 	const panelRoot =
 		markerIndex >= 0 ? location.pathname.slice(0, markerIndex) : "";
 	const docsRoot = `${panelRoot}/tutorial-content`;
-	const lang = document.documentElement.lang.startsWith("fa") ? "fa" : "en";
+	const documentLanguage = document.documentElement.lang.toLowerCase();
+	const lang = documentLanguage.startsWith("fa")
+		? "fa"
+		: documentLanguage.startsWith("ru")
+			? "ru"
+			: "en";
+	const localizedDocsPath = lang === "en" ? "" : `${lang}/`;
 	const nativeFetch = window.fetch.bind(window);
 	window.fetch = (input, options) => {
 		if (
 			typeof input === "string" &&
-			/^\/(?:en|fa)\.search-data\.json$/.test(input)
+			/^\/(?:en|fa|ru)\.search-data\.json$/.test(input)
 		) {
 			return nativeFetch(`${docsRoot}/${input.slice(1)}`, options);
 		}
@@ -45,7 +51,8 @@
 		const searchPath = searchLink?.getAttribute("href");
 		if (
 			searchPath?.startsWith("/docs/") ||
-			searchPath?.startsWith("/fa/docs/")
+			searchPath?.startsWith("/fa/docs/") ||
+			searchPath?.startsWith("/ru/docs/")
 		) {
 			event.preventDefault();
 			location.assign(`${docsRoot}${searchPath}`);
@@ -87,13 +94,13 @@
 				document.documentElement.dataset.amAdminPage === "true" &&
 				!privileged
 			) {
-				location.replace(`${docsRoot}/${lang === "fa" ? "fa/" : ""}docs/`);
+				location.replace(`${docsRoot}/${localizedDocsPath}docs/`);
 			}
 		})
 		.catch(() => {
 			document.documentElement.dataset.amPrivileged = "false";
 			if (document.documentElement.dataset.amAdminPage === "true") {
-				location.replace(`${docsRoot}/${lang === "fa" ? "fa/" : ""}docs/`);
+				location.replace(`${docsRoot}/${localizedDocsPath}docs/`);
 			}
 		});
 })();

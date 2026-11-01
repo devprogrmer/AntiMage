@@ -42,17 +42,38 @@ export const SearchInput: FC<SearchInputProps> = ({
 	value,
 	...inputProps
 }) => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const toggle = (key: keyof SearchMatchOptions) =>
 		onMatchOptionsChange({ ...matchOptions, [key]: !matchOptions[key] });
 
 	return (
-		<InputGroup size={size} {...containerProps}>
-			<InputLeftElement pointerEvents="none" h="full">
+		<InputGroup
+			size={size}
+			{...containerProps}
+			dir={isRTL ? "rtl" : "ltr"}
+		>
+			<InputLeftElement
+				pointerEvents="none"
+				h="full"
+				left={isRTL ? "auto" : 0}
+				right={isRTL ? 0 : "auto"}
+			>
 				<SearchIcon color="panel.textMuted" />
 			</InputLeftElement>
-			<Input value={value} pe="116px" {...inputProps} />
-			<InputRightElement w="auto" pe={1} h="full">
+			<Input
+				value={value}
+				ps={isRTL ? "116px" : "10"}
+				pe={isRTL ? "10" : "116px"}
+				{...inputProps}
+			/>
+			<InputRightElement
+				w="auto"
+				pe={1}
+				h="full"
+				left={isRTL ? 0 : "auto"}
+				right={isRTL ? "auto" : 0}
+			>
 				<HStack spacing={0.5}>
 					{isLoading && <Spinner size="xs" color="panel.textMuted" />}
 					<Tooltip label={t("search.matchCase")} hasArrow>

@@ -70,6 +70,7 @@ export const PsiphonProxyModal: FC<Props> = ({
 	onSubmit,
 }) => {
 	const { t, i18n } = useTranslation();
+	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
 	const form = useForm<PsiphonProxyFormValues>({ defaultValues: defaults });
 	const borderColor = useColorModeValue("gray.200", "whiteAlpha.200");
 	const [isLoadingLocations, setIsLoadingLocations] = useState(false);
@@ -77,8 +78,8 @@ export const PsiphonProxyModal: FC<Props> = ({
 	const [loadedConfig, setLoadedConfig] = useState("");
 	const [loadError, setLoadError] = useState("");
 	const locationOptions = useMemo(
-		() => countrySelectOptions(i18n.language, availableLocations),
-		[availableLocations, i18n.language],
+		() => countrySelectOptions(activeLanguage, availableLocations),
+		[activeLanguage, availableLocations],
 	);
 	const config = form.watch("config").trim();
 	const locationsReady =

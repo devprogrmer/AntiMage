@@ -87,8 +87,8 @@ const buildMonthDays = (
 	return { monthLabel, days };
 };
 
-const buildWeekdayLabels = (locale: string) => {
-	const start = new Date(2023, 0, 1); // Sunday
+const buildWeekdayLabels = (locale: string, weekStart: number) => {
+	const start = new Date(2023, 0, 1 + weekStart); // 2023-01-01 was Sunday.
 	return Array.from({ length: 7 }).map((_, index) =>
 		new Intl.DateTimeFormat(locale, { weekday: "short" }).format(
 			new Date(start.getTime() + index * 24 * 60 * 60 * 1000),
@@ -101,12 +101,14 @@ export const HeaderCalendar: FC = () => {
 	const [today, setToday] = useState(() => new Date());
 	const [displayDate, setDisplayDate] = useState(() => new Date());
 	const { isChristmas, window: seasonWindow } = useSeasonal();
-	const isPersian = i18n.language?.startsWith("fa");
-	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
+	const isPersian = activeLanguage.startsWith("fa");
+	const isRTL = i18n.dir(activeLanguage) === "rtl";
 	const displayLocale = isPersian
 		? "fa-IR-u-ca-persian"
-		: `${i18n.language || "en"}-u-ca-gregory`;
-	const numberLocale = isPersian ? "fa-IR" : i18n.language || "en";
+		: `${activeLanguage}-u-ca-gregory`;
+	const numberLocale = isPersian ? "fa-IR" : activeLanguage;
+	const weekStart = isPersian ? 6 : activeLanguage.startsWith("ru") ? 1 : 0;
 	const badgeBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
 	const highlight = useColorModeValue("primary.600", "primary.200");
 	const border = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
@@ -149,31 +151,33 @@ export const HeaderCalendar: FC = () => {
 		[displayDate, displayLocale, isPersian, numberLocale],
 	);
 	const weekdayLabels = useMemo(
-		() => buildWeekdayLabels(displayLocale),
-		[displayLocale],
+		() => buildWeekdayLabels(displayLocale, weekStart),
+		[displayLocale, weekStart],
 	);
 
-	const emptySlots = days.length ? days[0].weekday : 0;
+	const emptySlots = days.length
+		? (days[0].weekday - weekStart + 7) % 7
+		: 0;
 	const emptySlotKeys = useMemo(
 		() => Array.from({ length: emptySlots }, () => createStableKey()),
 		[emptySlots],
 	);
-	const weekendDays = isPersian ? [5] : [0];
+	const weekendDays = isPersian ? [5] : [0, 6];
 	const prevIcon = isRTL ? <ChevronRight /> : <ChevronLeft />;
 	const nextIcon = isRTL ? <ChevronLeft /> : <ChevronRight />;
 
 	const christmasRange = useMemo(() => {
 		if (!seasonWindow) return null;
-		const locale = i18n.language || "en";
+		const locale = activeLanguage;
 		const formatter = new Intl.DateTimeFormat(locale, {
 			month: "short",
 			day: "numeric",
 		});
 		return `${formatter.format(seasonWindow.start)} - ${formatter.format(seasonWindow.end)}`;
-	}, [i18n.language, seasonWindow]);
+	}, [activeLanguage, seasonWindow]);
 
 	return (
-		<Popover placement="bottom-start">
+		<Popover placement={isRTL ? "bottom-end" : "bottom-start"}>
 			<PopoverTrigger>
 				<Button
 					variant="ghost"

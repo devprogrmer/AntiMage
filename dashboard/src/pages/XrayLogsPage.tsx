@@ -45,10 +45,6 @@ const getWebsocketUrl = (nodeID: string) => {
 	return getAPIWebSocketURL(`/node/${nodeID}/logs`, { interval: 1 });
 };
 
-interface XrayLogsPageProps {
-	showTitle?: boolean;
-}
-
 const CompactLogSelect = (props: SelectProps) => (
 	<Select
 		size="sm"
@@ -65,7 +61,7 @@ const CompactLogSelect = (props: SelectProps) => (
 	/>
 );
 
-export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
+export const XrayLogsPage: FC = () => {
 	const { t } = useTranslation();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canViewXrayLogs =
@@ -328,11 +324,6 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 	if (!canViewXrayLogs) {
 		return (
 			<VStack spacing={4} align="stretch">
-				{showTitle && (
-					<Text as="h1" fontWeight="semibold" fontSize="2xl">
-						{t("xrayLogs.title")}
-					</Text>
-				)}
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
 					{t("xrayLogs.noPermission")}
 				</Text>
@@ -505,8 +496,8 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 									key={id}
 									bg={palette.bg}
 									color={palette.color}
-									borderLeftWidth={3}
-									borderLeftColor={palette.border}
+								borderInlineStartWidth={3}
+								borderInlineStartColor={palette.border}
 									px={3}
 									py={2}
 									borderRadius="4px"

@@ -83,6 +83,7 @@ import {
 	generateErrorMessage,
 	generateSuccessMessage,
 } from "utils/toastHandler";
+
 import {
 	DataTable,
 	type DataTableColumn,
@@ -2555,9 +2556,6 @@ export const NodesPage: FC = () => {
 	if (!canManageNodes) {
 		return (
 			<VStack spacing={4} align="stretch">
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("nodes.title")}
-				</Text>
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
 					{t("nodes.noPermission")}
 				</Text>

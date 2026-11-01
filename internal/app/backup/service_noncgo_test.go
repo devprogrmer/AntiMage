@@ -11,7 +11,7 @@ import (
 )
 
 func TestImportRejectsUnsafeArchivePath(t *testing.T) {
-	archivePath := filepath.Join(t.TempDir(), "unsafe.rbbackup")
+	archivePath := filepath.Join(t.TempDir(), "unsafe-backup.dat")
 	file, err := os.Create(archivePath)
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestImportRejectsUnsafeArchivePath(t *testing.T) {
 }
 
 func TestSafeExtractRejectsOversizedEntry(t *testing.T) {
-	archivePath := filepath.Join(t.TempDir(), "oversized.rbbackup")
+	archivePath := filepath.Join(t.TempDir(), "oversized-backup.dat")
 	file, err := os.Create(archivePath)
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestSafeExtractRejectsOversizedEntry(t *testing.T) {
 }
 
 func TestImportRejectsInvalidManifest(t *testing.T) {
-	archivePath := filepath.Join(t.TempDir(), "invalid.rbbackup")
+	archivePath := filepath.Join(t.TempDir(), "invalid-backup.dat")
 	writeBackupArchiveForTest(t, archivePath, map[string][]byte{
 		ManifestName: []byte(`{"format":"wrong","version":1}`),
 	})

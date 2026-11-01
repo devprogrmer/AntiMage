@@ -174,7 +174,7 @@ type AdminFormValues = {
 
 export const AdminDialog: FC = () => {
 	const { t, i18n } = useTranslation();
-	const isRTL = i18n.language === "fa";
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 
 	const basePad = "0.75rem";
 	const endPadding = isRTL
@@ -1263,7 +1263,7 @@ export const AdminDialog: FC = () => {
 									{t("admins.limitByCreatedTraffic")}
 								</Checkbox>
 								{isCreatedTrafficMode && (
-									<Stack spacing={2} pl={1}>
+									<Stack spacing={2} ps={1}>
 										<Checkbox
 											isChecked={Boolean(showUserTrafficValue)}
 											onChange={(event) =>
@@ -1490,7 +1490,7 @@ export const AdminDialog: FC = () => {
 										spacing={2}
 										maxH="320px"
 										overflowY="auto"
-										pr={1}
+										pe={1}
 									>
 										{selectedServices.map((serviceId) => {
 											const service = serviceOptions.find(

@@ -42,6 +42,58 @@ type FinalMaskEditorProps = {
 
 type Direction = "tcp" | "udp";
 
+const finalMaskOptionLabelKeys: Record<string, string> = {
+	"Fixed packet": "finalMask.options.fixedPacket",
+	"Random bytes": "finalMask.options.randomBytes",
+	"Core default": "finalMask.options.coreDefault",
+	Prefix: "finalMask.options.prefix",
+	Standalone: "finalMask.options.standalone",
+	Default: "finalMask.options.default",
+	Automatic: "finalMask.options.automatic",
+	"Automatic (Chrome)": "finalMask.options.automaticChrome",
+	"AES-128-GCM / XOR": "finalMask.options.aes128GcmXor",
+};
+
+const finalMaskFieldLabels = [
+	"Content source", "Random length", "Random length range", "Random byte range",
+	"Packet type", "Delay (ms)", "Delay range (ms)", "Packet bytes",
+	"Client variants", "Server variants", "Error variants", "Packet mode",
+	"Client packets", "Server packets", "Password", "ASCII mode", "Custom table",
+	"Minimum padding", "Maximum padding", "Custom tables", "Packets",
+	"Maximum split count", "Fragment lengths (bytes)", "Fragment delays (ms)",
+	"OCSP stapling interval (s)", "Usage", "Certificate file", "Key file",
+	"One-time loading", "Build certificate chain", "Certificate content",
+	"Private key content", "TLS configuration", "Server name",
+	"Verify peer certificate by name", "Minimum TLS version", "Maximum TLS version",
+	"Cipher suites", "Fingerprint", "Pinned peer certificate SHA-256",
+	"Master key log", "ECH server keys", "ECH config list", "ALPN",
+	"Curve preferences", "Reject unknown SNI", "Disable system roots",
+	"Enable session resumption", "Header", "Password / domain", "Reset interval (s)",
+	"Noise packets", "Gecko packet size", "Domains", "Resolvers", "Datagram mode",
+	"IP addresses", "Realm URL", "STUN servers", "Congestion control",
+	"Transport default", "BBR profile", "Standard (default)", "Brutal upload rate",
+	"Brutal download rate", "Debug logging", "Disable path MTU discovery",
+	"UDP port hopping", "Hop ports", "Hop interval (s)",
+].reduce<Record<string, string>>((labels, label) => {
+	const key = label
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "_")
+		.replace(/^_|_$/g, "");
+	labels[label] = `finalMask.fields.${key}`;
+	return labels;
+}, {});
+
+const useFinalMaskFieldLabel = (label: ReactNode): ReactNode => {
+	const { t } = useTranslation();
+	if (typeof label !== "string") return label;
+	const key = finalMaskFieldLabels[label];
+	return key ? t(key) : label;
+};
+
+const FinalMaskFieldLabel: FC<{ label: ReactNode }> = ({ label }) => (
+	<>{useFinalMaskFieldLabel(label)}</>
+);
+
 const asRecord = (value: unknown): FinalMaskSettings =>
 	typeof value === "object" && value !== null && !Array.isArray(value)
 		? (value as FinalMaskSettings)
@@ -109,7 +161,9 @@ const TextField: FC<{
 	placeholder?: string;
 }> = ({ label, value, onChange, placeholder }) => (
 	<FormControl>
-		<FormLabel fontSize="sm">{label}</FormLabel>
+		<FormLabel fontSize="sm">
+			<FinalMaskFieldLabel label={label} />
+		</FormLabel>
 		<Input
 			size="sm"
 			value={textValue(value)}
@@ -128,7 +182,9 @@ const NumberField: FC<{
 	placeholder?: string;
 }> = ({ label, value, onChange, min = 0, max, placeholder }) => (
 	<FormControl>
-		<FormLabel fontSize="sm">{label}</FormLabel>
+		<FormLabel fontSize="sm">
+			<FinalMaskFieldLabel label={label} />
+		</FormLabel>
 		<Input
 			size="sm"
 			type="number"
@@ -147,35 +203,49 @@ const SelectField: FC<{
 	options: Array<string | { label: string; value: string }>;
 	onChange: (value: string | undefined) => void;
 	placeholder?: string;
-}> = ({ label, value, options, onChange, placeholder }) => (
-	<FormControl>
-		<FormLabel fontSize="sm">{label}</FormLabel>
-		<SearchableTagSelect
-			value={textValue(value)}
-			options={options}
-			placeholder={placeholder ?? String(label)}
-			onChange={(next) => onChange(optionalText(String(next)))}
-		/>
-	</FormControl>
-);
+}> = ({ label, value, options, onChange, placeholder }) => {
+	const { t } = useTranslation();
+	const translatedLabel = useFinalMaskFieldLabel(label);
+	const translatedOptions = options.map((option) => {
+		if (typeof option === "string") return option;
+		const key = finalMaskOptionLabelKeys[option.label];
+		return key
+			? { ...option, label: t(key, { defaultValue: option.label }) }
+			: option;
+	});
+	return (
+		<FormControl>
+			<FormLabel fontSize="sm">{translatedLabel}</FormLabel>
+			<SearchableTagSelect
+				value={textValue(value)}
+				options={translatedOptions}
+				placeholder={placeholder ?? String(translatedLabel)}
+				onChange={(next) => onChange(optionalText(String(next)))}
+			/>
+		</FormControl>
+	);
+};
 
 const BooleanField: FC<{
 	label: ReactNode;
 	value: unknown;
 	onChange: (value: boolean) => void;
-}> = ({ label, value, onChange }) => (
-	<FormControl display="flex" alignItems="center" gap={2} w="auto">
-		<FormLabel fontSize="sm" mb={0} cursor="pointer">
-			{label}
-		</FormLabel>
-		<Switch
-			size="sm"
-			aria-label={typeof label === "string" ? label : undefined}
-			isChecked={Boolean(value)}
-			onChange={(event) => onChange(event.target.checked)}
-		/>
-	</FormControl>
-);
+}> = ({ label, value, onChange }) => {
+	const translatedLabel = useFinalMaskFieldLabel(label);
+	return (
+		<FormControl display="flex" alignItems="center" gap={2} w="auto">
+			<FormLabel fontSize="sm" mb={0} cursor="pointer">
+				{translatedLabel}
+			</FormLabel>
+			<Switch
+				size="sm"
+				aria-label={typeof translatedLabel === "string" ? translatedLabel : undefined}
+				isChecked={Boolean(value)}
+				onChange={(event) => onChange(event.target.checked)}
+			/>
+		</FormControl>
+	);
+};
 
 const OrderButtons: FC<{
 	index: number;
@@ -191,34 +261,37 @@ const OrderButtons: FC<{
 	onRemove,
 	disableUp = false,
 	disableDown = false,
-}) => (
-	<HStack spacing={1}>
-		<IconButton
-			size="xs"
-			variant="ghost"
-			aria-label="Move up"
-			icon={<ArrowUpIcon width={14} />}
-			isDisabled={index === 0 || disableUp}
-			onClick={() => onMove(index, index - 1)}
-		/>
-		<IconButton
-			size="xs"
-			variant="ghost"
-			aria-label="Move down"
-			icon={<ArrowDownIcon width={14} />}
-			isDisabled={index === length - 1 || disableDown}
-			onClick={() => onMove(index, index + 1)}
-		/>
-		<IconButton
-			size="xs"
-			variant="ghost"
-			colorScheme="red"
-			aria-label="Remove"
-			icon={<TrashIcon width={14} />}
-			onClick={onRemove}
-		/>
-	</HStack>
-);
+	}) => {
+	const { t } = useTranslation();
+	return (
+		<HStack spacing={1}>
+			<IconButton
+				size="xs"
+				variant="ghost"
+				aria-label={t("services.moveUp")}
+				icon={<ArrowUpIcon width={14} />}
+				isDisabled={index === 0 || disableUp}
+				onClick={() => onMove(index, index - 1)}
+			/>
+			<IconButton
+				size="xs"
+				variant="ghost"
+				aria-label={t("services.moveDown")}
+				icon={<ArrowDownIcon width={14} />}
+				isDisabled={index === length - 1 || disableDown}
+				onClick={() => onMove(index, index + 1)}
+			/>
+			<IconButton
+				size="xs"
+				variant="ghost"
+				colorScheme="red"
+				aria-label={t("remove")}
+				icon={<TrashIcon width={14} />}
+				onClick={onRemove}
+			/>
+		</HStack>
+	);
+};
 
 const moveItem = <T,>(items: T[], from: number, to: number) => {
 	if (to < 0 || to >= items.length) return items;
@@ -282,9 +355,12 @@ const StringArrayField: FC<{
 	onChange: (value: string[] | undefined) => void;
 	placeholder?: string;
 }> = ({ label, value, onChange, placeholder }) => {
+	const { t } = useTranslation();
 	return (
 		<FormControl>
-			<FormLabel fontSize="sm">{label}</FormLabel>
+			<FormLabel fontSize="sm">
+				<FinalMaskFieldLabel label={label} />
+			</FormLabel>
 			<Textarea
 				size="sm"
 				rows={3}
@@ -299,7 +375,7 @@ const StringArrayField: FC<{
 				}
 			/>
 			<Text mt={1} fontSize="xs" color="gray.500">
-				One value per line.
+				{t("finalMask.oneValuePerLine")}
 			</Text>
 		</FormControl>
 	);
@@ -317,7 +393,7 @@ const NumberArrayField: FC<{
 		<Stack spacing={2}>
 			<Flex align="center" justify="space-between" gap={2}>
 				<Text fontSize="sm" fontWeight="medium">
-					{label}
+					<FinalMaskFieldLabel label={label} />
 				</Text>
 				<Button
 					size="xs"
@@ -364,7 +440,9 @@ const PemLinesField: FC<{
 	placeholder?: string;
 }> = ({ label, value, onChange, placeholder }) => (
 	<FormControl>
-		<FormLabel fontSize="sm">{label}</FormLabel>
+		<FormLabel fontSize="sm">
+			<FinalMaskFieldLabel label={label} />
+		</FormLabel>
 		<Textarea
 			size="sm"
 			fontFamily="mono"
@@ -394,6 +472,7 @@ const PacketEditor: FC<PacketEditorProps> = ({
 	delay,
 	rand = "number",
 }) => {
+	const { t } = useTranslation();
 	const item = asRecord(value);
 	const source = item.rand !== undefined ? "random" : "packet";
 	const packetType = textValue(item.type) || "array";
@@ -501,7 +580,7 @@ const PacketEditor: FC<PacketEditorProps> = ({
 			)}
 			{source === "packet" && packetType !== "array" && (
 				<FormControl>
-					<FormLabel fontSize="sm">Packet</FormLabel>
+					<FormLabel fontSize="sm">{t("finalMask.packet")}</FormLabel>
 					<Textarea
 						size="sm"
 						fontFamily={packetType === "str" ? undefined : "mono"}
@@ -531,7 +610,7 @@ const PacketListEditor: FC<{
 		<Stack spacing={2}>
 			<Flex align="center" justify="space-between" gap={2}>
 				<Text fontSize="sm" fontWeight="semibold">
-					{label}
+					<FinalMaskFieldLabel label={label} />
 				</Text>
 				<Button
 					size="xs"
@@ -592,7 +671,7 @@ const TcpHeaderVariants: FC<{
 		<Stack spacing={2}>
 			<Flex align="center" justify="space-between" gap={2}>
 				<Text fontSize="sm" fontWeight="semibold">
-					{label}
+					<FinalMaskFieldLabel label={label} />
 				</Text>
 				<Button
 					size="xs"
@@ -613,7 +692,7 @@ const TcpHeaderVariants: FC<{
 				>
 					<Flex align="center" justify="space-between">
 						<Text fontSize="xs" color="gray.500">
-							Variant #{index + 1}
+							{t("finalMask.variant", { index: index + 1 })}
 						</Text>
 						<OrderButtons
 							index={index}
@@ -623,7 +702,7 @@ const TcpHeaderVariants: FC<{
 						/>
 					</Flex>
 					<PacketListEditor
-						label="Packet chunks"
+						label={t("finalMask.packetChunks")}
 						value={variant}
 						delay="number"
 						onChange={(nextVariant) => {
@@ -795,7 +874,7 @@ const CertificateList: FC<{
 		<Stack spacing={3}>
 			<Flex align="center" justify="space-between">
 				<Text fontSize="sm" fontWeight="semibold">
-					Certificates
+					{t("finalMask.certificates")}
 				</Text>
 				<Button
 					size="xs"
@@ -822,7 +901,7 @@ const CertificateList: FC<{
 					>
 						<Flex align="center" justify="space-between">
 							<Text fontSize="xs" color="gray.500">
-								Certificate #{index + 1}
+								{t("finalMask.certificate", { index: index + 1 })}
 							</Text>
 							<OrderButtons
 								index={index}
@@ -1227,11 +1306,12 @@ const LayerCollection: FC<{
 			>
 				<Box>
 					<Text fontWeight="semibold">
-						{direction === "tcp" ? "TCP connection masks" : "UDP packet masks"}
+						{direction === "tcp"
+							? t("finalMask.tcpMasks")
+							: t("finalMask.udpMasks")}
 					</Text>
 					<Text fontSize="xs" color="gray.500">
-						Add only what you need. Layer 1 runs closest to the original
-						traffic.
+						{t("finalMask.layerHelp")}
 					</Text>
 				</Box>
 				<HStack align="stretch">
@@ -1240,9 +1320,11 @@ const LayerCollection: FC<{
 							value={selectedType}
 							options={availableTypes.map((type) => ({
 								value: type,
-								label: typeLabel(type),
+								label: t(`finalMask.types.${type}`, {
+									defaultValue: typeLabel(type),
+								}),
 							}))}
-							placeholder="Mask type"
+							placeholder={t("finalMask.maskType")}
 							onChange={(next) => setPendingType(String(next))}
 						/>
 					</Box>
@@ -1261,11 +1343,12 @@ const LayerCollection: FC<{
 			{value.length === 0 && (
 				<Box borderWidth="1px" borderStyle="dashed" borderRadius="lg" p={4}>
 					<Text fontSize="sm" fontWeight="medium">
-						No {direction.toUpperCase()} mask is active
+						{t("finalMask.maskInactive", {
+							protocol: direction.toUpperCase(),
+						})}
 					</Text>
 					<Text mt={1} fontSize="xs" color="gray.500">
-						Choose a mask type above and select Add. Safe starter values are
-						filled in automatically.
+						{t("finalMask.maskStarterHelp")}
 					</Text>
 				</Box>
 			)}
@@ -1283,7 +1366,9 @@ const LayerCollection: FC<{
 								#{index + 1}
 							</Badge>
 							<Text fontSize="sm" fontWeight="semibold">
-								{typeLabel(layer.type)}
+								{t(`finalMask.types.${layer.type}`, {
+									defaultValue: typeLabel(layer.type),
+								})}
 							</Text>
 						</HStack>
 						<OrderButtons
@@ -1310,7 +1395,9 @@ const LayerCollection: FC<{
 					</Flex>
 					<Divider />
 					<Text fontSize="xs" color="gray.500">
-						{typeDescription(layer.type)}
+						{t(`finalMask.typeDescriptions.${layer.type}`, {
+							defaultValue: typeDescription(layer.type),
+						})}
 					</Text>
 					<LayerSettings
 						direction={direction}
@@ -1383,6 +1470,7 @@ const QuicParamsEditor: FC<{
 	allowUdpHop: boolean;
 	allowNegotiatedBrutal: boolean;
 }> = ({ value, onChange, allowUdpHop, allowNegotiatedBrutal }) => {
+	const { t } = useTranslation();
 	const enabled =
 		typeof value === "object" && value !== null && !Array.isArray(value);
 	const params = asRecord(value);
@@ -1419,13 +1507,13 @@ const QuicParamsEditor: FC<{
 		<Stack spacing={3}>
 			<Flex align="center" justify="space-between" gap={2}>
 				<Box>
-					<Text fontWeight="semibold">QUIC parameters</Text>
+					<Text fontWeight="semibold">{t("finalMask.quicParameters")}</Text>
 					<Text fontSize="xs" color="gray.500">
-						Used by Hysteria and XHTTP H3.
+						{t("finalMask.quicDescription")}
 					</Text>
 				</Box>
 				<Switch
-					aria-label="Enable QUIC parameters"
+					aria-label={t("finalMask.enableQuic")}
 					isChecked={enabled}
 					onChange={(event) => {
 						const activeHop = Boolean(
@@ -1446,7 +1534,10 @@ const QuicParamsEditor: FC<{
 							label="Congestion control"
 							value={congestion}
 							options={[
-								{ value: "", label: "Transport default" },
+				{
+					value: "",
+					label: t("finalMask.fields.transport_default"),
+				},
 								"reno",
 								"bbr",
 								...(allowNegotiatedBrutal ? ["brutal"] : []),
@@ -1458,7 +1549,10 @@ const QuicParamsEditor: FC<{
 							label="BBR profile"
 							value={textValue(params.bbrProfile).toLowerCase()}
 							options={[
-								{ value: "", label: "Standard (default)" },
+				{
+					value: "",
+					label: t("finalMask.fields.standard_default"),
+				},
 								"conservative",
 								"standard",
 								"aggressive",

@@ -46,15 +46,16 @@ export const PageHeader: FC<PageHeaderProps> = ({
 }) => {
 	if (!title && !description && !actions) {
 		return (
-			<Box w="full" color="panel.text" {...props}>
+			<Box className="am-page-header" w="full" color="panel.text" {...props}>
 				{children}
 			</Box>
 		);
 	}
 
 	return (
-		<Box w="full" color="panel.text" {...props}>
+		<Box className="am-page-header" w="full" color="panel.text" {...props}>
 			<Flex
+				className="am-page-header-row"
 				align={{ base: "flex-start", md: "center" }}
 				justify="space-between"
 				gap={3}
@@ -62,12 +63,13 @@ export const PageHeader: FC<PageHeaderProps> = ({
 			>
 				<Box minW={0}>
 					{title && (
-						<Text as="h1" fontSize="2xl" fontWeight="semibold">
+						<Text className="am-page-title" as="h1" fontSize="2xl" fontWeight="semibold">
 							{title}
 						</Text>
 					)}
 					{description && (
 						<Text
+							className="am-page-description"
 							fontSize="sm"
 							color="panel.textSecondary"
 							mt={title ? 1 : 0}
@@ -77,7 +79,11 @@ export const PageHeader: FC<PageHeaderProps> = ({
 					)}
 					{children}
 				</Box>
-				{actions && <Box flexShrink={0}>{actions}</Box>}
+				{actions && (
+					<Box className="am-page-header-actions" flexShrink={0}>
+						{actions}
+					</Box>
+				)}
 			</Flex>
 		</Box>
 	);

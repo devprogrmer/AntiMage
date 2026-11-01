@@ -25,7 +25,7 @@ export const BulkActionBar: FC<BulkActionBarProps> = ({
 	...props
 }) => {
 	const { t, i18n } = useTranslation();
-	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const isVisible = selectedCount > 0;
 	const sidebarInset = {
 		base: "12px",

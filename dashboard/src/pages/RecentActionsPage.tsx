@@ -927,11 +927,11 @@ export const RecentActionsPage: FC = () => {
 		<VStack
 			spacing={4}
 			align="stretch"
-			dir={i18n.dir(i18n.language)}
+			dir={i18n.dir(i18n.resolvedLanguage || i18n.language)}
 			pb={{ base: 8, md: 16 }}
 		>
 			<ResourceListCard
-				title={t("recentActions.title")}
+				title={t("recentActions.logTitle")}
 				summaryItems={[
 					{ label: t("total"), value: totalActions },
 					{

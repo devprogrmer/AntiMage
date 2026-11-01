@@ -2482,7 +2482,7 @@ export const InboundFormModal: FC<Props> = ({
 												</Box>
 												)}
 												<FormControl>
-													<FormLabel>Server certificate source</FormLabel>
+													<FormLabel>{t("ui.inbound.serverCertificateSource")}</FormLabel>
 													<Controller
 														control={control}
 														name="ovCertificateDomain"
@@ -2490,11 +2490,11 @@ export const InboundFormModal: FC<Props> = ({
 															<SearchableTagSelect
 																value={field.value || ""}
 																onChange={field.onChange}
-																placeholder="Manual / self-signed PEM"
+															placeholder={t("ui.inbound.manualSelfSignedPem")}
 																options={[
 																	{
 																		value: "",
-																		label: "Manual / self-signed PEM",
+														label: t("ui.inbound.manualSelfSignedPem"),
 																	},
 																	...managedCertificateDomains.map(
 																		(domain) => ({
@@ -2882,7 +2882,7 @@ export const InboundFormModal: FC<Props> = ({
 																leftIcon={<ArrowPathIcon width={16} />}
 																onClick={handleGenerateAWGHeaders}
 															>
-																Regenerate H values
+																{t("ui.inbound.regenerateHValues")}
 															</Button>
 														</Box>
 													</>
@@ -3102,16 +3102,19 @@ export const InboundFormModal: FC<Props> = ({
 																<SearchableTagSelect
 																	value={field.value}
 																	onChange={field.onChange}
-																	placeholder="Certificate mode"
+												placeholder={t("inbounds.ikev2.certificateMode")}
 																	options={[
-																		{ value: "auto", label: "Auto-managed" },
+													{
+														value: "auto",
+														label: t("inbounds.ikev2.certMode.auto"),
+													},
 																		{
 																			value: "managed",
-																			label: "Certificate Store",
+														label: t("inbounds.ikev2.certMode.store"),
 																		},
 																		{
 																			value: "manual",
-																			label: "Manual / custom PEM",
+														label: t("inbounds.ikev2.certMode.manual"),
 																		},
 																	]}
 																/>
@@ -3126,7 +3129,7 @@ export const InboundFormModal: FC<Props> = ({
 															fieldValidationErrors.raCertificateDomain,
 														)}
 													>
-														<FormLabel>Managed server certificate</FormLabel>
+														<FormLabel>{t("ui.inbound.managedServerCertificate")}</FormLabel>
 														<Controller
 															control={control}
 															name="raCertificateDomain"
@@ -3134,11 +3137,11 @@ export const InboundFormModal: FC<Props> = ({
 																<SearchableTagSelect
 																	value={field.value || ""}
 																	onChange={field.onChange}
-																	placeholder="Select a domain"
+													placeholder={t("select")}
 																	options={[
 																		{
 																			value: "",
-																			label: "Manual / self-signed PEM",
+														label: t("ui.inbound.manualSelfSignedPem"),
 																		},
 																		...managedCertificateDomains.map(
 																			(domain) => ({
@@ -3164,7 +3167,7 @@ export const InboundFormModal: FC<Props> = ({
 															isRequired
 															isInvalid={Boolean(fieldValidationErrors.raCA)}
 														>
-															<FormLabel>Client certificate CA</FormLabel>
+															<FormLabel>{t("ui.inbound.clientCertificateCA")}</FormLabel>
 															<Textarea rows={4} {...register("raCA")} />
 															{fieldValidationErrors.raCA && (
 																<Text fontSize="xs" color="red.500">
@@ -4348,7 +4351,7 @@ export const InboundFormModal: FC<Props> = ({
 																!!fieldValidationErrors.wsHeartbeatPeriod
 															}
 														>
-															<FormLabel>Heartbeat period (seconds)</FormLabel>
+															<FormLabel>{t("ui.inbound.heartbeatPeriodSeconds")}</FormLabel>
 															<Input
 																{...register("wsHeartbeatPeriod")}
 																inputMode="numeric"
@@ -4362,7 +4365,7 @@ export const InboundFormModal: FC<Props> = ({
 														</FormControl>
 														<FormControl display="flex" alignItems="center">
 															<FormLabel mb={0}>
-																Accept PROXY protocol
+																{t("ui.inbound.acceptProxyProtocol")}
 															</FormLabel>
 															<Switch {...register("wsAcceptProxyProtocol")} />
 														</FormControl>
@@ -4483,7 +4486,7 @@ export const InboundFormModal: FC<Props> = ({
 														</FormControl>
 														<FormControl display="flex" alignItems="center">
 															<FormLabel mb={0}>
-																Permit without stream
+																{t("ui.inbound.permitWithoutStream")}
 															</FormLabel>
 															<Switch
 																{...register("grpcPermitWithoutStream")}
@@ -4533,13 +4536,13 @@ export const InboundFormModal: FC<Props> = ({
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 														<FormControl>
 															<FormLabel>
-																{t("inbounds.kcp.headerType")} (legacy)
+																{t("inbounds.kcp.headerType")} {t("ui.inbound.legacy")}
 															</FormLabel>
 															<Input {...register("kcpHeaderType")} />
 														</FormControl>
 														<FormControl>
 															<FormLabel>
-																{t("inbounds.kcp.seed")} (legacy)
+																{t("inbounds.kcp.seed")} {t("ui.inbound.legacy")}
 															</FormLabel>
 															<Input {...register("kcpSeed")} />
 														</FormControl>
@@ -4601,7 +4604,7 @@ export const InboundFormModal: FC<Props> = ({
 													</SimpleGrid>
 													<FormControl display="flex" alignItems="center">
 														<FormLabel mb={0}>
-															Congestion control (legacy)
+															{t("ui.inbound.congestionControlLegacy")}
 														</FormLabel>
 														<Switch {...register("kcpCongestion")} />
 													</FormControl>
@@ -4653,7 +4656,7 @@ export const InboundFormModal: FC<Props> = ({
 														</FormControl>
 														<FormControl display="flex" alignItems="center">
 															<FormLabel mb={0}>
-																Accept PROXY protocol
+																{t("ui.inbound.acceptProxyProtocol")}
 															</FormLabel>
 															<Switch
 																{...register("httpupgradeAcceptProxyProtocol")}
@@ -4662,7 +4665,7 @@ export const InboundFormModal: FC<Props> = ({
 													</SimpleGrid>
 													<Stack spacing={2}>
 														<Flex justify="space-between" align="center">
-															<Text fontWeight="medium">Headers</Text>
+															<Text fontWeight="medium">{t("ui.inbound.headers")}</Text>
 															<Button
 																size="xs"
 																onClick={() =>
@@ -4851,7 +4854,7 @@ export const InboundFormModal: FC<Props> = ({
 													</SimpleGrid>
 													<Stack className="xray-dialog-section" spacing={3}>
 														<Text fontSize="sm" fontWeight="semibold">
-															Session and XMUX
+															{t("ui.inbound.sessionAndXmux")}
 														</Text>
 														<SimpleGrid
 															columns={{ base: 1, md: 2 }}
@@ -4862,7 +4865,7 @@ export const InboundFormModal: FC<Props> = ({
 																	!!fieldValidationErrors.xhttpSessionIDTable
 																}
 															>
-																<FormLabel>Session ID table</FormLabel>
+																<FormLabel>{t("ui.inbound.sessionIdTable")}</FormLabel>
 																<Input
 																	{...register("xhttpSessionIDTable")}
 																	placeholder="base64"
@@ -4878,7 +4881,7 @@ export const InboundFormModal: FC<Props> = ({
 																	!!fieldValidationErrors.xhttpSessionIDLength
 																}
 															>
-																<FormLabel>Session ID length</FormLabel>
+																<FormLabel>{t("ui.inbound.sessionIdLength")}</FormLabel>
 																<Input
 																	{...register("xhttpSessionIDLength")}
 																	placeholder="16-16"
@@ -5806,7 +5809,7 @@ export const InboundFormModal: FC<Props> = ({
 																					{...register(
 																						`hysteriaUdpMasks.${index}.password` as const,
 																					)}
-																					placeholder="Obfuscation password"
+																placeholder={t("inbounds.hysteria.obfuscationPassword")}
 																				/>
 																				<IconButton
 																					aria-label={t(
@@ -5947,7 +5950,7 @@ export const InboundFormModal: FC<Props> = ({
 																		spacing={3}
 																	>
 																		<FormControl>
-																			<FormLabel>Brutal Up</FormLabel>
+																			<FormLabel>{t("ui.inbound.brutalUp")}</FormLabel>
 																			<Input
 																				{...register(
 																					"hysteriaQuicParams.brutalUp",
@@ -5956,7 +5959,7 @@ export const InboundFormModal: FC<Props> = ({
 																			/>
 																		</FormControl>
 																		<FormControl>
-																			<FormLabel>Brutal Down</FormLabel>
+																			<FormLabel>{t("ui.inbound.brutalDown")}</FormLabel>
 																			<Input
 																				{...register(
 																					"hysteriaQuicParams.brutalDown",
@@ -6121,14 +6124,14 @@ export const InboundFormModal: FC<Props> = ({
 														)}
 													</SimpleGrid>
 													<FormControl>
-														<FormLabel>Trusted forwarded IP headers</FormLabel>
+														<FormLabel>{t("ui.inbound.trustedForwardedIpHeaders")}</FormLabel>
 														<Textarea
 															{...register("sockopt.trustedXForwardedFor")}
 															rows={2}
 															placeholder="X-Forwarded-For"
 														/>
 														<Text fontSize="xs" color="gray.500" mt={1}>
-															One header name per line.
+															{t("ui.inbound.oneHeaderPerLine")}
 														</Text>
 													</FormControl>
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
@@ -6405,14 +6408,14 @@ export const InboundFormModal: FC<Props> = ({
 												<Input {...register("tlsVerifyPeerCertByName")} />
 											</FormControl>
 											<FormControl>
-												<FormLabel>TLS curve preferences</FormLabel>
+												<FormLabel>{t("ui.inbound.tlsCurvePreferences")}</FormLabel>
 												<Textarea
 													{...register("tlsCurvePreferences")}
 													rows={2}
 													placeholder="X25519MLKEM768&#10;X25519"
 												/>
 												<Text fontSize="xs" color="gray.500" mt={1}>
-													One curve per line, in preference order.
+													{t("ui.inbound.oneCurvePerLine")}
 												</Text>
 											</FormControl>
 											<FormControl
@@ -6479,7 +6482,7 @@ export const InboundFormModal: FC<Props> = ({
 																)}
 															</Flex>
 															<FormControl>
-																<FormLabel>Managed certificate</FormLabel>
+																<FormLabel>{t("ui.inbound.managedCertificate")}</FormLabel>
 																<Controller
 																	control={control}
 																	name={
@@ -6489,11 +6492,11 @@ export const InboundFormModal: FC<Props> = ({
 																		<SearchableTagSelect
 																			value={field.value || ""}
 																			onChange={field.onChange}
-																			placeholder="Manual certificate"
+													placeholder={t("ui.inbound.manualCertificate")}
 																			options={[
 																				{
 																					value: "",
-																					label: "Manual certificate",
+														label: t("ui.inbound.manualCertificate"),
 																				},
 																				...managedCertificateDomains.map(
 																					(domain) => ({
@@ -6509,10 +6512,10 @@ export const InboundFormModal: FC<Props> = ({
 																	{!certConfig.managedDomain && (
 																		<HStack mt={2} mb={3} align="end">
 																			<FormControl>
-																				<FormLabel>Self-signed certificate domain</FormLabel>
+																				<FormLabel>{t("ui.inbound.selfSignedCertificateDomain")}</FormLabel>
 																				<Input value={tlsSelfSignedName} onChange={(event) => setTlsSelfSignedName(event.target.value)} placeholder="vpn.example.com" />
 																			</FormControl>
-																			<Button size="sm" onClick={() => handleGenerateTLSSelfSigned(index)} isLoading={tlsSelfSignedLoading === index} whiteSpace="nowrap">Generate</Button>
+																		<Button size="sm" onClick={() => handleGenerateTLSSelfSigned(index)} isLoading={tlsSelfSignedLoading === index} whiteSpace="nowrap">{t("ui.inbound.generate")}</Button>
 																		</HStack>
 																	)}
 																	{!certConfig.managedDomain && (
@@ -6638,7 +6641,7 @@ export const InboundFormModal: FC<Props> = ({
 																</FormControl>
 																<FormControl>
 																	<FormLabel>
-																		OCSP stapling interval (seconds)
+																		{t("ui.inbound.ocspStaplingInterval")}
 																	</FormLabel>
 																	<Input
 																		{...register(
@@ -6925,7 +6928,7 @@ export const InboundFormModal: FC<Props> = ({
 											</HStack>
 											<Stack className="xray-dialog-section" spacing={3}>
 												<Text fontSize="sm" fontWeight="semibold">
-													Fallback bandwidth limits
+													{t("ui.inbound.fallbackBandwidthLimits")}
 												</Text>
 												<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
 													{(
@@ -7152,7 +7155,7 @@ export const InboundFormModal: FC<Props> = ({
 															spacing={3}
 														>
 															<FormControl>
-																<FormLabel>Excluded IP rules</FormLabel>
+																<FormLabel>{t("ui.inbound.excludedIpRules")}</FormLabel>
 																<Textarea
 																	{...register("sniffingIpsExcluded")}
 																	rows={2}
@@ -7160,7 +7163,7 @@ export const InboundFormModal: FC<Props> = ({
 																/>
 															</FormControl>
 															<FormControl>
-																<FormLabel>Excluded domain rules</FormLabel>
+																<FormLabel>{t("ui.inbound.excludedDomainRules")}</FormLabel>
 																<Textarea
 																	{...register("sniffingDomainsExcluded")}
 																	rows={2}

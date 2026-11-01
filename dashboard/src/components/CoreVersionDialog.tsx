@@ -107,7 +107,7 @@ export const CoreVersionDialog = ({
 			title={title}
 			footer={
 				<>
-					<Button variant="ghost" mr={3} onClick={onClose}>
+					<Button variant="ghost" me={3} onClick={onClose}>
 						{t("cancel")}
 					</Button>
 					<Button

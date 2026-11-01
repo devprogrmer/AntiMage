@@ -426,7 +426,7 @@ export const NordVPNModal: FC<Props> = ({
 											<Input
 												value={token}
 												onChange={(event) => setToken(event.target.value)}
-												placeholder="NordVPN access token"
+												placeholder={t("pages.xray.nord.accessTokenPlaceholder")}
 											/>
 											<FormHelperText>
 												{t("pages.xray.nord.tokenHelp")}
@@ -454,7 +454,7 @@ export const NordVPNModal: FC<Props> = ({
 											<Input
 												value={manualKey}
 												onChange={(event) => setManualKey(event.target.value)}
-												placeholder="NordLynx private key"
+												placeholder={t("pages.xray.nord.privateKeyPlaceholder")}
 											/>
 										</FormControl>
 										<Button
@@ -568,7 +568,7 @@ export const NordVPNModal: FC<Props> = ({
 								{selectedServer && (
 									<HStack spacing={2} flexWrap="wrap">
 										<Tag colorScheme={loadColor(selectedServer.load)}>
-											{selectedServer.load}% load
+											{selectedServer.load}% {t("ui.outbound.percentLoad")}
 										</Tag>
 										<Tag>{selectedServer.hostname}</Tag>
 										<Tag>{selectedServer.station}:51820</Tag>

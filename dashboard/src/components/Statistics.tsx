@@ -5,6 +5,7 @@ import {
 	Button,
 	chakra,
 	Flex,
+	Grid,
 	HStack,
 	Modal,
 	ModalBody,
@@ -590,9 +591,14 @@ const HistoryModal: FC<{
 	);
 };
 
-const HistorySparkline: FC<{ values: number[]; accent?: string }> = ({
+const HistorySparkline: FC<{
+	values: number[];
+	accent?: string;
+	height?: string;
+}> = ({
 	values,
 	accent,
+	height = "42px",
 }) => {
 	const defaultColor = useColorModeValue("gray.600", "gray.300");
 	const normalized = sampleSparklineValues(values.length ? values : [0]);
@@ -615,7 +621,7 @@ const HistorySparkline: FC<{ values: number[]; accent?: string }> = ({
 			viewBox="0 0 100 40"
 			preserveAspectRatio="none"
 			mt={3}
-			h="42px"
+			h={height}
 			w="full"
 			color={accent ?? defaultColor}
 			aria-hidden="true"
@@ -655,6 +661,7 @@ const UsageMetricCard: FC<{
 	footerRight?: string;
 	onOpen?: () => void;
 	actionLabel?: string;
+	featured?: boolean;
 }> = ({
 	label,
 	percent,
@@ -664,6 +671,7 @@ const UsageMetricCard: FC<{
 	footerRight,
 	onOpen,
 	actionLabel,
+	featured = false,
 }) => {
 	const colorScheme = getUsageColorScheme(percent);
 	const safePercent = clampPercent(percent);
@@ -691,8 +699,14 @@ const UsageMetricCard: FC<{
 			borderRadius="xl"
 			bg={bg}
 			overflow="hidden"
-			p={4}
-			minH={history ? "136px" : "106px"}
+			p={featured ? { base: 5, md: 6 } : 4}
+			minH={
+				featured
+					? { base: "300px", xl: "100%" }
+					: history
+						? "136px"
+						: "106px"
+			}
 			transition="transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease"
 			sx={{
 				"@media (prefers-reduced-motion: reduce)": {
@@ -708,7 +722,7 @@ const UsageMetricCard: FC<{
 				},
 			}}
 		>
-			<Stack spacing={3}>
+			<Stack spacing={featured ? 4 : 3} h={featured ? "full" : undefined}>
 				<Flex
 					justifyContent="space-between"
 					alignItems="center"
@@ -739,17 +753,20 @@ const UsageMetricCard: FC<{
 					)}
 				</Flex>
 				<Text
-					fontSize="3xl"
+					fontSize={featured ? { base: "5xl", md: "6xl" } : "3xl"}
 					lineHeight="1"
 					fontWeight="bold"
 					color={valueColor}
 					whiteSpace="nowrap"
-					sx={{ fontVariantNumeric: "tabular-nums" }}
+					sx={{
+						fontVariantNumeric: "tabular-nums",
+						letterSpacing: featured ? "-0.06em" : undefined,
+					}}
 				>
 					{Math.max(0, percent).toFixed(1)}%
 				</Text>
 				<Text
-					fontSize="xs"
+					fontSize={featured ? "sm" : "xs"}
 					fontWeight="medium"
 					color={mutedColor}
 					className="am-usage-pair"
@@ -764,7 +781,7 @@ const UsageMetricCard: FC<{
 					colorScheme={colorScheme}
 					bg={accentBg}
 					borderRadius="full"
-					h="4px"
+					h={featured ? "6px" : "4px"}
 				/>
 				{(footerLeft || footerRight) && (
 					<Flex
@@ -779,7 +796,13 @@ const UsageMetricCard: FC<{
 						<Text textAlign="end">{footerRight}</Text>
 					</Flex>
 				)}
-				{history && <HistorySparkline values={history} accent={accent} />}
+				{history && (
+					<HistorySparkline
+						values={history}
+						accent={accent}
+						height={featured ? "112px" : "42px"}
+					/>
+				)}
 			</Stack>
 		</Box>
 	);
@@ -1061,70 +1084,82 @@ const SystemOverviewCard: FC<{
 			}
 		>
 			<Stack spacing={5}>
-				<SimpleGrid columns={{ base: 1, md: 2, xl: 4 }} gap={5}>
-					<UsageMetricCard
-						label={t("cpuUsage")}
-						percent={data.cpu_usage}
-						detail={cpuDetail}
-						history={cpuHistoryValues}
-						footerLeft={`${t("average")}: ${average(cpuHistoryValues).toFixed(1)}%`}
-						footerRight={`${t("peak")}: ${peak(cpuHistoryValues).toFixed(1)}%`}
-						actionLabel={t("viewHistory")}
-						onOpen={() =>
-							onOpenHistory({
-								type: "cpu",
-								title: t("cpuUsage"),
-								metricLabel: t("cpuUsage"),
-								entries: data.cpu_history,
-							})
-						}
-					/>
-					<UsageMetricCard
-						label={t("memoryUsage")}
-						percent={data.memory.percent}
-						detail={`${formatBytes(data.memory.current)} / ${formatBytes(data.memory.total)}`}
-						history={memoryHistoryValues}
-						footerLeft={`${t("average")}: ${average(memoryHistoryValues).toFixed(1)}%`}
-						footerRight={`${t("peak")}: ${peak(memoryHistoryValues).toFixed(1)}%`}
-						actionLabel={t("viewHistory")}
-						onOpen={() =>
-							onOpenHistory({
-								type: "memory",
-								title: t("memoryUsage"),
-								metricLabel: t("memoryUsage"),
-								entries: data.memory_history,
-							})
-						}
-					/>
-					<UsageMetricCard
-						label={t("swapUsage")}
-						percent={data.swap.percent}
-						detail={`${formatBytes(data.swap.current)} / ${formatBytes(data.swap.total)}`}
-						history={swapHistoryValues}
-						footerLeft={`${t("average")}: ${average(swapHistoryValues).toFixed(1)}%`}
-						footerRight={`${t("peak")}: ${peak(swapHistoryValues).toFixed(1)}%`}
-					/>
-					<UsageMetricCard
-						label={t("diskUsage")}
-						percent={data.disk.percent}
-						detail={`${formatBytes(data.disk.current)} / ${formatBytes(data.disk.total)}`}
-						history={diskHistoryValues}
-						footerLeft={`${t("free")}: ${formatBytes(Math.max(0, data.disk.total - data.disk.current))}`}
-						footerRight={`${t("average")}: ${average(diskHistoryValues).toFixed(1)}%`}
-					/>
-				</SimpleGrid>
-				<NetworkSpeedCard
-					incoming={data.incoming_bandwidth_speed}
-					outgoing={data.outgoing_bandwidth_speed}
-					t={t}
-					onOpen={() =>
-						onOpenHistory({
-							type: "network",
-							title: t("networkHistory"),
-							entries: data.network_history,
-						})
-					}
-				/>
+				<Grid
+					templateColumns={{
+						base: "minmax(0, 1fr)",
+						xl: "minmax(0, 1.55fr) minmax(280px, 0.8fr)",
+					}}
+					gap={4}
+					alignItems="stretch"
+				>
+					<Stack spacing={4} minW={0}>
+						<UsageMetricCard
+							label={t("cpuUsage")}
+							percent={data.cpu_usage}
+							detail={cpuDetail}
+							history={cpuHistoryValues}
+							footerLeft={`${t("average")}: ${average(cpuHistoryValues).toFixed(1)}%`}
+							footerRight={`${t("peak")}: ${peak(cpuHistoryValues).toFixed(1)}%`}
+							actionLabel={t("viewHistory")}
+							featured
+							onOpen={() =>
+								onOpenHistory({
+									type: "cpu",
+									title: t("cpuUsage"),
+									metricLabel: t("cpuUsage"),
+									entries: data.cpu_history,
+								})
+							}
+						/>
+						<NetworkSpeedCard
+							incoming={data.incoming_bandwidth_speed}
+							outgoing={data.outgoing_bandwidth_speed}
+							t={t}
+							onOpen={() =>
+								onOpenHistory({
+									type: "network",
+									title: t("networkHistory"),
+									entries: data.network_history,
+								})
+							}
+						/>
+					</Stack>
+					<Stack spacing={3} minW={0}>
+						<UsageMetricCard
+							label={t("memoryUsage")}
+							percent={data.memory.percent}
+							detail={`${formatBytes(data.memory.current)} / ${formatBytes(data.memory.total)}`}
+							history={memoryHistoryValues}
+							footerLeft={`${t("average")}: ${average(memoryHistoryValues).toFixed(1)}%`}
+							footerRight={`${t("peak")}: ${peak(memoryHistoryValues).toFixed(1)}%`}
+							actionLabel={t("viewHistory")}
+							onOpen={() =>
+								onOpenHistory({
+									type: "memory",
+									title: t("memoryUsage"),
+									metricLabel: t("memoryUsage"),
+									entries: data.memory_history,
+								})
+							}
+						/>
+						<UsageMetricCard
+							label={t("swapUsage")}
+							percent={data.swap.percent}
+							detail={`${formatBytes(data.swap.current)} / ${formatBytes(data.swap.total)}`}
+							history={swapHistoryValues}
+							footerLeft={`${t("average")}: ${average(swapHistoryValues).toFixed(1)}%`}
+							footerRight={`${t("peak")}: ${peak(swapHistoryValues).toFixed(1)}%`}
+						/>
+						<UsageMetricCard
+							label={t("diskUsage")}
+							percent={data.disk.percent}
+							detail={`${formatBytes(data.disk.current)} / ${formatBytes(data.disk.total)}`}
+							history={diskHistoryValues}
+							footerLeft={`${t("free")}: ${formatBytes(Math.max(0, data.disk.total - data.disk.current))}`}
+							footerRight={`${t("average")}: ${average(diskHistoryValues).toFixed(1)}%`}
+						/>
+					</Stack>
+				</Grid>
 				{data.last_xray_error && (
 					<Box
 						mt={4}

@@ -3130,7 +3130,7 @@
           "Settings"
         ],
         "summary": "Export backup",
-        "description": "Export AntiMage backup in .rbbackup format on binary installations.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits. The current dashboard JWT from `POST /api/admin/token` is also accepted for interactive dashboard sessions and for Swagger UI when opened from inside the panel.\n\nPermissions: Panel read requires an authenticated admin. Settings mutation, backup, templates, and TODO/410 settings routes require sudo/full_access.\n\nRoute details: Only works in binary installation mode. The response is a `.rbbackup` archive with manifest and database/files depending on scope.",
+        "description": "Export AntiMage backup in .ambackup format on binary installations.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits. The current dashboard JWT from `POST /api/admin/token` is also accepted for interactive dashboard sessions and for Swagger UI when opened from inside the panel.\n\nPermissions: Panel read requires an authenticated admin. Settings mutation, backup, templates, and TODO/410 settings routes require sudo/full_access.\n\nRoute details: Only works in binary installation mode. The response is a `.ambackup` archive with manifest and database/files depending on scope.",
         "responses": {
           "200": {
             "description": "Backup archive."

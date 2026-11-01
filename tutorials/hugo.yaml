@@ -23,6 +23,14 @@ languages:
     title: راهنمای AntiMage
     params:
       tutorialVersion: "04-06-1405 11:21"
+  ru:
+    languageName: Русский
+    languageCode: ru
+    languageDirection: ltr
+    weight: 3
+    title: Руководства AntiMage
+    params:
+      tutorialVersion: "2026-11-01 11:21"
 
 module:
   hugoVersion:

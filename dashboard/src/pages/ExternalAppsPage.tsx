@@ -53,6 +53,7 @@ import {
 } from "components/ui";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { formatLocalizedDateTime } from "utils/dateFormatter";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import { Link as RouterLink } from "react-router-dom";
 import {
@@ -449,7 +450,7 @@ export const ExternalAppsPage = () => {
 				cell: (app) => (
 					<Text fontSize="sm">
 						{app.installed_at
-							? new Date(app.installed_at).toLocaleString()
+							? formatLocalizedDateTime(app.installed_at)
 							: "—"}
 					</Text>
 				),
@@ -565,12 +566,6 @@ export const ExternalAppsPage = () => {
 	if (appsQuery.data?.supported === false) {
 		return (
 			<Stack spacing={5}>
-				<Box>
-					<Heading size="lg">{t("externalApps.title")}</Heading>
-					<Text color={mutedColor} mt={2}>
-						{t("externalApps.description")}
-					</Text>
-				</Box>
 				<Alert status="warning" borderRadius="md">
 					<AlertIcon />
 					<Text>{t("externalApps.unsupported")}</Text>
@@ -750,13 +745,6 @@ export const ExternalAppsPage = () => {
 					</ModalFooter>
 				</ModalContent>
 			</Modal>
-			<Box>
-				<Heading size="lg">{t("externalApps.title")}</Heading>
-				<Text color={mutedColor} mt={2}>
-					{t("externalApps.description")}
-				</Text>
-			</Box>
-
 			<Alert status="info" borderRadius="md">
 				<AlertIcon />
 				<Text fontSize="sm">{t("externalApps.resourceHint")}</Text>

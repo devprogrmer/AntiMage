@@ -1,11 +1,13 @@
 import { Box, HStack, Text } from "@chakra-ui/react";
 import { StarIcon } from "@heroicons/react/24/solid";
 import { type FC, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const REPOSITORY_URL = "https://github.com/devprogrmer/AntiMage";
 const REPOSITORY_API_URL = "https://api.github.com/repos/devprogrmer/AntiMage";
 
 export const GitHubStars: FC = () => {
+	const { t } = useTranslation();
 	const [stars, setStars] = useState<number | null>(null);
 
 	useEffect(() => {
@@ -52,7 +54,7 @@ export const GitHubStars: FC = () => {
 			}}
 			transition="background 0.15s ease, border-color 0.15s ease, color 0.15s ease"
 			cursor="pointer"
-			aria-label="Open AntiMage on GitHub"
+			aria-label={t("github.openRepository")}
 		>
 			<HStack spacing={1.5} align="center">
 				<svg

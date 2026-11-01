@@ -158,10 +158,10 @@ export const AdminSecurityDialog = ({
 										<Text fontSize="sm" fontWeight="semibold">
 											{session.ip_address || "-"}
 										</Text>
-										<Text color="gray.500" fontSize="xs" noOfLines={1}>
+						<Text color="panel.textMuted" fontSize="xs" noOfLines={1}>
 											{session.user_agent || "-"}
 										</Text>
-										<Text color="gray.500" fontSize="xs">
+						<Text color="panel.textMuted" fontSize="xs">
 											{dayjs(session.last_seen_at).format("YYYY-MM-DD HH:mm")}
 										</Text>
 									</Box>
@@ -177,7 +177,7 @@ export const AdminSecurityDialog = ({
 								</HStack>
 							))}
 							{!sessions.length && (
-								<Text color="gray.500" fontSize="sm">
+								<Text color="panel.textMuted" fontSize="sm">
 									{t("noData")}
 								</Text>
 							)}

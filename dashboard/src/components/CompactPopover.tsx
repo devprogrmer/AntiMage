@@ -22,6 +22,7 @@ import {
 	InformationCircleIcon,
 } from "@heroicons/react/24/outline";
 import type React from "react";
+import { useTranslation } from "react-i18next";
 
 const InfoIcon = chakra(InformationCircleIcon, { baseStyle: { w: 4, h: 4 } });
 const CopyIcon = chakra(ClipboardIcon, { baseStyle: { w: 4, h: 4 } });
@@ -38,8 +39,13 @@ export const CompactPopover: React.FC<CompactPopoverProps> = ({
 	children,
 }) => {
 	const isMobile = useBreakpointValue({ base: true, md: false });
+	const { i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	return (
-		<Popover placement={isMobile ? "bottom" : "right"} isLazy>
+		<Popover
+			placement={isMobile ? "bottom" : isRTL ? "left" : "right"}
+			isLazy
+		>
 			<PopoverTrigger>
 				<Button size="xs" variant="outline">
 					{triggerLabel ?? <InfoIcon />}
@@ -59,6 +65,7 @@ export const CompactChips: React.FC<{ chips: string[]; color?: string }> = ({
 	chips,
 	color = "blue",
 }) => {
+	const { t } = useTranslation();
 	const first = chips[0];
 	const rest = chips.slice(1);
 	return (
@@ -73,7 +80,7 @@ export const CompactChips: React.FC<{ chips: string[]; color?: string }> = ({
 			{rest.length > 0 && (
 				<CompactPopover
 					triggerLabel={<Tag size="sm">+{rest.length}</Tag>}
-					title={"Details"}
+					title={t("details")}
 				>
 					<VStack align="stretch">
 						{chips.map((c) => (
@@ -92,6 +99,7 @@ export const CompactTextWithCopy: React.FC<{
 	text?: string;
 	label?: string;
 }> = ({ text, label }) => {
+	const { t } = useTranslation();
 	const display =
 		text && text.length > 40 ? `${text.slice(0, 36)}...` : text || "-";
 	const { hasCopied, onCopy } = useClipboard(text ?? "");
@@ -99,9 +107,9 @@ export const CompactTextWithCopy: React.FC<{
 		<HStack spacing={2} align="center">
 			<CompactPopover triggerLabel={display} title={label}>
 				<HStack align="start" spacing={2}>
-					<Tooltip label={hasCopied ? "Copied" : "Copy"} hasArrow>
+					<Tooltip label={hasCopied ? t("copied") : t("copy")} hasArrow>
 						<IconButton
-							aria-label={hasCopied ? "Copied" : "Copy"}
+							aria-label={hasCopied ? t("copied") : t("copy")}
 							size="sm"
 							icon={<CopyIcon />}
 							onClick={onCopy}

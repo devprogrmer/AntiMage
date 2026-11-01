@@ -88,8 +88,25 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 				});
 		};
 		const { size = "md" } = props;
+		const {
+			pr: legacyPaddingRight,
+			paddingRight: legacyPaddingRightLong,
+			pe: paddingInlineEndAlias,
+			paddingInlineEnd,
+			...componentProps
+		} = props;
+		const numberPaddingInlineEnd =
+			paddingInlineEndAlias ??
+			paddingInlineEnd ??
+			legacyPaddingRight ??
+			legacyPaddingRightLong ??
+			"2rem";
 		const Component = type === "number" ? NumberInputField : ChakraInput;
 		const Wrapper = type === "number" ? NumberInput : React.Fragment;
+		const inputStyleProps =
+			type === "number"
+				? { ...componentProps, paddingInlineEnd: numberPaddingInlineEnd }
+				: props;
 		const wrapperProps =
 			type === "number"
 				? {
@@ -168,16 +185,15 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 							_focusVisible={{
 								outline: "none",
 								borderTopColor: "transparent",
-								borderRightColor: "transparent",
+								borderInlineEndColor: "transparent",
 								borderBottomColor: "transparent",
 							}}
 							_disabled={{
 								cursor: "not-allowed",
 							}}
-							{...props}
-							pr={type === "number" ? props.pr ?? "2rem" : props.pr}
-							roundedLeft={startAdornment ? "0" : "md"}
-							roundedRight={endAdornment ? "0" : "md"}
+							{...inputStyleProps}
+							borderStartRadius={startAdornment ? "0" : "md"}
+							borderEndRadius={endAdornment ? "0" : "md"}
 						/>
 						{type === "number" && (
 							<NumberInputStepper
@@ -194,8 +210,8 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 					</Wrapper>
 					{endAdornment && (
 						<InputRightAddon
-							borderLeftRadius={0}
-							borderRightRadius="6px"
+							borderStartRadius={0}
+							borderEndRadius="6px"
 							bg="transparent"
 						>
 							{endAdornment}
@@ -203,8 +219,8 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 					)}
 					{clearable && value && value.length && (
 						<InputRightElement
-							borderLeftRadius={0}
-							borderRightRadius="6px"
+							borderStartRadius={0}
+							borderEndRadius="6px"
 							bg="transparent"
 							onClick={clear}
 							cursor="pointer"

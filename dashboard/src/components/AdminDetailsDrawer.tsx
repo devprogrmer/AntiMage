@@ -259,7 +259,7 @@ export const AdminDetailsDrawer = () => {
 						</Stack>
 					) : (
 						<Box className="xray-dialog-section" py={8}>
-							<Text color="gray.500">
+							<Text color="panel.textMuted">
 								{t("admins.details.empty")}
 							</Text>
 						</Box>
@@ -267,7 +267,7 @@ export const AdminDetailsDrawer = () => {
 				</XrayModalBody>
 
 				<XrayModalFooter justifyContent="flex-end">
-					<Button variant="outline" mr={3} onClick={closeAdminDetails}>
+					<Button variant="outline" me={3} onClick={closeAdminDetails}>
 						{t("close")}
 					</Button>
 				</XrayModalFooter>
@@ -288,7 +288,9 @@ const StatCard = ({
 	return (
 		<Box
 			borderWidth="1px"
+			borderColor="panel.border"
 			borderRadius="md"
+			bg="panel.surface"
 			px={3}
 			py={2}
 			minH="64px"
@@ -296,7 +298,7 @@ const StatCard = ({
 			flexDirection="column"
 			justifyContent="center"
 		>
-			<Text fontSize="xs" textTransform="uppercase" color="gray.500">
+			<Text fontSize="xs" textTransform="uppercase" color="panel.textMuted">
 				{label}
 			</Text>
 			<Text fontWeight="semibold" color={valueColor || undefined}>
