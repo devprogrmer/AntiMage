@@ -215,7 +215,7 @@ func TestBuildWGProfileMaterialBuildsConfAndURI(t *testing.T) {
 		"MTU = 1420\n",
 		"[Peer]\n",
 		"Endpoint = vpn.example.com:51820\n",
-		"AllowedIPs = 0.0.0.0/0\n",
+		"AllowedIPs = 0.0.0.0/0, ::/0\n",
 		"PersistentKeepalive = 25\n",
 	} {
 		if !strings.Contains(material.Body, expected) {
@@ -241,6 +241,19 @@ func TestBuildWGProfileMaterialBuildsConfAndURI(t *testing.T) {
 	}
 	if dns := query.Get("dns"); dns != "9.9.9.9,149.112.112.112" {
 		t.Fatalf("DNS must come from host settings, got %q", dns)
+	}
+	if allowed := query.Get("allowedips"); allowed != "0.0.0.0/0,::/0" {
+		t.Fatalf("default allowed IPs must include IPv4 and IPv6, got %q", allowed)
+	}
+}
+
+func TestBuildWGConfigBodyOmitsMTUWhenUnset(t *testing.T) {
+	settings := normalizeWGProfileSettings(map[string]any{
+		"allowed_ips": []string{"0.0.0.0/0", "::/0"},
+	})
+	body := buildWGConfigBody("private", "10.69.0.2/32", "public", "vpn.example.com:51820", settings)
+	if strings.Contains(body, "MTU =") {
+		t.Fatalf("unset MTU must be omitted from client config:\n%s", body)
 	}
 }
 
@@ -296,3 +309,4 @@ func TestBuildConfigLinksEmitsWireGuardURI(t *testing.T) {
 		}
 	}
 }
+

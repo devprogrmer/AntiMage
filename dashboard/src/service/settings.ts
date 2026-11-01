@@ -182,6 +182,10 @@ export interface SubscriptionTemplateSettings {
 	subscription_path: string;
 	subscription_aliases: string[];
 	subscription_ports: number[];
+	subscription_placeholder_enabled: boolean;
+	subscription_placeholder_expired_remark: string;
+	subscription_placeholder_limited_remark: string;
+	subscription_placeholder_disabled_remark: string;
 }
 
 export type SubscriptionTemplateSettingsUpdatePayload =

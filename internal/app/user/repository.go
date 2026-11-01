@@ -149,6 +149,10 @@ func (r Repository) subscriptionSettings(ctx context.Context) (SubscriptionSetti
 	result.UseCustomJSONForStreisand = truthy(row["use_custom_json_for_streisand"])
 	result.UseCustomJSONForHapp = truthy(row["use_custom_json_for_happ"])
 	result.UseCustomJSONForIncy = truthy(row["use_custom_json_for_incy"])
+	result.SubscriptionPlaceholderEnabled = truthy(row["subscription_placeholder_enabled"])
+	result.SubscriptionPlaceholderExpiredRemark = stringValue(row["subscription_placeholder_expired_remark"])
+	result.SubscriptionPlaceholderLimitedRemark = stringValue(row["subscription_placeholder_limited_remark"])
+	result.SubscriptionPlaceholderDisabledRemark = stringValue(row["subscription_placeholder_disabled_remark"])
 	result.RawSubscriptionSettings = json.RawMessage(mustJSON(row))
 	return result, nil
 }

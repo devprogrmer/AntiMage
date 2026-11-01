@@ -202,6 +202,14 @@ func (r Repository) UpdateSubscriptionSettings(ctx context.Context, raw map[stri
 			}
 			encoded, _ := json.Marshal(normalizeAliases(aliases))
 			add(key, string(encoded))
+		case "subscription_placeholder_enabled":
+			add(key, rawBoolDefault(value, false))
+		case "subscription_placeholder_expired_remark", "subscription_placeholder_limited_remark", "subscription_placeholder_disabled_remark":
+			remark := strings.TrimSpace(rawStringDefault(value, ""))
+			if len(remark) > 255 {
+				return SubscriptionSettings{}, fmt.Errorf("%s must be 255 characters or fewer", key)
+			}
+			add(key, remark)
 		case "subscription_ports":
 			ports, err := rawIntList(value)
 			if err != nil {
@@ -450,12 +458,17 @@ COALESCE(use_custom_json_for_happ, 0),
 COALESCE(use_custom_json_for_incy, 0),
 subscription_path,
 subscription_aliases,
-subscription_ports
+subscription_ports,
+COALESCE(subscription_placeholder_enabled, 0),
+COALESCE(subscription_placeholder_expired_remark, 'Subscription expired'),
+COALESCE(subscription_placeholder_limited_remark, 'Traffic limit reached'),
+COALESCE(subscription_placeholder_disabled_remark, 'Subscription disabled')
 FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 	var result SubscriptionSettings
 	var customDir sql.NullString
 	var aliasesRaw, portsRaw sql.NullString
 	var useDefault, useV2RayN, useV2RayNG, useStreisand, useHapp, useIncy sql.NullBool
+	var placeholderEnabled sql.NullBool
 	if err := row.Scan(
 		&result.SubscriptionURLPrefix,
 		&result.SubscriptionProfileTitle,
@@ -482,6 +495,10 @@ FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 		&result.SubscriptionPath,
 		&aliasesRaw,
 		&portsRaw,
+		&placeholderEnabled,
+		&result.SubscriptionPlaceholderExpiredRemark,
+		&result.SubscriptionPlaceholderLimitedRemark,
+		&result.SubscriptionPlaceholderDisabledRemark,
 	); err != nil {
 		return SubscriptionSettings{}, err
 	}
@@ -494,6 +511,7 @@ FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 	result.UseCustomJSONForStreisand = useStreisand.Valid && useStreisand.Bool
 	result.UseCustomJSONForHapp = useHapp.Valid && useHapp.Bool
 	result.UseCustomJSONForIncy = useIncy.Valid && useIncy.Bool
+	result.SubscriptionPlaceholderEnabled = placeholderEnabled.Valid && placeholderEnabled.Bool
 	result.SubscriptionURLPrefix = normalizePrefix(result.SubscriptionURLPrefix)
 	result.SubscriptionSupportURL = normalizeSupportURL(result.SubscriptionSupportURL)
 	result.SubscriptionPath = normalizePath(result.SubscriptionPath)
