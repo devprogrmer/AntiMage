@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/net/proxy"
 )
@@ -108,6 +109,35 @@ func (s Sender) SendMessage(ctx context.Context, req MessageRequest) ([]SendResu
 
 func (s Sender) SendMessageBestEffort(ctx context.Context, req MessageRequest) {
 	_, _ = s.SendMessage(ctx, req)
+}
+
+// SendDirectMessage sends to one explicit user chat. It intentionally bypasses
+// configured administrator/log destinations and never falls back to them.
+func (s Sender) SendDirectMessage(ctx context.Context, chatID int64, text string) error {
+	if chatID <= 0 {
+		return fmt.Errorf("telegram user chat id must be positive")
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return fmt.Errorf("telegram message text is empty")
+	}
+	if utf8.RuneCountInString(text) > 4096 {
+		return fmt.Errorf("telegram message exceeds 4096 characters")
+	}
+	settings, err := s.repo.Settings(ctx)
+	if err != nil {
+		return err
+	}
+	if !settings.UseTelegram || settings.APIToken == nil || strings.TrimSpace(*settings.APIToken) == "" {
+		return ErrNotConfigured
+	}
+	payload := map[string]any{"chat_id": chatID, "text": text}
+	if err := s.sendJSON(ctx, *settings.APIToken, settings.ProxyURL, "sendMessage", payload); err != nil {
+		_ = s.repo.RecordError(ctx, err.Error())
+		return err
+	}
+	_ = s.repo.RecordSent(ctx)
+	return nil
 }
 
 func (s Sender) SendDocument(ctx context.Context, req DocumentRequest) ([]SendResult, error) {

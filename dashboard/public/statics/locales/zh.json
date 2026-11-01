@@ -607,6 +607,12 @@
 	"userDialog.endDate": "结束日期",
 	"userDialog.expiryDate": "过期日期",
 	"userDialog.generatedByDefault": "默认自动生成",
+	"userDialog.customerNotification": "向此用户发送 Telegram 消息",
+	"userDialog.sendCustomerNotification": "发送消息",
+	"userDialog.notificationSent": "消息已发送",
+	"userDialog.notificationFailed": "消息发送失败",
+	"userDialog.notificationPlaceholders": "可用字段（请从下方列表复制）：",
+	"userDialog.notificationStartBotHint": "用户必须先启动 Telegram 机器人。消息只发送给该用户，不会发送到管理员或日志群组。",
 	"userDialog.hours": "小时",
 	"userDialog.limitReachedBody": "You have {{active}} active users out of {{limit}} allowed. You cannot create or enable additional users.",
 	"userDialog.limitReachedContent": "You have reached your active user limit and cannot create new users.",
@@ -773,5 +779,11 @@
 	"settings.telegram.events.nodeErrorsHint": "当系统记录节点错误时发送通知。",
 	"settings.save": "Save Settings",
 	"settings.savedSuccess": "Telegram settings updated.",
-	"settings.tabs.comingSoon": "Coming Soon"
+	"settings.tabs.comingSoon": "Coming Soon",
+	"settings.subscriptions.placeholdersEnabled": "显示无效订阅的替代消息",
+	"settings.subscriptions.placeholdersHint": "对已过期、流量用尽或已停用的用户隐藏真实连接信息。",
+	"settings.subscriptions.placeholdersVariables": "可以在消息中使用以下变量：",
+	"settings.subscriptions.expiredRemark": "订阅已过期消息",
+	"settings.subscriptions.limitedRemark": "流量用尽消息",
+	"settings.subscriptions.disabledRemark": "订阅已停用消息"
 }

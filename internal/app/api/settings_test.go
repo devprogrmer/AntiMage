@@ -65,6 +65,10 @@ func createSettingsTables(t *testing.T, db *sql.DB) {
 			use_custom_json_for_streisand INTEGER NOT NULL DEFAULT 0,
 			use_custom_json_for_happ INTEGER NOT NULL DEFAULT 0,
 			use_custom_json_for_incy INTEGER NOT NULL DEFAULT 0,
+			subscription_placeholder_enabled INTEGER NOT NULL DEFAULT 0,
+			subscription_placeholder_expired_remark TEXT NOT NULL DEFAULT 'Subscription expired',
+			subscription_placeholder_limited_remark TEXT NOT NULL DEFAULT 'Traffic limit reached',
+			subscription_placeholder_disabled_remark TEXT NOT NULL DEFAULT 'Subscription disabled',
 			subscription_aliases TEXT NOT NULL DEFAULT '[]',
 			created_at DATETIME NULL,
 			updated_at DATETIME NULL

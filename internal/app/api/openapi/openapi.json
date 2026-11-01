@@ -855,6 +855,21 @@
         "operationId": "deleteUserUsername"
       }
     },
+    "/api/user/{username}/notification": {
+      "post": {
+        "tags": ["Users"],
+        "summary": "Send a Telegram message to a user",
+        "description": "Send one manually requested message to the Telegram chat ID saved on this user. This never sends to administrator or log destinations. Supported template fields: `{{username}}`, `{{status}}`, `{{used_traffic}}`, `{{data_limit}}`, `{{remaining_traffic}}`, `{{expire_at}}`, and `{{subscription_url}}`. The user must have started the configured Telegram bot. Traffic fields are hidden when the administrator lacks traffic visibility.",
+        "parameters": [{"$ref": "#/components/parameters/Username"}],
+        "requestBody": {"$ref": "#/components/requestBodies/JSON"},
+        "responses": {
+          "200": {"$ref": "#/components/responses/JSON"},
+          "400": {"$ref": "#/components/responses/Error"},
+          "502": {"$ref": "#/components/responses/Error"}
+        },
+        "operationId": "postUserUsernameNotification"
+      }
+    },
     "/api/v2/users/{username}": {
       "put": {
         "tags": [

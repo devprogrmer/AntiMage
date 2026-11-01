@@ -133,8 +133,12 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	if err != nil {
 		return SubscriptionHTTPResponse{}, err
 	}
+	settings := s.effectiveSettings(ctx, user.AdminID)
+	placeholderRemark := subscriptionPlaceholderRemark(user, settings)
 	if wantsSubscriptionHTML(req) && req.ClientType == "" {
-		settings := s.effectiveSettings(ctx, user.AdminID)
+		if placeholderRemark != "" {
+			user.SubscriptionMessage = &placeholderRemark
+		}
 		html, err := s.renderSubscriptionHTML(ctx, user, req, settings)
 		if err != nil {
 			return SubscriptionHTTPResponse{}, err
@@ -149,12 +153,21 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 		_ = s.repo.updateSubscriptionAccess(ctx, user.ID, req.UserAgent)
 	}
 	if req.ClientType == "openvpn" {
+		if placeholderRemark != "" {
+			return subscriptionPlaceholderProfile(user, req, settings, placeholderRemark, "application/x-openvpn-profile", ".ovpn"), nil
+		}
 		return s.generateOVProfile(ctx, user, req)
 	}
 	if req.ClientType == "wireguard" {
+		if placeholderRemark != "" {
+			return subscriptionPlaceholderProfile(user, req, settings, placeholderRemark, "application/x-wireguard-profile", ".conf"), nil
+		}
 		return s.generateWGProfile(ctx, user, req)
 	}
 	if req.ClientType == "amneziawg" {
+		if placeholderRemark != "" {
+			return subscriptionPlaceholderProfile(user, req, settings, placeholderRemark, "application/x-wireguard-profile", ".conf"), nil
+		}
 		return s.generateAWGProfile(ctx, user, req)
 	}
 	clientType := req.ClientType
@@ -165,13 +178,13 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	if !ok {
 		return SubscriptionHTTPResponse{}, clientError(404, "Unsupported client type")
 	}
-	if config.Format == "v2ray" || config.Format == "v2ray-json" || config.Format == "xray-json" || config.Format == "clash" || config.Format == "clash-meta" || config.Format == "sing-box" || config.Format == "outline" {
+	if placeholderRemark == "" && (config.Format == "v2ray" || config.Format == "v2ray-json" || config.Format == "xray-json" || config.Format == "clash" || config.Format == "clash-meta" || config.Format == "sing-box" || config.Format == "outline") {
 		if err := s.registerXraySubscriptionHWID(ctx, user, req); err != nil {
 			return SubscriptionHTTPResponse{}, err
 		}
 	}
 	config.AutoCurrent = req.ClientType == "" && config.Format == "v2ray-json"
-	body, err := s.generateSubscriptionConfig(ctx, user, config)
+	body, err := s.generateSubscriptionConfig(ctx, user, config, placeholderRemark)
 	if err != nil {
 		return SubscriptionHTTPResponse{}, err
 	}
@@ -225,6 +238,9 @@ func (s Service) subscriptionVPNInfo(
 	subscriptionURL string,
 	req SubscriptionRenderRequest,
 ) (map[string]any, error) {
+	if subscriptionPlaceholderRemark(user, s.effectiveSettings(ctx, user.AdminID)) != "" {
+		return emptySubscriptionVPNInfo(), nil
+	}
 	ovProfiles, err := s.OVDownloadProfiles(ctx, user, subscriptionURL)
 	if err != nil {
 		return nil, err
@@ -522,12 +538,17 @@ func (s Service) effectiveSettings(ctx context.Context, adminID *int64) Subscrip
 	return effectiveSubscriptionSettings(settings, admin)
 }
 
-func (s Service) generateSubscriptionConfig(ctx context.Context, user UserDetail, config SubscriptionClientConfig) (string, error) {
-	links, err := s.ConfigLinks(ctx, ConfigLinksRequest{UserID: user.ID, Reverse: config.Reverse})
-	if err != nil {
-		return "", err
+func (s Service) generateSubscriptionConfig(ctx context.Context, user UserDetail, config SubscriptionClientConfig, placeholderRemark string) (string, error) {
+	connectable := ConfigLinksResponse{}
+	if placeholderRemark != "" {
+		connectable = ConfigLinksResponse{Links: []string{subscriptionPlaceholderLink(placeholderRemark, config.Format)}, Metadata: []ConfigLinkMetadata{{}}}
+	} else {
+		links, err := s.ConfigLinks(ctx, ConfigLinksRequest{UserID: user.ID, Reverse: config.Reverse})
+		if err != nil {
+			return "", err
+		}
+		connectable = connectableConfigLinks(links)
 	}
-	connectable := connectableConfigLinks(links)
 	connectable = proxyConfigLinks(connectable)
 	raw := connectable.Links
 	switch config.Format {
@@ -1209,10 +1230,65 @@ func subscriptionHeaders(user UserDetail, req SubscriptionRenderRequest, setting
 	return headers
 }
 
+func subscriptionPlaceholderRemark(user UserDetail, settings SubscriptionSettings) string {
+	if !settings.SubscriptionPlaceholderEnabled {
+		return ""
+	}
+	var remark string
+	switch strings.ToLower(strings.TrimSpace(user.Status)) {
+	case "expired":
+		remark = settings.SubscriptionPlaceholderExpiredRemark
+	case "limited":
+		remark = settings.SubscriptionPlaceholderLimitedRemark
+	case "disabled":
+		remark = settings.SubscriptionPlaceholderDisabledRemark
+	default:
+		return ""
+	}
+	if strings.TrimSpace(remark) == "" {
+		return ""
+	}
+	return applyFormat(remark, configFormatVariables(ConfigLinkUser{
+		ID: user.ID, Username: user.Username, Status: user.Status, UsedTraffic: user.UsedTraffic,
+		DataLimit: user.DataLimit, Expire: user.Expire,
+	}))
+}
+
+func subscriptionPlaceholderLink(remark string, format string) string {
+	if format == "outline" {
+		credentials := base64.RawURLEncoding.EncodeToString([]byte("aes-128-gcm:disabled"))
+		return "ss://" + credentials + "@127.0.0.1:1#" + url.PathEscape(remark)
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"add": "127.0.0.1", "aid": "0", "host": "", "id": "00000000-0000-0000-0000-000000000000",
+		"net": "tcp", "path": "", "port": "1", "ps": remark, "scy": "auto", "tls": "", "type": "none", "v": "2",
+	})
+	return "vmess://" + base64.StdEncoding.EncodeToString(payload)
+}
+
+func subscriptionPlaceholderProfile(user UserDetail, req SubscriptionRenderRequest, settings SubscriptionSettings, remark string, mediaType string, extension string) SubscriptionHTTPResponse {
+	headers := subscriptionHeaders(user, req, settings)
+	headers["content-disposition"] = `attachment; filename="` + user.Username + extension + `"`
+	return SubscriptionHTTPResponse{Status: 200, MediaType: mediaType, Headers: headers, Body: []byte("# " + remark + "\n")}
+}
+
+func emptySubscriptionVPNInfo() map[string]any {
+	return map[string]any{
+		"openvpn":   map[string]any{"downloads": []string{}, "profiles": []OVProfile{}},
+		"wireguard": map[string]any{"downloads": []string{}, "links": []string{}, "profiles": []WGProfile{}},
+		"amneziawg": map[string]any{"downloads": []string{}, "profiles": []WGProfile{}},
+		"l2tp":      []RemoteAccessInfo{}, "pptp": []RemoteAccessInfo{}, "ikev2": []RemoteAccessInfo{}, "anyconnect": []RemoteAccessInfo{},
+	}
+}
+
 func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, req SubscriptionRenderRequest, settings SubscriptionSettings) (string, error) {
-	links, err := s.ConfigLinks(ctx, ConfigLinksRequest{UserID: user.ID})
-	if err != nil {
-		return "", err
+	links := ConfigLinksResponse{}
+	if subscriptionPlaceholderRemark(user, settings) == "" {
+		var err error
+		links, err = s.ConfigLinks(ctx, ConfigLinksRequest{UserID: user.ID})
+		if err != nil {
+			return "", err
+		}
 	}
 	path := req.URL
 	if parsed, err := url.Parse(req.URL); err == nil {
