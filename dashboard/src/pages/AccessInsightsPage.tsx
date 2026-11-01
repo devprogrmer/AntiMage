@@ -76,7 +76,7 @@ const protocolColor = (protocol: string) => {
 
 const AccessInsightsPage: FC = () => {
 	const { t, i18n } = useTranslation();
-	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canView =
 		getUserIsSuccess && Boolean(userData.permissions?.sections.xray);

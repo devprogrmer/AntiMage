@@ -112,6 +112,8 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 	showPresets = true,
 }) => {
 	const { t, i18n } = useTranslation();
+	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
+	const isRTL = i18n.dir(activeLanguage) === "rtl";
 	const { isOpen, onOpen, onClose } = useDisclosure();
 	const radioGroupName = useId();
 	const customRef = useRef(null);
@@ -266,14 +268,16 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 			<Popover
 				isOpen={isOpen}
 				onClose={onClose}
-				placement="auto-end"
+				placement={isRTL ? "auto-start" : "auto-end"}
 				closeOnBlur={false}
 				modifiers={[
 					{ name: "preventOverflow", options: { padding: 16 } },
 					{
 						name: "flip",
 						options: {
-							fallbackPlacements: ["top-end", "bottom-start", "top-start"],
+							fallbackPlacements: isRTL
+								? ["top-start", "bottom-end", "top-end"]
+								: ["top-end", "bottom-start", "top-start"],
 						},
 					},
 				]}
@@ -299,6 +303,7 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 				<PopoverContent
 					w="fit-content"
 					maxW="calc(100vw - 2rem)"
+					dir={isRTL ? "rtl" : "ltr"}
 					bg={panelBg}
 					borderColor={borderColor}
 					_focus={{ outline: "none" }}
@@ -309,6 +314,7 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 							variant="unstyled"
 							onChange={(index) => setTabIndex(index)}
 							index={tabIndex}
+							dir={isRTL ? "rtl" : "ltr"}
 						>
 							<TabList px={3} pt={3} gap={2}>
 								<Tab
@@ -367,7 +373,7 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 								<TabPanel px={3} pb={3} className="datepicker-panel">
 									<VStack>
 										<DatePicker
-											locale={datePickerLocale(i18n.language)}
+											locale={datePickerLocale(activeLanguage)}
 											selected={startDate}
 											onChange={handleAbsoluteChange}
 											startDate={startDate}

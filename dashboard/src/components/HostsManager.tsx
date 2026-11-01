@@ -471,10 +471,11 @@ const fitHostToInbound = (
 };
 
 const DynamicTokensPopover: FC = () => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 
 	return (
-		<Popover isLazy placement="right">
+		<Popover isLazy placement={isRTL ? "left" : "right"}>
 			<PopoverTrigger>
 				<Box mt="-1">
 					<InfoIcon />
@@ -485,11 +486,11 @@ const DynamicTokensPopover: FC = () => {
 					<PopoverArrow />
 					<PopoverCloseButton />
 					<PopoverBody>
-						<Box pr={5} lineHeight="1.4">
+						<Box pe={5} lineHeight="1.4">
 							<Text mb={2}>{t("hostsDialog.desc")}</Text>
 							{DYNAMIC_TOKENS.map(({ token, labelKey }) => (
 								<Text key={token} mt={1}>
-									<Badge mr={2}>{token}</Badge>
+								<Badge me={2}>{token}</Badge>
 									<AppleEmojiText>{t(labelKey)}</AppleEmojiText>
 								</Text>
 							))}
@@ -1146,7 +1147,7 @@ const HostForm: FC<HostFormProps> = ({
 									placeholder={t("hostsPage.remarkPlaceholder")}
 									onChange={(event) => onChange("remark", event.target.value)}
 								/>
-								<InputRightElement width="auto" pr={2} pointerEvents="auto">
+								<InputRightElement width="auto" pe={2} pointerEvents="auto">
 									{!isProfileHostInbound && <DynamicTokensPopover />}
 								</InputRightElement>
 							</InputGroup>

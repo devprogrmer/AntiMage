@@ -29,7 +29,7 @@ import {
 } from "@heroicons/react/24/outline";
 import AdvancedUserActions from "components/AdvancedUserActions";
 import { PanelSelect as Select } from "components/common/PanelSelect";
-import { PageHeader, PageTabs } from "components/ui";
+import { PageTabs } from "components/ui";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";
 import { useServicesStore } from "contexts/ServicesContext";
@@ -1136,11 +1136,12 @@ export const BulkActionsPage = () => {
 	const setTab = (tab: BulkTab) => navigate({ hash: tab });
 
 	return (
-		<VStack spacing={5} align="stretch" dir={i18n.dir(i18n.language)} w="full">
-			<PageHeader
-				title={t("bulkActions.title")}
-				description={t("bulkActions.subtitle")}
-			/>
+		<VStack
+			spacing={5}
+			align="stretch"
+			dir={i18n.dir(i18n.resolvedLanguage || i18n.language)}
+			w="full"
+		>
 			{allowedTabs.length > 0 && (
 				<PageTabs
 					justifyContent="flex-start"

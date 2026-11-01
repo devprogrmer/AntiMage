@@ -186,8 +186,9 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	...props
 }) => {
 	const { t, i18n } = useTranslation();
-	const isRTL = i18n.dir(i18n.language) === "rtl";
-	const locale = i18n.language || "en";
+	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
+	const isRTL = i18n.dir(activeLanguage) === "rtl";
+	const locale = activeLanguage;
 	const toast = useToast();
 	const { userData } = useGetUser();
 	const dialogBg = useColorModeValue("surface.light", "surface.dark");

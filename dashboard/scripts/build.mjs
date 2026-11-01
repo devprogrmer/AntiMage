@@ -13,22 +13,6 @@ const dashboardDir = path.resolve(
 	"..",
 );
 
-const tutorialDirectoryIndex = {
-	name: "tutorial-directory-index",
-	configureServer(server) {
-		server.middlewares.use((request, _response, next) => {
-			const url = new URL(request.url || "/", "http://localhost");
-			if (
-				url.pathname.startsWith("/tutorial-content/") &&
-				url.pathname.endsWith("/")
-			) {
-				request.url = `${url.pathname}index.html${url.search}`;
-			}
-			next();
-		});
-	},
-};
-
 const getApiProxyConfig = (baseAPI) => {
 	if (!baseAPI || !/^https?:\/\//i.test(baseAPI)) {
 		return undefined;
@@ -69,7 +53,6 @@ await build({
 	configFile: false,
 	envDir: dashboardDir,
 	plugins: [
-		tutorialDirectoryIndex,
 		tsconfigPaths({ root: dashboardDir }),
 		react({
 			include: "**/*.tsx",

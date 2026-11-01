@@ -260,7 +260,7 @@ func TestLegacyJSONImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	archivePath := filepath.Join(t.TempDir(), "legacy.rbbackup")
+	archivePath := filepath.Join(t.TempDir(), "existing-backup.dat")
 	writeBackupArchiveForTest(t, archivePath, map[string][]byte{
 		ManifestName:     manifestPayload,
 		DatabaseDumpName: legacyPayload,

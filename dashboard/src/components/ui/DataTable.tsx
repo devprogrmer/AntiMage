@@ -506,7 +506,10 @@ export function DataTable<TData>({
 	mobileBreakpoint = "md",
 	ariaLabel,
 }: DataTableProps<TData>) {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
+	const isRTL = (dir ?? i18n.dir(activeLanguage)) === "rtl";
+	const tableDirection = dir ?? (isRTL ? "rtl" : "ltr");
 	const actionsLabel = t("actions");
 	const selectAllLabel = t("selectAll");
 	const selectRowLabel = t("selectRow");
@@ -1219,14 +1222,14 @@ export function DataTable<TData>({
 												<HStack
 													spacing={1}
 													w="full"
-													pl={
+									ps={
 														!isSelectColumn &&
 														!isActionsColumn &&
 														headerAlign === "start"
 															? headerInset
 															: undefined
 													}
-													pr={
+									pe={
 														!isSelectColumn &&
 														!isActionsColumn &&
 														headerAlign === "end"
@@ -1413,7 +1416,7 @@ export function DataTable<TData>({
 				<Menu
 					isOpen
 					autoSelect={false}
-					placement="bottom-start"
+					placement={isRTL ? "bottom-end" : "bottom-start"}
 					strategy="fixed"
 					onClose={closeContextMenu}
 				>
@@ -1429,6 +1432,7 @@ export function DataTable<TData>({
 					/>
 					<Portal>
 						<MenuList
+							dir={tableDirection}
 							data-am-context-menu=""
 							minW="220px"
 							maxW="calc(100vw - 24px)"

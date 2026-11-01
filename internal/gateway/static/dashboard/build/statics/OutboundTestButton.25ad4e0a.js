@@ -1,0 +1,1 @@
+import{j as o,aH as n,I as e,a7 as i,ap as l}from"./vendor.2ecf724b.js";const c=({isTesting:s=!1,label:a,onTest:t,tag:r})=>!t||!r||r.trim().toLowerCase()==="blocked"?null:o(n,{hasArrow:!0,label:a,children:o(e,{"aria-label":a,icon:s?o(i,{size:"xs"}):o(l,{}),size:"xs",variant:"ghost",isDisabled:s,onClick:()=>t(r)})});export{c as O};

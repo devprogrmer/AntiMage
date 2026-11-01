@@ -1554,7 +1554,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														</FormControl>
 														{canTlsFlow && (
 															<FormControl>
-																<FormLabel>Flow</FormLabel>
+																<FormLabel>{t("ui.outbound.flow")}</FormLabel>
 																<Input
 																	size="sm"
 																	placeholder="xtls-rprx-vision"
@@ -1707,7 +1707,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														/>
 													</FormControl>
 													<FormControl>
-														<FormLabel>Workers</FormLabel>
+														<FormLabel>{t("ui.outbound.workers")}</FormLabel>
 														<Input
 															size="sm"
 															type="number"
@@ -1718,7 +1718,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													</FormControl>
 												</HStack>
 												<FormControl>
-													<FormLabel>Domain Strategy</FormLabel>
+													<FormLabel>{t("ui.outbound.domainStrategy")}</FormLabel>
 													<Controller
 														control={control}
 														name="wireguardDomainStrategy"
@@ -1740,7 +1740,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													/>
 												</FormControl>
 												<FormControl>
-													<FormLabel>Reserved</FormLabel>
+													<FormLabel>{t("ui.outbound.reserved")}</FormLabel>
 													<Input
 														size="sm"
 														placeholder="1,2,3"
@@ -1752,7 +1752,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														size="sm"
 														{...register("wireguardNoKernelTun")}
 													/>
-													<FormLabel mb="0">No Kernel Tun</FormLabel>
+													<FormLabel mb="0">{t("ui.outbound.noKernelTun")}</FormLabel>
 												</FormControl>
 												<VStack spacing={3} align="stretch">
 													<HStack justify="space-between">
@@ -1933,7 +1933,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													)}
 													{network === "xhttp" && (
 														<FormControl>
-															<FormLabel>Mode</FormLabel>
+															<FormLabel>{t("ui.outbound.mode")}</FormLabel>
 															<Controller
 																control={control}
 																name="xhttpMode"
@@ -2001,7 +2001,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																/>
 															</FormControl>
 															<FormControl>
-																<FormLabel>Authority</FormLabel>
+																<FormLabel>{t("ui.outbound.authority")}</FormLabel>
 																<Input
 																	size="sm"
 																	{...register("grpcAuthority")}
@@ -2064,12 +2064,12 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																	size="sm"
 																	{...register("xhttpNoGRPCHeader")}
 																/>
-																<FormLabel mb="0">No gRPC Header</FormLabel>
+																<FormLabel mb="0">{t("ui.outbound.noGrpcHeader")}</FormLabel>
 															</FormControl>
 														)}
 														{formValues?.xhttpMode === "packet-up" && (
 															<FormControl>
-																<FormLabel>Min Upload Interval (Ms)</FormLabel>
+																<FormLabel>{t("ui.outbound.minUploadInterval")}</FormLabel>
 																<Input
 																	size="sm"
 																	{...register("xhttpScMinPostsIntervalMs")}
@@ -2078,14 +2078,14 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														)}
 														<XrayFieldGrid>
 															<FormControl>
-																<FormLabel>Max Concurrency</FormLabel>
+																<FormLabel>{t("ui.outbound.maxConcurrency")}</FormLabel>
 																<Input
 																	size="sm"
 																	{...register("xhttpXmuxMaxConcurrency")}
 																/>
 															</FormControl>
 															<FormControl>
-																<FormLabel>Max Connections</FormLabel>
+																<FormLabel>{t("ui.outbound.maxConnections")}</FormLabel>
 																<Input
 																	size="sm"
 																	type="number"
@@ -2097,7 +2097,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														</XrayFieldGrid>
 														<XrayFieldGrid>
 															<FormControl>
-																<FormLabel>Max Reuse Times</FormLabel>
+																<FormLabel>{t("ui.outbound.maxReuseTimes")}</FormLabel>
 																<Input
 																	size="sm"
 																	type="number"
@@ -2107,7 +2107,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																/>
 															</FormControl>
 															<FormControl>
-																<FormLabel>Max Request Times</FormLabel>
+																<FormLabel>{t("ui.outbound.maxRequestTimes")}</FormLabel>
 																<Input
 																	size="sm"
 																	{...register("xhttpXmuxHMaxRequestTimes")}
@@ -2116,14 +2116,14 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														</XrayFieldGrid>
 														<XrayFieldGrid>
 															<FormControl>
-																<FormLabel>Max Reusable Secs</FormLabel>
+																<FormLabel>{t("ui.outbound.maxReusableSeconds")}</FormLabel>
 																<Input
 																	size="sm"
 																	{...register("xhttpXmuxHMaxReusableSecs")}
 																/>
 															</FormControl>
 															<FormControl>
-																<FormLabel>Keep Alive Period</FormLabel>
+																<FormLabel>{t("ui.outbound.keepAlivePeriod")}</FormLabel>
 																<Input
 																	size="sm"
 																	type="number"
@@ -2232,21 +2232,21 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														/>
 													</FormControl>
 													<FormControl>
-														<FormLabel>ECH Config List</FormLabel>
+														<FormLabel>{t("ui.outbound.echConfigList")}</FormLabel>
 														<Input
 															size="sm"
 															{...register("tlsEchConfigList")}
 														/>
 													</FormControl>
 													<FormControl>
-														<FormLabel>Certificate SHA-256 pin</FormLabel>
+														<FormLabel>{t("ui.outbound.certificateSha256Pin")}</FormLabel>
 														<Input
 															size="sm"
 															{...register("tlsPinnedPeerCertSha256")}
 														/>
 													</FormControl>
 													<FormControl>
-														<FormLabel>Verify certificate name</FormLabel>
+														<FormLabel>{t("ui.outbound.verifyCertificateName")}</FormLabel>
 														<Input
 															size="sm"
 															placeholder="example.com"
@@ -2342,7 +2342,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														/>
 													</FormControl>
 													<FormControl>
-														<FormLabel>xudp Concurrency</FormLabel>
+														<FormLabel>{t("ui.outbound.xudpConcurrency")}</FormLabel>
 														<Input
 															size="sm"
 															type="number"

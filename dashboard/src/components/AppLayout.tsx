@@ -72,6 +72,7 @@ import { AppSidebar } from "./AppSidebar";
 import { GitHubStars } from "./GitHubStars";
 import { HeaderCalendar } from "./HeaderCalendar";
 import ThemeSelector from "./ThemeSelector";
+import { PageHeader } from "./ui";
 
 const iconProps = {
 	baseStyle: {
@@ -116,6 +117,56 @@ type BottomNavItem = {
 	kind?: "menu" | "link";
 };
 
+const routeLabelKeys: Record<string, string> = {
+	dashboard: "dashboard",
+	users: "users",
+	admins: "admins",
+	"bulk-actions": "bulkActions.menu",
+	usage: "usage.menu",
+	tutorials: "tutorials.menu",
+	services: "services.title",
+	hosts: "header.hostSettings",
+	haproxy: "haproxy.title",
+	"node-settings": "header.nodeSettings",
+	settings: "header.integrationSettings",
+	"xray-settings": "header.xraySettings",
+	"xray-logs": "pages.xray.logs",
+	"access-insights": "header.accessInsights",
+	"recent-actions": "recentActions.title",
+	"api-docs": "apiDocs.menu",
+	phpmyadmin: "phpmyadmin.menu",
+	"external-apps": "externalApps.menu",
+	myaccount: "myaccount.menu",
+};
+
+const hashLabelKeys: Record<string, string> = {
+	panel: "settings.panel.tabTitle",
+	telegram: "settings.telegram",
+	backup: "settings.backup.tabTitle",
+	ssl: "settings.ssl.tabTitle",
+	subscriptions: "settings.subscriptions.tabTitle",
+	templates: "settings.templates.tabTitle",
+	inbounds: "hostsPage.tabInbounds",
+	hosts: "hostsPage.tabHosts",
+	services: "usage.tabs.services",
+	admins: "usage.tabs.admins",
+	nodes: "usage.tabs.nodes",
+	create: "bulkActions.tabs.create",
+	edit: "bulkActions.tabs.edit",
+	delete: "bulkActions.tabs.delete",
+	permissions: "bulkActions.tabs.permissions",
+	info: "myaccount.info",
+	security: "myaccount.security",
+	"api-keys": "myaccount.apiKeys",
+	basic: "pages.xray.basicTemplate",
+	routing: "pages.xray.Routings",
+	outbounds: "pages.xray.Outbounds",
+	reverse: "pages.xray.reverse.title",
+	balancers: "pages.xray.Balancers",
+	dns: "DNS",
+	advanced: "pages.xray.advancedTemplate",
+};
+
 export function AppLayout() {
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 	const isMobile = useBreakpointValue({ base: true, md: false });
@@ -131,8 +182,9 @@ export function AppLayout() {
 	const [activeLocationHash, setActiveLocationHash] = useState(
 		() => window.location.hash,
 	);
-	const isRTL = i18n.dir(i18n.language) === "rtl";
-	const tutorialsUrl = "/tutorials";
+	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
+	const isRTL = i18n.dir(activeLanguage) === "rtl";
+	const tutorialsUrl = "/guide";
 	const sectionAccess = userData.permissions?.sections;
 	const userMenuContentRef = useRef<HTMLDivElement | null>(null);
 	const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
@@ -187,13 +239,13 @@ export function AppLayout() {
 		"0 6px 14px rgba(0, 0, 0, 0.24)",
 	);
 	const shellBorder = useColorModeValue("panel.border", "panel.border");
-	const shellHeadeamg = useColorModeValue("panel.surface", "panel.surface");
+	const shellHeaderBg = useColorModeValue("panel.surface", "panel.surface");
 	const shellHeaderShadow = useColorModeValue(
 		"0 18px 48px rgba(15, 23, 42, 0.10)",
 		"0 18px 48px rgba(0, 0, 0, 0.32)",
 	);
-	const headeamuttonBg = useColorModeValue("panel.elevated", "panel.elevated");
-	const headeamuttonHoveamg = useColorModeValue(
+	const headerButtonBg = useColorModeValue("panel.elevated", "panel.elevated");
+	const headerButtonHoverBg = useColorModeValue(
 		"panel.borderStrong",
 		"panel.borderStrong",
 	);
@@ -226,7 +278,6 @@ export function AppLayout() {
 	const languageItems = [
 		{ code: "en", label: "English", flag: "US" },
 		{ code: "fa", label: "پارسی", flag: "IR" },
-		{ code: "zh-cn", label: "中文", flag: "CN" },
 		{ code: "ru", label: "Русский", flag: "RU" },
 	];
 
@@ -740,6 +791,76 @@ export function AppLayout() {
 	]
 		.filter(Boolean)
 		.map((part) => part.replace(/[-_]+/g, " "));
+	const locationLabel = (part: string, isHash = false) => {
+		const normalized = part.replace(/[-_]+/g, " ").replace(/ /g, "-");
+		const key = (isHash ? hashLabelKeys : routeLabelKeys)[normalized];
+		return key ? t(key) : part;
+	};
+	const routePageHeadings: Record<string, { title: string; description?: string }> = {
+		"/": { title: "dashboard", description: "dashboard.subtitle" },
+		"/users": {
+			title: "users",
+			description: "users.pageDescription",
+		},
+		"/services": {
+			title: "services.title",
+			description: "services.subtitle",
+		},
+		"/admins": {
+			title: "admins",
+			description: "admins.pageDescription",
+		},
+		"/bulk-actions": {
+			title: "bulkActions.title",
+			description: "bulkActions.subtitle",
+		},
+		"/node-settings": {
+			title: "header.nodeSettings",
+			description: "nodes.title",
+		},
+		"/settings": {
+			title: "header.integrationSettings",
+			description: "settings.pageDescription",
+		},
+		"/hosts": {
+			title: "header.hostSettings",
+			description:
+				activeLocationHash.toLowerCase() === "#hosts"
+					? "hostsPage.tabHostsDescription"
+					: "hostsPage.tabInboundsDescription",
+		},
+		"/access-insights": {
+			title: "pages.accessInsights.title",
+			description: "pages.accessInsights.liveSubtitle",
+		},
+		"/recent-actions": {
+			title: "recentActions.title",
+			description: "recentActions.description",
+		},
+		"/external-apps": {
+			title: "externalApps.title",
+			description: "externalApps.description",
+		},
+		"/usage": {
+			title: "usage.title",
+			description: "usage.pageDescription",
+		},
+		"/xray-settings": {
+			title: "header.coreSettings",
+			description: "pages.xray.coreDescription",
+		},
+		"/xray-logs": { title: "xrayLogs.title" },
+		"/api-docs": {
+			title: "apiDocs.title",
+			description: "apiDocs.description",
+		},
+		"/phpmyadmin": {
+			title: "phpmyadmin.title",
+			description: "phpmyadmin.description",
+		},
+		"/haproxy": { title: "haproxy.title" },
+	};
+	const routePageHeading = routePageHeadings[location.pathname];
 	const openCurrentPage = () => {
 		const defaultTab = settingsDefaultTabByPath[location.pathname];
 		if (defaultTab) {
@@ -764,13 +885,13 @@ export function AppLayout() {
 				<ThemeSelector minimal trigger="icon" />
 			</Box>
 			<Flex
+				className="am-panel-shell"
 				minH="100vh"
 				maxH="100vh"
 				overflow="hidden"
 				direction={isRTL ? "row-reverse" : "row"}
 				dir={isRTL ? "rtl" : "ltr"}
 				bg="panel.app"
-				backgroundImage="radial-gradient(circle at 2% 2%, rgba(221, 40, 134, 0.18), transparent 25rem), radial-gradient(circle at 95% 8%, rgba(150, 42, 115, 0.17), transparent 30rem), radial-gradient(circle at 92% 88%, rgba(224, 38, 129, 0.14), transparent 26rem), linear-gradient(145deg, #080a11 0%, #07111b 46%, #080b13 100%)"
 				sx={{
 					"--am-sidebar-offset": isMobile
 						? "0px"
@@ -798,12 +919,13 @@ export function AppLayout() {
 				>
 					<Box
 						as="header"
+						className="am-panel-header"
 						h="12"
 						minH="12"
 						borderWidth="1px"
 						borderColor={shellBorder}
 						borderRadius="2xl"
-						bg={shellHeadeamg}
+						bg={shellHeaderBg}
 						boxShadow={shellHeaderShadow}
 						mt="3"
 						mx={{ base: "3", md: "4" }}
@@ -829,16 +951,17 @@ export function AppLayout() {
 								}}
 								icon={<MenuIcon />}
 								flexShrink={0}
-								bg={headeamuttonBg}
+								bg={headerButtonBg}
 								borderColor={shellBorder}
-								_hover={{ bg: headeamuttonHoveamg }}
+								_hover={{ bg: headerButtonHoverBg }}
 							/>
 							<HStack
-								aria-label="Current location"
+								as="nav"
+								aria-label={t("a11y.currentLocation", "Current location")}
 								spacing="1"
 								minW="0"
 								overflow="hidden"
-								dir="ltr"
+								dir={isRTL ? "rtl" : "ltr"}
 							>
 								<Button
 									variant="link"
@@ -849,11 +972,13 @@ export function AppLayout() {
 									onClick={() => navigate("/")}
 									_hover={{ color: "panel.text" }}
 								>
-									dashboard
+									{t("dashboard")}
 								</Button>
 								{locationTrail.length > 1 && (
 									<>
-										<Text color="panel.textSecondary">→</Text>
+											<Text color="panel.textSecondary" aria-hidden="true">
+												{isRTL ? "←" : "→"}
+											</Text>
 										<Button
 											variant="link"
 											fontSize={{ base: "xs", md: "sm" }}
@@ -863,7 +988,7 @@ export function AppLayout() {
 											onClick={openCurrentPage}
 											_hover={{ color: "panel.text" }}
 										>
-											{locationTrail[1]}
+											{locationLabel(locationTrail[1])}
 										</Button>
 									</>
 								)}
@@ -876,19 +1001,24 @@ export function AppLayout() {
 										overflow="hidden"
 										textOverflow="ellipsis"
 									>
-										→ {locationTrail.slice(2).join(" → ")}
+						{isRTL ? "←" : "→"} {locationTrail
+							.slice(2)
+							.map((part) => locationLabel(part, true))
+							.join(isRTL ? " ← " : " → ")}
 									</Text>
 								)}
 							</HStack>
 						</HStack>
 						<HStack spacing={2} alignItems="center" flexShrink={0}>
 							<HeaderCalendar />
-							<GitHubStars />
+							<Box display={{ base: "none", md: "block" }} flexShrink={0}>
+								<GitHubStars />
+							</Box>
 
 							{/* User Menu */}
 							{getUserIsSuccess && userData.username && (
 								<Menu
-									placement="bottom-end"
+									placement={isRTL ? "bottom-start" : "bottom-end"}
 									isLazy
 									autoSelect={false}
 									closeOnSelect={false}
@@ -904,9 +1034,9 @@ export function AppLayout() {
 										aria-label={t("a11y.userMenu")}
 										fontSize="sm"
 										fontWeight="medium"
-										bg={headeamuttonBg}
+										bg={headerButtonBg}
 										borderColor={shellBorder}
-										_hover={{ bg: headeamuttonHoveamg }}
+										_hover={{ bg: headerButtonHoverBg }}
 										onClick={() => {
 											if (userMenu.isOpen) {
 												handleUserMenuClose();
@@ -1006,8 +1136,8 @@ export function AppLayout() {
 												<HStack justify="space-between" w="full" minW={0}>
 													<Text>{t("header.language")}</Text>
 													<Text fontSize="xs" color={secondaryTextColor}>
-														{languageItems.find(
-															(item) => item.code === i18n.language,
+														{languageItems.find((item) =>
+															activeLanguage.startsWith(item.code),
 														)?.label || "English"}
 													</Text>
 												</HStack>
@@ -1037,7 +1167,8 @@ export function AppLayout() {
 													}}
 												>
 													{languageItems.map(({ code, label, flag }) => {
-														const isActiveLang = i18n.language === code;
+														const isActiveLang =
+															activeLanguage.startsWith(code);
 														return (
 															<MenuItem
 																key={code}
@@ -1118,6 +1249,7 @@ export function AppLayout() {
 					</Box>
 					<Box
 						as="main"
+						className="am-panel-main"
 						flex="1"
 						p={{ base: 3, md: 4 }}
 						pb={{ base: "40", md: "4" }}
@@ -1125,6 +1257,16 @@ export function AppLayout() {
 						minH="0"
 						bg="transparent"
 					>
+						{routePageHeading && (
+							<PageHeader
+								title={t(routePageHeading.title)}
+								description={
+									routePageHeading.description
+										? t(routePageHeading.description)
+										: undefined
+								}
+							/>
+						)}
 						<Outlet />
 					</Box>
 				</Flex>

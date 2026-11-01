@@ -66,20 +66,24 @@ const LazyPage = ({ Page }: { Page: ComponentType }) => (
 	</Suspense>
 );
 
-const routeErrorMessage = (error: unknown) => {
+const routeErrorDetails = (error: unknown) => {
 	if (isRouteErrorResponse(error)) {
-		return error.statusText || `Request failed with status ${error.status}`;
+		return error.statusText || null;
 	}
 	if (error instanceof Error) {
 		return error.message;
 	}
-	return "The page could not be loaded.";
+	return null;
 };
 
 const RouteErrorPage = () => {
 	const error = useRouteError();
 	const navigate = useNavigate();
 	const { t } = useTranslation();
+	const errorSummary = isRouteErrorResponse(error)
+		? t("router.requestFailed", { status: error.status })
+		: t("router.genericError");
+	const errorDetails = routeErrorDetails(error);
 
 	useEffect(() => {
 		recoverFromStaleChunk(error);
@@ -90,20 +94,31 @@ const RouteErrorPage = () => {
 			<VStack align="start" spacing={4} maxW="720px" mx="auto">
 				<Heading size="lg">{t("router.errorTitle")}</Heading>
 				<Text color="gray.300">{t("router.errorDescription")}</Text>
-				<Text
-					bg="whiteAlpha.100"
-					border="1px solid"
-					borderColor="whiteAlpha.200"
-					borderRadius="md"
-					color="red.200"
-					fontFamily="mono"
-					fontSize="sm"
-					p={4}
-					w="full"
-					whiteSpace="pre-wrap"
-				>
-					{routeErrorMessage(error)}
-				</Text>
+				<Text color="red.200">{errorSummary}</Text>
+				{errorDetails && (
+					<Box
+						bg="whiteAlpha.100"
+						border="1px solid"
+						borderColor="whiteAlpha.200"
+						borderRadius="md"
+						p={4}
+						w="full"
+					>
+						<Text color="gray.300" fontSize="xs" mb={2}>
+							{t("router.technicalDetails")}
+						</Text>
+						<Text
+							dir="ltr"
+							textAlign="left"
+							color="red.200"
+							fontFamily="mono"
+							fontSize="sm"
+							whiteSpace="pre-wrap"
+						>
+							{errorDetails}
+						</Text>
+					</Box>
+				)}
 				<Button colorScheme="blue" onClick={() => navigate("/")}>
 					{t("router.backToDashboard")}
 				</Button>
@@ -120,6 +135,7 @@ const routeSegments = new Set([
 	"myaccount",
 	"usage",
 	"tutorials",
+	"guide",
 	"services",
 	"hosts",
 	"haproxy",
@@ -207,11 +223,11 @@ export const router = createBrowserRouter(
 			children: [
 				{
 					index: true,
-						element: <LazyPage Page={DashboardPage} />,
+					element: <LazyPage Page={DashboardPage} />,
 				},
 				{
 					path: "users",
-						element: <LazyPage Page={UsersPage} />,
+					element: <LazyPage Page={UsersPage} />,
 				},
 				{
 					path: "bulk-actions",
@@ -228,10 +244,6 @@ export const router = createBrowserRouter(
 				{
 					path: "usage",
 					element: <LazyPage Page={UsagePage} />,
-				},
-				{
-					path: "tutorials",
-					element: <LazyPage Page={TutorialsPage} />,
 				},
 				{
 					path: "services",
@@ -274,10 +286,6 @@ export const router = createBrowserRouter(
 					element: <LazyPage Page={RecentActionsPage} />,
 				},
 				{
-					path: "api-docs",
-					element: <LazyPage Page={ApiDocsPage} />,
-				},
-				{
 					path: "phpmyadmin",
 					element: <LazyPage Page={PhpMyAdminPage} />,
 				},
@@ -286,6 +294,22 @@ export const router = createBrowserRouter(
 					element: <LazyPage Page={ExternalAppsPage} />,
 				},
 			],
+		},
+		{
+			path: "/guide",
+			element: <LazyPage Page={TutorialsPage} />,
+		},
+		{
+			path: "/guide/api",
+			element: <LazyPage Page={ApiDocsPage} />,
+		},
+		{
+			path: "/api-docs",
+			element: <LazyPage Page={ApiDocsPage} />,
+		},
+		{
+			path: "/tutorials",
+			element: <Navigate to="/guide" replace />,
 		},
 		{
 			path: "/login",

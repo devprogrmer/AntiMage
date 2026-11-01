@@ -22,7 +22,6 @@ import {
 	Text,
 	useClipboard,
 	useColorMode,
-	useColorModeValue,
 	useDisclosure,
 	useToast,
 	VStack,
@@ -72,6 +71,7 @@ import type {
 	MyAccountTrafficBasis,
 	MyAccountUsagePoint,
 } from "types/MyAccount";
+import { formatLocalizedDate, formatLocalizedDateTime } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
 import { clearClientSession } from "utils/session";
 
@@ -203,7 +203,7 @@ type StatsCardProps = {
 };
 
 const StatsCard: React.FC<StatsCardProps> = ({ label, value }) => {
-	const labelColor = useColorModeValue("panel.textMuted", "panel.textMuted");
+	const labelColor = "panel.textMuted";
 
 	return (
 		<Box minW={0} py={1}>
@@ -221,7 +221,7 @@ const MiniMetric: React.FC<{ label: string; value: string }> = ({
 	label,
 	value,
 }) => {
-	const labelColor = useColorModeValue("gray.500", "gray.400");
+	const labelColor = "panel.textMuted";
 	return (
 		<Box>
 			<Text fontSize="xs" color={labelColor} fontWeight="semibold">
@@ -269,10 +269,10 @@ const ServiceLimitPanel: React.FC<{
 	colorMode: string;
 	t: (key: string, fallback?: string) => string;
 }> = ({ service, colorMode, t }) => {
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const bg = useColorModeValue("white", "whiteAlpha.50");
-	const subBg = useColorModeValue("gray.50", "whiteAlpha.100");
-	const labelColor = useColorModeValue("gray.500", "gray.400");
+	const borderColor = "panel.border";
+	const bg = "panel.surface";
+	const subBg = "panel.elevated";
+	const labelColor = "panel.textMuted";
 	const labels = getTrafficLabels(t, service.traffic_basis);
 	const dailyPoints = service.daily_usage ?? [];
 	const dailyTotal = dailyPoints.reduce(
@@ -388,9 +388,9 @@ const ServiceBalanceCard: React.FC<{
 	service: MyAccountServiceLimit;
 	t: (key: string, fallback?: string) => string;
 }> = ({ service, t }) => {
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const bg = useColorModeValue("white", "whiteAlpha.50");
-	const labelColor = useColorModeValue("gray.500", "gray.400");
+	const borderColor = "panel.border";
+	const bg = "panel.surface";
+	const labelColor = "panel.textMuted";
 	const labels = getTrafficLabels(t, service.traffic_basis);
 	const limit = service.data_limit ?? 0;
 	const remaining =
@@ -453,7 +453,7 @@ const ChangePasswordModal: React.FC<{
 	onSubmit: (current: string, next: string) => Promise<void>;
 }> = ({ isOpen, onClose, onSubmit }) => {
 	const { t, i18n } = useTranslation();
-	const isRTL = i18n.language === "fa";
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const toast = useToast();
 	const [showCurrent, setShowCurrent] = useState(false);
 	const [showNew, setShowNew] = useState(false);
@@ -515,7 +515,7 @@ const ChangePasswordModal: React.FC<{
 			title={t("myaccount.changePassword")}
 			footer={
 				<>
-					<Button mr={3} onClick={onClose} variant="ghost">
+					<Button me={3} onClick={onClose} variant="ghost">
 						{t("cancel")}
 					</Button>
 					<Button
@@ -610,15 +610,15 @@ const ChangePasswordModal: React.FC<{
 
 export const MyAccountPage: React.FC = () => {
 	const { t, i18n } = useTranslation();
-	const isRTL = i18n.language === "fa";
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const toast = useToast();
 	const modal = useDisclosure();
 	const apiKeyModal = useDisclosure();
 	const queryClient = useQueryClient();
 	const { colorMode } = useColorMode();
-	const panelBg = useColorModeValue("gray.50", "whiteAlpha.50");
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const labelColor = useColorModeValue("gray.500", "gray.400");
+	const panelBg = "panel.surface";
+	const borderColor = "panel.border";
+	const labelColor = "panel.textMuted";
 	const { userData, getUserIsSuccess } = useGetUser();
 	const { onCopy, setValue: setClipboardValue } = useClipboard("");
 	const [range, setRange] = useState<DateRangeValue>(() => {
@@ -1292,20 +1292,18 @@ export const MyAccountPage: React.FC = () => {
 															>
 																<Text>
 																	{t("myaccount.apiKeyCreatedAt")}:{" "}
-																	{dayjs(key.created_at).format("YYYY-MM-DD")}
+							{formatLocalizedDate(key.created_at)}
 																</Text>
 																<Text>
 																	{t("myaccount.apiKeyExpiresAt")}:{" "}
 																	{key.expires_at
-																		? dayjs(key.expires_at).format("YYYY-MM-DD")
+								? formatLocalizedDate(key.expires_at)
 																		: t("myaccount.never")}
 																</Text>
 																<Text>
 																	{t("myaccount.lastUsed")}:{" "}
 																	{key.last_used_at
-																		? dayjs(key.last_used_at).format(
-																				"YYYY-MM-DD HH:mm",
-																			)
+								? formatLocalizedDateTime(key.last_used_at)
 																		: t("myaccount.neverUsed")}
 																</Text>
 															</HStack>
@@ -1352,7 +1350,7 @@ export const MyAccountPage: React.FC = () => {
 							</Button>
 						) : (
 							<>
-								<Button variant="ghost" mr={3} onClick={closeApiKeyDialog}>
+								<Button variant="ghost" me={3} onClick={closeApiKeyDialog}>
 									{t("cancel")}
 								</Button>
 								<Button
@@ -1431,7 +1429,7 @@ export const MyAccountPage: React.FC = () => {
 					title={t("myaccount.deleteApiKey")}
 					footer={
 						<>
-							<Button variant="ghost" mr={3} onClick={closeDeleteKeyDialog}>
+							<Button variant="ghost" me={3} onClick={closeDeleteKeyDialog}>
 								{t("cancel")}
 							</Button>
 							<Button

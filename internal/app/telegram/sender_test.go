@@ -160,7 +160,7 @@ func TestSendDocumentSplitsLargeFileAndUsesBackupThread(t *testing.T) {
 	sender.documentLimit = 10
 	results, err := sender.SendDocument(ctx, DocumentRequest{
 		Destination: DestinationRequest{Purpose: DestinationBackup, Category: "backup"},
-		FileName:    "backup.rbbackup",
+		FileName:    "backup.ambackup",
 		Content:     []byte("0123456789abcdefghijXYZ"),
 		Caption:     EscapeHTML("AntiMage <backup>"),
 		ParseMode:   "HTML",

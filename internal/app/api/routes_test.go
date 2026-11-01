@@ -77,46 +77,40 @@ func TestDocsRoutes(t *testing.T) {
 		}
 	})
 
-	t.Run("docs redirect", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/docs", nil)
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
-		if rec.Code != http.StatusMovedPermanently {
-			t.Fatalf("expected redirect, got %d", rec.Code)
-		}
-		if location := rec.Header().Get("Location"); location != "/docs/" {
-			t.Fatalf("expected /docs/ redirect, got %q", location)
-		}
-	})
-
-	t.Run("docs ui", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/docs/", nil)
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected docs UI 200, got %d body %q", rec.Code, rec.Body.String())
-		}
-		if !strings.Contains(rec.Body.String(), "--antimage-docs-bg") {
-			t.Fatalf("expected docs UI to include AntiMage dark theme CSS")
-		}
-		if !strings.Contains(rec.Body.String(), "preauthorizeApiKey") {
-			t.Fatalf("expected docs UI to auto-authorize with the current dashboard token")
-		}
-		if !strings.Contains(rec.Body.String(), "dialog-ux .modal-ux") {
-			t.Fatalf("expected docs UI to include dark authorization modal styling")
+	t.Run("legacy docs paths open the native API reference", func(t *testing.T) {
+		for _, path := range []string{"/docs", "/docs/", "/docs/index.html"} {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != http.StatusMovedPermanently {
+				t.Fatalf("expected redirect from %s, got %d", path, rec.Code)
+			}
+			if location := rec.Header().Get("Location"); location != "/guide/api" {
+				t.Fatalf("expected native API reference redirect, got %q", location)
+			}
 		}
 	})
 }
 
 func TestDocsRoutesDisabledByDefault(t *testing.T) {
 	handler := (&Server{}).Handler()
-	for _, path := range []string{"/docs", "/docs/", "/openapi.json"} {
+	for _, path := range []string{"/openapi.json"} {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
 			if rec.Code != http.StatusNotFound {
 				t.Fatalf("expected disabled docs route %s to return 404, got %d body %q", path, rec.Code, rec.Body.String())
+			}
+		})
+	}
+	for _, path := range []string{"/docs", "/docs/"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != "/guide/api" {
+				t.Fatalf("expected legacy docs redirect, got status %d location %q", rec.Code, rec.Header().Get("Location"))
 			}
 		})
 	}

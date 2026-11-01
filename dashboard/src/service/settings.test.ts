@@ -61,7 +61,7 @@ describe("importAntiMageBackup", () => {
 		const progress: number[] = [];
 
 		const result = await importAntiMageBackup(
-			new File(["backup"], "test.rbbackup"),
+			new File(["backup"], "test-backup.dat"),
 			(percent) => progress.push(percent),
 		);
 

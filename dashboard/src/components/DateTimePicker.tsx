@@ -49,12 +49,15 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 	minDate,
 	quickSelects = [],
 }) => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
+	const activeLocale = activeLanguage.toLowerCase().split(/[-_]/, 1)[0] || "en";
+	const isRTL = i18n.dir(activeLanguage) === "rtl";
 	const inputPlaceholder = placeholder ?? t("dateTimePicker.selectDate");
 	const { isOpen, onOpen, onClose } = useDisclosure();
 	const isMobile = useBreakpointValue({ base: true, md: false }) ?? false;
 	const [displayMonth, setDisplayMonth] = useState(() =>
-		value ? dayjs(value) : dayjs(),
+		(value ? dayjs(value) : dayjs()).locale(activeLocale),
 	);
 	const [selectedTime, setSelectedTime] = useState({
 		hour: value ? dayjs(value).hour() : 12,
@@ -75,13 +78,17 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 
 	useEffect(() => {
 		if (value) {
-			setDisplayMonth(dayjs(value));
+			setDisplayMonth(dayjs(value).locale(activeLocale));
 			setSelectedTime({
 				hour: dayjs(value).hour(),
 				minute: dayjs(value).minute(),
 			});
 		}
-	}, [value]);
+	}, [value, activeLocale]);
+
+	useEffect(() => {
+		setDisplayMonth((current) => current.locale(activeLocale));
+	}, [activeLocale]);
 
 	// Reset calendar to today when popover closes
 	const handleClose = () => {
@@ -96,9 +103,10 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 	};
 
 	const daysInMonth = displayMonth.daysInMonth();
-	const firstDayOfMonth = displayMonth.startOf("month").day();
+	const monthStart = displayMonth.startOf("month");
+	const firstDayOfMonth = monthStart.diff(monthStart.startOf("week"), "day");
 	const today = dayjs();
-	const selectedDay = value ? dayjs(value) : null;
+	const selectedDay = value ? dayjs(value).locale(activeLocale) : null;
 
 	const handleDateSelect = (day: number) => {
 		const newDate = displayMonth
@@ -205,7 +213,9 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 		return days;
 	};
 
-	const displayValue = value ? dayjs(value).format("YYYY/MM/DD HH:mm") : "";
+	const displayValue = value
+		? dayjs(value).locale(activeLocale).format("YYYY/MM/DD HH:mm")
+		: "";
 	const mobileTrigger = (
 		<Button
 			type="button"
@@ -242,7 +252,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 				bg={quickSelectBg}
 				minW={{ base: "0", md: "100px" }}
 				maxW={{ base: "100%", md: "110px" }}
-				borderRight={{ base: "0", md: "1px solid" }}
+				borderInlineEnd={{ base: "0", md: "1px solid" }}
 				borderBottom={{ base: "1px solid", md: "0" }}
 				borderColor={quickSelectBorderColor}
 				flexShrink={0}
@@ -276,7 +286,13 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 							aria-label={t("dateTimePicker.previousMonth")}
 							size="xs"
 							variant="ghost"
-							icon={<ChevronLeftIcon width={14} height={14} />}
+							icon={
+								isRTL ? (
+									<ChevronRightIcon width={14} height={14} />
+								) : (
+									<ChevronLeftIcon width={14} height={14} />
+								)
+							}
 							onClick={prevMonth}
 							_hover={{ bg: quickSelectHoverBg }}
 						/>
@@ -284,7 +300,13 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 							aria-label={t("dateTimePicker.nextMonth")}
 							size="xs"
 							variant="ghost"
-							icon={<ChevronRightIcon width={14} height={14} />}
+							icon={
+								isRTL ? (
+									<ChevronLeftIcon width={14} height={14} />
+								) : (
+									<ChevronRightIcon width={14} height={14} />
+								)
+							}
 							onClick={nextMonth}
 							_hover={{ bg: quickSelectHoverBg }}
 						/>

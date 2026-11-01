@@ -27,12 +27,6 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
-      - name: Setup Hugo
-        uses: peaceiris/actions-hugo@v3
-        with:
-          hugo-version: '0.147.7'
-          extended: true
-
       - name: Install dashboard dependencies
         working-directory: ${{ env.DASH_DIR }}
         run: npm ci

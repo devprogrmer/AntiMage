@@ -50,6 +50,38 @@ const RTL_LANGUAGE_RE = /^(fa|ar|he|ur)(-|_)?/i;
 
 const getLanguage = () => i18n.resolvedLanguage || i18n.language || "en";
 
+const getIntlLocale = () => {
+	const language = getLanguage().toLowerCase();
+	return language.startsWith("fa")
+		? "fa-IR-u-ca-persian"
+		: language.startsWith("ru")
+			? "ru-RU"
+			: "en-US";
+};
+
+export const formatLocalizedDate = (
+	value?: string | number | Date | null,
+): string => {
+	if (value === null || value === undefined || value === "") return "—";
+	const date = value instanceof Date ? value : new Date(value);
+	if (Number.isNaN(date.getTime())) return String(value);
+	return new Intl.DateTimeFormat(getIntlLocale(), { dateStyle: "medium" }).format(
+		date,
+	);
+};
+
+export const formatLocalizedDateTime = (
+	value?: string | number | Date | null,
+): string => {
+	if (value === null || value === undefined || value === "") return "—";
+	const date = value instanceof Date ? value : new Date(value);
+	if (Number.isNaN(date.getTime())) return String(value);
+	return new Intl.DateTimeFormat(getIntlLocale(), {
+		dateStyle: "medium",
+		timeStyle: "short",
+	}).format(date);
+};
+
 const isRtlLanguage = () => RTL_LANGUAGE_RE.test(getLanguage());
 
 const enforceNoBreak = (value: string) => value.replace(/\s+/g, "\u00A0");

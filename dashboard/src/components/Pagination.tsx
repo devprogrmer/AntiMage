@@ -106,7 +106,7 @@ export const Pagination: FC<PaginationProps> = ({
 	const adminsTotal = useAdminsStore((state) => state.total);
 
 	const { t, i18n } = useTranslation();
-	const direction = i18n.dir(i18n.language);
+	const direction = i18n.dir(i18n.resolvedLanguage || i18n.language);
 	const isRTL = direction === "rtl";
 
 	const storedPagination = useMemo(() => {

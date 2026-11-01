@@ -23,7 +23,19 @@ export const NumericInput = ({
 	defaultValue = 0,
 	...props
 }: NumericInputProps) => {
-	const fieldPaddingRight = fieldProps?.pr ?? fieldProps?.paddingRight ?? "2rem";
+	const {
+		pr: legacyPaddingRight,
+		paddingRight: legacyPaddingRightLong,
+		pe: paddingInlineEndAlias,
+		paddingInlineEnd,
+		...logicalFieldProps
+	} = fieldProps ?? {};
+	const fieldPaddingInlineEnd =
+		paddingInlineEndAlias ??
+		paddingInlineEnd ??
+		legacyPaddingRight ??
+		legacyPaddingRightLong ??
+		"2rem";
 
 	return (
 		<NumberInput
@@ -46,8 +58,8 @@ export const NumericInput = ({
 			<NumberInputField
 				ref={fieldRef}
 				inputMode="decimal"
-				{...fieldProps}
-				pr={fieldPaddingRight}
+				{...logicalFieldProps}
+				paddingInlineEnd={fieldPaddingInlineEnd}
 			/>
 			<NumberInputStepper
 				className="am-number-stepper"

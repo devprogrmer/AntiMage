@@ -50,18 +50,12 @@ func (s *Server) Handler() http.Handler {
 	r.HandleFunc("/__antimage_api/healthz", s.handleHealth)
 	if s.cfg.APIDocsEnabled {
 		r.HandleFunc("/openapi.json", s.handleOpenAPIJSON)
-		r.HandleFunc("/docs", func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodGet {
-				writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-				return
-			}
-			http.Redirect(w, r, "/docs/", http.StatusMovedPermanently)
-		})
-		r.Handle("/docs/*", swaggerUIHandler())
+		r.HandleFunc("/docs", handleLegacyDocsRoute)
+		r.HandleFunc("/docs/*", handleLegacyDocsRoute)
 	} else {
 		r.HandleFunc("/openapi.json", s.handleDocsDisabled)
-		r.HandleFunc("/docs", s.handleDocsDisabled)
-		r.HandleFunc("/docs/*", s.handleDocsDisabled)
+		r.HandleFunc("/docs", handleLegacyDocsRoute)
+		r.HandleFunc("/docs/*", handleLegacyDocsRoute)
 	}
 	r.HandleFunc("/admin/token", s.handleAdminToken)
 	r.HandleFunc("/internal/admin/validate", s.handleInternalAdminValidate)

@@ -94,9 +94,6 @@ export const UsagePage: FC = () => {
 	if (!canViewUsage) {
 		return (
 			<VStack spacing={4} align="stretch">
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("usage.title")}
-				</Text>
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
 					{t("usage.noPermission")}
 				</Text>
@@ -115,9 +112,6 @@ export const UsagePage: FC = () => {
 	if (!recordNodeUsage && !recordNodeUserUsages) {
 		return (
 			<VStack spacing={4} align="stretch">
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("usage.title")}
-				</Text>
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
 					{t("usage.recordingDisabled")}
 				</Text>

@@ -23,7 +23,7 @@ import { ReloadIcon } from "components/Filters";
 import { Icon } from "components/Icon";
 import { Pagination } from "components/Pagination";
 import { UsersTable } from "components/UsersTable";
-import { PageHeader, ResourceRefreshButton } from "components/ui";
+import { ResourceRefreshButton } from "components/ui";
 import { UsersFilterBar } from "components/users";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
@@ -142,7 +142,7 @@ const UserActionDialog: FC<{ action: "reset" | "revoke" }> = ({ action }) => {
 			footerProps={{ display: "flex" }}
 			footer={
 				<>
-					<Button size="sm" onClick={onClose} mr={3} w="full" variant="outline">
+					<Button size="sm" onClick={onClose} me={3} w="full" variant="outline">
 						{t("cancel")}
 					</Button>
 					<Button
@@ -180,7 +180,7 @@ const UserActionDialog: FC<{ action: "reset" | "revoke" }> = ({ action }) => {
 
 export const UsersPage: FC = () => {
 	const { t, i18n } = useTranslation();
-	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const loading = useDashboard((state) => state.loading);
 	const refetchUsers = useDashboard((state) => state.refetchUsers);
 	const isUserDialogOpen = useDashboard(
@@ -326,7 +326,6 @@ export const UsersPage: FC = () => {
 	if (isAdminDisabled) {
 		return (
 			<VStack spacing={5} align="stretch" dir={isRTL ? "rtl" : "ltr"}>
-				<PageHeader title={t("users")} />
 				<Flex
 					align="center"
 					border="1px solid"

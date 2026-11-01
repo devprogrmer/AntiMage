@@ -331,7 +331,7 @@ export default function HAProxyPage() {
 	return (
 		<VStack align="stretch" spacing={5}>
 			<ResourceListCard
-				title={t("haproxy.title")}
+				title={t("haproxy.configurations")}
 				summaryItems={[
 					{
 						label: t("haproxy.configurations"),
@@ -350,7 +350,7 @@ export default function HAProxyPage() {
 							leftIcon={<BookOpenIcon width={17} />}
 							onClick={() =>
 								navigate(
-									`/tutorials?doc=${encodeURIComponent("admin/haproxy/")}`,
+									"/guide?topic=haproxy",
 								)
 							}
 						>

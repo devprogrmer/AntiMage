@@ -5,7 +5,7 @@ import "time"
 const (
 	Format    = "antimage-backup"
 	Version   = 1
-	Extension = ".rbbackup"
+	Extension = ".ambackup"
 	MediaType = "application/vnd.antimage.backup"
 
 	ScopeDatabase = "database"

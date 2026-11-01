@@ -210,7 +210,8 @@ func (s *Server) handlePHPMyAdminEmbedHTML(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(buildPHPMyAdminEmbedHTML(phpMyAdminEmbedPath+"index.php", theme)))
+	language := normalizePHPMyAdminEmbedLanguage(r.URL.Query().Get("lang"))
+	_, _ = w.Write([]byte(buildPHPMyAdminEmbedHTML(phpMyAdminEmbedPath+"index.php", theme, language)))
 }
 
 func (s *Server) handlePHPMyAdminProxy(w http.ResponseWriter, r *http.Request) {
@@ -471,10 +472,34 @@ func runAntiMagePHPMyAdminCommand(parent context.Context, args ...string) (strin
 	return string(output), err
 }
 
-func buildPHPMyAdminEmbedHTML(loginURL string, theme string) string {
+func normalizePHPMyAdminEmbedLanguage(language string) string {
+	switch strings.ToLower(strings.SplitN(strings.TrimSpace(language), "-", 2)[0]) {
+	case "fa":
+		return "fa"
+	case "ru":
+		return "ru"
+	default:
+		return "en"
+	}
+}
+
+func buildPHPMyAdminEmbedHTML(loginURL string, theme string, language string) string {
 	theme = strings.TrimSpace(theme)
 	if theme != "blueberry" {
 		theme = ""
+	}
+	language = normalizePHPMyAdminEmbedLanguage(language)
+	direction := "ltr"
+	loadingTitle := "Opening phpMyAdmin..."
+	loadingDescription := "AntiMage is signing in with the configured database account for this full-access session."
+	switch language {
+	case "fa":
+		direction = "rtl"
+		loadingTitle = "در حال باز کردن phpMyAdmin..."
+		loadingDescription = "AntiMage برای این نشست دسترسی کامل، با حساب پایگاه‌دادهٔ پیکربندی‌شده وارد می‌شود."
+	case "ru":
+		loadingTitle = "Открытие phpMyAdmin..."
+		loadingDescription = "AntiMage выполняет вход с настроенной учётной записью базы данных для этого сеанса с полным доступом."
 	}
 	themeCookieScript := ""
 	if theme != "" {
@@ -484,7 +509,7 @@ document.cookie="pma_theme-1=` + escapedTheme + `;path=` + phpMyAdminEmbedPath +
 	}
 	escapedLoginURL := html.EscapeString(loginURL)
 	return `<!doctype html>
-<html lang="en">
+<html lang="` + language + `" dir="` + direction + `">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -497,7 +522,7 @@ iframe{display:block;width:100%;height:100%;border:0;background:#fff}
 </style>
 </head>
 <body>
-<div class="loading" id="loading"><div class="panel"><strong>Opening phpMyAdmin...</strong><p class="muted">AntiMage is signing in with the configured database account for this full-access session.</p></div></div>
+<div class="loading" id="loading"><div class="panel"><strong>` + html.EscapeString(loadingTitle) + `</strong><p class="muted">` + html.EscapeString(loadingDescription) + `</p></div></div>
 <iframe id="pma-frame" src="` + escapedLoginURL + `" title="phpMyAdmin" onload="antimageRevealPHPMyAdmin()"></iframe>
 <script>
 ` + themeCookieScript + `

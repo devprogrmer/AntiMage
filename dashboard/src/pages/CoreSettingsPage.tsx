@@ -715,7 +715,9 @@ const SettingRow: FC<{
 };
 
 export const CoreSettingsPage: FC = () => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
+	const isRTL = i18n.dir(activeLanguage) === "rtl";
 	const {
 		fetchCoreSettings,
 		fetchConfigTargets,
@@ -3997,9 +3999,6 @@ export const CoreSettingsPage: FC = () => {
 	if (!canManageXraySettings) {
 		return (
 			<VStack spacing={4} align="stretch">
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("header.xraySettings")}
-				</Text>
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
 					{t("xraySettings.noPermission")}
 				</Text>
@@ -4078,14 +4077,6 @@ export const CoreSettingsPage: FC = () => {
 					align={{ base: "stretch", lg: "flex-end" }}
 					justify="space-between"
 				>
-					<Box minW={0}>
-						<Text as="h1" fontWeight="semibold" fontSize="2xl">
-							{t("header.coreSettings")}
-						</Text>
-						<Text color={pageHintColor} fontSize="sm" mt={1}>
-							{t("pages.xray.coreDescription")}
-						</Text>
-					</Box>
 					<HStack
 						spacing={2}
 						flexWrap="wrap"
@@ -4150,7 +4141,7 @@ export const CoreSettingsPage: FC = () => {
 															fontSize="10px"
 															opacity={0.7}
 														>
-															(custom)
+										({t("common.custom")})
 														</Text>
 													)}
 												</HStack>
@@ -4795,7 +4786,10 @@ export const CoreSettingsPage: FC = () => {
 										>
 											{t("pages.xray.outboundSub.title")}
 										</Button>
-										<Menu placement="bottom-end" isLazy>
+										<Menu
+											placement={isRTL ? "bottom-start" : "bottom-end"}
+											isLazy
+										>
 											<MenuButton
 												as={Button}
 												leftIcon={<MoreIconStyled />}

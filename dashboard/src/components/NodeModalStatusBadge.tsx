@@ -62,7 +62,7 @@ export const NodeModalStatusBadge: FC<UserStatusProps> = ({
 					display="inline-block"
 					fontSize="xs"
 					fontWeight="medium"
-					ml="2"
+					ms="2"
 					color="gray.600"
 					_dark={{
 						color: "gray.400",

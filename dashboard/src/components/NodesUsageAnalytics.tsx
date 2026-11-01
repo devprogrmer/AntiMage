@@ -818,7 +818,7 @@ const NodesUsageAnalytics: FC = () => {
 							<InfoIcon
 								color="gray.500"
 								_dark={{ color: "gray.400" }}
-								aria-label="info"
+								aria-label={t("a11y.info")}
 								cursor="help"
 							/>
 						</HStack>
@@ -880,7 +880,7 @@ const NodesUsageAnalytics: FC = () => {
 							<InfoIcon
 								color="gray.500"
 								_dark={{ color: "gray.400" }}
-								aria-label="info"
+								aria-label={t("a11y.info")}
 								cursor="help"
 							/>
 						</HStack>
@@ -978,7 +978,7 @@ const NodesUsageAnalytics: FC = () => {
 							<InfoIcon
 								color="gray.500"
 								_dark={{ color: "gray.400" }}
-								aria-label="info"
+								aria-label={t("a11y.info")}
 								cursor="help"
 							/>
 						</HStack>
@@ -1094,7 +1094,7 @@ const NodesUsageAnalytics: FC = () => {
 							<InfoIcon
 								color="gray.500"
 								_dark={{ color: "gray.400" }}
-								aria-label="info"
+								aria-label={t("a11y.info")}
 								cursor="help"
 							/>
 						</HStack>

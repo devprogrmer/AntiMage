@@ -24,6 +24,7 @@ import {
 } from "@chakra-ui/react";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { formatLocalizedDateTime } from "../utils/dateFormatter";
 
 import { fetch as apiFetch } from "service/http";
 import { Outbound, SizeFormatter } from "../utils/outbound";
@@ -268,15 +269,6 @@ const buildOutboundFromWarpRemote = (
 	});
 
 	return outbound;
-};
-
-const formatDate = (value?: string | null): string => {
-	if (!value) return "-";
-	try {
-		return new Date(value).toLocaleString();
-	} catch {
-		return value;
-	}
 };
 
 const formatBytes = (value?: number): string => {
@@ -655,11 +647,11 @@ export const WarpModal: FC<WarpModalProps> = ({
 										/>
 										<InfoItem
 											label={t("pages.xray.warp.registeredAt")}
-											value={formatDate(warpAccount.created_at)}
+									value={formatLocalizedDateTime(warpAccount.created_at)}
 										/>
 										<InfoItem
 											label={t("pages.xray.warp.updatedAt")}
-											value={formatDate(warpAccount.updated_at)}
+									value={formatLocalizedDateTime(warpAccount.updated_at)}
 										/>
 									</SimpleGrid>
 									<HStack spacing={3} flexWrap="wrap">

@@ -45,6 +45,7 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { formatLocalizedDateTime } from "utils/dateFormatter";
 import { fetch as apiFetch } from "service/http";
 import { AppleEmojiText } from "./common/AppleEmojiText";
 import {
@@ -510,12 +511,12 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 												<Td>
 													{item.lastError ? (
 														<Tooltip label={item.lastError}>
-															<Badge colorScheme="red">error</Badge>
+										<Badge colorScheme="red">{t("error")}</Badge>
 														</Tooltip>
 													) : (
 														<Badge colorScheme="green">
 															{item.lastUpdated
-																? new Date(item.lastUpdated * 1000).toLocaleString()
+											? formatLocalizedDateTime(item.lastUpdated * 1000)
 																: t("myaccount.never")}
 														</Badge>
 													)}

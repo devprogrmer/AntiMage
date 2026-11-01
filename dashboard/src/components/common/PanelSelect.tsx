@@ -247,7 +247,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 		ref,
 	) => {
 		const { t, i18n } = useTranslation();
-		const direction = i18n.dir(i18n.language);
+		const direction = i18n.dir(i18n.resolvedLanguage || i18n.language);
 		const isRTL = direction === "rtl";
 		const removeLabel = t("remove");
 		const inputId = useId();

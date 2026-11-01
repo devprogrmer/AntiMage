@@ -158,7 +158,8 @@ export const Filters: FC<FilterProps> = ({
 	);
 	const openAdminDialog = useAdminsStore((state) => state.openAdminDialog);
 	const adminOptions = useAdminsStore((state) => state.adminOptions);
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const [search, setSearch] = useState("");
 	const { userData } = useGetUser();
 	const hasPrivilegedRole =
@@ -389,7 +390,7 @@ export const Filters: FC<FilterProps> = ({
 							onClear={clear}
 							/>
 						{showAdvancedFilters && (
-							<Popover placement="bottom-start">
+							<Popover placement={isRTL ? "bottom-end" : "bottom-start"}>
 								<PopoverTrigger>
 									<Button
 										leftIcon={<FilterIcon />}

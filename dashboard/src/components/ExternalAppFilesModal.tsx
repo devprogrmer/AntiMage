@@ -126,6 +126,7 @@ export const ExternalAppFilesModal = ({
 	onClose,
 }: Props) => {
 	const { t, i18n } = useTranslation();
+	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
 	const { colorMode } = useColorMode();
 	const modalBg = useColorModeValue("white", "gray.900");
 	const toast = useToast();
@@ -379,9 +380,13 @@ export const ExternalAppFilesModal = ({
 										}}
 										height="100%"
 										isLoading={filesQuery.isLoading || fileMutation.isLoading}
-										language={
-											i18n.language.startsWith("fa") ? "fa-IR" : "en-US"
-										}
+						language={
+							activeLanguage.startsWith("fa")
+								? "fa-IR"
+								: activeLanguage.startsWith("ru")
+									? "ru-RU"
+									: "en-US"
+						}
 										layout="list"
 										maxFileSize={32 << 20}
 										onCreateFolder={(name, parent) =>
