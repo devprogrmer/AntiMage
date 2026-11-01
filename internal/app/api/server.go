@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	adminapp "github.com/antimage/antimage/internal/app/admin"
@@ -36,6 +37,7 @@ import (
 
 type Server struct {
 	cfg                  Config
+	apiDocsEnabled       atomic.Bool
 	db                   *sql.DB
 	dialect              string
 	adminRepo            adminapp.Repository
@@ -158,6 +160,7 @@ func New(cfg Config) (*Server, error) {
 		nodeOperationsKick:   make(chan struct{}, 1),
 		recentActionsEnabled: true,
 	}
+	server.apiDocsEnabled.Store(cfg.APIDocsEnabled)
 	server.configRepo = xrayconfig.NewRepository(pool.DB, pool.Dialect, xrayconfig.Options{
 		MutationRecorder: server.recordXrayMutationTx,
 		RollbackMarker:   server.markRecentActionUndoneTx,
@@ -175,6 +178,7 @@ func applyRuntimeSettingsToConfig(cfg *Config, settings settingsapp.RuntimeSetti
 
 func (s *Server) applyRuntimeSettings(settings settingsapp.RuntimeSettings) {
 	applyRuntimeSettingsToConfig(&s.cfg, settings)
+	s.apiDocsEnabled.Store(settings.APIDocsEnabled)
 }
 
 func (s *Server) RuntimeSettings(ctx context.Context) (settingsapp.RuntimeSettings, error) {
