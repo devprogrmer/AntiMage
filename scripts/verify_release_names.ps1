@@ -9,6 +9,7 @@ $patterns = "\brebecca\b|\bRebecca\b|\bREBECCA\b|3x-ui|3X-UI|sanaei|alireza"
 $vpnUiAllowed = @(
     "dashboard/public/statics/locales/en.json",
     "dashboard/public/statics/locales/fa.json",
+    "dashboard/public/statics/locales/ru.json",
     "dashboard/src/components/AntiMageBackupPanel.tsx",
     "dashboard/src/service/settings.ts",
     "dashboard/src/service/settings.test.ts",
