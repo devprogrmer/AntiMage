@@ -119,7 +119,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	const navigate = useNavigate();
 	const dashboardRoot = useHref("/");
 	const { userData } = useGetUser();
-	const currentLanguage = i18n.language || "en";
+	const currentLanguage = i18n.resolvedLanguage || i18n.language || "en";
 	const tutorialsUrl = "/tutorials";
 	const sectionAccess = userData.permissions?.sections;
 	const isFullAccess = userData.role === AdminRole.FullAccess;
@@ -163,7 +163,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	const [hasNewTutorials, setHasNewTutorials] = useState(false);
 
 	const checkTutorialUpdates = useCallback(async () => {
-		const langKey = normalizeTutorialLang(i18n.language);
+		const langKey = normalizeTutorialLang(currentLanguage);
 		try {
 			const response = await fetch(getTutorialManifestUrl(dashboardRoot), {
 				headers: { "Cache-Control": "no-cache" },
@@ -189,7 +189,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			console.error("Failed to check tutorial updates", err);
 			setHasNewTutorials(false);
 		}
-	}, [dashboardRoot, i18n.language]);
+	}, [currentLanguage, dashboardRoot]);
 
 	useEffect(() => {
 		void checkTutorialUpdates();
@@ -411,6 +411,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	return (
 		<Box
 			w={inDrawer ? "full" : collapsed ? "16" : "56"}
+			className="am-panel-sidebar"
 			h={inDrawer ? "100%" : "calc(100vh - 24px)"}
 			maxH={inDrawer ? "100%" : "calc(100vh - 24px)"}
 			bg={sidebaamg}
@@ -447,6 +448,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 				>
 					{!collapsed ? (
 						<HStack
+							className="am-panel-brand"
 							spacing={3}
 							align="center"
 							mb={5}
@@ -474,6 +476,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 						</HStack>
 					) : (
 						<HStack
+							className="am-panel-brand am-panel-brand-collapsed"
 							justify="center"
 							mb={5}
 							borderWidth="1px"
@@ -484,7 +487,11 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 							bg={sidebarPanelBg}
 							py={2}
 						>
-							<Tooltip label="AntiMage" placement="right" hasArrow>
+							<Tooltip
+								label="AntiMage"
+								placement={isRTL ? "left" : "right"}
+								hasArrow
+							>
 								<LogoIcon
 									src={logoUrl}
 									alt="AntiMage"
@@ -536,6 +543,8 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 													hasArrow
 												>
 													<HStack
+													className="am-panel-nav-item"
+													data-active={isActive}
 														spacing={3}
 														px={collapsed ? 2 : 3}
 														py={2}

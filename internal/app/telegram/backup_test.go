@@ -35,11 +35,11 @@ func (f fakeBackupExporter) Export(ctx context.Context, scope string) (backupapp
 	if err != nil {
 		return backupapp.ExportResult{}, err
 	}
-	path := filepath.Join(dir, "backup.rbbackup")
+	path := filepath.Join(dir, "backup.ambackup")
 	if err := os.WriteFile(path, f.content, 0o600); err != nil {
 		return backupapp.ExportResult{}, err
 	}
-	return backupapp.ExportResult{Path: path, Filename: "backup.rbbackup", Scope: scope}, nil
+	return backupapp.ExportResult{Path: path, Filename: "backup.ambackup", Scope: scope}, nil
 }
 
 func TestBackupDeliverySendsDatabaseBackup(t *testing.T) {
@@ -68,7 +68,7 @@ func TestBackupDeliverySendsDatabaseBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.OK || result.Scope != backupapp.ScopeDatabase || result.Filename != "backup.rbbackup" {
+	if !result.OK || result.Scope != backupapp.ScopeDatabase || result.Filename != "backup.ambackup" {
 		t.Fatalf("unexpected delivery result: %#v", result)
 	}
 	if len(methods) != 1 || methods[0] != "sendDocument" {

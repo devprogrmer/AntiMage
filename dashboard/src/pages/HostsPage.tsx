@@ -2,7 +2,7 @@ import { HStack, Icon, Text, VStack } from "@chakra-ui/react";
 import { LinkIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
 import { HostsManager } from "components/HostsManager";
 import { InboundsManager } from "components/InboundsManager";
-import { PageHeader, TabSystem } from "components/ui";
+import { TabSystem } from "components/ui";
 import { fetchInbounds } from "contexts/DashboardContext";
 import { useHosts } from "contexts/HostsContext";
 import useGetUser from "hooks/useGetUser";
@@ -61,7 +61,6 @@ export const HostsPage: FC = () => {
 	if (!canManageHosts) {
 		return (
 			<VStack spacing={4} align="stretch">
-				<PageHeader title={t("header.hostSettings")} />
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
 					{t("hostsPage.noPermission")}
 				</Text>

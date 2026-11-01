@@ -52,7 +52,7 @@ func TestBackupExportRoute(t *testing.T) {
 	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, backupapp.MediaType) {
 		t.Fatalf("unexpected media type: %s", contentType)
 	}
-	if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, ".rbbackup") {
+	if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, ".ambackup") {
 		t.Fatalf("missing backup filename: %s", disposition)
 	}
 	if !tarGzipHasEntry(t, rec.Body.Bytes(), backupapp.ManifestName) || !tarGzipHasEntry(t, rec.Body.Bytes(), backupapp.DatabaseSQLiteName) {
@@ -72,7 +72,7 @@ func TestBackupImportRoute(t *testing.T) {
 	archiveBytes := buildSQLiteBackupArchiveForRouteTest(t)
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", "restore.rbbackup")
+	part, err := writer.CreateFormFile("file", "restore-backup.dat")
 	if err != nil {
 		t.Fatal(err)
 	}

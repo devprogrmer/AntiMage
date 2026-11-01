@@ -1,5 +1,9 @@
-export const normalizeTutorialLang = (lang?: string | null) =>
-	(lang || "en").toLowerCase().startsWith("fa") ? "fa" : "en";
+export const normalizeTutorialLang = (lang?: string | null) => {
+	const normalized = (lang || "en").toLowerCase();
+	if (normalized.startsWith("fa")) return "fa";
+	if (normalized.startsWith("ru")) return "ru";
+	return "en";
+};
 
 const normalizeDashboardRoot = (root: string) => {
 	const normalized = root.replace(/\/+$/, "");
@@ -14,8 +18,9 @@ export const getTutorialsUrl = (
 	page = "",
 ) => {
 	const root = normalizeDashboardRoot(dashboardRoot);
-	const locale = normalizeTutorialLang(lang) === "fa" ? "fa/" : "";
-	return `${root}/${tutorialContentPath}/${locale}docs/${page.replace(/^\/+/, "")}`;
+	const locale = normalizeTutorialLang(lang);
+	const localePath = locale === "en" ? "" : `${locale}/`;
+	return `${root}/${tutorialContentPath}/${localePath}docs/${page.replace(/^\/+/, "")}`;
 };
 
 export const getTutorialManifestUrl = (dashboardRoot: string) =>

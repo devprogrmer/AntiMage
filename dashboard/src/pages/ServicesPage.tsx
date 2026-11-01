@@ -711,7 +711,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 													<HStack spacing={1} flexShrink={0}>
 														<Tooltip label={t("services.moveUp")}>
 															<IconButton
-																aria-label="Move up"
+											aria-label={t("services.moveUp")}
 																size="sm"
 																variant="ghost"
 																icon={<ArrowUpIcon width={16} />}
@@ -721,7 +721,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 														</Tooltip>
 														<Tooltip label={t("services.moveDown")}>
 															<IconButton
-																aria-label="Move down"
+											aria-label={t("services.moveDown")}
 																size="sm"
 																variant="ghost"
 																icon={<ArrowDownIcon width={16} />}
@@ -731,7 +731,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 														</Tooltip>
 														<Tooltip label={t("services.removeHost")}>
 															<IconButton
-																aria-label="Remove"
+											aria-label={t("services.removeHost")}
 																size="sm"
 																variant="ghost"
 																icon={<TrashIcon width={16} />}
@@ -1754,7 +1754,6 @@ const ServicesPage: FC = () => {
 	if (!canManageServices) {
 		return (
 			<VStack spacing={3} align="stretch">
-				<PageHeader title={t("services.title")} />
 				<Text fontSize="sm" color="panel.textMuted">
 					{t("services.noPermission")}
 				</Text>

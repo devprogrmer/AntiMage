@@ -62,7 +62,9 @@ export const UsersFilterBar: FC = () => {
 	const onFilterChange = useDashboard((state) => state.onFilterChange);
 	const onCreateUser = useDashboard((state) => state.onCreateUser);
 	const { t, i18n } = useTranslation();
-	const locale = i18n.language || "en";
+	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
+	const locale = activeLanguage;
+	const isRTL = i18n.dir(activeLanguage) === "rtl";
 	const [search, setSearch] = useState("");
 	const { userData } = useGetUser();
 	const hasPrivilegedRole =
@@ -239,7 +241,7 @@ export const UsersFilterBar: FC = () => {
 				}
 			/>
 
-			<Popover placement="bottom-end">
+			<Popover placement={isRTL ? "bottom-start" : "bottom-end"}>
 				<PopoverTrigger>
 					<Box position="relative" flexShrink={0}>
 						<IconButton

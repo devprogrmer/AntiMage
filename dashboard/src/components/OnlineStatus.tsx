@@ -23,10 +23,10 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 	compact = false,
 }) => {
 	const { t, i18n } = useTranslation();
-	const isRTL = i18n.language === "fa";
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const currentTimeInSeconds = Math.floor(Date.now() / 1000);
 	const unixTime = parseServerTimeToUnix(lastOnline);
-	const marginLeft = withMargin ? "2" : undefined;
+	const marginStart = withMargin ? "2" : undefined;
 
 	const timeDifferenceInSeconds = unixTime
 		? currentTimeInSeconds - unixTime
@@ -38,7 +38,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 				display="inline-flex"
 				fontSize="xs"
 				fontWeight="medium"
-				ml={marginLeft}
+				ms={marginStart}
 				color="gray.600"
 				_dark={{ color: "gray.400" }}
 				as="span"
@@ -56,7 +56,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 				display="inline-flex"
 				fontSize="xs"
 				fontWeight="medium"
-				ml={marginLeft}
+				ms={marginStart}
 				color="gray.600"
 				_dark={{
 					color: "gray.400",
@@ -82,7 +82,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 				display="inline-flex"
 				fontSize="xs"
 				fontWeight="medium"
-				ml={marginLeft}
+				ms={marginStart}
 				color="gray.600"
 				_dark={{
 					color: "gray.400",
@@ -102,7 +102,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 			flexWrap="wrap"
 			fontSize="xs"
 			fontWeight="medium"
-			ml={marginLeft}
+			ms={marginStart}
 			color="gray.600"
 			_dark={{
 				color: "gray.400",

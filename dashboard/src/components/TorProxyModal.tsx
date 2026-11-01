@@ -74,6 +74,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 	onSubmit,
 }) => {
 	const { t, i18n } = useTranslation();
+	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
 	const borderColor = useColorModeValue("gray.200", "whiteAlpha.200");
 	const form = useForm<TorProxyFormValues>({ defaultValues: defaults });
 	const locationsValue = useWatch({ control: form.control, name: "locations" });
@@ -96,8 +97,8 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 	}, [direction, locationsValue, portStep, startPort, tagPrefix]);
 	const duplicateTag = preview.find((item) => existingTags.includes(item.tag))?.tag;
 	const locationOptions = useMemo(
-		() => countrySelectOptions(i18n.language),
-		[i18n.language],
+		() => countrySelectOptions(activeLanguage),
+		[activeLanguage],
 	);
 
 	useEffect(() => {

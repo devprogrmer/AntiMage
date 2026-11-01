@@ -83,7 +83,8 @@ export const QRCodeDialog: FC = () => {
 	const [showConfigQrs, setShowConfigQrs] = useState(false);
 	const touchStartX = useRef<number | null>(null);
 	const suppressNextCopy = useRef(false);
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const qrSize = useBreakpointValue({ base: 220, sm: 260, md: 300 }) ?? 220;
 	const onClose = () => {
 		setQRCode(null);
@@ -320,7 +321,8 @@ export const QRCodeDialog: FC = () => {
 											<IconButton
 												size="sm"
 												position="absolute"
-												left="-2"
+								left={isRTL ? undefined : "-2"}
+								right={isRTL ? "-2" : undefined}
 												top="50%"
 												transform="translateY(-50%)"
 												zIndex={1}
@@ -332,7 +334,7 @@ export const QRCodeDialog: FC = () => {
 													)
 												}
 											>
-												<PrevIcon />
+								{isRTL ? <NextIcon /> : <PrevIcon />}
 											</IconButton>
 											{activeConfig && (
 												<Box
@@ -379,7 +381,8 @@ export const QRCodeDialog: FC = () => {
 											<IconButton
 												size="sm"
 												position="absolute"
-												right="-2"
+								left={isRTL ? "-2" : undefined}
+								right={isRTL ? undefined : "-2"}
 												top="50%"
 												transform="translateY(-50%)"
 												zIndex={1}
@@ -389,7 +392,7 @@ export const QRCodeDialog: FC = () => {
 													setIndex((current) => (current + 1) % configItems.length)
 												}
 											>
-												<NextIcon />
+								{isRTL ? <PrevIcon /> : <NextIcon />}
 											</IconButton>
 										</Box>
 										<Text display="block" textAlign="center" pb={3} mt={1}>

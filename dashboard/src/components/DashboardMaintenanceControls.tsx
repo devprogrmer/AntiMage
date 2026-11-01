@@ -107,7 +107,8 @@ export const DashboardMaintenanceControls = ({
 	channel?: string;
 	version: string;
 }) => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const toast = useToast();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canMaintain =
@@ -346,7 +347,7 @@ export const DashboardMaintenanceControls = ({
 							isOpen={isUpdateMenuOpen}
 							onOpen={() => setUpdateMenuOpen(true)}
 							onClose={() => setUpdateMenuOpen(false)}
-							placement="bottom-end"
+							placement={isRTL ? "bottom-start" : "bottom-end"}
 							closeOnBlur={!operation?.running}
 						>
 							<PopoverTrigger>
@@ -359,7 +360,7 @@ export const DashboardMaintenanceControls = ({
 									w="full"
 								>
 									{update?.available
-										? "update avable!"
+										? t("nodes.nodeUpdateAvailable")
 										: t("settings.panel.updateAction")}
 								</Button>
 							</PopoverTrigger>

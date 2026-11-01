@@ -97,6 +97,7 @@ import {
 	DEFAULT_SEARCH_MATCH_OPTIONS,
 	matchesAnySearch,
 } from "utils/searchMatch";
+import { formatLocalizedDateTime } from "utils/dateFormatter";
 import {
 	integrationTabKeys,
 	parseSettingsHash,
@@ -1583,7 +1584,7 @@ export const IntegrationSettingsPage = () => {
 				cell: (certificate) => (
 					<Text fontSize="sm">
 						{certificate.not_after
-							? new Date(certificate.not_after).toLocaleString()
+							? formatLocalizedDateTime(certificate.not_after)
 							: t("settings.subscriptions.never")}
 					</Text>
 				),
@@ -1598,13 +1599,13 @@ export const IntegrationSettingsPage = () => {
 					<Stack spacing={0}>
 						<Text fontSize="sm">
 							{certificate.last_renewed_at
-								? new Date(certificate.last_renewed_at).toLocaleString()
+								? formatLocalizedDateTime(certificate.last_renewed_at)
 								: t("settings.subscriptions.never")}
 						</Text>
 						<Text fontSize="xs" color="panel.textMuted">
 							{t("settings.subscriptions.lastIssued")}:{" "}
 							{certificate.last_issued_at
-								? new Date(certificate.last_issued_at).toLocaleString()
+								? formatLocalizedDateTime(certificate.last_issued_at)
 								: t("settings.subscriptions.never")}
 						</Text>
 					</Stack>
@@ -1781,7 +1782,6 @@ export const IntegrationSettingsPage = () => {
 	if (!canManageIntegrations) {
 		return (
 			<VStack spacing={4} align="stretch">
-				<Heading size="lg">{t("header.integrationSettings")}</Heading>
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
 					{t("integrations.noPermission")}
 				</Text>
@@ -2772,7 +2772,7 @@ export const IntegrationSettingsPage = () => {
 											{t("settings.subscriptions.profileTitle")}
 										</FormLabel>
 										<Input
-											placeholder="Subscription"
+											placeholder={t("settings.subscriptions.profileTitle")}
 											{...subscriptionRegister("subscription_profile_title")}
 										/>
 										<FormHelperText>

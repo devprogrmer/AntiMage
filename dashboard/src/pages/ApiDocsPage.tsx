@@ -45,56 +45,62 @@ export const ApiDocsPage = () => {
 
 	if (status === "checking") {
 		return (
-			<Flex minH="50vh" align="center" justify="center">
-				<VStack spacing={3}>
-					<Spinner />
-					<Text color={mutedColor}>{t("apiDocs.checking")}</Text>
-				</VStack>
-			</Flex>
+			<VStack spacing={4} align="stretch">
+				<Flex minH="50vh" align="center" justify="center">
+					<VStack spacing={3}>
+						<Spinner />
+						<Text color={mutedColor}>{t("apiDocs.checking")}</Text>
+					</VStack>
+				</Flex>
+			</VStack>
 		);
 	}
 
 	if (status === "disabled") {
 		return (
-			<VStack
-				align="start"
-				spacing={4}
-				borderWidth="1px"
-				borderColor={borderColor}
-				borderRadius="md"
-				bg={panelBg}
-				p={{ base: 4, md: 6 }}
-			>
-				<Heading size="md">{t("apiDocs.disabledTitle")}</Heading>
-				<Text color={mutedColor}>
-					{t("apiDocs.disabledDescription")}
-				</Text>
-				<Button as="a" href="/docs/" variant="outline">
-					{t("apiDocs.openRoute")}
-				</Button>
+			<VStack spacing={4} align="stretch">
+				<VStack
+					align="start"
+					spacing={4}
+					borderWidth="1px"
+					borderColor={borderColor}
+					borderRadius="md"
+					bg={panelBg}
+					p={{ base: 4, md: 6 }}
+				>
+					<Heading size="md">{t("apiDocs.disabledTitle")}</Heading>
+					<Text color={mutedColor}>
+						{t("apiDocs.disabledDescription")}
+					</Text>
+					<Button as="a" href="/docs/" variant="outline">
+						{t("apiDocs.openRoute")}
+					</Button>
+				</VStack>
 			</VStack>
 		);
 	}
 
 	return (
-		<Box
-			borderWidth="1px"
-			borderColor={borderColor}
-			borderRadius="md"
-			bg={panelBg}
-			overflow="hidden"
-			minH={{ base: "calc(100vh - 144px)", md: "calc(100vh - 116px)" }}
-		>
+		<VStack spacing={4} align="stretch">
 			<Box
-				as="iframe"
-				title={t("apiDocs.menu")}
-				src="/docs/"
-				w="100%"
-				h={{ base: "calc(100vh - 146px)", md: "calc(100vh - 118px)" }}
-				minH="720px"
-				border="0"
-				bg={frameBg}
-			/>
-		</Box>
+				borderWidth="1px"
+				borderColor={borderColor}
+				borderRadius="md"
+				bg={panelBg}
+				overflow="hidden"
+				minH={{ base: "calc(100vh - 296px)", md: "calc(100vh - 270px)" }}
+			>
+				<Box
+					as="iframe"
+					title={t("apiDocs.menu")}
+					src="/docs/"
+					w="100%"
+					h={{ base: "calc(100vh - 298px)", md: "calc(100vh - 272px)" }}
+					minH={{ base: "460px", md: "500px" }}
+					border="0"
+					bg={frameBg}
+				/>
+			</Box>
+		</VStack>
 	);
 };

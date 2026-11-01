@@ -9,7 +9,13 @@ Object.assign(globalThis, { React });
 
 vi.mock("react-i18next", () => ({
 	useTranslation: () => ({
-		t: (key: string) => key,
+		t: (key: string, options?: { protocol?: string }) => {
+			const translations: Record<string, string> = {
+				"finalMask.tcpMasks": "TCP connection masks",
+				"finalMask.maskInactive": `No ${options?.protocol ?? ""} mask is active`,
+			};
+			return translations[key] ?? key;
+		},
 		i18n: { dir: () => "ltr", language: "en" },
 	}),
 }));

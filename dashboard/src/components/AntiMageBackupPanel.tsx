@@ -46,7 +46,7 @@ import { FileDropzone } from "./common/FileDropzone";
 
 const buildBackupFilename = (scope: AntiMageBackupScope) => {
 	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-	return `antimage-${scope}-${timestamp}.rbbackup`;
+	return `antimage-${scope}-${timestamp}.ambackup`;
 };
 
 type BackupDialog = "import" | "export" | "vpn-ui" | null;
@@ -58,7 +58,8 @@ export const DashboardBackupControls = ({
 	isBinaryRuntime: boolean;
 	runtimeLoading: boolean;
 }) => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const toast = useToast();
 	const borderColor = "panel.border";
 	const [isMenuOpen, setMenuOpen] = useState(false);
@@ -194,7 +195,7 @@ export const DashboardBackupControls = ({
 				isOpen={isMenuOpen}
 				onOpen={() => setMenuOpen(true)}
 				onClose={() => setMenuOpen(false)}
-				placement="bottom-end"
+				placement={isRTL ? "bottom-start" : "bottom-end"}
 			>
 				<PopoverTrigger>
 					<Button
@@ -281,7 +282,6 @@ export const DashboardBackupControls = ({
 							<FormControl isRequired>
 								<FormLabel>{t("settings.backup.file")}</FormLabel>
 								<FileDropzone
-									accept=".rbbackup,application/vnd.antimage.backup,application/gzip"
 									isDisabled={
 										!backupActionsAvailable || importMutation.isLoading
 									}

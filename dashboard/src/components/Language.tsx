@@ -40,11 +40,12 @@ export const Language: FC<HeaderProps> = ({
 	portalContainer,
 	triggerVariant = "outline",
 }) => {
-	const { i18n } = useTranslation();
+	const { i18n, t } = useTranslation();
 	const menuBg = useColorModeValue("surface.light", "surface.dark");
 	const hoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
 	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
 	const textColor = useColorModeValue("gray.800", "gray.100");
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 
 	const changeLanguage = (lang: string) => {
 		i18n.changeLanguage(lang);
@@ -53,7 +54,6 @@ export const Language: FC<HeaderProps> = ({
 	const items = [
 		{ code: "en", label: "English", flag: "US" },
 		{ code: "fa", label: "پارسی", flag: "IR" },
-		{ code: "zh-cn", label: "中文", flag: "CN" },
 		{ code: "ru", label: "Русский", flag: "RU" },
 	];
 
@@ -113,7 +113,9 @@ export const Language: FC<HeaderProps> = ({
 							)}
 							<Text>{label}</Text>
 						</HStack>
-						{i18n.language === code && <CheckIconChakra />}
+						{(i18n.resolvedLanguage || i18n.language).startsWith(code) && (
+							<CheckIconChakra />
+						)}
 					</HStack>
 				</MenuItem>
 			))}
@@ -122,7 +124,7 @@ export const Language: FC<HeaderProps> = ({
 
 	return (
 		<Menu
-			placement="bottom-end"
+			placement={isRTL ? "bottom-start" : "bottom-end"}
 			strategy="fixed"
 			isLazy
 			autoSelect={false}
@@ -137,6 +139,7 @@ export const Language: FC<HeaderProps> = ({
 				icon={<LangIcon />}
 				position="relative"
 				type="button"
+				aria-label={t("header.language", "Language")}
 			/>
 			{portalContainer ? (
 				<Portal containerRef={portalContainer}>{menuList}</Portal>

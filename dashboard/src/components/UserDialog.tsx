@@ -655,7 +655,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const toast = useToast();
 
 	const { t, i18n } = useTranslation();
-	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const isMobileDialog = useBreakpointValue({ base: true, md: false }) ?? false;
 	const DATA_UNIT = "GB";
 	const DAYS_UNIT = t("userDialog.days");

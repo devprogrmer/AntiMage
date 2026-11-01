@@ -1,7 +1,8 @@
 import fa from "date-fns/locale/fa-IR";
 import ru from "date-fns/locale/ru";
-import zh from "date-fns/locale/zh-CN";
 import dayjs from "dayjs";
+import "dayjs/locale/fa";
+import "dayjs/locale/ru";
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import HttpApi from "i18next-http-backend";
@@ -10,6 +11,9 @@ import { initReactI18next } from "react-i18next";
 
 const joinPaths = (paths: string[]) =>
 	paths.join("/").replace(/\/{2,}/g, "/");
+
+const getBaseLanguage = (language?: string) =>
+	(language || "en").split(/[-_]/, 1)[0] || "en";
 
 declare module "i18next" {
 	interface CustomTypeOptions {
@@ -26,6 +30,8 @@ i18n
 			debug: import.meta.env.NODE_ENV === "development",
 			returnNull: false,
 			fallbackLng: "en",
+			supportedLngs: ["en", "fa", "ru"],
+			nonExplicitSupportedLngs: true,
 			interpolation: {
 				escapeValue: false,
 			},
@@ -45,7 +51,7 @@ i18n
 	},
 	(err, _t) => {
 		if (err) console.error("i18next initialization error:", err);
-		dayjs.locale(i18n.language);
+		dayjs.locale(getBaseLanguage(i18n.resolvedLanguage || i18n.language));
 	},
 );
 
@@ -58,14 +64,13 @@ const applyDocumentLanguage = (language = "en") => {
 };
 
 i18n.on("languageChanged", (lng) => {
-	dayjs.locale(lng);
+	dayjs.locale(getBaseLanguage(lng));
 	applyDocumentLanguage(lng);
 });
 
 applyDocumentLanguage(i18n.language || "en");
 
 // DataPicker
-registerLocale("zh-cn", zh);
 registerLocale("ru", ru);
 registerLocale("fa", fa);
 

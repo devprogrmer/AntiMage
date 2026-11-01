@@ -512,8 +512,9 @@ export const UsersTable: FC<UsersTableProps> = ({
 
 	const { t, i18n } = useTranslation();
 	const isDesktop = useBreakpointValue({ base: false, md: true }) ?? false;
-	const isRTL = i18n.dir(i18n.language) === "rtl";
-	const locale = i18n.language || "en";
+	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
+	const isRTL = i18n.dir(activeLanguage) === "rtl";
+	const locale = activeLanguage;
 	const toast = useToast();
 	// One toast shape for every action in this section: top entrance, closable.
 	const notify = useCallback(
@@ -2043,7 +2044,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 										{ipDialog?.mode === "devices" && record.first_seen_at && (
 											<Text mt={1} fontSize="xs" color="panel.textMuted" dir="ltr">
 												{t("usersTable.firstSeen")}: {dayjs(record.first_seen_at).format("YYYY-MM-DD HH:mm")}
-												{" · "}{record.online ? t("online") : t("offline")}
+								{" · "}{record.online ? t("online") : t("usersTable.offline")}
 											</Text>
 										)}
 										{ipDialog?.mode === "devices" && record.device_id && ["wg", "wireguard", "awg", "amneziawg"].includes(record.protocol) && (

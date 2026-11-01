@@ -33,8 +33,9 @@ const defaultStatus: PHPMyAdminStatus = {
 };
 
 export const PhpMyAdminPage = () => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
 	const { colorMode } = useColorMode();
+	const activeLanguage = i18n.resolvedLanguage || i18n.language || "en";
 	const { userData } = useGetUser();
 	const isFullAccess = userData.role === AdminRole.FullAccess;
 	const [preparedTheme, setPreparedTheme] = useState<string | null>(null);
@@ -52,18 +53,19 @@ export const PhpMyAdminPage = () => {
 	const status = statusQuery.data ?? defaultStatus;
 
 	const phpMyAdminTheme = colorMode === "dark" ? "blueberry" : "";
+	const embedKey = `${phpMyAdminTheme || "default"}:${activeLanguage}`;
 	const embedQuery = useQuery(
-		["phpmyadmin-embed-session", phpMyAdminTheme || "default"],
-		() => getPHPMyAdminEmbedHTML(phpMyAdminTheme || undefined),
+		["phpmyadmin-embed-session", embedKey],
+		() => getPHPMyAdminEmbedHTML(phpMyAdminTheme || undefined, activeLanguage),
 		{
 			enabled: Boolean(status.enabled && status.supported && isFullAccess),
 			refetchOnWindowFocus: false,
 			retry: false,
-			onSuccess: () => setPreparedTheme(phpMyAdminTheme || "default"),
+			onSuccess: () => setPreparedTheme(embedKey),
 		},
 	);
 	const frameReady =
-		preparedTheme === (phpMyAdminTheme || "default") && embedQuery.isSuccess;
+		preparedTheme === embedKey && embedQuery.isSuccess;
 
 	return (
 		<Stack spacing={4}>
@@ -73,7 +75,7 @@ export const PhpMyAdminPage = () => {
 				borderColor={borderColor}
 				borderRadius="md"
 				overflow="hidden"
-				minH={{ base: "calc(100vh - 128px)", md: "calc(100vh - 112px)" }}
+				minH={{ base: "calc(100vh - 188px)", md: "calc(100vh - 172px)" }}
 			>
 				{statusQuery.isLoading ? (
 					<Flex minH="520px" align="center" justify="center">
@@ -126,8 +128,8 @@ export const PhpMyAdminPage = () => {
 						srcDoc={embedQuery.data}
 						sandbox="allow-downloads allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
 						w="100%"
-						h={{ base: "calc(100vh - 128px)", md: "calc(100vh - 112px)" }}
-						minH={{ base: "520px", md: "680px" }}
+						h={{ base: "calc(100vh - 190px)", md: "calc(100vh - 174px)" }}
+						minH={{ base: "460px", md: "560px" }}
 						border="0"
 						bg={frameBg}
 					/>

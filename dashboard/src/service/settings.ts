@@ -603,8 +603,13 @@ export const saveExternalAppPHPConfig = async (payload: {
 
 export const getPHPMyAdminEmbedHTML = async (
 	theme?: string,
+	language?: string,
 ): Promise<string> => {
-	const search = theme ? `?theme=${encodeURIComponent(theme)}` : "";
+	const params = new URLSearchParams();
+	if (theme) params.set("theme", theme);
+	if (language) params.set("lang", language);
+	const query = params.toString();
+	const search = query ? `?${query}` : "";
 	const response = await fetch(
 		`${apiBaseURL}/settings/phpmyadmin/embed-html${search}`,
 		{

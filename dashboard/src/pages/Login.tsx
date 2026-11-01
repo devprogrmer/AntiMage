@@ -221,7 +221,8 @@ const applyLoginThemeMode = (theme: LoginThemeMode) => {
 };
 
 const LoginThemeMenu: FC = () => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const { colorMode, setColorMode } = useColorMode();
 	const activeTheme = colorMode === "light" ? "light" : "dark";
 	const menuBg = useColorModeValue("panel.surface", "panel.surface");
@@ -244,7 +245,11 @@ const LoginThemeMenu: FC = () => {
 	];
 
 	return (
-		<Menu placement="bottom-end" strategy="fixed" autoSelect={false}>
+		<Menu
+			placement={isRTL ? "bottom-start" : "bottom-end"}
+			strategy="fixed"
+		autoSelect={false}
+		>
 			<MenuButton
 				as={IconButton}
 				aria-label={t("header.theme")}
@@ -290,7 +295,7 @@ export const Login: FC = () => {
 	const [challengeLoading, setChallengeLoading] = useState(false);
 	const navigate = useNavigate();
 	const { t, i18n } = useTranslation();
-	const dir = i18n.language === "fa" ? "rtl" : "ltr";
+	const dir = i18n.dir(i18n.resolvedLanguage || i18n.language);
 	const pageBg = useColorModeValue(
 		"var(--am-panel-main)",
 		"var(--am-panel-main)",
@@ -387,7 +392,7 @@ export const Login: FC = () => {
 				completeLogin();
 			}
 		} catch (err: any) {
-			setError(err.response?._data?.detail || "Login failed");
+			setError(err.response?._data?.detail || t("login.failed"));
 		}
 	};
 
@@ -398,7 +403,7 @@ export const Login: FC = () => {
 			await verify2FA(otp);
 			completeLogin();
 		} catch (err: any) {
-			setError(err.response?._data?.detail || "Invalid authentication code");
+			setError(err.response?._data?.detail || t("login.invalidAuthenticationCode"));
 		} finally {
 			setChallengeLoading(false);
 		}
@@ -411,7 +416,7 @@ export const Login: FC = () => {
 			await confirm2FASetup(otp);
 			completeLogin();
 		} catch (err: any) {
-			setError(err.response?._data?.detail || "Invalid authentication code");
+			setError(err.response?._data?.detail || t("login.invalidAuthenticationCode"));
 		} finally {
 			setChallengeLoading(false);
 		}
@@ -504,17 +509,17 @@ export const Login: FC = () => {
 							fontWeight="800"
 							letterSpacing="0.18em"
 						>
-							CONTROL PLANE
+							{t("login.controlPlane")}
 						</Text>
 					</VStack>
 				</HStack>
 
 				<Box borderInlineStartWidth="2px" borderColor={accentColor} ps={7}>
 					<Text color={textColor} fontSize="2xl" fontWeight="700" lineHeight="1.25" maxW="460px">
-						Private infrastructure, under your control.
+					{t("login.heroTitle")}
 					</Text>
 					<Text color={mutedColor} fontSize="md" lineHeight="1.8" mt={4} maxW="450px">
-						Manage access, nodes, services, and traffic from one focused operator console.
+					{t("login.heroDescription")}
 					</Text>
 				</Box>
 
@@ -577,7 +582,7 @@ export const Login: FC = () => {
 									AntiMage
 								</Text>
 								<Text color={signalColor} fontSize="9px" fontWeight="800" letterSpacing="0.12em">
-									ADMIN ACCESS
+									{t("login.adminAccess")}
 								</Text>
 							</VStack>
 						</HStack>

@@ -672,7 +672,11 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 							<Text fontWeight="semibold">
 								{t("services.adminUsageTrend")}
 							</Text>
-							<InfoIcon color="gray.500" aria-label="info" cursor="help" />
+							<InfoIcon
+								color="gray.500"
+								aria-label={t("a11y.info")}
+								cursor="help"
+							/>
 						</HStack>
 					</Tooltip>
 				}

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { PanelSelect, type PanelSelectOption } from "./PanelSelect";
 
 export type SearchableTagSelectOption =
@@ -43,29 +44,32 @@ const normalizeOption = (
 };
 
 export const SearchableTagSelect = ({
-	emptyText = "No options found",
+	emptyText,
 	isDisabled = false,
 	mode = "single",
 	onChange,
 	options,
 	placeholder,
 	rightElement,
-	searchPlaceholder = "Search",
+	searchPlaceholder,
 	size = "sm",
 	value,
 	width,
-}: SearchableTagSelectProps) => (
-	<PanelSelect
-		mode={mode}
-		value={value}
-		options={options.map(normalizeOption)}
-		placeholder={placeholder}
-		rightElement={rightElement}
-		searchPlaceholder={searchPlaceholder}
-		emptyText={emptyText}
-		isDisabled={isDisabled}
-		size={size}
-		width={width}
-		onValueChange={onChange}
-	/>
-);
+}: SearchableTagSelectProps) => {
+	const { t } = useTranslation();
+	return (
+		<PanelSelect
+			mode={mode}
+			value={value}
+			options={options.map(normalizeOption)}
+			placeholder={placeholder}
+			rightElement={rightElement}
+			searchPlaceholder={searchPlaceholder ?? t("search")}
+			emptyText={emptyText ?? t("hostsDialog.noAutocompleteOptions")}
+			isDisabled={isDisabled}
+			size={size}
+			width={width}
+			onValueChange={onChange}
+		/>
+	);
+};

@@ -8,6 +8,6 @@
 		<script>location.replace("docs/" + location.search + location.hash);</script>
 	</head>
 	<body>
-		<a href="docs/">{{ if eq .Lang "fa" }}باز کردن راهنما{{ else }}Open tutorials{{ end }}</a>
+		<a href="docs/">{{ if eq .Lang "fa" }}باز کردن راهنما{{ else if eq .Lang "ru" }}Открыть руководства{{ else }}Open tutorials{{ end }}</a>
 	</body>
 </html>
