@@ -778,7 +778,7 @@
 	"settings.telegram.events.nodeErrors": "节点错误日志",
 	"settings.telegram.events.nodeErrorsHint": "当系统记录节点错误时发送通知。",
 	"settings.save": "Save Settings",
-	"settings.savedSuccess": "Telegram settings updated.",
+	"settings.savedSuccess": "设置已成功保存。",
 	"settings.tabs.comingSoon": "Coming Soon",
 	"settings.subscriptions.placeholdersEnabled": "显示无效订阅的替代消息",
 	"settings.subscriptions.placeholdersHint": "对已过期、流量用尽或已停用的用户隐藏真实连接信息。",
