@@ -1239,13 +1239,12 @@ get_node_binary_dev_artifact_metadata() {
     release_asset_name="antimage-node-dev-linux-${binary_arch}"
     manifest_url="https://raw.githubusercontent.com/${ANTIMAGE_NODE_RELEASE_REPO}/${ANTIMAGE_NODE_BINARY_DEV_MANIFEST_BRANCH}/dev-builds.json"
     if manifest_payload=$(curl -fsSL "$manifest_url" 2>/dev/null); then
-        manifest_tag=$(jq -r '.latest // empty' <<<"$manifest_payload")
-        if [[ "$manifest_tag" =~ ^dev-[0-9a-fA-F]{7}$ ]]; then
+        if manifest_tag=$(jq -r '.latest // empty' <<<"$manifest_payload" 2>/dev/null) && [[ "$manifest_tag" =~ ^dev-[0-9a-fA-F]{7}$ ]]; then
             manifest_asset_name=$(jq -r --arg tag "$manifest_tag" --arg key "node-linux-${binary_arch}" '
                 .builds[]?
                 | select(.tag == $tag and .branch == "dev")
                 | .assets[$key].name // empty
-            ' <<<"$manifest_payload" | head -n 1)
+            ' <<<"$manifest_payload" 2>/dev/null | head -n 1)
             if [ "$manifest_asset_name" = "antimage-node-${manifest_tag}-linux-${binary_arch}" ]; then
                 printf '%s|%s\n' "$manifest_tag" "https://github.com/${ANTIMAGE_NODE_RELEASE_REPO}/releases/download/${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG}/${manifest_asset_name}"
                 return 0
