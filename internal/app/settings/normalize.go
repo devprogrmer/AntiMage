@@ -257,6 +257,15 @@ func rawIntList(raw json.RawMessage) ([]int, error) {
 }
 
 func applySubscriptionDefaults(settings *SubscriptionSettings) {
+	if settings.SubscriptionPlaceholderExpiredRemark == "" {
+		settings.SubscriptionPlaceholderExpiredRemark = "Subscription expired"
+	}
+	if settings.SubscriptionPlaceholderLimitedRemark == "" {
+		settings.SubscriptionPlaceholderLimitedRemark = "Traffic limit reached"
+	}
+	if settings.SubscriptionPlaceholderDisabledRemark == "" {
+		settings.SubscriptionPlaceholderDisabledRemark = "Subscription disabled"
+	}
 	if settings.SubscriptionProfileTitle == "" {
 		settings.SubscriptionProfileTitle = defaultSubscriptionProfileTitle
 	}

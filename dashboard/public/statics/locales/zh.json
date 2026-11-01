@@ -779,5 +779,11 @@
 	"settings.telegram.events.nodeErrorsHint": "当系统记录节点错误时发送通知。",
 	"settings.save": "Save Settings",
 	"settings.savedSuccess": "Telegram settings updated.",
-	"settings.tabs.comingSoon": "Coming Soon"
+	"settings.tabs.comingSoon": "Coming Soon",
+	"settings.subscriptions.placeholdersEnabled": "显示无效订阅的替代消息",
+	"settings.subscriptions.placeholdersHint": "对已过期、流量用尽或已停用的用户隐藏真实连接信息。",
+	"settings.subscriptions.placeholdersVariables": "可以在消息中使用以下变量：",
+	"settings.subscriptions.expiredRemark": "订阅已过期消息",
+	"settings.subscriptions.limitedRemark": "流量用尽消息",
+	"settings.subscriptions.disabledRemark": "订阅已停用消息"
 }

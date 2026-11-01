@@ -669,7 +669,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 	const { t, i18n } = useTranslation();
 	useEffect(() => {
-		setNotificationTemplate(defaultUserNotificationTemplate(i18n.language));
+		if (editingUser?.username) {
+			setNotificationTemplate(defaultUserNotificationTemplate(i18n.language));
+		}
 	}, [editingUser?.username, i18n.language]);
 
 	const sendUserNotification = async () => {

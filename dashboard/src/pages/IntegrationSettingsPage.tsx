@@ -585,6 +585,10 @@ const buildSubscriptionDefaults = (
 	subscription_path: settings?.subscription_path ?? "sub",
 	subscription_aliases: settings?.subscription_aliases ?? [],
 	subscription_ports: settings?.subscription_ports ?? [],
+	subscription_placeholder_enabled: settings?.subscription_placeholder_enabled ?? false,
+	subscription_placeholder_expired_remark: settings?.subscription_placeholder_expired_remark ?? "Subscription expired",
+	subscription_placeholder_limited_remark: settings?.subscription_placeholder_limited_remark ?? "Traffic limit reached",
+	subscription_placeholder_disabled_remark: settings?.subscription_placeholder_disabled_remark ?? "Subscription disabled",
 	subscription_aliases_text: (settings?.subscription_aliases ?? []).join("\n"),
 	subscription_ports_text: formatSubscriptionPorts(
 		settings?.subscription_ports ?? [],
@@ -734,6 +738,10 @@ const buildSubscriptionPayload = (
 	subscription_ports: parseSubscriptionPortsInput(
 		values.subscription_ports_text || "",
 	),
+	subscription_placeholder_enabled: values.subscription_placeholder_enabled,
+	subscription_placeholder_expired_remark: values.subscription_placeholder_expired_remark.trim(),
+	subscription_placeholder_limited_remark: values.subscription_placeholder_limited_remark.trim(),
+	subscription_placeholder_disabled_remark: values.subscription_placeholder_disabled_remark.trim(),
 });
 
 const buildAdminSubscriptionPayload = (
@@ -2803,6 +2811,31 @@ export const IntegrationSettingsPage = () => {
 											{t("settings.subscriptions.updateIntervalHint")}
 										</FormHelperText>
 									</FormControl>
+										<FormControl>
+											<FormLabel>{t("settings.subscriptions.placeholdersEnabled")}</FormLabel>
+											<Controller
+												control={subscriptionControl}
+												name="subscription_placeholder_enabled"
+												render={({ field }) => (
+													<Switch isChecked={field.value} onChange={field.onChange} />
+												)}
+											/>
+											<FormHelperText>{t("settings.subscriptions.placeholdersHint")}</FormHelperText>
+											<FormHelperText>{t("settings.subscriptions.placeholdersVariables")}</FormHelperText>
+											<Text fontSize="xs" dir="ltr">{"{USERNAME} · {STATUS_TEXT} · {DATA_USAGE} · {DATA_LIMIT} · {EXPIRE_DATE}"}</Text>
+										</FormControl>
+										<FormControl>
+											<FormLabel>{t("settings.subscriptions.expiredRemark")}</FormLabel>
+											<Input {...subscriptionRegister("subscription_placeholder_expired_remark")} />
+										</FormControl>
+										<FormControl>
+											<FormLabel>{t("settings.subscriptions.limitedRemark")}</FormLabel>
+											<Input {...subscriptionRegister("subscription_placeholder_limited_remark")} />
+										</FormControl>
+										<FormControl>
+											<FormLabel>{t("settings.subscriptions.disabledRemark")}</FormLabel>
+											<Input {...subscriptionRegister("subscription_placeholder_disabled_remark")} />
+										</FormControl>
 									<FormControl>
 										<FormLabel>
 											{t("settings.subscriptions.subscriptionPageTemplate")}

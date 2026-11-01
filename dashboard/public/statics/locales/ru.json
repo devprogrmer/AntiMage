@@ -3694,5 +3694,11 @@
 	"finalMask.typeDescriptions.xicmp": "Передавайте UDP-трафик через узлы ICMP.",
 	"finalMask.typeDescriptions.realm": "Маршрутизируйте UDP-трафик через узел Realm.",
 	"ui.inbound.generate": "Создать",
-	"common.custom": "пользовательский"
+	"common.custom": "пользовательский",
+	"settings.subscriptions.placeholdersEnabled": "Показывать заменяющие сообщения в неактивных подписках",
+	"settings.subscriptions.placeholdersHint": "Скрывать реальные данные подключения для истёкших, ограниченных или отключённых пользователей.",
+	"settings.subscriptions.placeholdersVariables": "В сообщении можно использовать следующие значения:",
+	"settings.subscriptions.expiredRemark": "Сообщение об истёкшей подписке",
+	"settings.subscriptions.limitedRemark": "Сообщение об исчерпанном трафике",
+	"settings.subscriptions.disabledRemark": "Сообщение об отключённой подписке"
 }
