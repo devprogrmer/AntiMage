@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	settingsapp "github.com/antimage/antimage/internal/app/settings"
 )
 
 func TestRoutesMatchProtectedGroups(t *testing.T) {
@@ -59,7 +61,9 @@ func TestAdminTokenRouteIsNotCapturedByAdminWildcard(t *testing.T) {
 }
 
 func TestDocsRoutes(t *testing.T) {
-	handler := (&Server{cfg: Config{APIDocsEnabled: true}}).Handler()
+	server := &Server{cfg: Config{APIDocsEnabled: true}}
+	server.apiDocsEnabled.Store(true)
+	handler := server.Handler()
 
 	t.Run("openapi json", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
@@ -113,6 +117,30 @@ func TestDocsRoutesDisabledByDefault(t *testing.T) {
 				t.Fatalf("expected legacy docs redirect, got status %d location %q", rec.Code, rec.Header().Get("Location"))
 			}
 		})
+	}
+}
+
+func TestOpenAPIDocsSettingChangesWithoutRebuildingHandler(t *testing.T) {
+	server := &Server{}
+	handler := server.Handler()
+	request := func() *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/openapi.json", nil))
+		return rec
+	}
+
+	if rec := request(); rec.Code != http.StatusNotFound {
+		t.Fatalf("expected docs to start disabled, got %d", rec.Code)
+	}
+
+	server.applyRuntimeSettings(settingsapp.RuntimeSettings{APIDocsEnabled: true})
+	if rec := request(); rec.Code != http.StatusOK {
+		t.Fatalf("expected docs to become enabled after runtime setting update, got %d body %q", rec.Code, rec.Body.String())
+	}
+
+	server.applyRuntimeSettings(settingsapp.RuntimeSettings{APIDocsEnabled: false})
+	if rec := request(); rec.Code != http.StatusNotFound {
+		t.Fatalf("expected docs to become disabled after runtime setting update, got %d", rec.Code)
 	}
 }
 
