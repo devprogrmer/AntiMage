@@ -390,6 +390,7 @@ jobs:
                 ;;
               antimage-node-linux-*)
                 arch="${name#antimage-node-linux-}"
+                cp "$asset" "dev-upload-assets/antimage-node-dev-${GITHUB_SHA::7}-linux-${arch}"
                 cp "$asset" "dev-upload-assets/antimage-node-dev-linux-${arch}"
                 ;;
             esac
@@ -459,7 +460,12 @@ jobs:
                       ($name | capture("^antimage-(?<platform>(linux|windows)-[A-Za-z0-9_]+)-dev-[0-9a-fA-F]+(\\.tar\\.gz|\\.zip)$")) as $match
                       | .[$match.platform] = {name: $name, url: ($download_base + "/" + $name)}
                     else
-                      .
+                      if ($name | test("^antimage-node-(?<tag>dev-[0-9a-fA-F]+)-linux-(?<arch>[A-Za-z0-9_]+)$")) then
+                        ($name | capture("^antimage-node-(?<tag>dev-[0-9a-fA-F]+)-linux-(?<arch>[A-Za-z0-9_]+)$")) as $match
+                        | .["node-linux-" + $match.arch] = {name: $name, url: ($download_base + "/" + $name)}
+                      else
+                        .
+                      end
                     end);
               def legacy_builds:
                 if (.latest? | type) == "object" then
