@@ -50,12 +50,18 @@ func TestPrepareWireGuardInboundDefaults(t *testing.T) {
 	if prepared.SourceCIDR != "10.69.0.0/16" {
 		t.Fatalf("source CIDR = %q", prepared.SourceCIDR)
 	}
+	if prepared.MTU != 0 {
+		t.Fatalf("unset MTU must stay unset, got %d", prepared.MTU)
+	}
 
 	raw, err := os.ReadFile(prepared.ConfigPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(raw)
+	if strings.Contains(text, "MTU =") {
+		t.Fatalf("unset MTU must be omitted from node config:\n%s", text)
+	}
 	for _, want := range []string{
 		"[Interface]",
 		"PrivateKey = " + wireGuardTestKey(1),
@@ -677,3 +683,4 @@ func TestWireGuardRuntimeStateUsesGeneratedNameForLegacyManagedState(
 		t.Fatalf("generated legacy interface %q classified as explicit", name)
 	}
 }
+
