@@ -19,12 +19,35 @@ for SCRIPT in "$ROOT/antimage-node.sh" "$ROOT/antimage-node-binary.sh"; do
     ANTIMAGE_NODE_RELEASE_REPO="devprogrmer/AntiMage"
     ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG="dev-builds"
     ANTIMAGE_NODE_BINARY_DEV_BRANCH="dev"
-    curl() { return 22; }
+    ANTIMAGE_NODE_BINARY_DEV_MANIFEST_BRANCH="dev-build-manifest"
+    MANIFEST_RESPONSE='{"latest":"dev-febe4c7","builds":[{"tag":"dev-febe4c7","branch":"dev","sha":"febe4c77e1d45578864cfd9d4df10a27fbd37133","assets":{"node-linux-amd64":{"name":"antimage-node-dev-febe4c7-linux-amd64","url":"https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-node-dev-febe4c7-linux-amd64"}}}]}'
+    RELEASE_RESPONSE='{"target_commitish":"e4892dc","assets":[{"name":"antimage-node-dev-linux-amd64","browser_download_url":"https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-node-dev-linux-amd64"}]}'
+    curl() {
+        case "${*: -1}" in
+            *"/${ANTIMAGE_NODE_BINARY_DEV_MANIFEST_BRANCH}/dev-builds.json")
+                [ -n "$MANIFEST_RESPONSE" ] || return 22
+                printf '%s' "$MANIFEST_RESPONSE"
+                ;;
+            *"/releases/tags/${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG}")
+                [ -n "$RELEASE_RESPONSE" ] || return 22
+                printf '%s' "$RELEASE_RESPONSE"
+                ;;
+            *) return 22 ;;
+        esac
+    }
     dev_asset=$(get_node_binary_dev_artifact_metadata amd64)
-    unset -f curl
+    [ "$dev_asset" = "dev-febe4c7|https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-node-dev-febe4c7-linux-amd64" ]
+    MANIFEST_RESPONSE='{"latest":"dev-febe4c7","builds":[{"tag":"dev-febe4c7","branch":"dev","sha":"febe4c77e1d45578864cfd9d4df10a27fbd37133","assets":{}}]}'
+    dev_asset=$(get_node_binary_dev_artifact_metadata amd64)
+    [ "$dev_asset" = "dev-febe4c7|https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-node-dev-linux-amd64" ]
+    MANIFEST_RESPONSE=''
+    RELEASE_RESPONSE=''
+    dev_asset=$(get_node_binary_dev_artifact_metadata amd64)
     [ "$dev_asset" = "dev-dev|https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-node-dev-linux-amd64" ]
+    unset -f curl
     grep -Fq 'Downloading AntiMage-node dev release binary' "$SCRIPT"
     grep -Fq 'ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG="${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG:-dev-builds}"' "$SCRIPT"
+    grep -Fq 'ANTIMAGE_NODE_BINARY_DEV_MANIFEST_BRANCH="${ANTIMAGE_NODE_BINARY_DEV_MANIFEST_BRANCH:-dev-build-manifest}"' "$SCRIPT"
     if grep -Fq 'Downloading AntiMage-node dev binary artifact' "$SCRIPT"; then
         echo "Node dev update must not fall back to Actions artifacts" >&2
         exit 1
