@@ -310,7 +310,7 @@ func normalizeWGProfileSettings(settings map[string]any) map[string]any {
 	delete(out, "dnsServers")
 	out["allowed_ips"] = stringList(firstNonEmptyAny(out["allowed_ips"], out["allowedIPs"]))
 	if len(stringList(out["allowed_ips"])) == 0 {
-		out["allowed_ips"] = []string{"0.0.0.0/0"}
+		out["allowed_ips"] = []string{"0.0.0.0/0", "::/0"}
 	}
 	if _, ok := out["persistent_keepalive"]; !ok {
 		out["persistent_keepalive"] = 25
@@ -508,3 +508,4 @@ func WGSafePathComponent(value string) string {
 	}
 	return out
 }
+
