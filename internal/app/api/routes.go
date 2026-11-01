@@ -48,15 +48,9 @@ func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
 
 	r.HandleFunc("/__antimage_api/healthz", s.handleHealth)
-	if s.cfg.APIDocsEnabled {
-		r.HandleFunc("/openapi.json", s.handleOpenAPIJSON)
-		r.HandleFunc("/docs", handleLegacyDocsRoute)
-		r.HandleFunc("/docs/*", handleLegacyDocsRoute)
-	} else {
-		r.HandleFunc("/openapi.json", s.handleDocsDisabled)
-		r.HandleFunc("/docs", handleLegacyDocsRoute)
-		r.HandleFunc("/docs/*", handleLegacyDocsRoute)
-	}
+	r.HandleFunc("/openapi.json", s.handleOpenAPIJSON)
+	r.HandleFunc("/docs", handleLegacyDocsRoute)
+	r.HandleFunc("/docs/*", handleLegacyDocsRoute)
 	r.HandleFunc("/admin/token", s.handleAdminToken)
 	r.HandleFunc("/internal/admin/validate", s.handleInternalAdminValidate)
 	r.HandleFunc("/internal/node/session-event", s.handleNodeSessionEvent)
