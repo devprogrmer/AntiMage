@@ -9,6 +9,10 @@ import (
 var openAPIJSON []byte
 
 func (s *Server) handleOpenAPIJSON(w http.ResponseWriter, r *http.Request) {
+	if !s.apiDocsEnabled.Load() {
+		s.handleDocsDisabled(w, r)
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
