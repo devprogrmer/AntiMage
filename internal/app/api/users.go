@@ -160,6 +160,10 @@ func (s *Server) handleUserPath(w http.ResponseWriter, r *http.Request) {
 			s.handleUserSubscriptionHWIDs(w, r, username)
 			return
 		}
+		if suffix == "notification" {
+			s.handleUserNotification(w, r, username)
+			return
+		}
 		s.handleUserMutationAction(w, r, username, suffix)
 		return
 	}

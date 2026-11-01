@@ -142,6 +142,17 @@ const CopiedActionIcon = chakra(CheckIcon, actionIconProps);
 const QRActionIcon = chakra(QrCodeIcon, actionIconProps);
 const SubscriptionActionIcon = chakra(LinkIcon, actionIconProps);
 
+const defaultUserNotificationTemplate = (language: string): string => {
+	const lang = language.toLowerCase().split("-")[0];
+	if (lang === "fa") {
+		return "سلام {{username}}، وضعیت حساب شما {{status}} است. مصرف: {{used_traffic}} از {{data_limit}}. حجم باقی‌مانده: {{remaining_traffic}}. انقضا: {{expire_at}}.";
+	}
+	if (lang === "ru") {
+		return "Здравствуйте, {{username}}! Статус аккаунта: {{status}}. Использовано {{used_traffic}} из {{data_limit}}. Остаток: {{remaining_traffic}}. Истекает: {{expire_at}}.";
+	}
+	return "Hello {{username}}, your account status is {{status}}. Usage: {{used_traffic}} of {{data_limit}}. Remaining: {{remaining_traffic}}. Expires: {{expire_at}}.";
+};
+
 const LimitLockIcon = chakra(LockClosedIcon, {
 	baseStyle: {
 		w: {
@@ -651,10 +662,32 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const successCloseTimerRef = useRef<number | null>(null);
 
 	const [error, setError] = useState<string | null>("");
+	const [notificationTemplate, setNotificationTemplate] = useState("");
+	const [notificationSending, setNotificationSending] = useState(false);
 
 	const toast = useToast();
 
 	const { t, i18n } = useTranslation();
+	useEffect(() => {
+		setNotificationTemplate(defaultUserNotificationTemplate(i18n.language));
+	}, [editingUser?.username, i18n.language]);
+
+	const sendUserNotification = async () => {
+		if (!editingUser) return;
+		setNotificationSending(true);
+		try {
+			await apiFetch(`/user/${encodeURIComponent(editingUser.username)}/notification`, {
+				method: "POST",
+				body: JSON.stringify({ template: notificationTemplate }),
+			});
+			toast({ title: t("userDialog.notificationSent"), status: "success", isClosable: true, position: "top" });
+		} catch (sendError) {
+			const message = sendError instanceof Error ? sendError.message : t("userDialog.notificationFailed");
+			toast({ title: t("userDialog.notificationFailed"), description: message, status: "error", isClosable: true, position: "top" });
+		} finally {
+			setNotificationSending(false);
+		}
+	};
 	const isRTL = i18n.dir(i18n.resolvedLanguage || i18n.language) === "rtl";
 	const isMobileDialog = useBreakpointValue({ base: true, md: false }) ?? false;
 	const DATA_UNIT = "GB";
@@ -3797,6 +3830,35 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																		}
 																	</FormErrorMessage>
 																</FormControl>
+										{isEditing && (
+											<FormControl w="full">
+												<FormLabel textAlign={isRTL ? "right" : "left"}>{t("userDialog.customerNotification")}</FormLabel>
+												<Textarea
+													value={notificationTemplate}
+													onChange={(event) => setNotificationTemplate(event.target.value)}
+													maxLength={4096}
+													textAlign={isRTL ? "right" : "left"}
+												/>
+												<FormHelperText>
+													{t("userDialog.notificationPlaceholders")}
+												</FormHelperText>
+												<Text fontSize="xs" dir="ltr" textAlign={isRTL ? "right" : "left"}>
+													{"{{username}} · {{status}} · {{used_traffic}} · {{data_limit}} · {{remaining_traffic}} · {{expire_at}} · {{subscription_url}}"}
+												</Text>
+												<FormHelperText>
+													{t("userDialog.notificationStartBotHint")}
+												</FormHelperText>
+												<Button
+													mt={2}
+													size="sm"
+													isLoading={notificationSending}
+													isDisabled={!editingUser?.telegram_id || !notificationTemplate.trim()}
+													onClick={sendUserNotification}
+												>
+													{t("userDialog.sendCustomerNotification")}
+												</Button>
+											</FormControl>
+										)}
 																<FormControl
 																	isInvalid={
 																		!!form.formState.errors.contact_number
