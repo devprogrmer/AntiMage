@@ -92,7 +92,12 @@ const errorDetail = (error: unknown) => {
 };
 
 export const ExternalAppsPage = () => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const nativeBotDescription = i18n.language.startsWith("fa")
+		? "ربات خود AntiMage داخل پنل اجرا می‌شود. تنظیمات، فروش و پشتیبانی آن را از بخش تلگرام مدیریت کنید."
+		: i18n.language.startsWith("ru")
+			? "Встроенный бот AntiMage работает в панели. Настройте продажи и поддержку в разделе Telegram."
+			: "The built-in AntiMage bot runs in the panel. Manage its sales and support in Telegram settings.";
 	const toast = useToast();
 	const queryClient = useQueryClient();
 	const panelBg = useColorModeValue("panel.elevated", "panel.elevated");
@@ -101,7 +106,7 @@ export const ExternalAppsPage = () => {
 		"panel.textSecondary",
 		"panel.textSecondary",
 	);
-	const [template, setTemplate] = useState<TemplateID>("mirzabot");
+	const [template, setTemplate] = useState<TemplateID>("archive");
 	const [createDialogOpen, setCreateDialogOpen] = useState(false);
 	const [domain, setDomain] = useState("");
 	const [name, setName] = useState("");
@@ -787,10 +792,6 @@ export const ExternalAppsPage = () => {
 									onValueChange={(value) => setTemplate(value as TemplateID)}
 									options={[
 										{
-											value: "mirzabot",
-											label: t("externalApps.mirzaTemplate"),
-										},
-										{
 											value: "archive",
 											label: t("externalApps.archiveTemplate"),
 										},
@@ -1030,6 +1031,25 @@ export const ExternalAppsPage = () => {
 			</Modal>
 
 			<Stack spacing={3}>
+				<Box
+					bg={panelBg}
+					borderWidth="1px"
+					borderColor={borderColor}
+					borderRadius="xl"
+					p={{ base: 4, md: 5 }}
+				>
+					<HStack justify="space-between" align="start" spacing={4} flexWrap="wrap">
+						<Stack spacing={1}>
+							<Heading size="sm">AntiMage Telegram Bot</Heading>
+							<Text color={mutedColor} fontSize="sm">
+								{nativeBotDescription}
+							</Text>
+						</Stack>
+						<Button as={RouterLink} to="/settings#telegram" colorScheme="primary">
+							{t("settings.telegram")}
+						</Button>
+					</HStack>
+				</Box>
 				<ResourceListCard
 					title={t("externalApps.installedApps")}
 					summaryItems={[
