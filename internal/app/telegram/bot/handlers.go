@@ -59,7 +59,9 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 			}
 		}
 	}
-	if !authorized(settings, chatID) {
+	// Admin notification destinations may include groups. Membership in a
+	// group must never grant its members command access to the panel.
+	if msg.From == nil || msg.Chat.Type != "private" || chatID != msg.From.ID || !authorized(settings, msg.From.ID) {
 		return
 	}
 	text := strings.TrimSpace(input)
@@ -190,7 +192,7 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 	if query.From != nil {
 		userID = query.From.ID
 	}
-	if !authorized(settings, userID) {
+	if query.Message == nil || query.Message.Chat.Type != "private" || query.Message.Chat.ID != userID || !authorized(settings, userID) {
 		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Not authorized")
 		return
 	}

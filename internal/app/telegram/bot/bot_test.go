@@ -182,7 +182,7 @@ func TestUserCommandSendsDetail(t *testing.T) {
 	users.users["alice"] = UserView{Username: "alice", Status: "active", UsedTraffic: 1 << 20, DataLimit: &limit}
 	b, calls, settings := newTestBot(t, users)
 
-	b.handleMessage(context.Background(), settings, &Message{Chat: Chat{ID: 100}, Text: "/user alice"})
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "/user alice"})
 
 	call, ok := lastCall(*calls, "sendMessage")
 	if !ok {
@@ -250,7 +250,7 @@ func TestUsageCommand(t *testing.T) {
 	users := newFakeUsers()
 	users.users["bob"] = UserView{Username: "bob", Status: "active"}
 	b, calls, settings := newTestBot(t, users)
-	b.handleMessage(context.Background(), settings, &Message{Chat: Chat{ID: 100}, Text: "/usage bob"})
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "/usage bob"})
 	call, ok := lastCall(*calls, "sendMessage")
 	if !ok {
 		t.Fatal("expected sendMessage")
@@ -268,7 +268,7 @@ func TestSuspendCallbackUpdatesStatus(t *testing.T) {
 	b.handleCallback(context.Background(), settings, &CallbackQuery{
 		ID:      "cb1",
 		From:    &User{ID: 100},
-		Message: &Message{MessageID: 5, Chat: Chat{ID: 100}},
+		Message: &Message{MessageID: 5, Chat: Chat{ID: 100, Type: "private"}},
 		Data:    cbSuspend + "alice",
 	})
 
@@ -287,12 +287,12 @@ func TestDeleteFlowRequiresConfirmation(t *testing.T) {
 	ctx := context.Background()
 
 	// First click only asks for confirmation; no deletion yet.
-	b.handleCallback(ctx, settings, &CallbackQuery{ID: "c1", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100}}, Data: cbDelete + "alice"})
+	b.handleCallback(ctx, settings, &CallbackQuery{ID: "c1", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100, Type: "private"}}, Data: cbDelete + "alice"})
 	if len(users.deleted) != 0 {
 		t.Fatalf("delete must require confirmation, got %v", users.deleted)
 	}
 	// Confirmation actually deletes.
-	b.handleCallback(ctx, settings, &CallbackQuery{ID: "c2", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100}}, Data: cbDeleteYes + "alice"})
+	b.handleCallback(ctx, settings, &CallbackQuery{ID: "c2", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100, Type: "private"}}, Data: cbDeleteYes + "alice"})
 	if len(users.deleted) != 1 || users.deleted[0] != "alice" {
 		t.Fatalf("expected alice deleted, got %v", users.deleted)
 	}
@@ -305,12 +305,12 @@ func TestEditNoteConversationFlow(t *testing.T) {
 	ctx := context.Background()
 
 	// Trigger edit_note: sets conversation state and prompts.
-	b.handleCallback(ctx, settings, &CallbackQuery{ID: "c1", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100}}, Data: cbEditNote + "alice"})
+	b.handleCallback(ctx, settings, &CallbackQuery{ID: "c1", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100, Type: "private"}}, Data: cbEditNote + "alice"})
 	if conv, ok := b.state.get(ctx, 100); !ok || conv.State != stateAwaitNote || conv.Payload != "alice" {
 		t.Fatalf("expected await_note state for alice, got %+v ok=%v", conv, ok)
 	}
 	// Next plain message is taken as the note.
-	b.handleMessage(ctx, settings, &Message{Chat: Chat{ID: 100}, Text: "vip customer"})
+	b.handleMessage(ctx, settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "vip customer"})
 	if len(users.notes) != 1 || users.notes[0] != "alice=vip customer" {
 		t.Fatalf("expected note update, got %v", users.notes)
 	}
@@ -321,7 +321,7 @@ func TestEditNoteConversationFlow(t *testing.T) {
 
 func TestSystemCallback(t *testing.T) {
 	b, calls, settings := newTestBot(t, newFakeUsers())
-	b.handleCallback(context.Background(), settings, &CallbackQuery{ID: "c1", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100}}, Data: "system"})
+	b.handleCallback(context.Background(), settings, &CallbackQuery{ID: "c1", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100, Type: "private"}}, Data: "system"})
 	call, ok := lastCall(*calls, "editMessageText")
 	if !ok {
 		t.Fatal("expected editMessageText for system info")
@@ -333,7 +333,7 @@ func TestSystemCallback(t *testing.T) {
 
 func TestUnknownUserReportsNotFound(t *testing.T) {
 	b, calls, settings := newTestBot(t, newFakeUsers())
-	b.handleMessage(context.Background(), settings, &Message{Chat: Chat{ID: 100}, Text: "/user ghost"})
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "/user ghost"})
 	call, ok := lastCall(*calls, "sendMessage")
 	if !ok {
 		t.Fatal("expected sendMessage")
