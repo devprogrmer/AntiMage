@@ -150,6 +150,7 @@ ANTIMAGE_SCRIPT_BASE_URL="${ANTIMAGE_SCRIPT_BASE_URL:-https://raw.githubusercont
 ANTIMAGE_NODE_RELEASE_REPO="${ANTIMAGE_NODE_RELEASE_REPO:-devprogrmer/AntiMage}"
 ANTIMAGE_NODE_BINARY_DEV_BRANCH="${ANTIMAGE_NODE_BINARY_DEV_BRANCH:-dev}"
 ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG="${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG:-dev-builds}"
+ANTIMAGE_NODE_BINARY_DEV_MANIFEST_BRANCH="${ANTIMAGE_NODE_BINARY_DEV_MANIFEST_BRANCH:-dev-build-manifest}"
 ANTIMAGE_NODE_BINARY_WORKFLOW_NAME="${ANTIMAGE_NODE_BINARY_WORKFLOW_NAME:-binary-build}"
 ANTIMAGE_NODE_BINARY_ARTIFACT_PREFIX="${ANTIMAGE_NODE_BINARY_ARTIFACT_PREFIX:-antimage-node-binaries}"
 DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-latest}"
@@ -1226,13 +1227,31 @@ get_node_binary_release_asset_metadata() {
 
 get_node_binary_dev_artifact_metadata() {
     local binary_arch="$1"
+    local manifest_url
+    local manifest_payload
+    local manifest_tag
+    local manifest_asset_name
     local release_api
     local release_payload
     local release_asset_name
     local release_asset_url
-    local release_target
 
     release_asset_name="antimage-node-dev-linux-${binary_arch}"
+    manifest_url="https://raw.githubusercontent.com/${ANTIMAGE_NODE_RELEASE_REPO}/${ANTIMAGE_NODE_BINARY_DEV_MANIFEST_BRANCH}/dev-builds.json"
+    if manifest_payload=$(curl -fsSL "$manifest_url" 2>/dev/null); then
+        if manifest_tag=$(jq -r '.latest // empty' <<<"$manifest_payload" 2>/dev/null) && [[ "$manifest_tag" =~ ^dev-[0-9a-fA-F]{7}$ ]]; then
+            manifest_asset_name=$(jq -r --arg tag "$manifest_tag" --arg key "node-linux-${binary_arch}" '
+                .builds[]?
+                | select(.tag == $tag and .branch == "dev")
+                | .assets[$key].name // empty
+            ' <<<"$manifest_payload" 2>/dev/null | head -n 1)
+            if [ "$manifest_asset_name" = "antimage-node-${manifest_tag}-linux-${binary_arch}" ]; then
+                printf '%s|%s\n' "$manifest_tag" "https://github.com/${ANTIMAGE_NODE_RELEASE_REPO}/releases/download/${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG}/${manifest_asset_name}"
+                return 0
+            fi
+        fi
+    fi
+
     release_api="https://api.github.com/repos/${ANTIMAGE_NODE_RELEASE_REPO}/releases/tags/${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG}"
     if release_payload=$(curl -fsSL "$release_api" 2>/dev/null); then
         release_asset_url=$(echo "$release_payload" | jq -r --arg name "$release_asset_name" '
@@ -1241,12 +1260,7 @@ get_node_binary_dev_artifact_metadata() {
             | .browser_download_url
         ' | head -n 1)
         if [ -n "$release_asset_url" ] && [ "$release_asset_url" != "null" ]; then
-            release_target=$(echo "$release_payload" | jq -r '.target_commitish // empty')
-            if [[ "$release_target" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
-                printf '%s|%s\n' "dev-${release_target:0:7}" "$release_asset_url"
-            else
-                printf '%s|%s\n' "dev-${ANTIMAGE_NODE_BINARY_DEV_BRANCH}" "$release_asset_url"
-            fi
+            printf '%s|%s\n' "${manifest_tag:-dev-${ANTIMAGE_NODE_BINARY_DEV_BRANCH}}" "$release_asset_url"
             return 0
         fi
     fi
@@ -1255,7 +1269,6 @@ get_node_binary_dev_artifact_metadata() {
     release_asset_url="https://github.com/${ANTIMAGE_NODE_RELEASE_REPO}/releases/download/${ANTIMAGE_NODE_BINARY_DEV_RELEASE_TAG}/${release_asset_name}"
     printf '%s|%s\n' "dev-${ANTIMAGE_NODE_BINARY_DEV_BRANCH}" "$release_asset_url"
 }
-
 write_node_binary_release_metadata() {
     local resolved_version="$1"
     local binary_arch="$2"
