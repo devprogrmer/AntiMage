@@ -52,9 +52,9 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 		case "/topup", "/receipt", "/topups", "/pending-topups", "/topup-review", "/payment-details":
 			b.handleTopupCommand(ctx, settings, msg, command, arg)
 			return
-		case "/start":
+		case "/start", "/help":
 			if !authorized(settings, msg.From.ID) {
-				b.reply(ctx, settings, chatID, "Welcome to AntiMage. Use /shop to view plans, /topup to fund your wallet, /balance to check it, /orders for purchases, /my for services, or /support for help.", nil)
+				b.reply(ctx, settings, chatID, "Welcome to AntiMage. Use /shop to view plans, /topup to fund your wallet, /balance to check it, /orders for purchases, /my for services, or /support for help.", customerMenuKeyboard())
 				return
 			}
 		}
@@ -163,6 +163,21 @@ func (b *Bot) handleConversation(ctx context.Context, settings Settings, chatID 
 }
 
 func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *CallbackQuery) {
+	if strings.HasPrefix(query.Data, "menu:") && query.From != nil && query.From.ID > 0 && query.Message != nil && query.Message.Chat.Type == "private" && query.Message.Chat.ID == query.From.ID {
+		chatID := query.From.ID
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "")
+		switch query.Data {
+		case "menu:shop", "menu:balance", "menu:orders":
+			b.handleShopCommand(ctx, settings, chatID, chatID, "/"+strings.TrimPrefix(query.Data, "menu:"))
+		case "menu:my":
+			b.handleCustomerAccounts(ctx, settings, chatID, chatID)
+		case "menu:tickets":
+			b.handleSupportCommand(ctx, settings, &Message{From: query.From, Chat: query.Message.Chat}, "/tickets", "")
+		case "menu:topups":
+			b.handleTopupCommand(ctx, settings, &Message{From: query.From, Chat: query.Message.Chat}, "/topups", "")
+		}
+		return
+	}
 	if strings.HasPrefix(query.Data, "shop:") && query.From != nil && query.From.ID > 0 && query.Message != nil && query.Message.Chat.Type == "private" && query.Message.Chat.ID == query.From.ID {
 		b.handleShopCallback(ctx, settings, query)
 		return
