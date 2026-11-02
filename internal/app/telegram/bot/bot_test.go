@@ -90,6 +90,16 @@ func (f *fakeUsers) SetNote(_ context.Context, _ Actor, username string, note st
 
 type fakeSystem struct{}
 
+type fakeCustomers struct {
+	id       int64
+	accounts []UserView
+}
+
+func (f *fakeCustomers) ListByTelegramID(_ context.Context, id int64) ([]UserView, error) {
+	f.id = id
+	return f.accounts, nil
+}
+
 func (fakeSystem) Info(context.Context) (SystemInfo, error) {
 	return SystemInfo{Version: "1.0.0", CPUPercent: 5, MemUsed: 1 << 30, MemTotal: 4 << 30, TotalUsers: 10, ActiveUsers: 7, OnlineUsers: 3}, nil
 }
@@ -192,6 +202,47 @@ func TestUnauthorizedChatIgnored(t *testing.T) {
 	b.handleMessage(context.Background(), settings, &Message{Chat: Chat{ID: 999}, Text: "/user alice"})
 	if len(*calls) != 0 {
 		t.Fatalf("expected no outbound calls for unauthorized chat, got %d", len(*calls))
+	}
+}
+
+func TestCustomerCanSeeOnlyOwnLinkedServicesInPrivateChat(t *testing.T) {
+	b, calls, settings := newTestBot(t, newFakeUsers())
+	customers := &fakeCustomers{accounts: []UserView{{Username: "alice", Status: "active", SubscriptionURL: "https://example.test/sub/alice", Note: "admin-only note"}}}
+	b.customers = customers
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 321}, Chat: Chat{ID: 321, Type: "private"}, Text: "/my"})
+	if customers.id != 321 {
+		t.Fatalf("customer lookup ID = %d", customers.id)
+	}
+	call, ok := lastCall(*calls, "sendMessage")
+	if !ok {
+		t.Fatalf("expected customer response, calls=%v", *calls)
+	}
+	body, _ := call.body["text"].(string)
+	if !strings.Contains(body, "alice") || !strings.Contains(body, "example.test/sub/alice") {
+		t.Fatalf("missing own service: %q", body)
+	}
+	if strings.Contains(body, "admin-only note") {
+		t.Fatalf("admin note leaked: %q", body)
+	}
+}
+
+func TestCustomerCommandDoesNotRevealServicesInGroup(t *testing.T) {
+	b, calls, settings := newTestBot(t, newFakeUsers())
+	customers := &fakeCustomers{accounts: []UserView{{Username: "alice"}}}
+	b.customers = customers
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 321}, Chat: Chat{ID: -100, Type: "supergroup"}, Text: "/my"})
+	if customers.id != 0 || len(*calls) != 0 {
+		t.Fatalf("group command accessed customer data: id=%d calls=%d", customers.id, len(*calls))
+	}
+}
+
+func TestCustomerCommandRejectsMismatchedPrivateChat(t *testing.T) {
+	b, calls, settings := newTestBot(t, newFakeUsers())
+	customers := &fakeCustomers{accounts: []UserView{{Username: "alice"}}}
+	b.customers = customers
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 321}, Chat: Chat{ID: 999, Type: "private"}, Text: "/my"})
+	if customers.id != 0 || len(*calls) != 0 {
+		t.Fatalf("mismatched chat accessed customer data: id=%d calls=%d", customers.id, len(*calls))
 	}
 }
 

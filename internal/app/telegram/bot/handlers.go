@@ -16,6 +16,13 @@ const helpText = `🤖 <b>AntiMage admin bot</b>
 
 func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message) {
 	chatID := msg.Chat.ID
+	command, arg := splitCommand(msg.Text)
+	if (command == "/my" || command == "/start") && msg.From != nil && msg.From.ID > 0 && msg.Chat.Type == "private" && chatID == msg.From.ID {
+		if command == "/my" || !authorized(settings, msg.From.ID) {
+			b.handleCustomerAccounts(ctx, settings, chatID, msg.From.ID)
+			return
+		}
+	}
 	if !authorized(settings, chatID) {
 		return
 	}
@@ -29,7 +36,7 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 		}
 	}
 
-	command, arg := splitCommand(text)
+	command, arg = splitCommand(text)
 	switch command {
 	case "/start", "/help":
 		b.reply(ctx, settings, chatID, helpText, mainMenuKeyboard())
@@ -43,6 +50,29 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 		if command != "" {
 			b.reply(ctx, settings, chatID, "Unknown command. Send /help.", nil)
 		}
+	}
+}
+
+func (b *Bot) handleCustomerAccounts(ctx context.Context, settings Settings, chatID, telegramID int64) {
+	if b.customers == nil {
+		b.reply(ctx, settings, chatID, "Customer services are unavailable.", nil)
+		return
+	}
+	accounts, err := b.customers.ListByTelegramID(ctx, telegramID)
+	if err != nil {
+		b.reply(ctx, settings, chatID, "Could not load your services. Please try again later.", nil)
+		return
+	}
+	if len(accounts) == 0 {
+		b.reply(ctx, settings, chatID, "No services are linked to your Telegram account. Ask your provider to set your Telegram ID on your AntiMage user.", nil)
+		return
+	}
+	for _, account := range accounts {
+		lines := []string{"👤 <b>Your service</b>", line("Username", account.Username), "<b>Status:</b> " + statusLine(account.Status), line("Used", formatBytes(account.UsedTraffic)), line("Limit", formatOptionalBytes(account.DataLimit)), line("Expires", formatExpire(account.Expire))}
+		if strings.TrimSpace(account.SubscriptionURL) != "" {
+			lines = append(lines, line("Subscription", account.SubscriptionURL))
+		}
+		b.reply(ctx, settings, chatID, strings.Join(lines, "\n"), nil)
 	}
 }
 

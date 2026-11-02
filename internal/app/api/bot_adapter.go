@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	adminapp "github.com/antimage/antimage/internal/app/admin"
@@ -72,6 +73,7 @@ func (b botUserService) Get(ctx context.Context, username string) (telegrambot.U
 	}
 	view := telegrambot.UserView{
 		Username:        detail.Username,
+		TelegramID:      detail.TelegramID,
 		Status:          detail.Status,
 		UsedTraffic:     detail.UsedTraffic,
 		DataLimit:       detail.DataLimit,
@@ -88,6 +90,42 @@ func (b botUserService) Get(ctx context.Context, username string) (telegrambot.U
 		view.OwnerAdmin = *detail.AdminUsername
 	}
 	return view, nil
+}
+
+func (b botUserService) ListByTelegramID(ctx context.Context, telegramID int64) ([]telegrambot.UserView, error) {
+	if telegramID <= 0 {
+		return nil, nil
+	}
+	id := strconv.FormatInt(telegramID, 10)
+	rows, err := b.server.db.QueryContext(ctx, `SELECT username FROM users WHERE telegram_id = ? AND status != 'deleted' ORDER BY username LIMIT 20`, id)
+	if err != nil {
+		return nil, err
+	}
+	var usernames []string
+	for rows.Next() {
+		var username string
+		if err := rows.Scan(&username); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		usernames = append(usernames, username)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	views := make([]telegrambot.UserView, 0, len(usernames))
+	for _, username := range usernames {
+		view, err := b.Get(ctx, username)
+		if err != nil {
+			return nil, err
+		}
+		if view.TelegramID != nil && *view.TelegramID == id {
+			views = append(views, view)
+		}
+	}
+	return views, nil
 }
 
 func (b botUserService) actorAdmin(actor telegrambot.Actor) (adminapp.Admin, error) {
@@ -178,6 +216,7 @@ func (s *Server) runTelegramBot(ctx context.Context) {
 		Settings:   botSettingsSource{server: s},
 		Authorizer: botAuthorizer{server: s},
 		Users:      botUserService{server: s},
+		Customers:  botUserService{server: s},
 		System:     botSystemService{server: s},
 		DB:         s.db,
 	})

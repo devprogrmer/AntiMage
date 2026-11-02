@@ -33,7 +33,8 @@ type User struct {
 }
 
 type Chat struct {
-	ID int64 `json:"id"`
+	ID   int64  `json:"id"`
+	Type string `json:"type"`
 }
 
 // InlineKeyboard is a Telegram inline_keyboard markup.
@@ -78,6 +79,7 @@ type Authorizer interface {
 // UserView is the data the bot renders for a user.
 type UserView struct {
 	Username        string
+	TelegramID      *string
 	Status          string
 	UsedTraffic     int64
 	DataLimit       *int64
@@ -88,6 +90,11 @@ type UserView struct {
 	OwnerAdmin      string
 	SubscriptionURL string
 	Links           []string
+}
+
+// CustomerService looks up only accounts explicitly linked to a Telegram ID.
+type CustomerService interface {
+	ListByTelegramID(ctx context.Context, telegramID int64) ([]UserView, error)
 }
 
 // UserService exposes the user operations the bot needs. Implementations must

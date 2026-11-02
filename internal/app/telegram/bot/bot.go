@@ -19,6 +19,7 @@ type Bot struct {
 	settings   SettingsSource
 	authorizer Authorizer
 	users      UserService
+	customers  CustomerService
 	system     SystemService
 	state      stateStore
 
@@ -32,6 +33,7 @@ type Options struct {
 	Settings   SettingsSource
 	Authorizer Authorizer
 	Users      UserService
+	Customers  CustomerService
 	System     SystemService
 	DB         *sql.DB
 	Logf       func(format string, args ...any)
@@ -47,6 +49,7 @@ func New(opts Options) *Bot {
 		settings:   opts.Settings,
 		authorizer: opts.Authorizer,
 		users:      opts.Users,
+		customers:  opts.Customers,
 		system:     opts.System,
 		state:      newStateStore(opts.DB),
 		logf:       logf,
