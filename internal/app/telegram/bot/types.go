@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/antimage/antimage/internal/app/shop"
+	"github.com/antimage/antimage/internal/app/support"
 )
 
 // Update mirrors the subset of the Telegram getUpdates response the bot uses.
@@ -110,6 +111,13 @@ type ShopService interface {
 	AdminCredit(ctx context.Context, telegramID, amount int64, reference string) (int64, error)
 	AddProduct(ctx context.Context, product shop.Product, requestKey string) (shop.Product, error)
 	DisableProduct(ctx context.Context, productID int64) error
+}
+
+type SupportService interface {
+	Create(ctx context.Context, telegramID int64, content, reference string) (support.Ticket, error)
+	List(ctx context.Context, telegramID int64, admin bool) ([]support.Ticket, error)
+	Get(ctx context.Context, ticketID string, telegramID int64, admin bool) (support.Ticket, error)
+	Reply(ctx context.Context, ticketID, content, reference string) (support.Ticket, error)
 }
 
 // UserService exposes the user operations the bot needs. Implementations must

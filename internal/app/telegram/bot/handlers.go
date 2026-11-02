@@ -19,6 +19,10 @@ const helpText = `🤖 <b>AntiMage admin bot</b>
 /credit &lt;telegram_id&gt; &lt;toman&gt; &lt;reference&gt; — admin wallet credit
 /plan-add &lt;service_id&gt; &lt;toman&gt; &lt;GB&gt; &lt;days&gt; &lt;title&gt; — admin product
 /plan-disable &lt;product_id&gt; — admin product disable
+/support &lt;message&gt; — open a support ticket
+/tickets — list tickets
+/ticket &lt;id&gt; — read a ticket
+/reply &lt;id&gt; &lt;message&gt; — admin reply
 /help — show this help`
 
 func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message) {
@@ -31,6 +35,9 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 			return
 		case "/shop", "/balance", "/orders":
 			b.handleShopCommand(ctx, settings, chatID, msg.From.ID, command)
+			return
+		case "/support", "/tickets", "/ticket", "/reply":
+			b.handleSupportCommand(ctx, settings, msg, command, arg)
 			return
 		case "/start":
 			if !authorized(settings, msg.From.ID) {

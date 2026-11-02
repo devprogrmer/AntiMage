@@ -12,6 +12,7 @@ import (
 	adminapp "github.com/antimage/antimage/internal/app/admin"
 	dashboardapp "github.com/antimage/antimage/internal/app/dashboard"
 	"github.com/antimage/antimage/internal/app/shop"
+	"github.com/antimage/antimage/internal/app/support"
 	telegrambot "github.com/antimage/antimage/internal/app/telegram/bot"
 	userapp "github.com/antimage/antimage/internal/app/user"
 )
@@ -343,6 +344,7 @@ func (s *Server) runTelegramBot(ctx context.Context) {
 		Users:      botUserService{server: s},
 		Customers:  botUserService{server: s},
 		Shop:       botShopService{server: s},
+		Support:    support.Store{DB: s.db},
 		System:     botSystemService{server: s},
 		DB:         s.db,
 	})
