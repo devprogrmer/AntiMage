@@ -22,6 +22,7 @@ type Bot struct {
 	customers  CustomerService
 	shop       ShopService
 	support    SupportService
+	topups     TopupService
 	system     SystemService
 	state      stateStore
 
@@ -38,6 +39,7 @@ type Options struct {
 	Customers  CustomerService
 	Shop       ShopService
 	Support    SupportService
+	Topups     TopupService
 	System     SystemService
 	DB         *sql.DB
 	Logf       func(format string, args ...any)
@@ -56,6 +58,7 @@ func New(opts Options) *Bot {
 		customers:  opts.Customers,
 		shop:       opts.Shop,
 		support:    opts.Support,
+		topups:     opts.Topups,
 		system:     opts.System,
 		state:      newStateStore(opts.DB),
 		logf:       logf,

@@ -20,10 +20,16 @@ type Update struct {
 }
 
 type Message struct {
-	MessageID int64  `json:"message_id"`
-	From      *User  `json:"from"`
-	Chat      Chat   `json:"chat"`
-	Text      string `json:"text"`
+	MessageID int64       `json:"message_id"`
+	From      *User       `json:"from"`
+	Chat      Chat        `json:"chat"`
+	Text      string      `json:"text"`
+	Caption   string      `json:"caption"`
+	Photo     []PhotoSize `json:"photo"`
+}
+
+type PhotoSize struct {
+	FileID string `json:"file_id"`
 }
 
 type CallbackQuery struct {
@@ -118,6 +124,17 @@ type SupportService interface {
 	List(ctx context.Context, telegramID int64, admin bool) ([]support.Ticket, error)
 	Get(ctx context.Context, ticketID string, telegramID int64, admin bool) (support.Ticket, error)
 	Reply(ctx context.Context, ticketID, content, reference string) (support.Ticket, error)
+}
+
+type TopupService interface {
+	Get(ctx context.Context, id string) (shop.Topup, error)
+	Instructions(ctx context.Context) (string, error)
+	SetInstructions(ctx context.Context, instructions string) error
+	Create(ctx context.Context, telegramID, amount int64, requestKey string) (shop.Topup, error)
+	SubmitReceipt(ctx context.Context, telegramID int64, topupID, fileID string) (shop.Topup, error)
+	List(ctx context.Context, telegramID int64, adminPending bool) ([]shop.Topup, error)
+	Approve(ctx context.Context, topupID string, adminID int64) (shop.Topup, error)
+	Reject(ctx context.Context, topupID string, adminID int64) (shop.Topup, error)
 }
 
 // UserService exposes the user operations the bot needs. Implementations must

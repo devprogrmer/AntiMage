@@ -76,6 +76,16 @@ func (c client) sendMessage(ctx context.Context, settings Settings, chatID int64
 	return c.fireAndForget(ctx, settings, "sendMessage", payload)
 }
 
+func (c client) sendPhoto(ctx context.Context, settings Settings, chatID int64, fileID, caption string, keyboard *InlineKeyboard) error {
+	payload := map[string]any{
+		"chat_id": chatID, "photo": fileID, "caption": caption, "parse_mode": "HTML",
+	}
+	if keyboard != nil {
+		payload["reply_markup"] = keyboard
+	}
+	return c.fireAndForget(ctx, settings, "sendPhoto", payload)
+}
+
 func (c client) editMessageText(ctx context.Context, settings Settings, chatID int64, messageID int64, text string, keyboard *InlineKeyboard) error {
 	payload := map[string]any{
 		"chat_id":                  chatID,

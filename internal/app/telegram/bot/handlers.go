@@ -23,11 +23,21 @@ const helpText = `🤖 <b>AntiMage admin bot</b>
 /tickets — list tickets
 /ticket &lt;id&gt; — read a ticket
 /reply &lt;id&gt; &lt;message&gt; — admin reply
+/topup &lt;toman&gt; — request wallet charge
+/receipt &lt;topup_id&gt; — send receipt photo with this caption
+/topups — view your charges
+/pending-topups — admin review queue
+/topup-review &lt;id&gt; — admin receipt view
+/payment-details &lt;text&gt; — admin payment instructions
 /help — show this help`
 
 func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message) {
 	chatID := msg.Chat.ID
-	command, arg := splitCommand(msg.Text)
+	input := msg.Text
+	if input == "" {
+		input = msg.Caption
+	}
+	command, arg := splitCommand(input)
 	if msg.From != nil && msg.From.ID > 0 && msg.Chat.Type == "private" && chatID == msg.From.ID {
 		switch command {
 		case "/my":
@@ -39,9 +49,12 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 		case "/support", "/tickets", "/ticket", "/reply":
 			b.handleSupportCommand(ctx, settings, msg, command, arg)
 			return
+		case "/topup", "/receipt", "/topups", "/pending-topups", "/topup-review", "/payment-details":
+			b.handleTopupCommand(ctx, settings, msg, command, arg)
+			return
 		case "/start":
 			if !authorized(settings, msg.From.ID) {
-				b.reply(ctx, settings, chatID, "Welcome to AntiMage. Use /shop to view plans, /balance for your wallet, /orders for purchases, or /my for your services.", nil)
+				b.reply(ctx, settings, chatID, "Welcome to AntiMage. Use /shop to view plans, /topup to fund your wallet, /balance to check it, /orders for purchases, /my for services, or /support for help.", nil)
 				return
 			}
 		}
@@ -49,7 +62,7 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 	if !authorized(settings, chatID) {
 		return
 	}
-	text := strings.TrimSpace(msg.Text)
+	text := strings.TrimSpace(input)
 
 	// Multi-step flows take priority over command parsing for non-command input.
 	if !strings.HasPrefix(text, "/") {
@@ -152,6 +165,10 @@ func (b *Bot) handleConversation(ctx context.Context, settings Settings, chatID 
 func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *CallbackQuery) {
 	if strings.HasPrefix(query.Data, "shop:") && query.From != nil && query.From.ID > 0 && query.Message != nil && query.Message.Chat.Type == "private" && query.Message.Chat.ID == query.From.ID {
 		b.handleShopCallback(ctx, settings, query)
+		return
+	}
+	if strings.HasPrefix(query.Data, "topup:") {
+		b.handleTopupCallback(ctx, settings, query)
 		return
 	}
 	userID := int64(0)

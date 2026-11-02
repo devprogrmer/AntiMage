@@ -268,6 +268,36 @@ func (b botShopService) PayAndProvision(ctx context.Context, telegramID int64, o
 
 type botAccountProvisioner struct{ server *Server }
 
+type botTopupService struct{ server *Server }
+
+func (b botTopupService) store() shop.Topups {
+	return shop.Topups{DB: b.server.db, Dialect: b.server.dialect}
+}
+func (b botTopupService) Get(ctx context.Context, id string) (shop.Topup, error) {
+	return b.store().Get(ctx, id)
+}
+func (b botTopupService) Instructions(ctx context.Context) (string, error) {
+	return b.store().Instructions(ctx)
+}
+func (b botTopupService) SetInstructions(ctx context.Context, instructions string) error {
+	return b.store().SetInstructions(ctx, instructions)
+}
+func (b botTopupService) Create(ctx context.Context, telegramID, amount int64, requestKey string) (shop.Topup, error) {
+	return b.store().Create(ctx, telegramID, amount, requestKey)
+}
+func (b botTopupService) SubmitReceipt(ctx context.Context, telegramID int64, topupID, fileID string) (shop.Topup, error) {
+	return b.store().SubmitReceipt(ctx, telegramID, topupID, fileID)
+}
+func (b botTopupService) List(ctx context.Context, telegramID int64, adminPending bool) ([]shop.Topup, error) {
+	return b.store().List(ctx, telegramID, adminPending)
+}
+func (b botTopupService) Approve(ctx context.Context, topupID string, adminID int64) (shop.Topup, error) {
+	return b.store().Approve(ctx, topupID, adminID, shop.Wallet{DB: b.server.db, Dialect: b.server.dialect})
+}
+func (b botTopupService) Reject(ctx context.Context, topupID string, adminID int64) (shop.Topup, error) {
+	return b.store().Reject(ctx, topupID, adminID)
+}
+
 func (b botAccountProvisioner) Lookup(ctx context.Context, username string) (shop.Account, bool, error) {
 	var account shop.Account
 	var telegramID, serviceID, limit, duration sql.NullInt64
@@ -345,6 +375,7 @@ func (s *Server) runTelegramBot(ctx context.Context) {
 		Customers:  botUserService{server: s},
 		Shop:       botShopService{server: s},
 		Support:    support.Store{DB: s.db},
+		Topups:     botTopupService{server: s},
 		System:     botSystemService{server: s},
 		DB:         s.db,
 	})
