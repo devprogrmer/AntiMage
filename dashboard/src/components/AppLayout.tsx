@@ -139,6 +139,26 @@ const routeLabelKeys: Record<string, string> = {
 	myaccount: "myaccount.menu",
 };
 
+const getRouteArea = (page: string) => {
+	if (["users", "bulk-actions"].includes(page)) return "accounts";
+	if (["node-settings", "services", "hosts", "haproxy"].includes(page)) {
+		return "infrastructure";
+	}
+	if (["settings", "xray-settings", "xray-logs", "api-docs"].includes(page)) {
+		return "system";
+	}
+	if (["admins", "usage", "myaccount"].includes(page)) return "management";
+	return "operations";
+};
+
+const routeAreaLabelKeys: Record<string, string> = {
+	accounts: "users",
+	infrastructure: "sidebar.groups.infrastructure",
+	system: "sidebar.groups.system",
+	management: "admins.admin",
+	operations: "dashboard",
+};
+
 const hashLabelKeys: Record<string, string> = {
 	panel: "settings.panel.tabTitle",
 	telegram: "settings.telegram",
@@ -864,6 +884,10 @@ export function AppLayout() {
 		"/haproxy": { title: "haproxy.title" },
 	};
 	const routePageHeading = routePageHeadings[location.pathname];
+	const pageKey =
+		location.pathname.replace(/\/+$/, "").split("/").filter(Boolean).pop() ||
+		"dashboard";
+	const pageArea = getRouteArea(pageKey);
 	const openCurrentPage = () => {
 		const defaultTab = settingsDefaultTabByPath[location.pathname];
 		if (defaultTab) {
@@ -1280,6 +1304,8 @@ export function AppLayout() {
 					<Box
 						as="main"
 						className="am-panel-main"
+						data-page={pageKey}
+						data-area={pageArea}
 						flex="1"
 						p={{ base: 3, md: 4 }}
 						pb={{ base: "40", md: "4" }}
@@ -1289,6 +1315,7 @@ export function AppLayout() {
 					>
 						{routePageHeading && (
 							<PageHeader
+								eyebrow={t(routeAreaLabelKeys[pageArea])}
 								title={t(routePageHeading.title)}
 								description={
 									routePageHeading.description

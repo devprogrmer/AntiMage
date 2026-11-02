@@ -33,6 +33,7 @@ type PageHeaderProps = PropsWithChildren<
 	Omit<BoxProps, "title"> & {
 		title?: ReactNode;
 		description?: ReactNode;
+		eyebrow?: ReactNode;
 		actions?: ReactNode;
 	}
 >;
@@ -41,10 +42,11 @@ export const PageHeader: FC<PageHeaderProps> = ({
 	children,
 	title,
 	description,
+	eyebrow,
 	actions,
 	...props
 }) => {
-	if (!title && !description && !actions) {
+	if (!eyebrow && !title && !description && !actions) {
 		return (
 			<Box className="am-page-header" w="full" color="panel.text" {...props}>
 				{children}
@@ -62,6 +64,11 @@ export const PageHeader: FC<PageHeaderProps> = ({
 				flexWrap="wrap"
 			>
 				<Box minW={0}>
+					{eyebrow && (
+						<Text className="am-page-eyebrow" fontSize="xs" fontWeight="700">
+							{eyebrow}
+						</Text>
+					)}
 					{title && (
 						<Text className="am-page-title" as="h1" fontSize="2xl" fontWeight="semibold">
 							{title}
