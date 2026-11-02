@@ -1,6 +1,7 @@
 package nodeagent
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -24,6 +25,12 @@ type Config struct {
 
 func LoadConfig() Config {
 	dataDir := envString("ANTIMAGE_NODE_DATA_DIR", envString("ANTIMAGE_DATA_DIR", "/var/lib/antimage-node"))
+	appDir := envString("ANTIMAGE_NODE_APP_DIR", "/opt/antimage-node")
+	installMode := envString("ANTIMAGE_NODE_INSTALL_MODE", "binary")
+	metadataFile := envString(
+		"ANTIMAGE_NODE_BINARY_METADATA_FILE",
+		filepath.Join(appDir, ".binary-release.json"),
+	)
 	return Config{
 		Name:          envString("ANTIMAGE_NODE_NAME", envString("ANTIMAGE_NODE_APP_NAME", "antimage-node")),
 		ListenHost:    envString("SERVICE_HOST", "0.0.0.0"),
@@ -34,10 +41,43 @@ func LoadConfig() Config {
 		XrayPath:      envString("XRAY_EXECUTABLE_PATH", filepath.Join(dataDir, "xray-core", executableName("xray"))),
 		XrayAssetsDir: envString("XRAY_ASSETS_PATH", filepath.Join(dataDir, "xray-core")),
 		XrayAPIPort:   envInt("XRAY_API_PORT", 10085),
-		InstallMode:   envString("ANTIMAGE_NODE_INSTALL_MODE", "binary"),
+		InstallMode:   installMode,
 		UpdateChannel: envString("ANTIMAGE_NODE_UPDATE_CHANNEL", "stable"),
-		Version:       envString("ANTIMAGE_NODE_VERSION", "dev"),
+		Version:       configuredNodeVersion(installMode, metadataFile, envString("ANTIMAGE_NODE_VERSION", "dev")),
 	}
+}
+
+func configuredNodeVersion(installMode, metadataFile, fallback string) string {
+	if strings.EqualFold(strings.TrimSpace(installMode), "binary") {
+		if version := binaryReleaseTag(metadataFile); version != "" {
+			return version
+		}
+	}
+	return envStringValue(fallback, "dev")
+}
+
+func binaryReleaseTag(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return ""
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var metadata struct {
+		Tag string `json:"tag"`
+	}
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(metadata.Tag)
+}
+
+func envStringValue(value, fallback string) string {
+	if value = strings.TrimSpace(value); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func envString(key string, fallback string) string {
