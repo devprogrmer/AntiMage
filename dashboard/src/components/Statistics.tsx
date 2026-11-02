@@ -15,6 +15,12 @@ import {
 	ModalHeader,
 	ModalOverlay,
 	Progress,
+	Table,
+	Tbody,
+	Td,
+	Th,
+	Thead,
+	Tr,
 	SimpleGrid,
 	Spinner,
 	Stack,
@@ -25,8 +31,13 @@ import {
 import {
 	ArrowDownTrayIcon,
 	ArrowUpTrayIcon,
+	CircleStackIcon,
+	ServerStackIcon,
+	SignalIcon,
+	UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import { useDashboard } from "contexts/DashboardContext";
+import { useNodesQuery, type NodeType } from "contexts/NodesContext";
 import useGetUser from "hooks/useGetUser";
 import type { TFunction } from "i18next";
 import {
@@ -39,9 +50,10 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "react-query";
 import { fetch } from "service/http";
-import { AdminRole } from "types/Admin";
+import { AdminRole, AdminSudoScope } from "types/Admin";
 import type { SystemStats } from "types/System";
 import { formatBytes, numberWithCommas } from "utils/formatByte";
 import { formatDuration } from "utils/formatDuration";
@@ -167,7 +179,9 @@ const sanitizeSystemStats = (
 		online_users: toFiniteNumber(raw.online_users),
 		online_users_usage: toFiniteNumber(raw.online_users_usage),
 		online_users_upload_speed: toFiniteNumber(raw.online_users_upload_speed),
-		online_users_download_speed: toFiniteNumber(raw.online_users_download_speed),
+		online_users_download_speed: toFiniteNumber(
+			raw.online_users_download_speed,
+		),
 		users_active: toFiniteNumber(raw.users_active),
 		users_on_hold: toFiniteNumber(raw.users_on_hold),
 		users_disabled: toFiniteNumber(raw.users_disabled),
@@ -509,7 +523,7 @@ const HistoryModal: FC<{
 					justifyContent="space-between"
 					px={6}
 					py={4}
-				borderBottomWidth="1px"
+					borderBottomWidth="1px"
 					borderColor="panel.border"
 					fontSize="md"
 					fontWeight="bold"
@@ -595,11 +609,7 @@ const HistorySparkline: FC<{
 	values: number[];
 	accent?: string;
 	height?: string;
-}> = ({
-	values,
-	accent,
-	height = "42px",
-}) => {
+}> = ({ values, accent, height = "42px" }) => {
 	const defaultColor = useColorModeValue("gray.600", "gray.300");
 	const normalized = sampleSparklineValues(values.length ? values : [0]);
 	const maxValue = Math.max(...normalized, 1);
@@ -607,9 +617,7 @@ const HistorySparkline: FC<{
 	const points = normalized
 		.map((value, index) => {
 			const x =
-				normalized.length === 1
-					? 50
-					: (index / (normalized.length - 1)) * 100;
+				normalized.length === 1 ? 50 : (index / (normalized.length - 1)) * 100;
 			const y = 39 - (Math.max(0, value) / maxValue) * 38;
 			return `${x.toFixed(2)},${y.toFixed(2)}`;
 		})
@@ -694,6 +702,7 @@ const UsageMetricCard: FC<{
 
 	return (
 		<Box
+			className={`am-dashboard-metric${featured ? " is-featured" : ""}`}
 			borderWidth="1px"
 			borderColor={borderColor}
 			borderRadius="xl"
@@ -701,11 +710,7 @@ const UsageMetricCard: FC<{
 			overflow="hidden"
 			p={featured ? { base: 5, md: 6 } : 4}
 			minH={
-				featured
-					? { base: "300px", xl: "100%" }
-					: history
-						? "136px"
-						: "106px"
+				featured ? { base: "300px", xl: "100%" } : history ? "136px" : "106px"
 			}
 			transition="transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease"
 			sx={{
@@ -1056,7 +1061,7 @@ const MetricBadge: FC<{
 	);
 };
 
-const SystemOverviewCard: FC<{
+const _SystemOverviewCard: FC<{
 	data: SystemStats;
 	t: TFunction;
 	onOpenHistory: (payload: HistoryModalPayload) => void;
@@ -1075,6 +1080,7 @@ const SystemOverviewCard: FC<{
 		.join(" · ");
 	return (
 		<ChartBox
+			className="am-dashboard-section am-dashboard-system"
 			title={t("systemOverview")}
 			headerActions={
 				<DashboardMaintenanceControls
@@ -1251,7 +1257,7 @@ const SystemOverviewCard: FC<{
 	);
 };
 
-const PanelOverviewCard: FC<{
+const _PanelOverviewCard: FC<{
 	data: SystemStats;
 	t: TFunction;
 	onOpenHistory: (payload: HistoryModalPayload) => void;
@@ -1263,6 +1269,7 @@ const PanelOverviewCard: FC<{
 	const panelCpuDetail = `${formatNumberValue(data.app_threads)} ${t("threads")} · ${t("panelUptime")}: ${formatDuration(data.panel_uptime_seconds)}`;
 	return (
 		<ChartBox
+			className="am-dashboard-section"
 			title={t("panelUsage")}
 			headerActions={
 				<Badge
@@ -1321,7 +1328,7 @@ const UsersOverviewCard: FC<{
 	data: SystemStats;
 	t: TFunction;
 }> = ({ data, t }) => (
-	<ChartBox title={t("usersOverview")}>
+	<ChartBox className="am-dashboard-section" title={t("usersOverview")}>
 		<Stack spacing={5}>
 			<MetricBadge
 				label={t("total")}
@@ -1375,6 +1382,168 @@ const UsersOverviewCard: FC<{
 	</ChartBox>
 );
 
+const DashboardKpi: FC<{
+	label: string;
+	value: ReactNode;
+	detail: string;
+	icon: ReactNode;
+	tone: "cyan" | "blue" | "green" | "orange";
+	to?: string;
+}> = ({ label, value, detail, icon, tone, to }) => {
+	const navigate = useNavigate();
+	return (
+		<Box
+			as={to ? "button" : "section"}
+			className={`am-dashboard-kpi tone-${tone}`}
+			textAlign="start"
+			minW={0}
+			onClick={to ? () => navigate(to) : undefined}
+			aria-label={label}
+		>
+			<Flex align="center" justify="space-between" gap={3}>
+				<Box minW={0}>
+					<Text className="am-dashboard-kpi-label">{label}</Text>
+					<Text className="am-dashboard-kpi-value">{value}</Text>
+					<Text className="am-dashboard-kpi-detail">{detail}</Text>
+				</Box>
+				<Box className="am-dashboard-kpi-icon" aria-hidden="true">
+					{icon}
+				</Box>
+			</Flex>
+		</Box>
+	);
+};
+
+const DashboardNodeRow: FC<{ node: NodeType; t: TFunction }> = ({
+	node,
+	t,
+}) => {
+	const connected =
+		node.agent_status === "connected" || node.status === "connected";
+	const cpu = node.cpu_usage_percent;
+	const memory = node.memory_usage_percent;
+	return (
+		<Tr className="am-dashboard-node-row">
+			<Td>
+				<HStack spacing={2}>
+					<Box
+						className={`am-dashboard-live-dot${connected ? " is-online" : ""}`}
+					/>
+					<Text fontWeight="semibold" noOfLines={1}>
+						{node.name}
+					</Text>
+				</HStack>
+				<Text className="am-dashboard-node-address" dir="ltr">
+					{node.address}
+				</Text>
+			</Td>
+			<Td>
+				<Text color={connected ? "green.300" : "orange.300"}>
+					{connected ? t("online") : t("nodeModal.status.error")}
+				</Text>
+			</Td>
+			<Td>
+				<ResourceBar label="CPU" value={cpu} />
+			</Td>
+			<Td>
+				<ResourceBar label={t("memoryUsage")} value={memory} />
+			</Td>
+		</Tr>
+	);
+};
+
+const ResourceBar: FC<{ label: string; value?: number | null }> = ({
+	label,
+	value,
+}) => (
+	<HStack className="am-dashboard-resource" spacing={2}>
+		<Text>{label}</Text>
+		{value === null || value === undefined ? (
+			<Text aria-label="unavailable">—</Text>
+		) : (
+			<>
+				<Progress value={Math.max(0, Math.min(100, value))} />
+				<Text dir="ltr">{value.toFixed(0)}%</Text>
+			</>
+		)}
+	</HStack>
+);
+
+const NetworkHistoryPanel: FC<{
+	data: SystemStats;
+	t: TFunction;
+	onOpen: () => void;
+}> = ({ data, t, onOpen }) => {
+	const entries = data.network_history.slice(-36);
+	const max = Math.max(
+		1,
+		...entries.flatMap((entry) => [entry.incoming, entry.outgoing]),
+	);
+	const points = (key: "incoming" | "outgoing") =>
+		entries
+			.map((entry, index) => {
+				const x =
+					entries.length < 2 ? 50 : (index / (entries.length - 1)) * 100;
+				const y = 94 - (entry[key] / max) * 84;
+				return `${x.toFixed(1)},${y.toFixed(1)}`;
+			})
+			.join(" ");
+	return (
+		<ChartBox
+			className="am-dashboard-section am-dashboard-traffic"
+			title={t("networkHistory")}
+			headerActions={
+				<Button size="xs" variant="ghost" onClick={onOpen}>
+					{t("viewHistory")}
+				</Button>
+			}
+		>
+			<Box
+				className="am-dashboard-chart"
+				role="img"
+				aria-label={t("networkHistory")}
+			>
+				<Box className="am-dashboard-chart-grid" />
+				<svg
+					viewBox="0 0 100 100"
+					preserveAspectRatio="none"
+					aria-hidden="true"
+				>
+					{entries.length > 0 && (
+						<>
+							<polyline points={points("incoming")} className="series-in" />
+							<polyline points={points("outgoing")} className="series-out" />
+						</>
+					)}
+				</svg>
+				{entries.length === 0 && (
+					<Text className="am-dashboard-chart-empty">
+						{t(
+							"dashboard.noNetworkHistory",
+							"Network history will appear as measurements arrive.",
+						)}
+					</Text>
+				)}
+			</Box>
+			<Flex
+				justify="space-between"
+				className="am-dashboard-chart-legend"
+				gap={3}
+				wrap="wrap"
+			>
+				<Text>
+					<i className="series-key series-key-in" />
+					{t("incomingSpeed")}: {formatBytes(data.incoming_bandwidth_speed)}/s
+				</Text>
+				<Text>
+					<i className="series-key series-key-out" />
+					{t("outgoingSpeed")}: {formatBytes(data.outgoing_bandwidth_speed)}/s
+				</Text>
+			</Flex>
+		</ChartBox>
+	);
+};
+
 const YourUsageCard: FC<{
 	data?: SystemStats["personal_usage"];
 	t: TFunction;
@@ -1389,7 +1558,7 @@ const YourUsageCard: FC<{
 			? t("dashboard.currentCreatedTrafficHint")
 			: t("dashboard.currentUserUsageHint");
 	return (
-		<ChartBox title={t("yourUsage")}>
+		<ChartBox className="am-dashboard-section" title={t("yourUsage")}>
 			<Stack spacing={5}>
 				<SimpleGrid columns={1} gap={5}>
 					<MetricBadge
@@ -1415,7 +1584,7 @@ const AdminOverviewCard: FC<{
 }> = ({ data, t }) => {
 	if (!data) return null;
 	return (
-		<ChartBox title={t("adminOverview")}>
+		<ChartBox className="am-dashboard-section" title={t("adminOverview")}>
 			<Stack spacing={5}>
 				<SimpleGrid columns={{ base: 1, md: 2 }} gap={5}>
 					<MetricBadge
@@ -1473,6 +1642,7 @@ export const Statistics: FC<BoxProps> = (props) => {
 	const { version } = useDashboard();
 	const { userData } = useGetUser();
 	const { t } = useTranslation();
+	const navigate = useNavigate();
 	const { data: rawSystemData } = useQuery<SystemStats>({
 		queryKey: StatisticsQueryKey,
 		queryFn: () => fetch("/system"),
@@ -1500,6 +1670,36 @@ export const Statistics: FC<BoxProps> = (props) => {
 
 	const canSeeGlobal =
 		userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
+	const canSeeNodes = Boolean(userData.permissions?.sections?.nodes);
+	const canSeeRecentActions =
+		userData.role === AdminRole.FullAccess ||
+		(userData.role === AdminRole.Sudo &&
+			Boolean(userData.permissions?.sudo?.[AdminSudoScope.Xray]));
+	const { data: nodes = [] } = useNodesQuery({ enabled: canSeeNodes });
+	const { data: recentActionsData } = useQuery<{
+		actions: Array<{
+			id: number;
+			summary: string;
+			actor_username: string;
+			created_at: string;
+		}>;
+	}>(
+		"dashboard-recent-actions",
+		() =>
+			fetch<{
+				actions: Array<{
+					id: number;
+					summary: string;
+					actor_username: string;
+					created_at: string;
+				}>;
+			}>("/core/recent-actions?limit=5&offset=0"),
+		{
+			enabled: canSeeRecentActions,
+			staleTime: 15_000,
+			refetchOnWindowFocus: false,
+		},
+	);
 
 	const openHistory = (payload: HistoryModalPayload) => {
 		setHistoryInterval(HISTORY_INTERVALS[0].seconds);
@@ -1519,21 +1719,280 @@ export const Statistics: FC<BoxProps> = (props) => {
 		userCards.push(personalUsageCard);
 	}
 	const userGridColumns = userCards.length > 1 ? 2 : 1;
+	const onlineNodes = nodes.filter(
+		(node) => node.agent_status === "connected" || node.status === "connected",
+	).length;
 
 	return (
-		<Stack spacing={5} width="full" {...props}>
+		<Stack
+			spacing={5}
+			width="full"
+			{...props}
+			className={["am-dashboard", props.className].filter(Boolean).join(" ")}
+		>
 			{systemData && (
 				<>
-					<SystemOverviewCard
-						data={systemData}
-						t={t}
-						onOpenHistory={openHistory}
-					/>
-					<PanelOverviewCard
-						data={systemData}
-						t={t}
-						onOpenHistory={openHistory}
-					/>
+					<Flex
+						className="am-dashboard-hero"
+						align={{ base: "flex-start", lg: "center" }}
+						justify="space-between"
+						gap={4}
+						wrap="wrap"
+					>
+						<Box>
+							<Text className="am-dashboard-eyebrow">
+								AntiMage{" "}
+								<Box as="span" aria-hidden="true">
+									/
+								</Box>{" "}
+								{t("systemOverview")}
+							</Text>
+							<Text className="am-dashboard-title">{t("dashboard")}</Text>
+							<Text className="am-dashboard-description">
+								{t("dashboard.onlineUsersCount", {
+									count: systemData.online_users,
+								})}{" "}
+								· {formatNumberValue(systemData.total_user)} {t("users")}
+							</Text>
+						</Box>
+						<HStack spacing={2} flexWrap="wrap">
+							<Badge
+								className="am-dashboard-status"
+								colorScheme={systemData.xray_running ? "green" : "red"}
+							>
+								{systemData.xray_running
+									? t("status.running")
+									: t("status.stopped")}
+							</Badge>
+							{systemData.version && (
+								<Badge className="am-dashboard-version" dir="ltr">
+									{systemData.version}
+								</Badge>
+							)}
+						</HStack>
+					</Flex>
+					<SimpleGrid
+						className="am-dashboard-kpis"
+						columns={{ base: 1, sm: 2, xl: 4 }}
+						spacing={3}
+					>
+						{canSeeNodes && (
+							<DashboardKpi
+								label={t("dashboard.onlineNodes", "Online nodes")}
+								value={`${onlineNodes} / ${nodes.length}`}
+								detail={
+									onlineNodes === nodes.length
+										? t(
+												"dashboard.allNodesReachable",
+												"All nodes are reachable",
+											)
+										: t(
+												"dashboard.nodesNeedAttention",
+												"Check nodes that are offline",
+											)
+								}
+								icon={<ServerStackIcon />}
+								tone="cyan"
+								to="/nodes"
+							/>
+						)}
+						<DashboardKpi
+							label={t("dashboard.activeUsers", "Active users")}
+							value={formatNumberValue(systemData.users_active)}
+							detail={t("dashboard.onlineUsersCount", {
+								count: systemData.online_users,
+							})}
+							icon={<UserGroupIcon />}
+							tone="blue"
+							to="/users"
+						/>
+						<DashboardKpi
+							label={t("dashboard.recordedTraffic", "Recorded traffic")}
+							value={formatBytes(systemData.panel_total_bandwidth)}
+							detail={t("dashboard.liveTrafficRate", {
+								rate: `${formatBytes(systemData.incoming_bandwidth_speed + systemData.outgoing_bandwidth_speed)}/s`,
+							})}
+							icon={<CircleStackIcon />}
+							tone="green"
+						/>
+						<DashboardKpi
+							label="API"
+							value={t("dashboard.apiHealthy", "Connected")}
+							detail={`${t("dashboard.responseStatus", "Panel data is updating")} · ${systemData.version}`}
+							icon={<SignalIcon />}
+							tone="orange"
+						/>
+					</SimpleGrid>
+					<Grid
+						className="am-dashboard-overview-grid"
+						templateColumns={{
+							base: "1fr",
+							xl: canSeeNodes ? "minmax(0, 1.2fr) minmax(420px, 0.9fr)" : "1fr",
+						}}
+						gap={4}
+					>
+						<NetworkHistoryPanel
+							data={systemData}
+							t={t}
+							onOpen={() =>
+								openHistory({
+									type: "network",
+									title: t("networkHistory"),
+									entries: systemData.network_history,
+								})
+							}
+						/>
+						{canSeeNodes && (
+							<ChartBox
+								className="am-dashboard-section am-dashboard-nodes"
+								title={t("dashboard.nodeStatus", "Node status")}
+								headerActions={
+									<Button
+										size="xs"
+										variant="ghost"
+										onClick={() => navigate("/nodes")}
+									>
+										{t("dashboard.viewAllNodes", "View all nodes")}
+									</Button>
+								}
+							>
+								{nodes.length ? (
+									<Box overflowX="auto">
+										<Table size="sm" className="am-dashboard-node-table">
+											<Thead>
+												<Tr>
+													<Th>{t("nodes.name", "Node")}</Th>
+													<Th>{t("status", "Status")}</Th>
+													<Th>CPU</Th>
+													<Th>{t("memoryUsage")}</Th>
+												</Tr>
+											</Thead>
+											<Tbody>
+												{nodes.slice(0, 5).map((node) => (
+													<DashboardNodeRow
+														key={node.id ?? node.name}
+														node={node}
+														t={t}
+													/>
+												))}
+											</Tbody>
+										</Table>
+									</Box>
+								) : (
+									<Text className="am-dashboard-empty">
+										{t("dashboard.noNodes", "No nodes are configured yet.")}
+									</Text>
+								)}
+							</ChartBox>
+						)}
+					</Grid>
+					<SimpleGrid
+						className="am-dashboard-resource-strip"
+						columns={{ base: 1, sm: 2, xl: 4 }}
+						spacing={3}
+					>
+						<UsageMetricCard
+							label={t("cpuUsage")}
+							percent={systemData.cpu_usage}
+							detail={`${formatNumberValue(systemData.cpu_cores)} ${t("cores")} · ${formatNumberValue(systemData.cpu_threads || systemData.cpu_cores)} ${t("threads")}`}
+							history={systemData.cpu_history.map((item) => item.value)}
+							onOpen={() =>
+								openHistory({
+									type: "cpu",
+									title: t("cpuUsage"),
+									metricLabel: t("cpuUsage"),
+									entries: systemData.cpu_history,
+								})
+							}
+							actionLabel={t("viewHistory")}
+						/>
+						<UsageMetricCard
+							label={t("memoryUsage")}
+							percent={systemData.memory.percent}
+							detail={`${formatBytes(systemData.memory.current)} / ${formatBytes(systemData.memory.total)}`}
+							history={systemData.memory_history.map((item) => item.value)}
+							onOpen={() =>
+								openHistory({
+									type: "memory",
+									title: t("memoryUsage"),
+									metricLabel: t("memoryUsage"),
+									entries: systemData.memory_history,
+								})
+							}
+							actionLabel={t("viewHistory")}
+						/>
+						<UsageMetricCard
+							label={t("panelUsage")}
+							percent={systemData.panel_cpu_percent}
+							detail={`${formatBytes(systemData.app_memory)} · ${formatNumberValue(systemData.app_threads)} ${t("threads")}`}
+							history={systemData.panel_cpu_history.map((item) => item.value)}
+							onOpen={() =>
+								openHistory({
+									type: "panel",
+									title: t("panelUsage"),
+									cpuEntries: systemData.panel_cpu_history,
+									memoryEntries: systemData.panel_memory_history,
+								})
+							}
+							actionLabel={t("viewHistory")}
+						/>
+						<UsageMetricCard
+							label={t("xraySettings.title", "Xray service")}
+							percent={systemData.xray_running ? 100 : 0}
+							detail={
+								systemData.xray_version ||
+								(systemData.xray_running
+									? t("status.running")
+									: t("status.stopped"))
+							}
+						/>
+					</SimpleGrid>
+					{canSeeRecentActions && (
+						<ChartBox
+							className="am-dashboard-section am-dashboard-activity"
+							title={t("recentActions.title")}
+							headerActions={
+								<Button
+									size="xs"
+									variant="ghost"
+									onClick={() => navigate("/recent-actions")}
+								>
+									{t("dashboard.viewActivity", "View activity")}
+								</Button>
+							}
+						>
+							{recentActionsData?.actions?.length ? (
+								<Stack spacing={0}>
+									{recentActionsData.actions.map((action) => (
+										<Flex
+											key={action.id}
+											className="am-dashboard-activity-row"
+											justify="space-between"
+											align="center"
+											gap={4}
+										>
+											<Text noOfLines={1}>{action.summary}</Text>
+											<HStack spacing={3} flexShrink={0}>
+												<Text color="panel.textMuted">
+													{action.actor_username}
+												</Text>
+												<Text color="panel.textMuted" dir="ltr">
+													{new Intl.DateTimeFormat(undefined, {
+														dateStyle: "short",
+														timeStyle: "short",
+													}).format(new Date(action.created_at))}
+												</Text>
+											</HStack>
+										</Flex>
+									))}
+								</Stack>
+							) : (
+								<Text className="am-dashboard-empty">
+									{t("recentActions.empty", "No recent activity")}
+								</Text>
+							)}
+						</ChartBox>
+					)}
 				</>
 			)}
 			{userCards.length > 0 && (
@@ -1555,3 +2014,4 @@ export const Statistics: FC<BoxProps> = (props) => {
 		</Stack>
 	);
 };
+

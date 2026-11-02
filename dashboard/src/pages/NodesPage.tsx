@@ -54,6 +54,7 @@ import { AppleEmojiText } from "components/common/AppleEmojiText";
 import { PanelSelect as Select } from "components/common/PanelSelect";
 import { SearchInput } from "components/common/SearchInput";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
+import { type HostsSchema, useHosts } from "contexts/HostsContext";
 import {
 	FetchNodesQueryKey,
 	type NodeType,
@@ -61,39 +62,45 @@ import {
 	useNodes,
 	useNodesQuery,
 } from "contexts/NodesContext";
-import { type HostsSchema, useHosts } from "contexts/HostsContext";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import useGetUser from "hooks/useGetUser";
-import { type FC, useCallback, useEffect, useMemo, useState } from "react";
+import {
+	type FC,
+	type MouseEvent as ReactMouseEvent,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import { useNavigate } from "react-router-dom";
 import { fetch as apiFetch } from "service/http";
 import { formatBytes } from "utils/formatByte";
+import { getNodeErrorGuidanceKeys } from "utils/nodeErrorGuidance";
 import {
 	DEFAULT_SEARCH_MATCH_OPTIONS,
 	matchesAnySearch,
 } from "utils/searchMatch";
 import {
-	getNodesPerPageLimitSize,
-	setNodesPerPageLimitSize,
-} from "utils/userPreferenceStorage";
-import {
 	generateErrorMessage,
 	generateSuccessMessage,
 } from "utils/toastHandler";
-
 import {
-	DataTable,
-	type DataTableColumn,
-	type DataTableRowAction,
-} from "../components/ui";
+	getNodesPerPageLimitSize,
+	setNodesPerPageLimitSize,
+} from "utils/userPreferenceStorage";
 import { CoreVersionDialog } from "../components/CoreVersionDialog";
 import { ConfirmDialog } from "../components/dialogs/ConfirmDialog";
 import { GeoUpdateDialog } from "../components/GeoUpdateDialog";
 import { NodeFormModal } from "../components/NodeFormModal";
 import { NodeModalStatusBadge } from "../components/NodeModalStatusBadge";
+import {
+	DataTable,
+	type DataTableColumn,
+	type DataTableRowAction,
+} from "../components/ui";
 
 const normalizeVersion = (value?: string | null) => {
 	if (!value) return "";
@@ -1899,21 +1906,66 @@ export const NodesPage: FC = () => {
 		if (status !== "error" || !node.message) {
 			return statusBadge;
 		}
+		const guidance = getNodeErrorGuidanceKeys(node.message);
 		return (
 			<Popover
-				trigger="hover"
+				trigger="click"
 				placement="top"
-				openDelay={250}
-				closeDelay={150}
 				isLazy
 				closeOnBlur={false}
 			>
 				<PopoverTrigger>
-					<Box as="span">{statusBadge}</Box>
+					<Box
+						as="button"
+						type="button"
+						aria-label={t("nodeDiagnostics.open")}
+						onClick={(event: ReactMouseEvent<HTMLButtonElement>) =>
+							event.stopPropagation()
+						}
+					>
+						{statusBadge}
+					</Box>
 				</PopoverTrigger>
-				<PopoverContent maxW="360px" px={2} py={1} fontSize="sm">
+				<PopoverContent maxW="420px" p={0} fontSize="sm">
 					<PopoverArrow />
-					<PopoverBody>{node.message}</PopoverBody>
+					<PopoverBody p={4}>
+						<Stack spacing={3}>
+							<Box>
+								<Text fontWeight="bold" color="panel.text">
+									{t(guidance.title)}
+								</Text>
+								<Text mt={1} color="panel.textSecondary">
+									{t(guidance.cause)}
+								</Text>
+							</Box>
+							<Box>
+								<Text mb={1} fontWeight="semibold" color="panel.text">
+									{t("nodeDiagnostics.stepsTitle")}
+								</Text>
+								<Stack as="ol" pl={4} spacing={1} color="panel.textSecondary">
+									{guidance.steps.map((step) => (
+										<Text as="li" key={step}>
+											{t(step)}
+										</Text>
+									))}
+								</Stack>
+							</Box>
+							<Box
+								p={2}
+								borderRadius="md"
+								bg="panel.input"
+								borderWidth="1px"
+								borderColor="panel.border"
+							>
+								<Text mb={1} fontSize="xs" fontWeight="semibold" color="panel.textMuted">
+									{t("nodeDiagnostics.rawError")}
+								</Text>
+								<Text dir="auto" whiteSpace="pre-wrap" wordBreak="break-word" fontFamily="mono" fontSize="xs">
+									{node.message}
+								</Text>
+							</Box>
+						</Stack>
+					</PopoverBody>
 				</PopoverContent>
 			</Popover>
 		);
@@ -3234,3 +3286,4 @@ export const NodesPage: FC = () => {
 };
 
 export default NodesPage;
+

@@ -14,6 +14,7 @@ import { updateThemeColor } from "utils/themeColor";
 import { theme } from "../chakra.config";
 import App from "./App";
 import "index.scss";
+import "./redesign.scss";
 
 dayjs.extend(Timezone);
 dayjs.extend(LocalizedFormat);
@@ -69,3 +70,4 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 		</ChakraProvider>
 	</React.StrictMode>,
 );
+

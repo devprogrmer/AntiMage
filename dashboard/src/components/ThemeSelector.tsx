@@ -86,6 +86,7 @@ const SwatchIconChakra = chakra(SwatchIcon, {
 });
 
 const ACCENT_OPTIONS: AccentOption[] = [
+	{ key: "teal", label: "Teal", color: "#0f9f92", hover: "#20b8a9" },
 	{
 		key: "coral",
 		label: "Subscription Pink",
@@ -223,13 +224,13 @@ const normalizeTheme = (value?: string | null): ThemeMode =>
 	value === "light" ? "light" : "dark";
 
 const normalizeAccent = (value?: string | null) =>
-	ACCENT_OPTIONS.some((option) => option.key === value) ? value! : "coral";
+	ACCENT_OPTIONS.some((option) => option.key === value) ? value! : "teal";
 
 const getStoredAccent = () => {
 	try {
 		return normalizeAccent(localStorage.getItem(ACCENT_KEY));
 	} catch {
-		return "coral";
+		return "teal";
 	}
 };
 
@@ -432,7 +433,7 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 					>
 						{t("theme.accent")}
 					</Text>
-					<SimpleGrid columns={{ base: 5 }} spacing={2}>
+					<SimpleGrid columns={{ base: 6 }} spacing={2}>
 						{ACCENT_OPTIONS.map((accent) => {
 							const selected = activeAccent === accent.key;
 							return (
@@ -564,3 +565,4 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 };
 
 export default ThemeSelector;
+
