@@ -796,7 +796,10 @@ export function AppLayout() {
 		const key = (isHash ? hashLabelKeys : routeLabelKeys)[normalized];
 		return key ? t(key) : part;
 	};
-	const routePageHeadings: Record<string, { title: string; description?: string }> = {
+	const routePageHeadings: Record<
+		string,
+		{ title: string; description?: string }
+	> = {
 		"/": { title: "dashboard", description: "dashboard.subtitle" },
 		"/users": {
 			title: "users",
@@ -881,9 +884,6 @@ export function AppLayout() {
 
 	return (
 		<>
-			<Box display="none" aria-hidden="true">
-				<ThemeSelector minimal trigger="icon" />
-			</Box>
 			<Flex
 				className="am-panel-shell"
 				minH="100vh"
@@ -976,9 +976,9 @@ export function AppLayout() {
 								</Button>
 								{locationTrail.length > 1 && (
 									<>
-											<Text color="panel.textSecondary" aria-hidden="true">
-												{isRTL ? "←" : "→"}
-											</Text>
+										<Text color="panel.textSecondary" aria-hidden="true">
+											{isRTL ? "←" : "→"}
+										</Text>
 										<Button
 											variant="link"
 											fontSize={{ base: "xs", md: "sm" }}
@@ -1001,16 +1001,46 @@ export function AppLayout() {
 										overflow="hidden"
 										textOverflow="ellipsis"
 									>
-						{isRTL ? "←" : "→"} {locationTrail
-							.slice(2)
-							.map((part) => locationLabel(part, true))
-							.join(isRTL ? " ← " : " → ")}
+										{isRTL ? "←" : "→"}{" "}
+										{locationTrail
+											.slice(2)
+											.map((part) => locationLabel(part, true))
+											.join(isRTL ? " ← " : " → ")}
 									</Text>
 								)}
 							</HStack>
 						</HStack>
 						<HStack spacing={2} alignItems="center" flexShrink={0}>
 							<HeaderCalendar />
+							<Box flexShrink={0}>
+								<ThemeSelector minimal trigger="icon" />
+							</Box>
+							<HStack
+								className="am-header-language"
+								spacing={0.5}
+								display={{ base: "none", lg: "flex" }}
+								aria-label={t("header.language")}
+							>
+								{languageItems.map(({ code }) => {
+									const active = activeLanguage.startsWith(code);
+									return (
+										<Button
+											key={code}
+											size="xs"
+											variant={active ? "solid" : "ghost"}
+											colorScheme={active ? "primary" : undefined}
+											aria-pressed={active}
+											onClick={() => changeLanguage(code)}
+										>
+											{code === "fa"
+												? "فارسی"
+												: code === "ru"
+													? "Русский"
+													: "EN"}
+										</Button>
+									);
+								})}
+							</HStack>
 							<Box display={{ base: "none", md: "block" }} flexShrink={0}>
 								<GitHubStars />
 							</Box>
@@ -1763,3 +1793,4 @@ export function AppLayout() {
 		</>
 	);
 }
+
