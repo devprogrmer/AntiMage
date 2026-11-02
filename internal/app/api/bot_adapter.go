@@ -2,13 +2,16 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	adminapp "github.com/antimage/antimage/internal/app/admin"
 	dashboardapp "github.com/antimage/antimage/internal/app/dashboard"
+	"github.com/antimage/antimage/internal/app/shop"
 	telegrambot "github.com/antimage/antimage/internal/app/telegram/bot"
 	userapp "github.com/antimage/antimage/internal/app/user"
 )
@@ -184,6 +187,128 @@ func (b botUserService) update(ctx context.Context, actor telegrambot.Actor, use
 	return err
 }
 
+type botShopService struct{ server *Server }
+
+func (b botShopService) stores() (shop.Orders, shop.Wallet) {
+	return shop.Orders{DB: b.server.db}, shop.Wallet{DB: b.server.db, Dialect: b.server.dialect}
+}
+
+func (b botShopService) Balance(ctx context.Context, telegramID int64) (int64, error) {
+	_, wallet := b.stores()
+	return wallet.Balance(ctx, telegramID)
+}
+
+func (b botShopService) Products(ctx context.Context) ([]shop.Product, error) {
+	orders, _ := b.stores()
+	return orders.ListProducts(ctx)
+}
+
+func (b botShopService) Orders(ctx context.Context, telegramID int64) ([]shop.Order, error) {
+	orders, _ := b.stores()
+	return orders.ListCustomerOrders(ctx, telegramID)
+}
+
+func (b botShopService) Place(ctx context.Context, telegramID, productID int64, requestKey string) (shop.Order, error) {
+	orders, _ := b.stores()
+	return orders.Place(ctx, telegramID, productID, requestKey)
+}
+
+func (b botShopService) AdminCredit(ctx context.Context, telegramID, amount int64, reference string) (int64, error) {
+	_, wallet := b.stores()
+	return wallet.Credit(ctx, telegramID, amount, reference)
+}
+
+func (b botShopService) AddProduct(ctx context.Context, product shop.Product, requestKey string) (shop.Product, error) {
+	if err := b.serviceHasActiveHost(ctx, product.ServiceID); err != nil {
+		return shop.Product{}, err
+	}
+	orders, _ := b.stores()
+	return orders.CreateProduct(ctx, product, requestKey)
+}
+
+func (b botShopService) DisableProduct(ctx context.Context, productID int64) error {
+	orders, _ := b.stores()
+	return orders.DisableProduct(ctx, productID)
+}
+
+func (b botShopService) serviceHasActiveHost(ctx context.Context, serviceID int64) error {
+	var exists int
+	err := b.server.db.QueryRowContext(ctx, `SELECT 1 FROM service_hosts sh JOIN hosts h ON h.id = sh.host_id WHERE sh.service_id = ? AND COALESCE(h.is_disabled, 0) = 0 LIMIT 1`, serviceID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("service has no active host")
+	}
+	return err
+}
+
+func (b botShopService) PayAndProvision(ctx context.Context, telegramID int64, orderID string) (string, error) {
+	orders, wallet := b.stores()
+	var serviceID int64
+	var owner int64
+	var status string
+	if err := b.server.db.QueryRowContext(ctx, `SELECT telegram_id, service_id, status FROM shop_orders WHERE id = ?`, orderID).Scan(&owner, &serviceID, &status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", shop.ErrOrderUnavailable
+		}
+		return "", err
+	}
+	if owner != telegramID {
+		return "", shop.ErrOrderUnavailable
+	}
+	if status == "pending" {
+		if err := b.serviceHasActiveHost(ctx, serviceID); err != nil {
+			return "", err
+		}
+	}
+	if _, err := orders.Pay(ctx, telegramID, orderID, wallet); err != nil {
+		return "", err
+	}
+	return orders.Provision(ctx, orderID, botAccountProvisioner{server: b.server})
+}
+
+type botAccountProvisioner struct{ server *Server }
+
+func (b botAccountProvisioner) Lookup(ctx context.Context, username string) (shop.Account, bool, error) {
+	var account shop.Account
+	var telegramID, serviceID, limit, duration sql.NullInt64
+	var note sql.NullString
+	err := b.server.db.QueryRowContext(ctx, `SELECT username, telegram_id, service_id, data_limit, on_hold_expire_duration, note FROM users WHERE username = ? AND status != 'deleted'`, username).
+		Scan(&account.Username, &telegramID, &serviceID, &limit, &duration, &note)
+	if errors.Is(err, sql.ErrNoRows) {
+		return shop.Account{}, false, nil
+	}
+	if err != nil {
+		return shop.Account{}, false, err
+	}
+	account.TelegramID = telegramID.Int64
+	account.ServiceID = serviceID.Int64
+	account.DataLimitBytes = limit.Int64
+	account.HoldDurationSec = duration.Int64
+	account.OrderMarker = note.String
+	return account, true, nil
+}
+
+func (b botAccountProvisioner) Create(ctx context.Context, account shop.Account) error {
+	admin, ok, err := b.server.adminRepo.FirstFullAccessAdmin(ctx)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("no active full-access admin for order delivery")
+	}
+	raw, err := json.Marshal(map[string]any{
+		"username": account.Username, "service_id": account.ServiceID,
+		"telegram_id": strconv.FormatInt(account.TelegramID, 10),
+		"data_limit":  account.DataLimitBytes,
+		"status":      "on_hold", "on_hold_expire_duration": account.HoldDurationSec,
+		"note": account.OrderMarker,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = b.server.userService.CreateUser(ctx, admin, raw)
+	return err
+}
+
 // botSystemService adapts the system stats service to the bot's SystemService.
 type botSystemService struct {
 	server *Server
@@ -217,6 +342,7 @@ func (s *Server) runTelegramBot(ctx context.Context) {
 		Authorizer: botAuthorizer{server: s},
 		Users:      botUserService{server: s},
 		Customers:  botUserService{server: s},
+		Shop:       botShopService{server: s},
 		System:     botSystemService{server: s},
 		DB:         s.db,
 	})

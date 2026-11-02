@@ -12,15 +12,31 @@ const helpText = `🤖 <b>AntiMage admin bot</b>
 /user <code>&lt;username&gt;</code> — show a user and manage it
 /usage <code>&lt;username&gt;</code> — show a user's usage
 /system — show system status
+/shop — browse plans
+/balance — show your wallet
+/orders — show your orders
+/my — show services linked to your Telegram ID
+/credit &lt;telegram_id&gt; &lt;toman&gt; &lt;reference&gt; — admin wallet credit
+/plan-add &lt;service_id&gt; &lt;toman&gt; &lt;GB&gt; &lt;days&gt; &lt;title&gt; — admin product
+/plan-disable &lt;product_id&gt; — admin product disable
 /help — show this help`
 
 func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message) {
 	chatID := msg.Chat.ID
 	command, arg := splitCommand(msg.Text)
-	if (command == "/my" || command == "/start") && msg.From != nil && msg.From.ID > 0 && msg.Chat.Type == "private" && chatID == msg.From.ID {
-		if command == "/my" || !authorized(settings, msg.From.ID) {
+	if msg.From != nil && msg.From.ID > 0 && msg.Chat.Type == "private" && chatID == msg.From.ID {
+		switch command {
+		case "/my":
 			b.handleCustomerAccounts(ctx, settings, chatID, msg.From.ID)
 			return
+		case "/shop", "/balance", "/orders":
+			b.handleShopCommand(ctx, settings, chatID, msg.From.ID, command)
+			return
+		case "/start":
+			if !authorized(settings, msg.From.ID) {
+				b.reply(ctx, settings, chatID, "Welcome to AntiMage. Use /shop to view plans, /balance for your wallet, /orders for purchases, or /my for your services.", nil)
+				return
+			}
 		}
 	}
 	if !authorized(settings, chatID) {
@@ -46,6 +62,8 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 		b.handleUsageCommand(ctx, settings, chatID, arg)
 	case "/user":
 		b.handleUserCommand(ctx, settings, chatID, arg)
+	case "/credit", "/plan-add", "/plan-disable":
+		b.handleAdminShopCommand(ctx, settings, msg, command, arg)
 	default:
 		if command != "" {
 			b.reply(ctx, settings, chatID, "Unknown command. Send /help.", nil)
@@ -125,6 +143,10 @@ func (b *Bot) handleConversation(ctx context.Context, settings Settings, chatID 
 }
 
 func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *CallbackQuery) {
+	if strings.HasPrefix(query.Data, "shop:") && query.From != nil && query.From.ID > 0 && query.Message != nil && query.Message.Chat.Type == "private" && query.Message.Chat.ID == query.From.ID {
+		b.handleShopCallback(ctx, settings, query)
+		return
+	}
 	userID := int64(0)
 	if query.From != nil {
 		userID = query.From.ID

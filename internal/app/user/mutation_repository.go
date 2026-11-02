@@ -66,6 +66,7 @@ func (r Repository) createUserMutation(ctx context.Context, admin adminapp.Admin
 			DataLimitResetStrategy: payload.DataLimitResetStrategy,
 			Note:                   payload.Note,
 			SubscriptionMessage:    payload.SubscriptionMessage,
+			TelegramID:             payload.TelegramID,
 			OnHoldTimeout:          payload.OnHoldTimeout,
 			OnHoldExpireDuration:   payload.OnHoldExpireDuration,
 			AutoDeleteInDays:       payload.AutoDeleteInDays,

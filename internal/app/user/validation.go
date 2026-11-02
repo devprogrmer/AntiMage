@@ -66,7 +66,7 @@ func ValidateUserServiceCreate(payload *UserServiceCreate, catalog MutationConte
 		DataLimitResetStrategy: payload.DataLimitResetStrategy,
 		Note:                   payload.Note,
 		SubscriptionMessage:    payload.SubscriptionMessage,
-		TelegramID:             nil,
+		TelegramID:             payload.TelegramID,
 		ContactNumber:          nil,
 		OnHoldExpireDuration:   payload.OnHoldExpireDuration,
 		OnHoldTimeout:          payload.OnHoldTimeout,

@@ -34,9 +34,30 @@ type Order struct {
 	DataLimitBytes int64
 	DurationDays   int64
 	Status         string
+	Username       *string
 }
 
 type Orders struct{ DB *sql.DB }
+
+func (s Orders) ListCustomerOrders(ctx context.Context, telegramID int64) ([]Order, error) {
+	if s.DB == nil || telegramID <= 0 {
+		return nil, fmt.Errorf("invalid customer")
+	}
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status, username FROM shop_orders WHERE telegram_id = ? ORDER BY created_at DESC LIMIT 20`, telegramID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	orders := []Order{}
+	for rows.Next() {
+		var order Order
+		if err := rows.Scan(&order.ID, &order.RequestKey, &order.TelegramID, &order.ProductID, &order.ServiceID, &order.PriceToman, &order.DataLimitBytes, &order.DurationDays, &order.Status, &order.Username); err != nil {
+			return nil, err
+		}
+		orders = append(orders, order)
+	}
+	return orders, rows.Err()
+}
 
 func (s Orders) ListProducts(ctx context.Context) ([]Product, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT id, service_id, title, price_toman, data_limit_bytes, duration_days, enabled FROM shop_products WHERE enabled = 1 ORDER BY id`)
@@ -95,7 +116,7 @@ func (s Orders) Place(ctx context.Context, telegramID, productID int64, requestK
 	if affected != 1 {
 		return Order{}, ErrProductUnavailable
 	}
-	order, err := scanOrder(tx.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status FROM shop_orders WHERE id = ?`, id))
+	order, err := scanOrder(tx.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status, username FROM shop_orders WHERE id = ?`, id))
 	if err != nil {
 		return Order{}, err
 	}
@@ -106,7 +127,7 @@ func (s Orders) Place(ctx context.Context, telegramID, productID int64, requestK
 }
 
 func (s Orders) byKey(ctx context.Context, key string) (Order, bool, error) {
-	order, err := scanOrder(s.DB.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status FROM shop_orders WHERE request_key = ?`, key))
+	order, err := scanOrder(s.DB.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status, username FROM shop_orders WHERE request_key = ?`, key))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Order{}, false, nil
 	}
@@ -115,7 +136,7 @@ func (s Orders) byKey(ctx context.Context, key string) (Order, bool, error) {
 
 func scanOrder(row *sql.Row) (Order, error) {
 	var order Order
-	err := row.Scan(&order.ID, &order.RequestKey, &order.TelegramID, &order.ProductID, &order.ServiceID, &order.PriceToman, &order.DataLimitBytes, &order.DurationDays, &order.Status)
+	err := row.Scan(&order.ID, &order.RequestKey, &order.TelegramID, &order.ProductID, &order.ServiceID, &order.PriceToman, &order.DataLimitBytes, &order.DurationDays, &order.Status, &order.Username)
 	return order, err
 }
 
@@ -125,7 +146,7 @@ func (s Orders) Pay(ctx context.Context, telegramID int64, orderID string, walle
 	if s.DB == nil || wallet.DB != s.DB || telegramID <= 0 || orderID == "" {
 		return Order{}, fmt.Errorf("invalid order payment request")
 	}
-	order, err := scanOrder(s.DB.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status FROM shop_orders WHERE id = ?`, orderID))
+	order, err := scanOrder(s.DB.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status, username FROM shop_orders WHERE id = ?`, orderID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Order{}, ErrOrderUnavailable
 	}
@@ -148,7 +169,7 @@ func (s Orders) Pay(ctx context.Context, telegramID int64, orderID string, walle
 	if err != nil {
 		return Order{}, err
 	}
-	order, err = scanOrder(s.DB.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status FROM shop_orders WHERE id = ?`, orderID))
+	order, err = scanOrder(s.DB.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status, username FROM shop_orders WHERE id = ?`, orderID))
 	if err != nil {
 		return Order{}, err
 	}

@@ -5,7 +5,11 @@
 // the HTTP API instead of touching the database directly.
 package bot
 
-import "context"
+import (
+	"context"
+
+	"github.com/antimage/antimage/internal/app/shop"
+)
 
 // Update mirrors the subset of the Telegram getUpdates response the bot uses.
 type Update struct {
@@ -95,6 +99,17 @@ type UserView struct {
 // CustomerService looks up only accounts explicitly linked to a Telegram ID.
 type CustomerService interface {
 	ListByTelegramID(ctx context.Context, telegramID int64) ([]UserView, error)
+}
+
+type ShopService interface {
+	Balance(ctx context.Context, telegramID int64) (int64, error)
+	Products(ctx context.Context) ([]shop.Product, error)
+	Orders(ctx context.Context, telegramID int64) ([]shop.Order, error)
+	Place(ctx context.Context, telegramID, productID int64, requestKey string) (shop.Order, error)
+	PayAndProvision(ctx context.Context, telegramID int64, orderID string) (string, error)
+	AdminCredit(ctx context.Context, telegramID, amount int64, reference string) (int64, error)
+	AddProduct(ctx context.Context, product shop.Product, requestKey string) (shop.Product, error)
+	DisableProduct(ctx context.Context, productID int64) error
 }
 
 // UserService exposes the user operations the bot needs. Implementations must
