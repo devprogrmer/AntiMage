@@ -12,6 +12,7 @@ import (
 )
 
 var ErrProductUnavailable = errors.New("shop product unavailable")
+var ErrOrderUnavailable = errors.New("shop order unavailable")
 
 type Product struct {
 	ID             int64
@@ -116,4 +117,43 @@ func scanOrder(row *sql.Row) (Order, error) {
 	var order Order
 	err := row.Scan(&order.ID, &order.RequestKey, &order.TelegramID, &order.ProductID, &order.ServiceID, &order.PriceToman, &order.DataLimitBytes, &order.DurationDays, &order.Status)
 	return order, err
+}
+
+// Pay debits the wallet once for this order. A crash after the debit and
+// before the status update is recoverable by retrying with the same reference.
+func (s Orders) Pay(ctx context.Context, telegramID int64, orderID string, wallet Wallet) (Order, error) {
+	if s.DB == nil || wallet.DB != s.DB || telegramID <= 0 || orderID == "" {
+		return Order{}, fmt.Errorf("invalid order payment request")
+	}
+	order, err := scanOrder(s.DB.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status FROM shop_orders WHERE id = ?`, orderID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Order{}, ErrOrderUnavailable
+	}
+	if err != nil {
+		return Order{}, err
+	}
+	if order.TelegramID != telegramID {
+		return Order{}, ErrOrderUnavailable
+	}
+	if order.Status == "paid" || order.Status == "provisioning" || order.Status == "completed" {
+		return order, nil
+	}
+	if order.Status != "pending" {
+		return Order{}, ErrOrderUnavailable
+	}
+	if _, err := wallet.Debit(ctx, telegramID, order.PriceToman, "shop-order:"+order.ID); err != nil {
+		return Order{}, err
+	}
+	_, err = s.DB.ExecContext(ctx, `UPDATE shop_orders SET status = 'paid', updated_at = ? WHERE id = ? AND status = 'pending'`, time.Now().UTC().Format("2006-01-02 15:04:05"), orderID)
+	if err != nil {
+		return Order{}, err
+	}
+	order, err = scanOrder(s.DB.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status FROM shop_orders WHERE id = ?`, orderID))
+	if err != nil {
+		return Order{}, err
+	}
+	if order.Status != "paid" && order.Status != "provisioning" && order.Status != "completed" {
+		return Order{}, ErrOrderUnavailable
+	}
+	return order, nil
 }
