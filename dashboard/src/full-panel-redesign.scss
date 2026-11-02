@@ -1,0 +1,321 @@
+/* AntiMage operations console: route-aware redesign layered over existing controls. */
+.am-panel-shell {
+	--am-console-line: color-mix(in srgb, var(--am-panel-accent) 24%, var(--am-panel-border));
+	--am-console-glow: color-mix(in srgb, var(--am-panel-accent) 9%, transparent);
+	background:
+		linear-gradient(135deg, transparent 0 44%, var(--am-console-glow) 44.1%, transparent 44.25%) 0 0 / 42px 42px,
+		radial-gradient(ellipse at 52% -18%, color-mix(in srgb, var(--am-panel-accent) 10%, transparent), transparent 48%),
+		var(--am-panel-bg) !important;
+	color: var(--am-panel-text);
+	font-family: var(--am-font-stack, inherit);
+}
+
+.am-panel-header {
+	min-height: 58px !important;
+	height: 58px !important;
+	margin-block: 12px 8px !important;
+	border: 1px solid var(--am-panel-border-strong) !important;
+	border-radius: 12px !important;
+	background: color-mix(in srgb, var(--am-panel-surface) 92%, transparent) !important;
+	box-shadow: 0 12px 36px rgb(0 0 0 / 14%), inset 0 1px 0 rgb(255 255 255 / 3%) !important;
+	backdrop-filter: blur(18px);
+}
+
+.am-panel-sidebar {
+	border-radius: 16px !important;
+	border-color: var(--am-panel-border-strong) !important;
+	background:
+		linear-gradient(180deg, color-mix(in srgb, var(--am-panel-accent) 5%, transparent), transparent 34%),
+		var(--am-panel-sidebar) !important;
+	box-shadow: 0 20px 55px rgb(0 0 0 / 22%), inset 0 1px 0 rgb(255 255 255 / 3%) !important;
+}
+
+.am-panel-brand {
+	position: relative;
+	min-height: 58px;
+	border: 1px solid var(--am-panel-border-strong) !important;
+	background: linear-gradient(105deg, var(--am-console-glow), transparent 72%), var(--am-panel-surface) !important;
+	box-shadow: inset 3px 0 0 var(--am-panel-accent);
+}
+
+[dir="rtl"] .am-panel-brand { box-shadow: inset -3px 0 0 var(--am-panel-accent); }
+
+.am-panel-nav-item {
+	position: relative;
+	min-height: 42px !important;
+	border: 1px solid transparent !important;
+	border-radius: 9px !important;
+	color: var(--am-panel-text-secondary) !important;
+	transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease !important;
+}
+
+.am-panel-nav-item:hover {
+	transform: translateX(2px);
+	border-color: var(--am-panel-border) !important;
+	background: var(--am-panel-row-hover) !important;
+	color: var(--am-panel-text) !important;
+}
+
+[dir="rtl"] .am-panel-nav-item:hover { transform: translateX(-2px); }
+
+.am-panel-nav-item[data-active="true"] {
+	border-color: var(--am-console-line) !important;
+	background: linear-gradient(100deg, color-mix(in srgb, var(--am-panel-accent) 16%, var(--am-panel-surface)), var(--am-panel-surface)) !important;
+	color: var(--am-panel-text) !important;
+	box-shadow: inset 3px 0 0 var(--am-panel-accent), 0 5px 16px rgb(0 0 0 / 12%);
+}
+
+[dir="rtl"] .am-panel-nav-item[data-active="true"] { box-shadow: inset -3px 0 0 var(--am-panel-accent), 0 5px 16px rgb(0 0 0 / 12%); }
+
+.am-panel-main {
+	position: relative;
+	padding: clamp(16px, 2vw, 32px) !important;
+	background: transparent !important;
+	scrollbar-color: var(--am-panel-border-strong) transparent;
+}
+
+.am-panel-main > * { max-width: 1840px; margin-inline: auto; }
+
+.am-panel-main .am-page-header {
+	position: relative;
+	margin-block: 0 24px;
+	padding: 10px 2px 20px;
+	border-bottom: 1px solid var(--am-panel-border);
+}
+
+.am-panel-main .am-page-header::after {
+	position: absolute;
+	bottom: -1px;
+	left: 0;
+	width: clamp(56px, 9vw, 112px);
+	height: 2px;
+	background: linear-gradient(90deg, var(--am-panel-accent), transparent);
+	content: "";
+}
+
+[dir="rtl"] .am-panel-main .am-page-header::after {
+	left: auto;
+	right: 0;
+	background: linear-gradient(270deg, var(--am-panel-accent), transparent);
+}
+
+.am-panel-main .am-page-title {
+	font-size: clamp(1.55rem, 2.2vw, 2.2rem) !important;
+	font-weight: 760 !important;
+	letter-spacing: -0.04em;
+	line-height: 1.2;
+}
+
+.am-panel-main .am-page-eyebrow {
+	margin-block-end: 6px;
+	color: var(--am-panel-accent) !important;
+	font-size: 0.66rem !important;
+	letter-spacing: 0.11em;
+	line-height: 1;
+	text-transform: uppercase;
+}
+
+.am-panel-main .am-page-description {
+	max-width: 78ch;
+	color: var(--am-panel-text-secondary) !important;
+	font-size: 0.9rem !important;
+	line-height: 1.65;
+}
+
+/* Every screen shares the same surface language; existing page actions and data stay intact. */
+.am-panel-main .chakra-card,
+.am-panel-main [data-am-surface="true"],
+.am-panel-main .am-data-table-root,
+.am-panel-main .am-data-table-pagination,
+.am-panel-main .chakra-alert {
+	border: 1px solid var(--am-panel-border) !important;
+	border-radius: 13px !important;
+	background-color: color-mix(in srgb, var(--am-panel-surface) 94%, transparent) !important;
+	box-shadow: 0 12px 30px rgb(0 0 0 / 8%), inset 0 1px 0 rgb(255 255 255 / 2%) !important;
+}
+
+.am-panel-main .chakra-card { overflow: hidden; }
+.am-panel-main .chakra-card__header { border-bottom: 1px solid var(--am-panel-border); }
+.am-panel-main .chakra-card__footer { border-top: 1px solid var(--am-panel-border); }
+.am-panel-main .chakra-card__body { min-width: 0; }
+
+.am-panel-main .am-data-table-root {
+	width: 100%;
+	padding: 5px;
+	overflow: hidden;
+}
+
+.am-panel-main .am-data-table-wrap {
+	border: 0 !important;
+	border-radius: 10px;
+	background: transparent !important;
+}
+
+.am-panel-main .am-data-table {
+	border-collapse: separate;
+	border-spacing: 0 3px;
+}
+
+.am-panel-main .am-data-table th {
+	position: sticky;
+	top: 0;
+	border-bottom: 1px solid var(--am-panel-border-strong) !important;
+	background: color-mix(in srgb, var(--am-panel-elevated) 88%, var(--am-panel-surface)) !important;
+	color: var(--am-panel-text-muted) !important;
+	font-size: 0.68rem !important;
+	font-weight: 750 !important;
+	letter-spacing: 0.045em;
+	text-transform: uppercase;
+}
+
+.am-panel-main .am-data-table td {
+	border-block: 1px solid transparent !important;
+	background: color-mix(in srgb, var(--am-panel-surface) 82%, transparent) !important;
+	font-variant-numeric: tabular-nums;
+}
+
+.am-panel-main .am-data-table-row > td:first-child {
+	border-inline-start: 1px solid transparent !important;
+	border-radius: 9px 0 0 9px;
+}
+
+.am-panel-main .am-data-table-row > td:last-child {
+	border-inline-end: 1px solid transparent !important;
+	border-radius: 0 9px 9px 0;
+}
+
+[dir="rtl"] .am-panel-main .am-data-table-row > td:first-child { border-radius: 0 9px 9px 0; }
+[dir="rtl"] .am-panel-main .am-data-table-row > td:last-child { border-radius: 9px 0 0 9px; }
+
+.am-panel-main .am-data-table-row:hover > td {
+	border-block-color: var(--am-console-line) !important;
+	background: var(--am-panel-row-hover) !important;
+}
+
+.am-panel-main :is(input, textarea, select, .chakra-select__wrapper) {
+	border-color: var(--am-panel-border-strong) !important;
+	border-radius: 9px !important;
+	background-color: color-mix(in srgb, var(--am-panel-bg) 48%, var(--am-panel-surface)) !important;
+	color: var(--am-panel-text) !important;
+}
+
+.am-panel-main :is(input, textarea, select):focus-visible,
+.am-panel-shell :is(button, a, [role="button"]):focus-visible {
+	outline: 2px solid color-mix(in srgb, var(--am-panel-accent) 78%, white) !important;
+	outline-offset: 2px;
+}
+
+.am-panel-main .chakra-tabs__tablist,
+.am-panel-main .am-tab-system {
+	position: relative;
+	gap: 5px;
+	min-height: 46px;
+	padding: 4px;
+	border: 1px solid var(--am-panel-border) !important;
+	border-radius: 11px;
+	background: color-mix(in srgb, var(--am-panel-surface) 84%, transparent);
+}
+
+.am-panel-main .chakra-tabs__tab[aria-selected="true"],
+.am-panel-main .am-tab-system [aria-selected="true"] {
+	border-color: var(--am-console-line) !important;
+	border-radius: 8px !important;
+	background: color-mix(in srgb, var(--am-panel-accent) 12%, var(--am-panel-surface)) !important;
+	color: var(--am-panel-accent) !important;
+}
+
+.am-panel-main .chakra-badge,
+.am-panel-main .chakra-tag { border: 1px solid var(--am-panel-border); border-radius: 999px; }
+.am-panel-shell .chakra-menu__menu-list,
+.am-panel-shell .chakra-popover__content {
+	border: 1px solid var(--am-panel-border-strong) !important;
+	border-radius: 12px !important;
+	background: var(--am-panel-surface) !important;
+	color: var(--am-panel-text) !important;
+	box-shadow: 0 18px 46px rgb(0 0 0 / 26%) !important;
+}
+
+.am-panel-shell .chakra-button {
+	min-height: 36px;
+	border-radius: 9px;
+	font-weight: 650;
+	transition: transform 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+
+.am-panel-shell .chakra-button:active { transform: translateY(1px); }
+
+/* Route families receive distinct hierarchy instead of one dashboard-only treatment. */
+.am-panel-main[data-area="accounts"] .am-data-table-root,
+.am-panel-main[data-page="admins"] .am-data-table-root,
+.am-panel-main[data-page="recent-actions"] .am-data-table-root {
+	border-top: 2px solid color-mix(in srgb, var(--am-panel-accent) 48%, var(--am-panel-border)) !important;
+}
+
+.am-panel-main[data-area="infrastructure"] .chakra-card,
+.am-panel-main[data-area="infrastructure"] .am-data-table-root {
+	background-image: linear-gradient(125deg, color-mix(in srgb, var(--am-panel-accent) 4%, transparent), transparent 40%);
+}
+
+.am-panel-main[data-page="node-settings"] .am-data-table-row td,
+.am-panel-main[data-page="services"] .am-data-table-row td,
+.am-panel-main[data-page="hosts"] .am-data-table-row td {
+	min-height: 58px;
+	padding-block: 11px !important;
+}
+
+.am-panel-main[data-page="settings"] .chakra-tabs__tablist,
+.am-panel-main[data-page="xray-settings"] .chakra-tabs__tablist,
+.am-panel-main[data-page="myaccount"] .chakra-tabs__tablist {
+	position: sticky;
+	top: 0;
+	z-index: 3;
+	backdrop-filter: blur(12px);
+}
+
+.am-panel-main[data-page="usage"] .chakra-card,
+.am-panel-main[data-page="access-insights"] .chakra-card {
+	background-image: linear-gradient(145deg, color-mix(in srgb, var(--am-panel-accent) 5%, transparent), transparent 58%);
+}
+
+.am-panel-main[data-page="xray-logs"] pre,
+.am-panel-main[data-page="xray-logs"] code,
+.am-panel-main[data-page="api-docs"] pre,
+.am-panel-main[data-page="api-docs"] code {
+	font-family: ui-monospace, "Cascadia Code", Consolas, monospace !important;
+	font-variant-ligatures: none;
+}
+
+.am-panel-main[data-page="node-settings"] :is([data-status="update-available"], .node-update-available) {
+	color: #f6ad55;
+}
+
+.am-panel-main :is(.chakra-modal__content, .chakra-drawer__content, .chakra-popover__content) {
+	border: 1px solid var(--am-panel-border-strong) !important;
+	border-radius: 15px !important;
+	box-shadow: 0 28px 86px rgb(0 0 0 / 38%) !important;
+}
+
+.am-theme-light .am-panel-main .chakra-card,
+.chakra-ui-light .am-panel-main .chakra-card,
+.am-theme-light .am-panel-main .am-data-table-root,
+.chakra-ui-light .am-panel-main .am-data-table-root {
+	box-shadow: 0 8px 24px rgb(24 51 64 / 5%), inset 0 1px 0 rgb(255 255 255 / 75%) !important;
+}
+
+@media (max-width: 767px) {
+	.am-panel-header { min-height: 54px !important; height: 54px !important; margin: 8px 8px 6px !important; }
+	.am-panel-main { padding: 16px 12px 88px !important; }
+	.am-panel-main .am-page-header { margin-block-end: 16px; padding-block: 4px 15px; }
+	.am-panel-main .am-page-title { font-size: 1.45rem !important; }
+	.am-panel-main .am-data-table-root { padding: 3px; }
+	.am-panel-main .am-data-table td { font-size: 0.78rem; }
+	.am-panel-main .chakra-card { border-radius: 11px !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.am-panel-shell *, .am-panel-shell *::before, .am-panel-shell *::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}
