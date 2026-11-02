@@ -26,8 +26,9 @@ type Bot struct {
 	system     SystemService
 	state      stateStore
 
-	offset int64
-	logf   func(format string, args ...any)
+	offset      int64
+	cursorToken string
+	logf        func(format string, args ...any)
 }
 
 // Options configures a Bot.
@@ -82,6 +83,18 @@ func (b *Bot) Run(ctx context.Context) {
 			}
 			continue
 		}
+		key := tokenCursorKey(settings.Token)
+		if key != b.cursorToken {
+			offset, err := b.state.updateOffset(ctx, settings.Token)
+			if err != nil {
+				b.logf("telegram bot: load update offset: %v", err)
+				if b.sleep(ctx, 5*time.Second) {
+					return
+				}
+				continue
+			}
+			b.offset, b.cursorToken = offset, key
+		}
 		updates, err := b.client.getUpdates(ctx, settings, b.offset, longPollTimeoutSeconds)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -94,10 +107,15 @@ func (b *Bot) Run(ctx context.Context) {
 			continue
 		}
 		for _, update := range updates {
-			if update.UpdateID >= b.offset {
-				b.offset = update.UpdateID + 1
+			if update.UpdateID < b.offset {
+				continue
 			}
 			b.handleUpdate(ctx, settings, update)
+			if err := b.state.saveUpdateOffset(ctx, settings.Token, update.UpdateID+1); err != nil {
+				b.logf("telegram bot: save update offset: %v", err)
+				break
+			}
+			b.offset = update.UpdateID + 1
 		}
 	}
 }
