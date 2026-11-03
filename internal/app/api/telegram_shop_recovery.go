@@ -32,6 +32,22 @@ func (s *Server) recoverTelegramShopOrders(ctx context.Context) {
 	workerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	orders := shop.Orders{DB: s.db}
+	wallet := shop.Wallet{DB: s.db, Dialect: s.dialect}
+	debited, err := orders.DebitedPending(workerCtx, telegramShopRecoveryBatch, s.dialect)
+	if err != nil {
+		if ctx.Err() == nil {
+			logging.Warnf(logging.ComponentTelegram, "shop recovery journal scan failed: %v", err)
+		}
+		return
+	}
+	for _, item := range debited {
+		if workerCtx.Err() != nil {
+			return
+		}
+		if _, err := orders.Pay(workerCtx, item.TelegramID, item.ID, wallet); err != nil {
+			logging.Warnf(logging.ComponentTelegram, "shop order %s debit reconciliation failed: %v", item.ID, err)
+		}
+	}
 	ids, err := orders.Unfulfilled(workerCtx, telegramShopRecoveryBatch)
 	if err != nil {
 		if ctx.Err() == nil {

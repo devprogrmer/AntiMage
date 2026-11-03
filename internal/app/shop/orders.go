@@ -39,6 +39,41 @@ type Order struct {
 
 type Orders struct{ DB *sql.DB }
 
+type DebitedOrder struct {
+	ID         string
+	TelegramID int64
+}
+
+// DebitedPending finds orders whose wallet journal committed just before the
+// panel stopped, leaving the order status at pending. The journal reference,
+// owner, amount, and reason must all match the immutable order snapshot.
+func (s Orders) DebitedPending(ctx context.Context, limit int, dialect string) ([]DebitedOrder, error) {
+	if s.DB == nil || limit < 1 || limit > 500 {
+		return nil, fmt.Errorf("invalid order recovery limit")
+	}
+	match := `e.reference = ('shop-order:' || o.id)`
+	if strings.EqualFold(dialect, "mysql") {
+		match = `e.reference = CONCAT('shop-order:', o.id)`
+	}
+	query := `SELECT o.id, o.telegram_id FROM shop_orders o JOIN shop_wallet_entries e ON ` + match + `
+		WHERE o.status = 'pending' AND e.telegram_id = o.telegram_id AND e.delta = -o.price_toman AND e.reason = 'purchase'
+		ORDER BY o.updated_at, o.id LIMIT ?`
+	rows, err := s.DB.QueryContext(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DebitedOrder{}
+	for rows.Next() {
+		var item DebitedOrder
+		if err := rows.Scan(&item.ID, &item.TelegramID); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 // Unfulfilled returns only orders whose wallet debit has already been recorded
 // and whose account delivery can be safely retried after a process restart.
 func (s Orders) Unfulfilled(ctx context.Context, limit int) ([]string, error) {
