@@ -12,7 +12,7 @@ func (b *Bot) handleTopupCommand(ctx context.Context, settings Settings, msg *Me
 		return
 	}
 	chatID := msg.Chat.ID
-	isAdmin := authorized(settings, chatID)
+	isAdmin := b.adminAuthorized(ctx, settings, chatID)
 	switch command {
 	case "/topup":
 		amount, err := strconv.ParseInt(strings.TrimSpace(arg), 10, 64)
@@ -114,7 +114,7 @@ func (b *Bot) handleTopupCommand(ctx context.Context, settings Settings, msg *Me
 }
 
 func (b *Bot) handleTopupCallback(ctx context.Context, settings Settings, query *CallbackQuery) {
-	if query.From == nil || query.Message == nil || query.From.ID <= 0 || query.Message.Chat.Type != "private" || query.Message.Chat.ID != query.From.ID || !authorized(settings, query.From.ID) || b.topups == nil {
+	if query.From == nil || query.Message == nil || query.From.ID <= 0 || query.Message.Chat.Type != "private" || query.Message.Chat.ID != query.From.ID || !b.adminAuthorized(ctx, settings, query.From.ID) || b.topups == nil {
 		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Not authorized")
 		return
 	}

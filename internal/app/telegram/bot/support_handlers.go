@@ -13,7 +13,7 @@ func (b *Bot) handleSupportCommand(ctx context.Context, settings Settings, msg *
 		return
 	}
 	chatID := msg.Chat.ID
-	isAdmin := authorized(settings, chatID)
+	isAdmin := b.adminAuthorized(ctx, settings, chatID)
 	switch command {
 	case "/support":
 		if strings.TrimSpace(arg) == "" || msg.MessageID <= 0 {

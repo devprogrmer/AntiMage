@@ -64,7 +64,7 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 			b.handleTopupCommand(ctx, settings, msg, command, arg)
 			return
 		case "/start", "/help":
-			if !authorized(settings, msg.From.ID) {
+			if !b.adminAuthorized(ctx, settings, msg.From.ID) {
 				b.reply(ctx, settings, chatID, "Welcome to AntiMage. Use /shop to view plans, /trial for a one-time trial, /topup to fund your wallet, /balance and /transactions for your wallet, /orders for purchases, /my for services, or /support for help.", customerMenuKeyboard())
 				return
 			}
@@ -72,7 +72,7 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 	}
 	// Admin notification destinations may include groups. Membership in a
 	// group must never grant its members command access to the panel.
-	if msg.From == nil || msg.Chat.Type != "private" || chatID != msg.From.ID || !authorized(settings, msg.From.ID) {
+	if msg.From == nil || msg.Chat.Type != "private" || chatID != msg.From.ID || !b.adminAuthorized(ctx, settings, msg.From.ID) {
 		return
 	}
 	text := strings.TrimSpace(input)
@@ -168,7 +168,7 @@ func (b *Bot) handleConversation(ctx context.Context, settings Settings, chatID 
 	case stateAwaitNote:
 		username := conv.Payload
 		_ = b.state.clear(ctx, chatID)
-		actor, ok := b.authorizer.Actor(ctx)
+		actor, ok := b.authorizer.Actor(ctx, chatID)
 		if !ok {
 			b.reply(ctx, settings, chatID, noActorText(), nil)
 			return
@@ -189,11 +189,11 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "")
 		switch query.Data {
 		case "menu:nodes":
-			if authorized(settings, chatID) {
+			if b.adminAuthorized(ctx, settings, chatID) {
 				b.handleAdminNodes(ctx, settings, chatID, "/nodes", "")
 			}
 		case "menu:sales":
-			if authorized(settings, chatID) {
+			if b.adminAuthorized(ctx, settings, chatID) {
 				b.handleAdminSales(ctx, settings, chatID)
 			}
 		case "menu:trial":
@@ -221,7 +221,7 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 	if query.From != nil {
 		userID = query.From.ID
 	}
-	if query.Message == nil || query.Message.Chat.Type != "private" || query.Message.Chat.ID != userID || !authorized(settings, userID) {
+	if query.Message == nil || query.Message.Chat.Type != "private" || query.Message.Chat.ID != userID || !b.adminAuthorized(ctx, settings, userID) {
 		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Not authorized")
 		return
 	}
@@ -281,7 +281,7 @@ func (b *Bot) handleLinks(ctx context.Context, settings Settings, query *Callbac
 
 // runUserAction performs a lifecycle action then refreshes the detail message.
 func (b *Bot) runUserAction(ctx context.Context, settings Settings, query *CallbackQuery, chatID, messageID int64, username, action string) {
-	actor, ok := b.authorizer.Actor(ctx)
+	actor, ok := b.authorizer.Actor(ctx, chatID)
 	if !ok {
 		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "No admin configured")
 		return

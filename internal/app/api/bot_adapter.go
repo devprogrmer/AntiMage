@@ -49,8 +49,17 @@ type botAuthorizer struct {
 	server *Server
 }
 
-func (b botAuthorizer) Actor(ctx context.Context) (telegrambot.Actor, bool) {
-	admin, ok, err := b.server.adminRepo.FirstFullAccessAdmin(ctx)
+func (b botAuthorizer) Actor(ctx context.Context, telegramID int64) (telegrambot.Actor, bool) {
+	if telegramID <= 0 {
+		return telegrambot.Actor{}, false
+	}
+	var username string
+	err := b.server.db.QueryRowContext(ctx, `SELECT username FROM admins WHERE telegram_id = ? AND role = ? AND status = ? LIMIT 1`,
+		telegramID, string(adminapp.RoleFullAccess), string(adminapp.StatusActive)).Scan(&username)
+	if err != nil {
+		return telegrambot.Actor{}, false
+	}
+	admin, ok, err := b.server.adminRepo.AdminByUsername(ctx, username)
 	if err != nil || !ok {
 		return telegrambot.Actor{}, false
 	}

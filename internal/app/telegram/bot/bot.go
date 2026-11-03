@@ -156,6 +156,14 @@ func authorized(settings Settings, id int64) bool {
 	return false
 }
 
+func (b *Bot) adminAuthorized(ctx context.Context, settings Settings, id int64) bool {
+	if id <= 0 || !authorized(settings, id) || b.authorizer == nil {
+		return false
+	}
+	_, ok := b.authorizer.Actor(ctx, id)
+	return ok
+}
+
 func (b *Bot) reply(ctx context.Context, settings Settings, chatID int64, text string, keyboard *InlineKeyboard) {
 	if err := b.client.sendMessage(ctx, settings, chatID, text, keyboard); err != nil {
 		b.logf("telegram bot: sendMessage: %v", err)

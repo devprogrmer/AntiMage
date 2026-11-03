@@ -2593,10 +2593,10 @@ export const IntegrationSettingsPage = () => {
 									</Flex>
 									<Text fontSize="sm" color="gray.400" mt={2}>
 										{i18n.language.startsWith("fa")
-											? "فرمان‌ها را در گفت‌وگوی خصوصی ربات بفرستید. شناسهٔ ادمین را در بالا ثبت کنید؛ دسترسی مدیریتی در گروه فعال نیست."
+											? "فرمان‌ها را در گفت‌وگوی خصوصی ربات بفرستید. برای مدیریت، همان شناسهٔ تلگرام را هم در تنظیمات مدیر فعال و هم در فهرست بالا ثبت کنید؛ گروه‌ها دسترسی مدیریتی ندارند."
 											: i18n.language.startsWith("ru")
-												? "Отправляйте команды в личный чат с ботом. Добавьте ID администратора выше; группы не дают права управления."
-												: "Send commands in a private chat with the bot. Add the admin ID above; groups do not grant management access."}
+												? "Отправляйте команды в личный чат с ботом. Для управления укажите один и тот же Telegram ID в профиле активного администратора и списке выше; группы не дают прав."
+												: "Send commands in a private chat. For admin actions, set the same Telegram ID on an active full-access admin and in the list above; groups do not grant access."}
 									</Text>
 									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mt={3}>
 										<Box p={3} borderWidth="1px" borderColor={borderColor} borderRadius="md">

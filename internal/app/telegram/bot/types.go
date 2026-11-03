@@ -80,11 +80,10 @@ type Actor struct {
 	Admin    any
 }
 
-// Authorizer resolves the admin actor that authorized bot mutations run as.
-// Access control itself is the allowlist in Settings.AdminChatIDs; this returns
-// the panel admin (typically a full-access admin) used for service calls.
+// Authorizer resolves the active panel admin bound to this Telegram identity.
+// Notification destinations alone must not grant panel privileges.
 type Authorizer interface {
-	Actor(ctx context.Context) (Actor, bool)
+	Actor(ctx context.Context, telegramID int64) (Actor, bool)
 }
 
 // UserView is the data the bot renders for a user.

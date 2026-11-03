@@ -30,7 +30,7 @@ func (b *Bot) handleTrialClaim(ctx context.Context, settings Settings, chatID, t
 }
 
 func (b *Bot) handleAdminTrial(ctx context.Context, settings Settings, msg *Message, command, arg string) {
-	if b.trials == nil || msg.From == nil || msg.Chat.Type != "private" || msg.Chat.ID != msg.From.ID || !authorized(settings, msg.From.ID) {
+	if b.trials == nil || msg.From == nil || msg.Chat.Type != "private" || msg.Chat.ID != msg.From.ID || !b.adminAuthorized(ctx, settings, msg.From.ID) {
 		return
 	}
 	if command == "/trial-off" {

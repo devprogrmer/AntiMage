@@ -104,10 +104,13 @@ func (fakeSystem) Info(context.Context) (SystemInfo, error) {
 	return SystemInfo{Version: "1.0.0", CPUPercent: 5, MemUsed: 1 << 30, MemTotal: 4 << 30, TotalUsers: 10, ActiveUsers: 7, OnlineUsers: 3}, nil
 }
 
-type fakeAuthorizer struct{ ok bool }
+type fakeAuthorizer struct {
+	ok        bool
+	allowedID int64
+}
 
-func (f fakeAuthorizer) Actor(context.Context) (Actor, bool) {
-	if !f.ok {
+func (f fakeAuthorizer) Actor(_ context.Context, telegramID int64) (Actor, bool) {
+	if !f.ok || (f.allowedID != 0 && f.allowedID != telegramID) {
 		return Actor{}, false
 	}
 	return Actor{Username: "admin", Admin: "admin"}, true

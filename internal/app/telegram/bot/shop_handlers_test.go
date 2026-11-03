@@ -128,6 +128,21 @@ func TestSalesOverviewOnlyForAdmin(t *testing.T) {
 	}
 }
 
+func TestAllowlistedNotificationRecipientWithoutPanelAdminCannotUseAdminCommands(t *testing.T) {
+	b, calls, settings := newTestBot(t, newFakeUsers())
+	b.shop = &fakeShop{}
+	b.authorizer = fakeAuthorizer{ok: true, allowedID: 100}
+	settings.AdminChatIDs = append(settings.AdminChatIDs, 321)
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 321}, Chat: Chat{ID: 321, Type: "private"}, Text: "/sales"})
+	if len(*calls) != 0 {
+		t.Fatalf("notification recipient used admin command: %+v", *calls)
+	}
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "/sales"})
+	if _, ok := lastCall(*calls, "sendMessage"); !ok {
+		t.Fatalf("bound admin denied: %+v", *calls)
+	}
+}
+
 func TestWalletHistoryOnlyOwnerOrPrivateAdmin(t *testing.T) {
 	b, calls, settings := newTestBot(t, newFakeUsers())
 	f := &fakeShop{}

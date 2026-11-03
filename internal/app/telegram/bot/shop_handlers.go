@@ -61,7 +61,7 @@ func (b *Bot) handleWalletHistory(ctx context.Context, settings Settings, chatID
 }
 
 func (b *Bot) handleAdminShopCommand(ctx context.Context, settings Settings, msg *Message, command, arg string) {
-	if msg.From == nil || msg.From.ID != msg.Chat.ID || msg.Chat.Type != "private" || !authorized(settings, msg.From.ID) || b.shop == nil {
+	if msg.From == nil || msg.From.ID != msg.Chat.ID || msg.Chat.Type != "private" || !b.adminAuthorized(ctx, settings, msg.From.ID) || b.shop == nil {
 		return
 	}
 	chatID := msg.Chat.ID
