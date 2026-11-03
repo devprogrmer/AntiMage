@@ -3054,13 +3054,93 @@
         "operationId": "putSettingsPanel"
       }
     },
+    "/telegram-app": {
+      "get": {
+        "tags": ["Docs"],
+        "summary": "Open AntiMage Telegram Mini App",
+        "description": "Public HTML entry point. Open it from the bot's Web App button inside Telegram to obtain signed initData. Opening it in a regular browser cannot authorize account operations.",
+        "security": [],
+        "responses": {"200": {"description": "Mini App HTML"}},
+        "operationId": "getTelegramMiniApp"
+      }
+    },
+    "/api/telegram-app/state": {
+      "get": {
+        "tags": ["Settings"],
+        "summary": "Get the Telegram customer's Mini App state",
+        "description": "Requires a fresh signed Telegram initData string in the X-Telegram-Init-Data header. Returns only that Telegram user's wallet balance, plans, orders, linked services, top-up requests, support tickets, and payment instructions. Panel admin credentials do not authorize this endpoint.",
+        "security": [],
+        "parameters": [{"name": "X-Telegram-Init-Data", "in": "header", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"$ref": "#/components/responses/JSON"}, "401": {"$ref": "#/components/responses/Error"}},
+        "operationId": "getTelegramMiniAppState"
+      }
+    },
+    "/api/telegram-app/orders": {
+      "post": {
+        "tags": ["Settings"],
+        "summary": "Create a customer order",
+        "description": "Requires signed X-Telegram-Init-Data and a same-origin request. JSON body: product_id (integer), request_key (UUID). Reusing the same request key returns the same order; a conflicting customer or plan is rejected. Creating an order does not charge the wallet.",
+        "security": [],
+        "parameters": [{"name": "X-Telegram-Init-Data", "in": "header", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"$ref": "#/components/requestBodies/JSON"},
+        "responses": {"200": {"$ref": "#/components/responses/JSON"}, "401": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}},
+        "operationId": "postTelegramMiniAppOrder"
+      }
+    },
+    "/api/telegram-app/pay": {
+      "post": {
+        "tags": ["Settings"],
+        "summary": "Pay for and deliver an owned order",
+        "description": "Requires signed X-Telegram-Init-Data and a same-origin request. JSON body: order_id (UUID). The shared wallet and provisioning ledger prevents duplicate charges on retry. A delivery failure may return 503; retry the same order rather than creating a new one.",
+        "security": [],
+        "parameters": [{"name": "X-Telegram-Init-Data", "in": "header", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"$ref": "#/components/requestBodies/JSON"},
+        "responses": {"200": {"$ref": "#/components/responses/JSON"}, "401": {"$ref": "#/components/responses/Error"}, "503": {"$ref": "#/components/responses/Error"}},
+        "operationId": "postTelegramMiniAppPay"
+      }
+    },
+    "/api/telegram-app/topups": {
+      "post": {
+        "tags": ["Settings"],
+        "summary": "Request a manual wallet top-up",
+        "description": "Requires signed X-Telegram-Init-Data and a same-origin request. JSON body: amount_toman (1000 to 100000000), request_key (UUID). The wallet remains unchanged until an administrator approves the receipt through the bot.",
+        "security": [],
+        "parameters": [{"name": "X-Telegram-Init-Data", "in": "header", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"$ref": "#/components/requestBodies/JSON"},
+        "responses": {"200": {"$ref": "#/components/responses/JSON"}, "401": {"$ref": "#/components/responses/Error"}},
+        "operationId": "postTelegramMiniAppTopup"
+      }
+    },
+    "/api/telegram-app/tickets": {
+      "post": {
+        "tags": ["Settings"],
+        "summary": "Create a support ticket",
+        "description": "Requires signed X-Telegram-Init-Data and a same-origin request. JSON body: message (text), request_key (UUID). Reusing the request key returns the existing ticket.",
+        "security": [],
+        "parameters": [{"name": "X-Telegram-Init-Data", "in": "header", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"$ref": "#/components/requestBodies/JSON"},
+        "responses": {"200": {"$ref": "#/components/responses/JSON"}, "401": {"$ref": "#/components/responses/Error"}},
+        "operationId": "postTelegramMiniAppTicket"
+      }
+    },
+    "/api/telegram-app/tickets/{id}": {
+      "get": {
+        "tags": ["Settings"],
+        "summary": "Read an owned support ticket",
+        "description": "Requires signed X-Telegram-Init-Data. Customers can read only their own ticket and replies; other ticket IDs return 404.",
+        "security": [],
+        "parameters": [{"name": "X-Telegram-Init-Data", "in": "header", "required": true, "schema": {"type": "string"}}, {"name": "id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+        "responses": {"200": {"$ref": "#/components/responses/JSON"}, "404": {"$ref": "#/components/responses/Error"}},
+        "operationId": "getTelegramMiniAppTicket"
+      }
+    },
     "/api/settings/telegram": {
       "get": {
         "tags": [
           "Settings"
         ],
         "summary": "Get Telegram settings",
-        "description": "Return Telegram integration settings from the database, including bot token, proxy URL, admin/log/backup chat destinations, forum topic IDs, notification event toggles, and periodic backup schedule. Bot command handling is still intentionally disabled; this route only manages delivery settings used by Go-native reports and backups.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits. The browser dashboard authenticates with its HttpOnly session cookie. Integrations should use a personal API key.\n\nPermissions: Telegram settings require sudo/full_access because the response can include the bot token and chat destinations.",
+        "description": "Return Telegram integration settings, including bot token, proxy URL, admin/log/backup chat destinations, notification toggles, backup schedule, and optional public HTTPS `mini_app_url`. The native Telegram bot handles admin and customer commands; the Mini App uses verified Telegram init data rather than panel admin credentials.\n\nAuthentication: send `Authorization: Bearer <api_key>` for third-party integrations. The browser dashboard authenticates with its HttpOnly session cookie.\n\nPermissions: Telegram settings require sudo/full_access because the response can include the bot token and chat destinations.",
         "responses": {
           "200": {
             "$ref": "#/components/responses/JSON"
@@ -3073,7 +3153,7 @@
           "Settings"
         ],
         "summary": "Update Telegram settings",
-        "description": "Update Telegram delivery settings. `admin_chat_ids` is normalized to a de-duplicated integer list. `logs_chat_id` controls report/notification delivery, while `backup_chat_id` can override the backup destination. `forum_topics` stores per-category Telegram topic/thread IDs, and `event_toggles` stores report switches such as user/admin/node/login events. `proxy_url` supports http, https, socks5, and socks5h.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits. The browser dashboard authenticates with its HttpOnly session cookie. Integrations should use a personal API key.\n\nPermissions: Telegram settings require sudo/full_access because the request can mutate bot credentials and delivery targets.\n\nRequest body: JSON object. Unknown fields are ignored for compatibility; invalid proxy URLs, chat IDs, backup scope, or interval units return 400.",
+        "description": "Update Telegram bot and delivery settings. `admin_chat_ids` is normalized to a de-duplicated integer list. `logs_chat_id` controls report delivery; `backup_chat_id` can override the backup destination. `forum_topics` stores Telegram thread IDs, and `event_toggles` stores report switches. `proxy_url` supports http, https, socks5, and socks5h. `mini_app_url` must be the public HTTPS panel address ending in `/telegram-app`; omit it to hide the Mini App button.\n\nAuthentication: a full-access admin session or personal API key is required.\n\nPermissions: sudo/full_access is required because the request can mutate bot credentials and delivery targets.\n\nRequest body: JSON object. Invalid proxy URLs, chat IDs, backup scope, interval units, or Mini App URLs return 400.",
         "requestBody": {
           "$ref": "#/components/requestBodies/JSON"
         },
