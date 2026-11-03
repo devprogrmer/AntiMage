@@ -55,11 +55,11 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 				return
 			}
 			if arg != "fa" && arg != "en" && arg != "ru" {
-				b.reply(ctx, settings, chatID, "Use /lang fa, /lang en, or /lang ru.", nil)
+				b.reply(ctx, settings, chatID, localText(ctx, "Use /lang fa, /lang en, or /lang ru.", "برای انتخاب زبان /lang fa یا /lang en یا /lang ru را بزنید.", "Выберите язык командой /lang fa, /lang en или /lang ru."), nil)
 				return
 			}
 			if err := b.state.setLanguage(ctx, chatID, arg); err != nil {
-				b.reply(ctx, settings, chatID, "Could not save language. Please try again.", nil)
+				b.reply(ctx, settings, chatID, localText(ctx, "Could not save language. Please try again.", "زبان ذخیره نشد. دوباره تلاش کنید.", "Не удалось сохранить язык. Попробуйте ещё раз."), nil)
 				return
 			}
 			b.reply(ctx, settings, chatID, languageChangedText(arg), menuForLanguage(b.adminAuthorized(ctx, settings, chatID), arg, settings.MiniAppURL))
@@ -126,7 +126,7 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 		b.handleAdminTrial(ctx, settings, msg, command, arg)
 	default:
 		if command != "" {
-			b.reply(ctx, settings, chatID, "Unknown command. Send /help.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Unknown command. Send /help.", "دستور شناخته نشد. /help را بزنید.", "Неизвестная команда. Отправьте /help."), nil)
 		}
 	}
 }

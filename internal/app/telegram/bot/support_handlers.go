@@ -57,28 +57,29 @@ func (b *Bot) handleSupportCommand(ctx context.Context, settings Settings, msg *
 			b.reply(ctx, settings, chatID, localText(ctx, "Ticket not found.", "درخواست پیدا نشد.", "Запрос не найден."), nil)
 			return
 		}
-		b.reply(ctx, settings, chatID, ticketText(ticket), nil)
+		b.reply(ctx, settings, chatID, ticketText(ctx, ticket), nil)
 	case "/reply":
 		if !isAdmin {
 			return
 		}
 		parts := strings.SplitN(strings.TrimSpace(arg), " ", 2)
 		if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" || msg.MessageID <= 0 {
-			b.reply(ctx, settings, chatID, "Usage: /reply &lt;ticket_id&gt; &lt;message&gt;", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Usage: /reply &lt;ticket_id&gt; &lt;message&gt;", "روش استفاده: /reply &lt;شناسهٔ درخواست&gt; &lt;پیام&gt;", "Использование: /reply &lt;ID запроса&gt; &lt;сообщение&gt;"), nil)
 			return
 		}
 		ticket, err := b.support.Reply(ctx, parts[0], parts[1], fmt.Sprintf("tg-reply:%d:%d", chatID, msg.MessageID))
 		if err != nil {
-			b.reply(ctx, settings, chatID, "Reply failed: "+escape(err.Error()), nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Reply failed: ", "پاسخ ثبت نشد: ", "Не удалось ответить: ")+escape(err.Error()), nil)
 			return
 		}
-		b.reply(ctx, settings, chatID, "Reply saved to ticket <code>"+escape(ticket.ID)+"</code>.", nil)
-		b.reply(ctx, settings, ticket.TelegramID, "💬 Support replied to ticket <code>"+escape(ticket.ID)+"</code>. Use /ticket "+escape(ticket.ID)+" to read it.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Reply saved to ticket <code>", "پاسخ برای درخواست <code>", "Ответ на запрос <code>")+escape(ticket.ID)+localText(ctx, "</code>.", "</code> ثبت شد.", "</code> сохранён."), nil)
+		customerCtx := context.WithValue(ctx, languageContextKey{}, b.state.language(ctx, ticket.TelegramID, "en"))
+		b.reply(customerCtx, settings, ticket.TelegramID, localText(customerCtx, "💬 Support replied to ticket <code>", "💬 پشتیبانی به درخواست <code>", "💬 Поддержка ответила на запрос <code>")+escape(ticket.ID)+localText(customerCtx, "</code>. Use /ticket ", "</code> پاسخ داد. برای خواندن /ticket ", "</code>. Прочитайте ответ: /ticket ")+escape(ticket.ID)+localText(customerCtx, " to read it.", "", ""), nil)
 	}
 }
 
-func ticketText(ticket support.Ticket) string {
-	lines := []string{"<b>Ticket " + escape(ticket.ID) + "</b> · " + escape(ticket.Status)}
+func ticketText(ctx context.Context, ticket support.Ticket) string {
+	lines := []string{"<b>" + localText(ctx, "Ticket ", "درخواست ", "Запрос ") + escape(ticket.ID) + "</b> · " + escape(ticket.Status)}
 	start := len(ticket.Messages) - 5
 	if start < 0 {
 		start = 0
