@@ -26,6 +26,7 @@ CREATE TABLE telegram_settings (
 	api_token TEXT NULL,
 	use_telegram INTEGER NOT NULL DEFAULT 1,
 	proxy_url TEXT NULL,
+	mini_app_url TEXT NULL,
 	admin_chat_ids TEXT NULL,
 	logs_chat_id INTEGER NULL,
 	logs_chat_is_forum INTEGER NOT NULL DEFAULT 0,

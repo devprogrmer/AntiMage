@@ -47,6 +47,24 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 	}
 	command, arg := splitCommand(input)
 	if msg.From != nil && msg.From.ID > 0 && msg.Chat.Type == "private" && chatID == msg.From.ID {
+		language := b.state.language(ctx, chatID, msg.From.LanguageCode)
+		ctx = context.WithValue(ctx, languageContextKey{}, language)
+		if command == "/lang" || command == "/language" {
+			if strings.TrimSpace(arg) == "" {
+				b.reply(ctx, settings, chatID, "🇮🇷 /lang fa · 🇬🇧 /lang en · 🇷🇺 /lang ru", menuForLanguage(b.adminAuthorized(ctx, settings, chatID), language, settings.MiniAppURL))
+				return
+			}
+			if arg != "fa" && arg != "en" && arg != "ru" {
+				b.reply(ctx, settings, chatID, "Use /lang fa, /lang en, or /lang ru.", nil)
+				return
+			}
+			if err := b.state.setLanguage(ctx, chatID, arg); err != nil {
+				b.reply(ctx, settings, chatID, "Could not save language. Please try again.", nil)
+				return
+			}
+			b.reply(ctx, settings, chatID, languageChangedText(arg), menuForLanguage(b.adminAuthorized(ctx, settings, chatID), arg, settings.MiniAppURL))
+			return
+		}
 		switch command {
 		case "/my":
 			b.handleCustomerAccounts(ctx, settings, chatID, msg.From.ID)
@@ -65,7 +83,7 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 			return
 		case "/start", "/help":
 			if !b.adminAuthorized(ctx, settings, msg.From.ID) {
-				b.reply(ctx, settings, chatID, "Welcome to AntiMage. Use /shop to view plans, /trial for a one-time trial, /topup to fund your wallet, /balance and /transactions for your wallet, /orders for purchases, /my for services, or /support for help.", customerMenuKeyboard())
+				b.reply(ctx, settings, chatID, welcomeForLanguage(language, false), menuForLanguage(false, language, settings.MiniAppURL))
 				return
 			}
 		}
@@ -88,7 +106,8 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 	command, arg = splitCommand(text)
 	switch command {
 	case "/start", "/help":
-		b.reply(ctx, settings, chatID, helpText, mainMenuKeyboard())
+		language := b.state.language(ctx, chatID, msg.From.LanguageCode)
+		b.reply(ctx, settings, chatID, welcomeForLanguage(language, true), menuForLanguage(true, language, settings.MiniAppURL))
 	case "/system":
 		b.reply(ctx, settings, chatID, b.systemText(ctx), nil)
 	case "/nodes", "/node":
@@ -114,22 +133,22 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 
 func (b *Bot) handleCustomerAccounts(ctx context.Context, settings Settings, chatID, telegramID int64) {
 	if b.customers == nil {
-		b.reply(ctx, settings, chatID, "Customer services are unavailable.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Customer services are unavailable.", "سرویس‌های کاربران در دسترس نیستند.", "Услуги пользователей недоступны."), nil)
 		return
 	}
 	accounts, err := b.customers.ListByTelegramID(ctx, telegramID)
 	if err != nil {
-		b.reply(ctx, settings, chatID, "Could not load your services. Please try again later.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Could not load your services. Please try again later.", "سرویس‌ها بارگذاری نشدند. کمی بعد دوباره تلاش کنید.", "Не удалось загрузить ваши услуги. Попробуйте позже."), nil)
 		return
 	}
 	if len(accounts) == 0 {
-		b.reply(ctx, settings, chatID, "No services are linked to your Telegram account. Ask your provider to set your Telegram ID on your AntiMage user.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "No services are linked to your Telegram account. Ask your provider to set your Telegram ID on your AntiMage user.", "سرویسی به حساب تلگرام شما وصل نیست. از مدیر بخواهید شناسهٔ تلگرام شما را برای کاربر AntiMage ثبت کند.", "К вашему аккаунту Telegram не привязаны услуги. Попросите администратора указать ваш Telegram ID в AntiMage."), nil)
 		return
 	}
 	for _, account := range accounts {
-		lines := []string{"👤 <b>Your service</b>", line("Username", account.Username), "<b>Status:</b> " + statusLine(account.Status), line("Used", formatBytes(account.UsedTraffic)), line("Limit", formatOptionalBytes(account.DataLimit)), line("Expires", formatExpire(account.Expire))}
+		lines := []string{localText(ctx, "👤 <b>Your service</b>", "👤 <b>سرویس شما</b>", "👤 <b>Ваша услуга</b>"), line(localText(ctx, "Username", "نام کاربری", "Пользователь"), account.Username), "<b>" + localText(ctx, "Status", "وضعیت", "Статус") + ":</b> " + statusLine(account.Status), line(localText(ctx, "Used", "مصرف", "Использовано"), formatBytes(account.UsedTraffic)), line(localText(ctx, "Limit", "سقف حجم", "Лимит"), formatOptionalBytes(account.DataLimit)), line(localText(ctx, "Expires", "انقضا", "Истекает"), formatExpire(account.Expire))}
 		if strings.TrimSpace(account.SubscriptionURL) != "" {
-			lines = append(lines, line("Subscription", account.SubscriptionURL))
+			lines = append(lines, line(localText(ctx, "Subscription", "لینک اشتراک", "Подписка"), account.SubscriptionURL))
 		}
 		b.reply(ctx, settings, chatID, strings.Join(lines, "\n"), nil)
 	}
@@ -184,6 +203,21 @@ func (b *Bot) handleConversation(ctx context.Context, settings Settings, chatID 
 }
 
 func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *CallbackQuery) {
+	if query.From != nil && query.From.ID > 0 && query.Message != nil && query.Message.Chat.Type == "private" && query.Message.Chat.ID == query.From.ID {
+		ctx = context.WithValue(ctx, languageContextKey{}, b.state.language(ctx, query.From.ID, query.From.LanguageCode))
+	}
+	if strings.HasPrefix(query.Data, "lang:") && query.From != nil && query.From.ID > 0 && query.Message != nil && query.Message.Chat.Type == "private" && query.Message.Chat.ID == query.From.ID {
+		language := strings.TrimPrefix(query.Data, "lang:")
+		if language == "fa" || language == "en" || language == "ru" {
+			if err := b.state.setLanguage(ctx, query.From.ID, language); err == nil {
+				_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "")
+				b.reply(ctx, settings, query.From.ID, languageChangedText(language), menuForLanguage(b.adminAuthorized(ctx, settings, query.From.ID), language, settings.MiniAppURL))
+				return
+			}
+		}
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Invalid language")
+		return
+	}
 	if strings.HasPrefix(query.Data, "menu:") && query.From != nil && query.From.ID > 0 && query.Message != nil && query.Message.Chat.Type == "private" && query.Message.Chat.ID == query.From.ID {
 		chatID := query.From.ID
 		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "")

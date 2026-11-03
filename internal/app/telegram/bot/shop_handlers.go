@@ -123,52 +123,52 @@ func (b *Bot) handleAdminShopCommand(ctx context.Context, settings Settings, msg
 
 func (b *Bot) handleShopCommand(ctx context.Context, settings Settings, chatID, telegramID int64, command string) {
 	if b.shop == nil {
-		b.reply(ctx, settings, chatID, "The shop is not available yet.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "The shop is not available yet.", "فروشگاه فعلاً در دسترس نیست.", "Магазин пока недоступен."), nil)
 		return
 	}
 	switch command {
 	case "/balance":
 		balance, err := b.shop.Balance(ctx, telegramID)
 		if err != nil {
-			b.reply(ctx, settings, chatID, "Could not load your wallet. Please try again.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Could not load your wallet. Please try again.", "موجودی کیف پول بارگذاری نشد. دوباره تلاش کنید.", "Не удалось загрузить кошелёк. Попробуйте ещё раз."), nil)
 			return
 		}
-		b.reply(ctx, settings, chatID, fmt.Sprintf("💳 Wallet balance: <b>%d toman</b>", balance), nil)
+		b.reply(ctx, settings, chatID, fmt.Sprintf(localText(ctx, "💳 Wallet balance: <b>%d toman</b>", "💳 موجودی کیف پول: <b>%d تومان</b>", "💳 Баланс кошелька: <b>%d томан</b>"), balance), nil)
 	case "/transactions":
 		b.handleWalletHistory(ctx, settings, chatID, telegramID)
 	case "/shop":
 		products, err := b.shop.Products(ctx)
 		if err != nil {
-			b.reply(ctx, settings, chatID, "Could not load plans. Please try again.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Could not load plans. Please try again.", "طرح‌ها بارگذاری نشدند. دوباره تلاش کنید.", "Не удалось загрузить тарифы. Попробуйте ещё раз."), nil)
 			return
 		}
 		if len(products) == 0 {
-			b.reply(ctx, settings, chatID, "No plans are currently available.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "No plans are currently available.", "فعلاً طرحی برای فروش موجود نیست.", "Пока нет доступных тарифов."), nil)
 			return
 		}
 		for _, product := range products {
-			label := fmt.Sprintf("%s · %d toman · %d days · %s", product.Title, product.PriceToman, product.DurationDays, formatBytes(product.DataLimitBytes))
-			keyboard := &InlineKeyboard{InlineKeyboard: [][]InlineButton{{{Text: "Create order", CallbackData: fmt.Sprintf("shop:buy:%d", product.ID)}}}}
+			label := fmt.Sprintf(localText(ctx, "%s · %d toman · %d days · %s", "%s · %d تومان · %d روز · %s", "%s · %d томан · %d дней · %s"), product.Title, product.PriceToman, product.DurationDays, formatBytes(product.DataLimitBytes))
+			keyboard := &InlineKeyboard{InlineKeyboard: [][]InlineButton{{{Text: localText(ctx, "Create order", "ساخت سفارش", "Создать заказ"), CallbackData: fmt.Sprintf("shop:buy:%d", product.ID)}}}}
 			b.reply(ctx, settings, chatID, "🛒 "+escape(label), keyboard)
 		}
 	case "/orders":
 		orders, err := b.shop.Orders(ctx, telegramID)
 		if err != nil {
-			b.reply(ctx, settings, chatID, "Could not load orders. Please try again.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Could not load orders. Please try again.", "سفارش‌ها بارگذاری نشدند. دوباره تلاش کنید.", "Не удалось загрузить заказы. Попробуйте ещё раз."), nil)
 			return
 		}
 		if len(orders) == 0 {
-			b.reply(ctx, settings, chatID, "You have no orders yet. Use /shop to browse plans.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "You have no orders yet. Use /shop to browse plans.", "هنوز سفارشی ندارید. برای دیدن طرح‌ها /shop را بزنید.", "У вас пока нет заказов. Отправьте /shop для просмотра тарифов."), nil)
 			return
 		}
 		for _, order := range orders {
-			label := fmt.Sprintf("Order %s\nStatus: %s\nPrice: %d toman", order.ID, order.Status, order.PriceToman)
+			label := fmt.Sprintf(localText(ctx, "Order %s\nStatus: %s\nPrice: %d toman", "سفارش %s\nوضعیت: %s\nقیمت: %d تومان", "Заказ %s\nСтатус: %s\nЦена: %d томан"), order.ID, order.Status, order.PriceToman)
 			var keyboard *InlineKeyboard
 			if order.Status == "pending" || order.Status == "paid" || order.Status == "provisioning" {
-				keyboard = &InlineKeyboard{InlineKeyboard: [][]InlineButton{{{Text: "Pay / retry delivery", CallbackData: "shop:pay:" + order.ID}}}}
+				keyboard = &InlineKeyboard{InlineKeyboard: [][]InlineButton{{{Text: localText(ctx, "Pay / retry delivery", "پرداخت / تلاش دوباره برای تحویل", "Оплатить / повторить выдачу"), CallbackData: "shop:pay:" + order.ID}}}}
 			}
 			if order.Username != nil && order.Status == "completed" {
-				label += "\nService: " + *order.Username
+				label += localText(ctx, "\nService: ", "\nسرویس: ", "\nУслуга: ") + *order.Username
 			}
 			b.reply(ctx, settings, chatID, escape(label), keyboard)
 		}
@@ -178,7 +178,7 @@ func (b *Bot) handleShopCommand(ctx context.Context, settings Settings, chatID, 
 func (b *Bot) handleShopCallback(ctx context.Context, settings Settings, query *CallbackQuery) {
 	chatID := query.From.ID
 	if b.shop == nil {
-		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Shop unavailable")
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, localText(ctx, "Shop unavailable", "فروشگاه در دسترس نیست", "Магазин недоступен"))
 		return
 	}
 	parts := strings.SplitN(query.Data, ":", 3)
@@ -199,12 +199,12 @@ func (b *Bot) handleShopCallback(ctx context.Context, settings Settings, query *
 		order, err := b.shop.Place(ctx, chatID, productID, fmt.Sprintf("tg:%x", keyHash[:]))
 		if err != nil {
 			_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Order failed")
-			b.reply(ctx, settings, chatID, "Could not create the order. Please try again.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Could not create the order. Please try again.", "سفارش ساخته نشد. دوباره تلاش کنید.", "Не удалось создать заказ. Попробуйте ещё раз."), nil)
 			return
 		}
 		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Order created")
-		keyboard := &InlineKeyboard{InlineKeyboard: [][]InlineButton{{{Text: "Pay from wallet", CallbackData: "shop:pay:" + order.ID}}}}
-		b.reply(ctx, settings, chatID, fmt.Sprintf("Order <code>%s</code> is ready. Price: <b>%d toman</b>. Confirm payment from your wallet.", escape(order.ID), order.PriceToman), keyboard)
+		keyboard := &InlineKeyboard{InlineKeyboard: [][]InlineButton{{{Text: localText(ctx, "Pay from wallet", "پرداخت از کیف پول", "Оплатить из кошелька"), CallbackData: "shop:pay:" + order.ID}}}}
+		b.reply(ctx, settings, chatID, fmt.Sprintf(localText(ctx, "Order <code>%s</code> is ready. Price: <b>%d toman</b>. Confirm payment from your wallet.", "سفارش <code>%s</code> آماده است. قیمت: <b>%d تومان</b>. پرداخت از کیف پول را تأیید کنید.", "Заказ <code>%s</code> готов. Цена: <b>%d томан</b>. Подтвердите оплату из кошелька."), escape(order.ID), order.PriceToman), keyboard)
 	case "pay":
 		if len(parts[2]) != 36 {
 			_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Invalid order")
@@ -213,17 +213,17 @@ func (b *Bot) handleShopCallback(ctx context.Context, settings Settings, query *
 		username, err := b.shop.PayAndProvision(ctx, chatID, parts[2])
 		if errors.Is(err, shop.ErrInsufficientFunds) {
 			_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Insufficient balance")
-			b.reply(ctx, settings, chatID, "Your wallet balance is insufficient. Payment was not taken. Use /balance to check it.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Your wallet balance is insufficient. Payment was not taken. Use /balance to check it.", "موجودی کیف پول کافی نیست و مبلغی کسر نشد. با /balance موجودی را ببینید.", "Недостаточно средств. Оплата не списана. Проверьте баланс командой /balance."), nil)
 			return
 		}
 		if err != nil {
 			_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Delivery pending")
-			b.reply(ctx, settings, chatID, "The order could not be delivered yet. If payment was taken, it is recorded once. Use /orders to retry delivery; do not buy the plan again.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "The order could not be delivered yet. If payment was taken, it is recorded once. Use /orders to retry delivery; do not buy the plan again.", "سرویس هنوز تحویل نشد. اگر مبلغ کسر شده، فقط یک‌بار ثبت شده است. از /orders تحویل همین سفارش را دوباره امتحان کنید و طرح را دوباره نخرید.", "Услуга пока не выдана. Если оплата списана, она учтена один раз. Повторите выдачу этого заказа через /orders; не покупайте тариф снова."), nil)
 			b.logf("telegram shop: order delivery %s: %v", parts[2], err)
 			return
 		}
 		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Service ready")
-		b.reply(ctx, settings, chatID, "✅ Service <code>"+escape(username)+"</code> is ready. Use /my to see your subscription link.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "✅ Service <code>", "✅ سرویس <code>", "✅ Услуга <code>")+escape(username)+localText(ctx, "</code> is ready. Use /my to see your subscription link.", "</code> آماده است. لینک اشتراک را با /my ببینید.", "</code> готова. Ссылка подписки доступна через /my."), nil)
 	default:
 		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Invalid action")
 	}

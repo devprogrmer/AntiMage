@@ -25,6 +25,20 @@ func TestCustomerMenuUsesPrivateChatAndOwner(t *testing.T) {
 	}
 }
 
+func TestMiniAppButtonRequiresHTTPS(t *testing.T) {
+	for _, raw := range []string{"http://panel.example/telegram-app", "https://user:pass@panel.example/telegram-app", "https://panel.example/telegram-app#fragment"} {
+		menu := appendMiniAppButton(customerMenuKeyboard(), raw)
+		if len(menu.InlineKeyboard) != 5 {
+			t.Fatalf("unsafe URL produced Mini App button: %q", raw)
+		}
+	}
+	menu := appendMiniAppButton(customerMenuKeyboard(), "https://panel.example/telegram-app")
+	last := menu.InlineKeyboard[len(menu.InlineKeyboard)-1]
+	if len(last) != 1 || last[0].WebApp == nil || last[0].WebApp.URL != "https://panel.example/telegram-app" || last[0].CallbackData != "" {
+		t.Fatalf("Mini App button: %+v", last)
+	}
+}
+
 func TestAdminCommandsCannotRunFromAllowedNotificationGroup(t *testing.T) {
 	users := newFakeUsers()
 	users.users["alice"] = UserView{Username: "alice", Status: "active"}

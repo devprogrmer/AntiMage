@@ -17,32 +17,32 @@ func (b *Bot) handleTopupCommand(ctx context.Context, settings Settings, msg *Me
 	case "/topup":
 		amount, err := strconv.ParseInt(strings.TrimSpace(arg), 10, 64)
 		if err != nil || amount < 1000 || amount > 100000000 || msg.MessageID <= 0 {
-			b.reply(ctx, settings, chatID, "Usage: /topup &lt;toman&gt; (1,000 to 100,000,000)", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Usage: /topup &lt;toman&gt; (1,000 to 100,000,000)", "روش استفاده: /topup &lt;تومان&gt; (۱٬۰۰۰ تا ۱۰۰٬۰۰۰٬۰۰۰)", "Использование: /topup &lt;томан&gt; (от 1 000 до 100 000 000)"), nil)
 			return
 		}
 		instructions, err := b.topups.Instructions(ctx)
 		if err != nil || strings.TrimSpace(instructions) == "" {
-			b.reply(ctx, settings, chatID, "Manual wallet topups are not configured yet.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Manual wallet topups are not configured yet.", "روش شارژ دستی کیف پول هنوز تنظیم نشده است.", "Ручное пополнение кошелька пока не настроено."), nil)
 			return
 		}
 		request, err := b.topups.Create(ctx, chatID, amount, fmt.Sprintf("tg-topup:%d:%d", chatID, msg.MessageID))
 		if err != nil {
-			b.reply(ctx, settings, chatID, "Could not create a topup request. Please try again.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Could not create a topup request. Please try again.", "درخواست شارژ ثبت نشد. دوباره تلاش کنید.", "Не удалось создать запрос на пополнение. Попробуйте снова."), nil)
 			return
 		}
-		b.reply(ctx, settings, chatID, fmt.Sprintf("💳 Topup <code>%s</code> for <b>%d toman</b>.\n%s\nAfter transferring, send the receipt photo with caption <code>/receipt %s</code>. Your wallet is credited only after admin approval.", escape(request.ID), request.AmountToman, escape(instructions), escape(request.ID)), nil)
+		b.reply(ctx, settings, chatID, fmt.Sprintf(localText(ctx, "💳 Topup <code>%s</code> for <b>%d toman</b>.\n%s\nAfter transferring, send the receipt photo with caption <code>/receipt %s</code>. Your wallet is credited only after admin approval.", "💳 درخواست شارژ <code>%s</code> به مبلغ <b>%d تومان</b>.\n%s\nپس از انتقال، تصویر رسید را با عنوان <code>/receipt %s</code> بفرستید. کیف پول فقط پس از تأیید مدیر شارژ می‌شود.", "💳 Пополнение <code>%s</code> на <b>%d томан</b>.\n%s\nПосле перевода отправьте фото чека с подписью <code>/receipt %s</code>. Кошелёк пополнится только после подтверждения администратора."), escape(request.ID), request.AmountToman, escape(instructions), escape(request.ID)), nil)
 	case "/receipt":
 		if len(msg.Photo) == 0 {
-			b.reply(ctx, settings, chatID, "Send the bank receipt as a photo with caption /receipt &lt;topup_id&gt;.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Send the bank receipt as a photo with caption /receipt &lt;topup_id&gt;.", "تصویر رسید بانکی را با عنوان /receipt &lt;شناسهٔ شارژ&gt; بفرستید.", "Отправьте фото чека с подписью /receipt &lt;ID пополнения&gt;."), nil)
 			return
 		}
 		fileID := msg.Photo[len(msg.Photo)-1].FileID
 		request, err := b.topups.SubmitReceipt(ctx, chatID, strings.TrimSpace(arg), fileID)
 		if err != nil {
-			b.reply(ctx, settings, chatID, "This topup request cannot accept a receipt. Check /topups.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "This topup request cannot accept a receipt. Check /topups.", "این درخواست شارژ رسید نمی‌پذیرد. /topups را بررسی کنید.", "Этот запрос не принимает чек. Проверьте /topups."), nil)
 			return
 		}
-		b.reply(ctx, settings, chatID, "Receipt saved for <code>"+escape(request.ID)+"</code>. Awaiting admin review.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Receipt saved for <code>", "رسید برای <code>", "Чек для <code>")+escape(request.ID)+localText(ctx, "</code>. Awaiting admin review.", "</code> ثبت شد و منتظر بررسی مدیر است.", "</code> сохранён и ожидает проверки администратора."), nil)
 		keyboard := &InlineKeyboard{InlineKeyboard: [][]InlineButton{{
 			{Text: "Review approval", CallbackData: "topup:approve:" + request.ID},
 			{Text: "Review rejection", CallbackData: "topup:reject:" + request.ID},
@@ -62,16 +62,16 @@ func (b *Bot) handleTopupCommand(ctx context.Context, settings Settings, msg *Me
 		}
 		items, err := b.topups.List(ctx, chatID, command == "/pending-topups")
 		if err != nil {
-			b.reply(ctx, settings, chatID, "Could not load wallet topups.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Could not load wallet topups.", "درخواست‌های شارژ بارگذاری نشدند.", "Не удалось загрузить пополнения."), nil)
 			return
 		}
 		if len(items) == 0 {
-			b.reply(ctx, settings, chatID, "No topup requests found.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "No topup requests found.", "درخواست شارژی پیدا نشد.", "Запросы на пополнение не найдены."), nil)
 			return
 		}
-		lines := []string{"<b>Wallet topups</b>"}
+		lines := []string{localText(ctx, "<b>Wallet topups</b>", "<b>درخواست‌های شارژ کیف پول</b>", "<b>Пополнения кошелька</b>")}
 		for _, item := range items {
-			line := fmt.Sprintf("<code>%s</code> · %d toman · %s", escape(item.ID), item.AmountToman, escape(item.Status))
+			line := fmt.Sprintf(localText(ctx, "<code>%s</code> · %d toman · %s", "<code>%s</code> · %d تومان · %s", "<code>%s</code> · %d томан · %s"), escape(item.ID), item.AmountToman, escape(item.Status))
 			if command == "/pending-topups" {
 				line += fmt.Sprintf(" · %d", item.TelegramID)
 				line += " · /topup-review " + escape(item.ID)

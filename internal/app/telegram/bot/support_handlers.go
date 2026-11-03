@@ -17,15 +17,15 @@ func (b *Bot) handleSupportCommand(ctx context.Context, settings Settings, msg *
 	switch command {
 	case "/support":
 		if strings.TrimSpace(arg) == "" || msg.MessageID <= 0 {
-			b.reply(ctx, settings, chatID, "Usage: /support &lt;describe your problem&gt;", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Usage: /support &lt;describe your problem&gt;", "روش استفاده: /support &lt;توضیح مشکل&gt;", "Использование: /support &lt;описание проблемы&gt;"), nil)
 			return
 		}
 		ticket, err := b.support.Create(ctx, chatID, arg, fmt.Sprintf("tg-support:%d:%d", chatID, msg.MessageID))
 		if err != nil {
-			b.reply(ctx, settings, chatID, "Could not create a support ticket. Please shorten your message and try again.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Could not create a support ticket. Please shorten your message and try again.", "درخواست پشتیبانی ثبت نشد. پیام را کوتاه‌تر کنید و دوباره تلاش کنید.", "Не удалось создать запрос. Сократите сообщение и попробуйте снова."), nil)
 			return
 		}
-		b.reply(ctx, settings, chatID, "Support ticket <code>"+escape(ticket.ID)+"</code> saved. Use /ticket "+escape(ticket.ID)+" to read replies.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Support ticket <code>", "درخواست پشتیبانی <code>", "Запрос в поддержку <code>")+escape(ticket.ID)+localText(ctx, "</code> saved. Use /ticket ", "</code> ثبت شد. پاسخ‌ها را با /ticket ", "</code> создан. Ответы: /ticket ")+escape(ticket.ID)+localText(ctx, " to read replies.", "", ""), nil)
 		for _, adminID := range settings.AdminChatIDs {
 			if adminID <= 0 || adminID == chatID {
 				continue
@@ -35,14 +35,14 @@ func (b *Bot) handleSupportCommand(ctx context.Context, settings Settings, msg *
 	case "/tickets":
 		tickets, err := b.support.List(ctx, chatID, isAdmin)
 		if err != nil {
-			b.reply(ctx, settings, chatID, "Could not load tickets. Please try again.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Could not load tickets. Please try again.", "درخواست‌ها بارگذاری نشدند. دوباره تلاش کنید.", "Не удалось загрузить запросы. Попробуйте снова."), nil)
 			return
 		}
 		if len(tickets) == 0 {
-			b.reply(ctx, settings, chatID, "No tickets found.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "No tickets found.", "درخواست پشتیبانی پیدا نشد.", "Запросы не найдены."), nil)
 			return
 		}
-		lines := []string{"<b>Support tickets</b>"}
+		lines := []string{localText(ctx, "<b>Support tickets</b>", "<b>درخواست‌های پشتیبانی</b>", "<b>Запросы в поддержку</b>")}
 		for _, ticket := range tickets {
 			line := fmt.Sprintf("<code>%s</code> · %s", escape(ticket.ID), escape(ticket.Status))
 			if isAdmin {
@@ -54,7 +54,7 @@ func (b *Bot) handleSupportCommand(ctx context.Context, settings Settings, msg *
 	case "/ticket":
 		ticket, err := b.support.Get(ctx, strings.TrimSpace(arg), chatID, isAdmin)
 		if err != nil {
-			b.reply(ctx, settings, chatID, "Ticket not found.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Ticket not found.", "درخواست پیدا نشد.", "Запрос не найден."), nil)
 			return
 		}
 		b.reply(ctx, settings, chatID, ticketText(ticket), nil)

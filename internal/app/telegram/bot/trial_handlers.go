@@ -13,20 +13,20 @@ import (
 
 func (b *Bot) handleTrialClaim(ctx context.Context, settings Settings, chatID, telegramID int64) {
 	if b.trials == nil {
-		b.reply(ctx, settings, chatID, "Trial accounts are unavailable.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Trial accounts are unavailable.", "سرویس آزمایشی در دسترس نیست.", "Пробные услуги недоступны."), nil)
 		return
 	}
 	username, err := b.trials.ClaimAndProvision(ctx, telegramID)
 	if errors.Is(err, shop.ErrTrialUnavailable) {
-		b.reply(ctx, settings, chatID, "Trial accounts are not currently offered.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Trial accounts are not currently offered.", "فعلاً سرویس آزمایشی ارائه نمی‌شود.", "Пробные услуги сейчас не предлагаются."), nil)
 		return
 	}
 	if err != nil {
 		b.logf("telegram trial delivery for %d: %v", telegramID, err)
-		b.reply(ctx, settings, chatID, "Could not complete the trial request yet. Send /trial again later or use /my to check whether a service was created.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Could not complete the trial request yet. Send /trial again later or use /my to check whether a service was created.", "درخواست آزمایشی هنوز تکمیل نشد. بعداً /trial را دوباره بزنید یا با /my وضعیت سرویس را ببینید.", "Пробный запрос пока не завершён. Повторите /trial позже или проверьте услугу через /my."), nil)
 		return
 	}
-	b.reply(ctx, settings, chatID, "✅ Trial service <code>"+escape(username)+"</code> is ready. Use /my for the subscription link.", nil)
+	b.reply(ctx, settings, chatID, localText(ctx, "✅ Trial service <code>", "✅ سرویس آزمایشی <code>", "✅ Пробная услуга <code>")+escape(username)+localText(ctx, "</code> is ready. Use /my for the subscription link.", "</code> آماده است. لینک اشتراک را با /my ببینید.", "</code> готова. Ссылка подписки доступна через /my."), nil)
 }
 
 func (b *Bot) handleAdminTrial(ctx context.Context, settings Settings, msg *Message, command, arg string) {

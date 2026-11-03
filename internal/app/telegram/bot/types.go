@@ -40,7 +40,8 @@ type CallbackQuery struct {
 }
 
 type User struct {
-	ID int64 `json:"id"`
+	ID           int64  `json:"id"`
+	LanguageCode string `json:"language_code,omitempty"`
 }
 
 type Chat struct {
@@ -54,9 +55,14 @@ type InlineKeyboard struct {
 }
 
 type InlineButton struct {
-	Text         string `json:"text"`
-	CallbackData string `json:"callback_data,omitempty"`
-	URL          string `json:"url,omitempty"`
+	Text         string      `json:"text"`
+	CallbackData string      `json:"callback_data,omitempty"`
+	URL          string      `json:"url,omitempty"`
+	WebApp       *WebAppInfo `json:"web_app,omitempty"`
+}
+
+type WebAppInfo struct {
+	URL string `json:"url"`
 }
 
 // Settings is the snapshot the bot needs each poll cycle.
@@ -64,6 +70,7 @@ type Settings struct {
 	Enabled      bool
 	Token        string
 	ProxyURL     string
+	MiniAppURL   string
 	AdminChatIDs []int64
 }
 

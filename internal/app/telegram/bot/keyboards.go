@@ -1,6 +1,18 @@
 package bot
 
-import "strings"
+import (
+	"net/url"
+	"strings"
+)
+
+func appendMiniAppButton(keyboard *InlineKeyboard, rawURL string) *InlineKeyboard {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+		return keyboard
+	}
+	keyboard.InlineKeyboard = append(keyboard.InlineKeyboard, []InlineButton{{Text: "📱 AntiMage Mini App", WebApp: &WebAppInfo{URL: parsed.String()}}})
+	return keyboard
+}
 
 // Callback data prefixes for the user detail inline keyboard. They mirror the
 // legacy Python callbacks (delete/suspend/activate/reset_usage/revoke_sub/...).

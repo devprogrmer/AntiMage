@@ -40,7 +40,7 @@ func Verify(raw, token string, now time.Time) (int64, error) {
 	}
 	keys := make([]string, 0, len(values))
 	for key := range values {
-		if key != "hash" && key != "signature" {
+		if key != "hash" {
 			keys = append(keys, key)
 		}
 	}

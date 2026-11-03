@@ -462,6 +462,7 @@ type FormValues = {
 	api_token: string;
 	use_telegram: boolean;
 	proxy_url: string;
+	mini_app_url: string;
 	admin_chat_ids: string;
 	logs_chat_id: string;
 	logs_chat_is_forum: boolean;
@@ -508,6 +509,7 @@ const buildDefaultValues = (settings: TelegramSettingsResponse): FormValues => {
 		api_token: settings.api_token ?? "",
 		use_telegram: settings.use_telegram ?? true,
 		proxy_url: settings.proxy_url ?? "",
+		mini_app_url: settings.mini_app_url ?? "",
 		admin_chat_ids: (settings.admin_chat_ids || []).join(", "),
 		logs_chat_id:
 			settings.logs_chat_id != null ? String(settings.logs_chat_id) : "",
@@ -677,6 +679,7 @@ const buildTelegramPayload = (
 	api_token: values.api_token.trim() || null,
 	use_telegram: values.use_telegram,
 	proxy_url: values.proxy_url.trim() || null,
+	mini_app_url: values.mini_app_url.trim() || null,
 	admin_chat_ids: parseAdminChatIds(values.admin_chat_ids),
 	logs_chat_id: values.logs_chat_id.trim()
 		? Number(values.logs_chat_id.trim())
@@ -938,6 +941,7 @@ export const IntegrationSettingsPage = () => {
 				api_token: null,
 				use_telegram: true,
 				proxy_url: null,
+				mini_app_url: null,
 				admin_chat_ids: [],
 				logs_chat_id: null,
 				logs_chat_is_forum: false,
@@ -2349,6 +2353,14 @@ export const IntegrationSettingsPage = () => {
 												placeholder="socks5://user:pass@host:port"
 												{...register("proxy_url")}
 											/>
+										</FormControl>
+										<FormControl>
+											<FormLabel>{i18n.language.startsWith("fa") ? "آدرس مینی‌اپ تلگرام" : i18n.language.startsWith("ru") ? "Адрес мини-приложения Telegram" : "Telegram Mini App URL"}</FormLabel>
+											<Input
+												placeholder="https://panel.example.com/telegram-app"
+												{...register("mini_app_url")}
+											/>
+											<FormHelperText>{i18n.language.startsWith("fa") ? "آدرس عمومی HTTPS پنل با مسیر /telegram-app را وارد کنید تا دکمهٔ مینی‌اپ در ربات نمایش داده شود." : i18n.language.startsWith("ru") ? "Укажите публичный HTTPS-адрес панели с путём /telegram-app, чтобы показать кнопку в боте." : "Enter the public HTTPS panel URL ending in /telegram-app to show the bot button."}</FormHelperText>
 										</FormControl>
 										<FormControl>
 											<FormLabel>

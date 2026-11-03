@@ -36,10 +36,15 @@ func (b botSettingsSource) BotSettings(ctx context.Context) (telegrambot.Setting
 	if settings.ProxyURL != nil {
 		proxy = strings.TrimSpace(*settings.ProxyURL)
 	}
+	miniAppURL := b.server.cfg.TelegramMiniAppURL
+	if settings.MiniAppURL != nil {
+		miniAppURL = strings.TrimSpace(*settings.MiniAppURL)
+	}
 	return telegrambot.Settings{
 		Enabled:      settings.UseTelegram,
 		Token:        token,
 		ProxyURL:     proxy,
+		MiniAppURL:   miniAppURL,
 		AdminChatIDs: settings.AdminChatIDs,
 	}, nil
 }

@@ -77,6 +77,38 @@ func (s stateStore) clear(ctx context.Context, chatID int64) error {
 	return err
 }
 
+func (s stateStore) language(ctx context.Context, telegramID int64, fallback string) string {
+	if s.db != nil && telegramID > 0 {
+		var saved string
+		if err := s.db.QueryRowContext(ctx, `SELECT language FROM telegram_bot_languages WHERE telegram_id = ?`, telegramID).Scan(&saved); err == nil {
+			return normalizeLanguage(saved)
+		}
+	}
+	return normalizeLanguage(fallback)
+}
+
+func (s stateStore) setLanguage(ctx context.Context, telegramID int64, language string) error {
+	if s.db == nil || telegramID <= 0 {
+		return nil
+	}
+	language = normalizeLanguage(language)
+	result, err := s.db.ExecContext(ctx, `UPDATE telegram_bot_languages SET language = ? WHERE telegram_id = ?`, language, telegramID)
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected > 0 {
+		return nil
+	}
+	var existing string
+	if err := s.db.QueryRowContext(ctx, `SELECT language FROM telegram_bot_languages WHERE telegram_id = ?`, telegramID).Scan(&existing); err == nil {
+		return nil
+	} else if err != sql.ErrNoRows {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO telegram_bot_languages (telegram_id, language) VALUES (?, ?)`, telegramID, language)
+	return err
+}
+
 func nullable(value string) any {
 	if strings.TrimSpace(value) == "" {
 		return nil

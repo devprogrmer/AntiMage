@@ -27,6 +27,7 @@ func TestVerifyInitData(t *testing.T) {
 		t.Fatalf("valid initData: %d, %v", id, err)
 	}
 	for _, raw := range []string{
+		valid + "&signature=unsigned",
 		valid + "&user=%7B%22id%22%3A999%7D",
 		signed("test-token", now, `{"id":999}`) + "x",
 		signed("other-token", now, `{"id":321}`),

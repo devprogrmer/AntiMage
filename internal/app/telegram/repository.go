@@ -112,6 +112,15 @@ func (r Repository) UpdateSettings(ctx context.Context, raw map[string]json.RawM
 				return Settings{}, err
 			}
 			add(key, nullableString(proxyURL))
+		case "mini_app_url":
+			miniAppURL := rawTrimmedStringPtr(value)
+			if miniAppURL != nil {
+				parsed, err := url.Parse(*miniAppURL)
+				if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" || parsed.Path != "/telegram-app" || parsed.RawQuery != "" {
+					return Settings{}, fmt.Errorf("mini_app_url must be the public HTTPS /telegram-app URL")
+				}
+			}
+			add(key, nullableString(miniAppURL))
 		case "admin_chat_ids":
 			ids, err := rawInt64List(value)
 			if err != nil {
@@ -281,7 +290,7 @@ func (r Repository) EventEnabled(ctx context.Context, event string) (Settings, b
 }
 
 func (r Repository) settings(ctx context.Context) (Settings, error) {
-	var apiToken, proxyURL, defaultFlow sql.NullString
+	var apiToken, proxyURL, miniAppURL, defaultFlow sql.NullString
 	var useTelegram, logsForum, backupForum, backupEnabled sql.NullInt64
 	var adminRaw, topicsRaw, togglesRaw sql.NullString
 	var logsChatID, backupChatID, intervalValue sql.NullInt64
@@ -292,6 +301,7 @@ SELECT
 	api_token,
 	COALESCE(use_telegram, 1),
 	proxy_url,
+	mini_app_url,
 	COALESCE(admin_chat_ids, '[]'),
 	logs_chat_id,
 	COALESCE(logs_chat_is_forum, 0),
@@ -316,6 +326,7 @@ LIMIT 1`
 		&apiToken,
 		&useTelegram,
 		&proxyURL,
+		&miniAppURL,
 		&adminRaw,
 		&logsChatID,
 		&logsForum,
@@ -346,6 +357,7 @@ LIMIT 1`
 		APIToken:            stringPtrFromNull(apiToken),
 		UseTelegram:         !useTelegram.Valid || useTelegram.Int64 != 0,
 		ProxyURL:            stringPtrFromNull(proxyURL),
+		MiniAppURL:          stringPtrFromNull(miniAppURL),
 		AdminChatIDs:        adminIDs,
 		LogsChatID:          int64PtrFromNull(logsChatID),
 		LogsChatIsForum:     logsForum.Valid && logsForum.Int64 != 0,
