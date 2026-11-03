@@ -198,7 +198,7 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 			}
 		case "menu:trial":
 			b.handleTrialClaim(ctx, settings, chatID, chatID)
-		case "menu:shop", "menu:balance", "menu:orders":
+		case "menu:shop", "menu:balance", "menu:transactions", "menu:orders":
 			b.handleShopCommand(ctx, settings, chatID, chatID, "/"+strings.TrimPrefix(query.Data, "menu:"))
 		case "menu:my":
 			b.handleCustomerAccounts(ctx, settings, chatID, chatID)

@@ -156,6 +156,11 @@ func TestWalletHistoryOnlyOwnerOrPrivateAdmin(t *testing.T) {
 		t.Fatalf("history response: %+v", *calls)
 	}
 	f.owner = 0
+	b.handleCallback(ctx, settings, &CallbackQuery{ID: "history-menu", From: &User{ID: 321}, Message: &Message{Chat: Chat{ID: 321, Type: "private"}}, Data: "menu:transactions"})
+	if f.owner != 321 {
+		t.Fatalf("history menu used owner %d", f.owner)
+	}
+	f.owner = 0
 	b.handleMessage(ctx, settings, &Message{From: &User{ID: 321}, Chat: Chat{ID: 321, Type: "private"}, Text: "/wallet 999"})
 	b.handleMessage(ctx, settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: -100, Type: "supergroup"}, Text: "/wallet 999"})
 	if f.owner != 0 {
