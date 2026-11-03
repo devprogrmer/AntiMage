@@ -20,6 +20,7 @@ type Bot struct {
 	authorizer Authorizer
 	users      UserService
 	customers  CustomerService
+	nodes      NodesService
 	shop       ShopService
 	support    SupportService
 	topups     TopupService
@@ -38,6 +39,7 @@ type Options struct {
 	Authorizer Authorizer
 	Users      UserService
 	Customers  CustomerService
+	Nodes      NodesService
 	Shop       ShopService
 	Support    SupportService
 	Topups     TopupService
@@ -57,6 +59,7 @@ func New(opts Options) *Bot {
 		authorizer: opts.Authorizer,
 		users:      opts.Users,
 		customers:  opts.Customers,
+		nodes:      opts.Nodes,
 		shop:       opts.Shop,
 		support:    opts.Support,
 		topups:     opts.Topups,

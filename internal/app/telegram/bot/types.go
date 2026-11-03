@@ -108,6 +108,25 @@ type CustomerService interface {
 	ListByTelegramID(ctx context.Context, telegramID int64) ([]UserView, error)
 }
 
+type NodeView struct {
+	ID              int64
+	Name            string
+	Status          string
+	AgentStatus     string
+	XrayStatus      string
+	AgentVersion    string
+	XrayVersion     string
+	CPUPercent      float64
+	MemoryPercent   float64
+	AppliedRevision uint64
+	DesiredRevision uint64
+}
+
+type NodesService interface {
+	List(ctx context.Context) ([]NodeView, error)
+	Get(ctx context.Context, id int64) (NodeView, error)
+}
+
 type ShopService interface {
 	Balance(ctx context.Context, telegramID int64) (int64, error)
 	Products(ctx context.Context) ([]shop.Product, error)

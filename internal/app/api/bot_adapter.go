@@ -11,6 +11,7 @@ import (
 
 	adminapp "github.com/antimage/antimage/internal/app/admin"
 	dashboardapp "github.com/antimage/antimage/internal/app/dashboard"
+	"github.com/antimage/antimage/internal/app/nodecontroller"
 	"github.com/antimage/antimage/internal/app/shop"
 	"github.com/antimage/antimage/internal/app/support"
 	telegrambot "github.com/antimage/antimage/internal/app/telegram/bot"
@@ -345,6 +346,44 @@ type botSystemService struct {
 	server *Server
 }
 
+type botNodesService struct{ server *Server }
+
+func (b botNodesService) List(ctx context.Context) ([]telegrambot.NodeView, error) {
+	result, err := b.server.nodeController.List(ctx, nodecontroller.Request{})
+	if err != nil {
+		return nil, err
+	}
+	views := make([]telegrambot.NodeView, 0, len(result.Nodes))
+	for _, item := range result.Nodes {
+		views = append(views, botNodeView(item))
+	}
+	return views, nil
+}
+
+func (b botNodesService) Get(ctx context.Context, id int64) (telegrambot.NodeView, error) {
+	item, err := b.server.nodeController.Get(ctx, nodecontroller.Request{NodeID: id})
+	if err != nil {
+		return telegrambot.NodeView{}, err
+	}
+	return botNodeView(item), nil
+}
+
+func botNodeView(item nodecontroller.NodeListItem) telegrambot.NodeView {
+	view := telegrambot.NodeView{
+		ID: item.ID, Name: item.Name, Status: item.Status,
+		AgentStatus: item.AgentStatus, XrayStatus: item.XrayStatus,
+		CPUPercent: item.CPU.UsagePercent, MemoryPercent: item.Memory.UsagePercent,
+		AppliedRevision: item.AppliedRevision, DesiredRevision: item.DesiredRevision,
+	}
+	if item.NodeServiceVersion != nil {
+		view.AgentVersion = *item.NodeServiceVersion
+	}
+	if item.XrayVersion != nil {
+		view.XrayVersion = *item.XrayVersion
+	}
+	return view
+}
+
 func (b botSystemService) Info(ctx context.Context) (telegrambot.SystemInfo, error) {
 	stats, err := b.server.systemStatsService().Stats(ctx, dashboardapp.AdminContext{
 		Username: "telegram-bot",
@@ -373,6 +412,7 @@ func (s *Server) runTelegramBot(ctx context.Context) {
 		Authorizer: botAuthorizer{server: s},
 		Users:      botUserService{server: s},
 		Customers:  botUserService{server: s},
+		Nodes:      botNodesService{server: s},
 		Shop:       botShopService{server: s},
 		Support:    support.Store{DB: s.db},
 		Topups:     botTopupService{server: s},
