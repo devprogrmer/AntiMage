@@ -234,6 +234,11 @@ func (b botShopService) Balance(ctx context.Context, telegramID int64) (int64, e
 	return wallet.Balance(ctx, telegramID)
 }
 
+func (b botShopService) History(ctx context.Context, telegramID int64) ([]shop.WalletEntry, error) {
+	_, wallet := b.stores()
+	return wallet.History(ctx, telegramID, 15)
+}
+
 func (b botShopService) Products(ctx context.Context) ([]shop.Product, error) {
 	orders, _ := b.stores()
 	return orders.ListProducts(ctx)

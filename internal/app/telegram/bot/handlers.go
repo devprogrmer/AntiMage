@@ -18,6 +18,8 @@ const helpText = `🤖 <b>AntiMage admin bot</b>
 /shop — browse plans
 /trial — claim your one-time trial, if enabled
 /balance — show your wallet
+/transactions — show your latest wallet transactions
+/wallet &lt;telegram_id&gt; — admin wallet audit
 /orders — show your orders
 /my — show services linked to your Telegram ID
 /credit &lt;telegram_id&gt; &lt;toman&gt; &lt;reference&gt; — admin wallet credit
@@ -49,7 +51,7 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 		case "/my":
 			b.handleCustomerAccounts(ctx, settings, chatID, msg.From.ID)
 			return
-		case "/shop", "/balance", "/orders":
+		case "/shop", "/balance", "/orders", "/transactions":
 			b.handleShopCommand(ctx, settings, chatID, msg.From.ID, command)
 			return
 		case "/trial":
@@ -63,7 +65,7 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 			return
 		case "/start", "/help":
 			if !authorized(settings, msg.From.ID) {
-				b.reply(ctx, settings, chatID, "Welcome to AntiMage. Use /shop to view plans, /trial for a one-time trial, /topup to fund your wallet, /balance to check it, /orders for purchases, /my for services, or /support for help.", customerMenuKeyboard())
+				b.reply(ctx, settings, chatID, "Welcome to AntiMage. Use /shop to view plans, /trial for a one-time trial, /topup to fund your wallet, /balance and /transactions for your wallet, /orders for purchases, /my for services, or /support for help.", customerMenuKeyboard())
 				return
 			}
 		}
@@ -93,6 +95,8 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 		b.handleAdminNodes(ctx, settings, chatID, command, arg)
 	case "/sales":
 		b.handleAdminSales(ctx, settings, chatID)
+	case "/wallet":
+		b.handleAdminWallet(ctx, settings, chatID, arg)
 	case "/usage":
 		b.handleUsageCommand(ctx, settings, chatID, arg)
 	case "/user":

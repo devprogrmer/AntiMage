@@ -25,6 +25,10 @@ func (f *fakeShop) Balance(_ context.Context, owner int64) (int64, error) {
 	f.owner = owner
 	return 100000, nil
 }
+func (f *fakeShop) History(_ context.Context, owner int64) ([]shop.WalletEntry, error) {
+	f.owner = owner
+	return []shop.WalletEntry{{Reference: "topup:1", Delta: 100000, Reason: "topup", CreatedAt: "2026-11-03 10:00:00"}}, nil
+}
 func (f *fakeShop) Products(context.Context) ([]shop.Product, error) {
 	return []shop.Product{{ID: 5, Title: "Basic", PriceToman: 80000, DataLimitBytes: 1 << 30, DurationDays: 30}}, nil
 }
@@ -121,5 +125,29 @@ func TestSalesOverviewOnlyForAdmin(t *testing.T) {
 	call, ok := lastCall(*calls, "sendMessage")
 	if !ok || !strings.Contains(call.body["text"].(string), "160000") {
 		t.Fatalf("sales report missing: %+v", *calls)
+	}
+}
+
+func TestWalletHistoryOnlyOwnerOrPrivateAdmin(t *testing.T) {
+	b, calls, settings := newTestBot(t, newFakeUsers())
+	f := &fakeShop{}
+	b.shop = f
+	ctx := context.Background()
+	b.handleMessage(ctx, settings, &Message{From: &User{ID: 321}, Chat: Chat{ID: 321, Type: "private"}, Text: "/transactions"})
+	if f.owner != 321 {
+		t.Fatalf("customer saw wallet %d", f.owner)
+	}
+	if call, ok := lastCall(*calls, "sendMessage"); !ok || !strings.Contains(call.body["text"].(string), "topup:1") {
+		t.Fatalf("history response: %+v", *calls)
+	}
+	f.owner = 0
+	b.handleMessage(ctx, settings, &Message{From: &User{ID: 321}, Chat: Chat{ID: 321, Type: "private"}, Text: "/wallet 999"})
+	b.handleMessage(ctx, settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: -100, Type: "supergroup"}, Text: "/wallet 999"})
+	if f.owner != 0 {
+		t.Fatalf("unauthorized wallet audit: %d", f.owner)
+	}
+	b.handleMessage(ctx, settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "/wallet 999"})
+	if f.owner != 999 {
+		t.Fatalf("admin wallet audit used owner %d", f.owner)
 	}
 }

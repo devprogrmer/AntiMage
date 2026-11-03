@@ -35,6 +35,9 @@ func (a testShopAdapter) SalesOverview(ctx context.Context) (shop.SalesOverview,
 func (a testShopAdapter) Balance(ctx context.Context, id int64) (int64, error) {
 	return a.wallet.Balance(ctx, id)
 }
+func (a testShopAdapter) History(ctx context.Context, id int64) ([]shop.WalletEntry, error) {
+	return a.wallet.History(ctx, id, 15)
+}
 func (a testShopAdapter) Products(ctx context.Context) ([]shop.Product, error) {
 	return a.orders.ListProducts(ctx)
 }

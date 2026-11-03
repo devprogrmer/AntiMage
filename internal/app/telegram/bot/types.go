@@ -130,6 +130,7 @@ type NodesService interface {
 type ShopService interface {
 	SalesOverview(ctx context.Context) (shop.SalesOverview, error)
 	Balance(ctx context.Context, telegramID int64) (int64, error)
+	History(ctx context.Context, telegramID int64) ([]shop.WalletEntry, error)
 	Products(ctx context.Context) ([]shop.Product, error)
 	Orders(ctx context.Context, telegramID int64) ([]shop.Order, error)
 	Place(ctx context.Context, telegramID, productID int64, requestKey string) (shop.Order, error)

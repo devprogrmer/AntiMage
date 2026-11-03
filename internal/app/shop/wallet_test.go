@@ -61,6 +61,13 @@ func TestWalletIdempotencyAndRestart(t *testing.T) {
 	if got, err := w.Credit(ctx, 123, 800, "payment-1"); err != nil || got != 0 {
 		t.Fatalf("retry after restart = %d, %v", got, err)
 	}
+	entries, err := w.History(ctx, 123, 15)
+	if err != nil || len(entries) != 2 || entries[0].Delta+entries[1].Delta != 0 {
+		t.Fatalf("history after restart = %+v, %v", entries, err)
+	}
+	if entries, err := w.History(ctx, 456, 15); err != nil || len(entries) != 0 {
+		t.Fatalf("other wallet history = %+v, %v", entries, err)
+	}
 	var count int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM shop_wallet_entries`).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("journal count = %d, %v", count, err)

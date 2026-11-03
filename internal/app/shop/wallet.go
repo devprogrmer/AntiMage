@@ -23,6 +23,34 @@ type Wallet struct {
 	Dialect string
 }
 
+type WalletEntry struct {
+	Reference string
+	Delta     int64
+	Reason    string
+	CreatedAt string
+}
+
+func (w Wallet) History(ctx context.Context, telegramID int64, limit int) ([]WalletEntry, error) {
+	if w.DB == nil || telegramID <= 0 || limit < 1 || limit > 100 {
+		return nil, fmt.Errorf("invalid wallet history request")
+	}
+	rows, err := w.DB.QueryContext(ctx, `SELECT reference, delta, reason, created_at FROM shop_wallet_entries
+		WHERE telegram_id = ? ORDER BY created_at DESC, reference DESC LIMIT ?`, telegramID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	entries := []WalletEntry{}
+	for rows.Next() {
+		var entry WalletEntry
+		if err := rows.Scan(&entry.Reference, &entry.Delta, &entry.Reason, &entry.CreatedAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
 func (w Wallet) Balance(ctx context.Context, telegramID int64) (int64, error) {
 	if telegramID <= 0 {
 		return 0, fmt.Errorf("invalid telegram ID")

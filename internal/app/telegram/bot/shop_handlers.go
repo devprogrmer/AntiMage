@@ -26,6 +26,40 @@ func (b *Bot) handleAdminSales(ctx context.Context, settings Settings, chatID in
 		result.TotalOrders, result.PendingOrders, result.UnfulfilledOrders, result.CompletedOrders, result.PaidToman), nil)
 }
 
+func (b *Bot) handleAdminWallet(ctx context.Context, settings Settings, chatID int64, arg string) {
+	owner, err := strconv.ParseInt(strings.TrimSpace(arg), 10, 64)
+	if err != nil || owner <= 0 {
+		b.reply(ctx, settings, chatID, "Usage: /wallet &lt;telegram_id&gt;", nil)
+		return
+	}
+	b.handleWalletHistory(ctx, settings, chatID, owner)
+}
+
+func (b *Bot) handleWalletHistory(ctx context.Context, settings Settings, chatID, telegramID int64) {
+	if b.shop == nil {
+		b.reply(ctx, settings, chatID, "Wallet unavailable.", nil)
+		return
+	}
+	balance, err := b.shop.Balance(ctx, telegramID)
+	if err != nil {
+		b.reply(ctx, settings, chatID, "Could not load wallet balance.", nil)
+		return
+	}
+	entries, err := b.shop.History(ctx, telegramID)
+	if err != nil {
+		b.reply(ctx, settings, chatID, "Could not load wallet history.", nil)
+		return
+	}
+	lines := []string{fmt.Sprintf("💳 <b>Wallet %d</b> · %d toman", telegramID, balance)}
+	if len(entries) == 0 {
+		lines = append(lines, "No transactions recorded.")
+	}
+	for _, entry := range entries {
+		lines = append(lines, fmt.Sprintf("%s · %+d toman · %s · <code>%s</code>", escape(entry.CreatedAt), entry.Delta, escape(entry.Reason), escape(entry.Reference)))
+	}
+	b.reply(ctx, settings, chatID, strings.Join(lines, "\n"), nil)
+}
+
 func (b *Bot) handleAdminShopCommand(ctx context.Context, settings Settings, msg *Message, command, arg string) {
 	if msg.From == nil || msg.From.ID != msg.Chat.ID || msg.Chat.Type != "private" || !authorized(settings, msg.From.ID) || b.shop == nil {
 		return
@@ -100,6 +134,8 @@ func (b *Bot) handleShopCommand(ctx context.Context, settings Settings, chatID, 
 			return
 		}
 		b.reply(ctx, settings, chatID, fmt.Sprintf("💳 Wallet balance: <b>%d toman</b>", balance), nil)
+	case "/transactions":
+		b.handleWalletHistory(ctx, settings, chatID, telegramID)
 	case "/shop":
 		products, err := b.shop.Products(ctx)
 		if err != nil {
