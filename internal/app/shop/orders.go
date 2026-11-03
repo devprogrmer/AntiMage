@@ -39,6 +39,28 @@ type Order struct {
 
 type Orders struct{ DB *sql.DB }
 
+// Unfulfilled returns only orders whose wallet debit has already been recorded
+// and whose account delivery can be safely retried after a process restart.
+func (s Orders) Unfulfilled(ctx context.Context, limit int) ([]string, error) {
+	if s.DB == nil || limit < 1 || limit > 500 {
+		return nil, fmt.Errorf("invalid order recovery limit")
+	}
+	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM shop_orders WHERE status IN ('paid', 'provisioning') ORDER BY updated_at, id LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (s Orders) ListCustomerOrders(ctx context.Context, telegramID int64) ([]Order, error) {
 	if s.DB == nil || telegramID <= 0 {
 		return nil, fmt.Errorf("invalid customer")

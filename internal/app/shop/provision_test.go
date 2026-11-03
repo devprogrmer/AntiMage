@@ -124,10 +124,13 @@ func TestPurchaseRoundTripWithCrashAndRetry(t *testing.T) {
 		t.Fatal("failed provisioning reported success")
 	}
 	creator.fail = nil
-	if _, err := store.Pay(ctx, 123, order.ID, wallet); err != nil {
-		t.Fatalf("repeat payment: %v", err)
+	unfulfilled, err := store.Unfulfilled(ctx, 25)
+	if err != nil || len(unfulfilled) != 1 || unfulfilled[0] != order.ID {
+		t.Fatalf("recovery queue = %v, %v", unfulfilled, err)
 	}
-	username, err := store.Provision(ctx, order.ID, creator)
+	// The background recovery path invokes provisioning directly. It must not
+	// invoke Pay again or mutate the wallet a second time.
+	username, err := store.Provision(ctx, unfulfilled[0], creator)
 	if err != nil || username == "" {
 		t.Fatalf("recovered provision = %q, %v", username, err)
 	}
@@ -141,6 +144,9 @@ func TestPurchaseRoundTripWithCrashAndRetry(t *testing.T) {
 	accountCount = len(creator.accounts)
 	if debitCount != 1 || accountCount != 1 {
 		t.Fatalf("duplicate financial or account effect: debits=%d accounts=%d", debitCount, accountCount)
+	}
+	if unfulfilled, err := store.Unfulfilled(ctx, 25); err != nil || len(unfulfilled) != 0 {
+		t.Fatalf("completed order still in recovery queue = %v, %v", unfulfilled, err)
 	}
 	orders, err := store.ListCustomerOrders(ctx, 123)
 	if err != nil || len(orders) != 1 || orders[0].Status != "completed" || orders[0].Username == nil || *orders[0].Username != username {
