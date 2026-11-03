@@ -756,7 +756,7 @@ const buildAdminSubscriptionPayload = (
 const readSettingsHash = () => parseSettingsHash(window.location.hash);
 
 export const IntegrationSettingsPage = () => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
 	const { colorMode } = useColorMode();
 	const toast = useToast();
 	const cardBg = useColorModeValue("white", "whiteAlpha.50");
@@ -2590,10 +2590,32 @@ export const IntegrationSettingsPage = () => {
 												{t("settings.telegram.botCommandsTitle")}
 											</Heading>
 										</Box>
-										<Badge colorScheme="yellow">
-											{t("settings.tabs.comingSoon")}
-										</Badge>
 									</Flex>
+									<Text fontSize="sm" color="gray.400" mt={2}>
+										{i18n.language.startsWith("fa")
+											? "فرمان‌ها را در گفت‌وگوی خصوصی ربات بفرستید. شناسهٔ ادمین را در بالا ثبت کنید؛ دسترسی مدیریتی در گروه فعال نیست."
+											: i18n.language.startsWith("ru")
+												? "Отправляйте команды в личный чат с ботом. Добавьте ID администратора выше; группы не дают права управления."
+												: "Send commands in a private chat with the bot. Add the admin ID above; groups do not grant management access."}
+									</Text>
+									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mt={3}>
+										<Box p={3} borderWidth="1px" borderColor={borderColor} borderRadius="md">
+											<Text fontWeight="bold" mb={2}>
+												{i18n.language.startsWith("fa") ? "کاربران" : i18n.language.startsWith("ru") ? "Клиенты" : "Customers"}
+											</Text>
+											<Text fontSize="sm" whiteSpace="pre-line" fontFamily="mono" dir="ltr">
+												{"/start  /my  /shop  /trial\n/balance  /transactions  /orders\n/topup  /receipt  /topups\n/support  /tickets  /ticket"}
+											</Text>
+										</Box>
+										<Box p={3} borderWidth="1px" borderColor={borderColor} borderRadius="md">
+											<Text fontWeight="bold" mb={2}>
+												{i18n.language.startsWith("fa") ? "مدیران مجاز" : i18n.language.startsWith("ru") ? "Администраторы" : "Authorized admins"}
+											</Text>
+											<Text fontSize="sm" whiteSpace="pre-line" fontFamily="mono" dir="ltr">
+												{"/system  /nodes  /node  /user  /usage\n/sales  /wallet  /credit\n/plan-add  /plan-disable\n/trial-config  /trial-off\n/pending-topups  /topup-review\n/payment-details  /reply"}
+											</Text>
+										</Box>
+									</SimpleGrid>
 								</Box>
 							</DisabledCard>
 
