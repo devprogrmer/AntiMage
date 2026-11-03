@@ -28,6 +28,7 @@ func mainMenuKeyboard() *InlineKeyboard {
 func customerMenuKeyboard() *InlineKeyboard {
 	return &InlineKeyboard{InlineKeyboard: [][]InlineButton{
 		{{Text: "🛒 Plans", CallbackData: "menu:shop"}, {Text: "💳 Wallet", CallbackData: "menu:balance"}},
+		{{Text: "🎁 Trial", CallbackData: "menu:trial"}},
 		{{Text: "📦 Orders", CallbackData: "menu:orders"}, {Text: "👤 My services", CallbackData: "menu:my"}},
 		{{Text: "🎫 Support", CallbackData: "menu:tickets"}, {Text: "🧾 Top-ups", CallbackData: "menu:topups"}},
 	}}

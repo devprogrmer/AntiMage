@@ -18,13 +18,45 @@ func (s *Server) runTelegramShopRecovery(ctx context.Context) {
 	ticker := time.NewTicker(telegramShopRecoveryInterval)
 	defer ticker.Stop()
 	s.recoverTelegramShopOrders(ctx)
+	s.recoverTelegramTrials(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			s.recoverTelegramShopOrders(ctx)
+			s.recoverTelegramTrials(ctx)
 		}
+	}
+}
+
+func (s *Server) recoverTelegramTrials(ctx context.Context) {
+	workerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	trials := shop.Trials{DB: s.db, Dialect: s.dialect}
+	ids, err := trials.Unfulfilled(workerCtx, telegramShopRecoveryBatch)
+	if err != nil {
+		if ctx.Err() == nil {
+			logging.Warnf(logging.ComponentTelegram, "trial recovery list failed: %v", err)
+		}
+		return
+	}
+	provisioner := botAccountProvisioner{server: s}
+	recovered := 0
+	for _, id := range ids {
+		if workerCtx.Err() != nil {
+			break
+		}
+		if _, err := trials.Provision(workerCtx, id, provisioner); err != nil {
+			if workerCtx.Err() == nil {
+				logging.Warnf(logging.ComponentTelegram, "trial for Telegram ID %d delivery retry failed: %v", id, err)
+			}
+			continue
+		}
+		recovered++
+	}
+	if recovered > 0 {
+		logging.Infof(logging.ComponentTelegram, "trial accounts recovered=%d", recovered)
 	}
 }
 

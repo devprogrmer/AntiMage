@@ -191,6 +191,35 @@ func (b botUserService) update(ctx context.Context, actor telegrambot.Actor, use
 
 type botShopService struct{ server *Server }
 
+type botTrialService struct{ server *Server }
+
+func (b botTrialService) store() shop.Trials {
+	return shop.Trials{DB: b.server.db, Dialect: b.server.dialect}
+}
+
+func (b botTrialService) ClaimAndProvision(ctx context.Context, telegramID int64) (string, error) {
+	store := b.store()
+	claim, err := store.Claim(ctx, telegramID)
+	if err != nil {
+		return "", err
+	}
+	if claim.Status == "pending" {
+		if err := (botShopService{server: b.server}).serviceHasActiveHost(ctx, claim.ServiceID); err != nil {
+			return "", err
+		}
+	}
+	return store.Provision(ctx, telegramID, botAccountProvisioner{server: b.server})
+}
+
+func (b botTrialService) Configure(ctx context.Context, config shop.TrialConfig) error {
+	if err := (botShopService{server: b.server}).serviceHasActiveHost(ctx, config.ServiceID); err != nil {
+		return err
+	}
+	return b.store().Configure(ctx, config)
+}
+
+func (b botTrialService) Disable(ctx context.Context) error { return b.store().Disable(ctx) }
+
 func (b botShopService) stores() (shop.Orders, shop.Wallet) {
 	return shop.Orders{DB: b.server.db}, shop.Wallet{DB: b.server.db, Dialect: b.server.dialect}
 }
@@ -419,6 +448,7 @@ func (s *Server) runTelegramBot(ctx context.Context) {
 		Customers:  botUserService{server: s},
 		Nodes:      botNodesService{server: s},
 		Shop:       botShopService{server: s},
+		Trials:     botTrialService{server: s},
 		Support:    support.Store{DB: s.db},
 		Topups:     botTopupService{server: s},
 		System:     botSystemService{server: s},

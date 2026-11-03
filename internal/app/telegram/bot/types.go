@@ -139,6 +139,12 @@ type ShopService interface {
 	DisableProduct(ctx context.Context, productID int64) error
 }
 
+type TrialService interface {
+	ClaimAndProvision(ctx context.Context, telegramID int64) (string, error)
+	Configure(ctx context.Context, config shop.TrialConfig) error
+	Disable(ctx context.Context) error
+}
+
 type SupportService interface {
 	Create(ctx context.Context, telegramID int64, content, reference string) (support.Ticket, error)
 	List(ctx context.Context, telegramID int64, admin bool) ([]support.Ticket, error)

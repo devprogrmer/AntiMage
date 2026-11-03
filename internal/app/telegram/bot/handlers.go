@@ -16,12 +16,15 @@ const helpText = `🤖 <b>AntiMage admin bot</b>
 /node &lt;id&gt; — inspect one node with live metrics
 /sales — show the shop's order and revenue summary
 /shop — browse plans
+/trial — claim your one-time trial, if enabled
 /balance — show your wallet
 /orders — show your orders
 /my — show services linked to your Telegram ID
 /credit &lt;telegram_id&gt; &lt;toman&gt; &lt;reference&gt; — admin wallet credit
 /plan-add &lt;service_id&gt; &lt;toman&gt; &lt;GB&gt; &lt;days&gt; &lt;title&gt; — admin product
 /plan-disable &lt;product_id&gt; — admin product disable
+/trial-config &lt;service_id&gt; &lt;GB&gt; &lt;days&gt; — admin trial offer
+/trial-off — disable new trials
 /support &lt;message&gt; — open a support ticket
 /tickets — list tickets
 /ticket &lt;id&gt; — read a ticket
@@ -49,6 +52,9 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 		case "/shop", "/balance", "/orders":
 			b.handleShopCommand(ctx, settings, chatID, msg.From.ID, command)
 			return
+		case "/trial":
+			b.handleTrialClaim(ctx, settings, chatID, msg.From.ID)
+			return
 		case "/support", "/tickets", "/ticket", "/reply":
 			b.handleSupportCommand(ctx, settings, msg, command, arg)
 			return
@@ -57,7 +63,7 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 			return
 		case "/start", "/help":
 			if !authorized(settings, msg.From.ID) {
-				b.reply(ctx, settings, chatID, "Welcome to AntiMage. Use /shop to view plans, /topup to fund your wallet, /balance to check it, /orders for purchases, /my for services, or /support for help.", customerMenuKeyboard())
+				b.reply(ctx, settings, chatID, "Welcome to AntiMage. Use /shop to view plans, /trial for a one-time trial, /topup to fund your wallet, /balance to check it, /orders for purchases, /my for services, or /support for help.", customerMenuKeyboard())
 				return
 			}
 		}
@@ -93,6 +99,8 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 		b.handleUserCommand(ctx, settings, chatID, arg)
 	case "/credit", "/plan-add", "/plan-disable":
 		b.handleAdminShopCommand(ctx, settings, msg, command, arg)
+	case "/trial-config", "/trial-off":
+		b.handleAdminTrial(ctx, settings, msg, command, arg)
 	default:
 		if command != "" {
 			b.reply(ctx, settings, chatID, "Unknown command. Send /help.", nil)
@@ -184,6 +192,8 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 			if authorized(settings, chatID) {
 				b.handleAdminSales(ctx, settings, chatID)
 			}
+		case "menu:trial":
+			b.handleTrialClaim(ctx, settings, chatID, chatID)
 		case "menu:shop", "menu:balance", "menu:orders":
 			b.handleShopCommand(ctx, settings, chatID, chatID, "/"+strings.TrimPrefix(query.Data, "menu:"))
 		case "menu:my":

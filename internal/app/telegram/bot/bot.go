@@ -22,6 +22,7 @@ type Bot struct {
 	customers  CustomerService
 	nodes      NodesService
 	shop       ShopService
+	trials     TrialService
 	support    SupportService
 	topups     TopupService
 	system     SystemService
@@ -41,6 +42,7 @@ type Options struct {
 	Customers  CustomerService
 	Nodes      NodesService
 	Shop       ShopService
+	Trials     TrialService
 	Support    SupportService
 	Topups     TopupService
 	System     SystemService
@@ -61,6 +63,7 @@ func New(opts Options) *Bot {
 		customers:  opts.Customers,
 		nodes:      opts.Nodes,
 		shop:       opts.Shop,
+		trials:     opts.Trials,
 		support:    opts.Support,
 		topups:     opts.Topups,
 		system:     opts.System,
