@@ -156,10 +156,12 @@ func (b *Bot) handleTopupCallback(ctx context.Context, settings Settings, query 
 	}
 	_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Review saved")
 	if parts[1] == "approve-confirm" {
-		b.reply(ctx, settings, query.From.ID, "Topup approved and wallet credited once.", nil)
-		b.reply(ctx, settings, owner, "✅ Your wallet topup was approved. Use /balance to see the current balance.", nil)
+		b.reply(ctx, settings, query.From.ID, localText(ctx, "Topup approved and wallet credited once.", "شارژ تأیید شد و موجودی کیف پول یک‌بار افزایش یافت.", "Пополнение подтверждено, средства зачислены один раз."), nil)
+		ownerCtx := context.WithValue(ctx, languageContextKey{}, b.state.language(ctx, owner, "en"))
+		b.reply(ownerCtx, settings, owner, localText(ownerCtx, "✅ Your wallet topup was approved. Use /balance to see the current balance.", "✅ شارژ کیف پول شما تأیید شد. موجودی را با /balance ببینید.", "✅ Пополнение кошелька подтверждено. Проверьте баланс командой /balance."), nil)
 	} else {
-		b.reply(ctx, settings, query.From.ID, "Topup rejected.", nil)
-		b.reply(ctx, settings, owner, "Your wallet topup receipt was rejected. Contact support with /support if you need help.", nil)
+		b.reply(ctx, settings, query.From.ID, localText(ctx, "Topup rejected.", "درخواست شارژ رد شد.", "Пополнение отклонено."), nil)
+		ownerCtx := context.WithValue(ctx, languageContextKey{}, b.state.language(ctx, owner, "en"))
+		b.reply(ownerCtx, settings, owner, localText(ownerCtx, "Your wallet topup receipt was rejected. Contact support with /support if you need help.", "رسید شارژ کیف پول شما رد شد. برای پیگیری /support را بزنید.", "Чек пополнения отклонён. Для помощи отправьте /support."), nil)
 	}
 }
