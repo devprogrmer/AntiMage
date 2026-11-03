@@ -23,7 +23,7 @@ func (b *Bot) handleTrialClaim(ctx context.Context, settings Settings, chatID, t
 	}
 	if err != nil {
 		b.logf("telegram trial delivery for %d: %v", telegramID, err)
-		b.reply(ctx, settings, chatID, "Your trial request is saved. Delivery is pending; send /trial again later or use /my to check your service.", nil)
+		b.reply(ctx, settings, chatID, "Could not complete the trial request yet. Send /trial again later or use /my to check whether a service was created.", nil)
 		return
 	}
 	b.reply(ctx, settings, chatID, "✅ Trial service <code>"+escape(username)+"</code> is ready. Use /my for the subscription link.", nil)

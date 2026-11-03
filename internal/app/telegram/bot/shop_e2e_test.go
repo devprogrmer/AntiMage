@@ -28,6 +28,22 @@ type testShopAdapter struct {
 	accounts *testAccountProvisioner
 }
 
+type testTrialAdapter struct {
+	trials   shop.Trials
+	accounts *testAccountProvisioner
+}
+
+func (a testTrialAdapter) ClaimAndProvision(ctx context.Context, owner int64) (string, error) {
+	if _, err := a.trials.Claim(ctx, owner); err != nil {
+		return "", err
+	}
+	return a.trials.Provision(ctx, owner, a.accounts)
+}
+func (a testTrialAdapter) Configure(ctx context.Context, config shop.TrialConfig) error {
+	return a.trials.Configure(ctx, config)
+}
+func (a testTrialAdapter) Disable(ctx context.Context) error { return a.trials.Disable(ctx) }
+
 func (a testShopAdapter) SalesOverview(ctx context.Context) (shop.SalesOverview, error) {
 	return a.orders.Overview(ctx)
 }
@@ -128,5 +144,54 @@ func TestTelegramShopEndToEndWithRestartedWallet(t *testing.T) {
 	var debits int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM shop_wallet_entries WHERE delta < 0`).Scan(&debits); err != nil || debits != 1 {
 		t.Fatalf("debits = %d, %v", debits, err)
+	}
+}
+
+func TestTelegramTrialEndToEndAfterRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bot-trial.db")
+	open := func() *sql.DB {
+		db, err := sql.Open("sqlite", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db.SetMaxOpenConns(1)
+		return db
+	}
+	db := open()
+	for _, statement := range []string{
+		`CREATE TABLE shop_trial_config (id INTEGER PRIMARY KEY, service_id BIGINT, data_limit_bytes BIGINT, duration_days BIGINT, enabled INTEGER)`,
+		`CREATE TABLE shop_trial_claims (telegram_id BIGINT PRIMARY KEY, claim_id TEXT UNIQUE, service_id BIGINT, data_limit_bytes BIGINT, duration_days BIGINT, status TEXT, username TEXT, created_at TEXT, updated_at TEXT)`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.Background()
+	accounts := &testAccountProvisioner{accounts: map[string]shop.Account{}}
+	adapter := testTrialAdapter{trials: shop.Trials{DB: db, Dialect: "sqlite"}, accounts: accounts}
+	b, calls, settings := newTestBot(t, newFakeUsers())
+	b.trials = adapter
+	b.handleMessage(ctx, settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "/trial-config 42 1 7"})
+	b.handleMessage(ctx, settings, &Message{From: &User{ID: 321}, Chat: Chat{ID: 321, Type: "private"}, Text: "/trial"})
+	if len(accounts.accounts) != 1 {
+		t.Fatalf("trial accounts = %d", len(accounts.accounts))
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db = open()
+	defer db.Close()
+	adapter.trials.DB = db
+	b.trials = adapter
+	b.handleMessage(ctx, settings, &Message{From: &User{ID: 321}, Chat: Chat{ID: 321, Type: "private"}, Text: "/trial"})
+	if len(accounts.accounts) != 1 {
+		t.Fatalf("duplicate trial after restart: %d", len(accounts.accounts))
+	}
+	if call, ok := lastCall(*calls, "sendMessage"); !ok || !strings.Contains(call.body["text"].(string), "is ready") {
+		t.Fatalf("trial response: %+v", *calls)
+	}
+	claim, err := adapter.trials.Get(ctx, 321)
+	if err != nil || claim.Status != "completed" || !claim.Username.Valid {
+		t.Fatalf("trial claim = %+v, %v", claim, err)
 	}
 }
