@@ -28,6 +28,10 @@ type testShopAdapter struct {
 	accounts *testAccountProvisioner
 }
 
+func (a testShopAdapter) SalesOverview(ctx context.Context) (shop.SalesOverview, error) {
+	return a.orders.Overview(ctx)
+}
+
 func (a testShopAdapter) Balance(ctx context.Context, id int64) (int64, error) {
 	return a.wallet.Balance(ctx, id)
 }
@@ -113,6 +117,10 @@ func TestTelegramShopEndToEndWithRestartedWallet(t *testing.T) {
 	}
 	if len(adapter.accounts.accounts) != 1 {
 		t.Fatalf("accounts created = %d", len(adapter.accounts.accounts))
+	}
+	b.handleMessage(ctx, settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "/sales"})
+	if call, ok := lastCall(*calls, "sendMessage"); !ok || !strings.Contains(call.body["text"].(string), "80000 toman") {
+		t.Fatalf("paid order missing from sales report: %+v", *calls)
 	}
 	var debits int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM shop_wallet_entries WHERE delta < 0`).Scan(&debits); err != nil || debits != 1 {

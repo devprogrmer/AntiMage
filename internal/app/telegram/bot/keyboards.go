@@ -19,7 +19,7 @@ const (
 func mainMenuKeyboard() *InlineKeyboard {
 	return &InlineKeyboard{InlineKeyboard: [][]InlineButton{
 		{{Text: "🖥 System", CallbackData: "system"}, {Text: "🌐 Nodes", CallbackData: "menu:nodes"}},
-		{{Text: "🛒 Plans", CallbackData: "menu:shop"}},
+		{{Text: "🛒 Plans", CallbackData: "menu:shop"}, {Text: "📊 Sales", CallbackData: "menu:sales"}},
 		{{Text: "💳 Wallet", CallbackData: "menu:balance"}, {Text: "📦 Orders", CallbackData: "menu:orders"}},
 		{{Text: "👤 My services", CallbackData: "menu:my"}, {Text: "🎫 Support", CallbackData: "menu:tickets"}},
 	}}

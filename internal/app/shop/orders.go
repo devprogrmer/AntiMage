@@ -44,6 +44,28 @@ type DebitedOrder struct {
 	TelegramID int64
 }
 
+type SalesOverview struct {
+	TotalOrders       int64
+	PendingOrders     int64
+	UnfulfilledOrders int64
+	CompletedOrders   int64
+	PaidToman         int64
+}
+
+func (s Orders) Overview(ctx context.Context) (SalesOverview, error) {
+	if s.DB == nil {
+		return SalesOverview{}, fmt.Errorf("order store is unavailable")
+	}
+	var result SalesOverview
+	err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*),
+		COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN status IN ('paid', 'provisioning') THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN status IN ('paid', 'provisioning', 'completed') THEN price_toman ELSE 0 END), 0)
+		FROM shop_orders`).Scan(&result.TotalOrders, &result.PendingOrders, &result.UnfulfilledOrders, &result.CompletedOrders, &result.PaidToman)
+	return result, err
+}
+
 // DebitedPending finds orders whose wallet journal committed just before the
 // panel stopped, leaving the order status at pending. The journal reference,
 // owner, amount, and reason must all match the immutable order snapshot.

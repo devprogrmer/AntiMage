@@ -14,6 +14,7 @@ const helpText = `🤖 <b>AntiMage admin bot</b>
 /system — show system status
 /nodes — list nodes and their status
 /node &lt;id&gt; — inspect one node with live metrics
+/sales — show the shop's order and revenue summary
 /shop — browse plans
 /balance — show your wallet
 /orders — show your orders
@@ -84,6 +85,8 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 		b.reply(ctx, settings, chatID, b.systemText(ctx), nil)
 	case "/nodes", "/node":
 		b.handleAdminNodes(ctx, settings, chatID, command, arg)
+	case "/sales":
+		b.handleAdminSales(ctx, settings, chatID)
 	case "/usage":
 		b.handleUsageCommand(ctx, settings, chatID, arg)
 	case "/user":
@@ -176,6 +179,10 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 		case "menu:nodes":
 			if authorized(settings, chatID) {
 				b.handleAdminNodes(ctx, settings, chatID, "/nodes", "")
+			}
+		case "menu:sales":
+			if authorized(settings, chatID) {
+				b.handleAdminSales(ctx, settings, chatID)
 			}
 		case "menu:shop", "menu:balance", "menu:orders":
 			b.handleShopCommand(ctx, settings, chatID, chatID, "/"+strings.TrimPrefix(query.Data, "menu:"))

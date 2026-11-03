@@ -17,6 +17,10 @@ type fakeShop struct {
 	payErr      error
 }
 
+func (f *fakeShop) SalesOverview(context.Context) (shop.SalesOverview, error) {
+	return shop.SalesOverview{TotalOrders: 2, UnfulfilledOrders: 1, CompletedOrders: 1, PaidToman: 160000}, nil
+}
+
 func (f *fakeShop) Balance(_ context.Context, owner int64) (int64, error) {
 	f.owner = owner
 	return 100000, nil
@@ -102,5 +106,20 @@ func TestAdminCreditOnlyFromAllowlistedPrivateAccount(t *testing.T) {
 	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "/credit 321 1000 payment-1"})
 	if f.creditCount != 1 || f.owner != 321 {
 		t.Fatalf("authorized wallet credit failed: %+v", f)
+	}
+}
+
+func TestSalesOverviewOnlyForAdmin(t *testing.T) {
+	b, calls, settings := newTestBot(t, newFakeUsers())
+	b.shop = &fakeShop{}
+	ctx := context.Background()
+	b.handleMessage(ctx, settings, &Message{From: &User{ID: 321}, Chat: Chat{ID: 321, Type: "private"}, Text: "/sales"})
+	if len(*calls) != 0 {
+		t.Fatal("customer received sales report")
+	}
+	b.handleMessage(ctx, settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "/sales"})
+	call, ok := lastCall(*calls, "sendMessage")
+	if !ok || !strings.Contains(call.body["text"].(string), "160000") {
+		t.Fatalf("sales report missing: %+v", *calls)
 	}
 }

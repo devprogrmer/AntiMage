@@ -12,6 +12,20 @@ import (
 	"github.com/antimage/antimage/internal/app/shop"
 )
 
+func (b *Bot) handleAdminSales(ctx context.Context, settings Settings, chatID int64) {
+	if b.shop == nil {
+		b.reply(ctx, settings, chatID, "Shop unavailable.", nil)
+		return
+	}
+	result, err := b.shop.SalesOverview(ctx)
+	if err != nil {
+		b.reply(ctx, settings, chatID, "Could not load sales report. Please try again.", nil)
+		return
+	}
+	b.reply(ctx, settings, chatID, fmt.Sprintf("📊 <b>AntiMage sales</b>\nOrders: %d\nAwaiting payment: %d\nPaid, awaiting delivery: %d\nDelivered: %d\nRecorded paid value: %d toman",
+		result.TotalOrders, result.PendingOrders, result.UnfulfilledOrders, result.CompletedOrders, result.PaidToman), nil)
+}
+
 func (b *Bot) handleAdminShopCommand(ctx context.Context, settings Settings, msg *Message, command, arg string) {
 	if msg.From == nil || msg.From.ID != msg.Chat.ID || msg.Chat.Type != "private" || !authorized(settings, msg.From.ID) || b.shop == nil {
 		return

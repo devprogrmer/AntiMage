@@ -195,6 +195,11 @@ func (b botShopService) stores() (shop.Orders, shop.Wallet) {
 	return shop.Orders{DB: b.server.db}, shop.Wallet{DB: b.server.db, Dialect: b.server.dialect}
 }
 
+func (b botShopService) SalesOverview(ctx context.Context) (shop.SalesOverview, error) {
+	orders, _ := b.stores()
+	return orders.Overview(ctx)
+}
+
 func (b botShopService) Balance(ctx context.Context, telegramID int64) (int64, error) {
 	_, wallet := b.stores()
 	return wallet.Balance(ctx, telegramID)
