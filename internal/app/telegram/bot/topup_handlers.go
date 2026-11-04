@@ -85,53 +85,57 @@ func (b *Bot) handleTopupCommand(ctx context.Context, settings Settings, msg *Me
 		}
 		request, err := b.topups.Get(ctx, strings.TrimSpace(arg))
 		if err != nil || request.ReceiptFileID == nil || request.Status != "submitted" {
-			b.reply(ctx, settings, chatID, "No submitted receipt found for that request.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "No submitted receipt found for that request.", "برای این درخواست رسیدی ثبت نشده است.", "Для этого запроса нет отправленного чека."), nil)
 			return
 		}
 		keyboard := &InlineKeyboard{InlineKeyboard: [][]InlineButton{{
-			{Text: "Review approval", CallbackData: "topup:approve:" + request.ID},
-			{Text: "Review rejection", CallbackData: "topup:reject:" + request.ID},
+			{Text: localText(ctx, "Review approval", "بررسی تأیید", "Проверить одобрение"), CallbackData: "topup:approve:" + request.ID},
+			{Text: localText(ctx, "Review rejection", "بررسی رد", "Проверить отклонение"), CallbackData: "topup:reject:" + request.ID},
 		}}}
-		caption := fmt.Sprintf("Receipt for <code>%s</code>\nCustomer: <code>%d</code>\nAmount: <b>%d toman</b>. Verify the transfer before approving.", escape(request.ID), request.TelegramID, request.AmountToman)
+		caption := fmt.Sprintf(localText(ctx, "Receipt for <code>%s</code>\nCustomer: <code>%d</code>\nAmount: <b>%d toman</b>. Verify the transfer before approving.", "رسید درخواست <code>%s</code>\nمشتری: <code>%d</code>\nمبلغ: <b>%d تومان</b>. پیش از تأیید، انتقال وجه را بررسی کنید.", "Чек запроса <code>%s</code>\nКлиент: <code>%d</code>\nСумма: <b>%d томан</b>. Проверьте перевод до подтверждения."), escape(request.ID), request.TelegramID, request.AmountToman)
 		if err := b.client.sendPhoto(ctx, settings, chatID, *request.ReceiptFileID, caption, keyboard); err != nil {
 			b.logf("telegram bot: review receipt %s: %v", request.ID, err)
-			b.reply(ctx, settings, chatID, "Could not load the receipt photo.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Could not load the receipt photo.", "تصویر رسید بارگذاری نشد.", "Не удалось загрузить фото чека."), nil)
 		}
 	case "/payment-details":
 		if !isAdmin {
 			return
 		}
 		if strings.TrimSpace(arg) == "" {
-			b.reply(ctx, settings, chatID, "Usage: /payment-details &lt;bank transfer instructions&gt;", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Usage: /payment-details &lt;bank transfer instructions&gt;", "روش استفاده: /payment-details &lt;راهنمای واریز بانکی&gt;", "Использование: /payment-details &lt;инструкция для перевода&gt;"), nil)
 			return
 		}
 		if err := b.topups.SetInstructions(ctx, arg); err != nil {
-			b.reply(ctx, settings, chatID, "Could not save payment instructions.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Could not save payment instructions.", "راهنمای پرداخت ذخیره نشد.", "Не удалось сохранить инструкции по оплате."), nil)
 			return
 		}
-		b.reply(ctx, settings, chatID, "Manual payment instructions saved.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Manual payment instructions saved.", "راهنمای پرداخت دستی ذخیره شد.", "Инструкции по ручной оплате сохранены."), nil)
 	}
 }
 
 func (b *Bot) handleTopupCallback(ctx context.Context, settings Settings, query *CallbackQuery) {
 	if query.From == nil || query.Message == nil || query.From.ID <= 0 || query.Message.Chat.Type != "private" || query.Message.Chat.ID != query.From.ID || !b.adminAuthorized(ctx, settings, query.From.ID) || b.topups == nil {
-		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Not authorized")
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, localText(ctx, "Not authorized", "دسترسی ندارید", "Нет доступа"))
 		return
 	}
 	parts := strings.SplitN(query.Data, ":", 3)
 	if len(parts) != 3 || len(parts[2]) != 36 {
-		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Invalid topup")
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, localText(ctx, "Invalid topup", "درخواست شارژ نامعتبر است", "Неверное пополнение"))
 		return
 	}
 	if parts[1] == "approve" || parts[1] == "reject" {
 		topup, err := b.topups.Get(ctx, parts[2])
 		if err != nil || topup.Status != "submitted" {
-			_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Topup is not awaiting review")
+			_ = b.client.answerCallbackQuery(ctx, settings, query.ID, localText(ctx, "Topup is not awaiting review", "درخواست شارژ در انتظار بررسی نیست", "Пополнение не ожидает проверки"))
 			return
 		}
-		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Confirm this review action")
-		keyboard := &InlineKeyboard{InlineKeyboard: [][]InlineButton{{{Text: "Confirm " + parts[1], CallbackData: "topup:" + parts[1] + "-confirm:" + parts[2]}}}}
-		b.reply(ctx, settings, query.From.ID, fmt.Sprintf("Confirm %s for topup <code>%s</code>: <b>%d toman</b> to Telegram ID <code>%d</code>.", escape(parts[1]), escape(topup.ID), topup.AmountToman, topup.TelegramID), keyboard)
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, localText(ctx, "Confirm this review action", "این اقدام را تأیید کنید", "Подтвердите действие"))
+		action := localText(ctx, "approve", "تأیید", "одобрение")
+		if parts[1] == "reject" {
+			action = localText(ctx, "reject", "رد", "отклонение")
+		}
+		keyboard := &InlineKeyboard{InlineKeyboard: [][]InlineButton{{{Text: localText(ctx, "Confirm ", "تأیید ", "Подтвердить ") + action, CallbackData: "topup:" + parts[1] + "-confirm:" + parts[2]}}}}
+		b.reply(ctx, settings, query.From.ID, fmt.Sprintf(localText(ctx, "Confirm %s for topup <code>%s</code>: <b>%d toman</b> to Telegram ID <code>%d</code>.", "%s درخواست شارژ <code>%s</code> به مبلغ <b>%d تومان</b> برای شناسهٔ تلگرام <code>%d</code> را تأیید کنید.", "Подтвердите %s пополнения <code>%s</code>: <b>%d томан</b> для Telegram ID <code>%d</code>."), escape(action), escape(topup.ID), topup.AmountToman, topup.TelegramID), keyboard)
 		return
 	}
 	var topupErr error
@@ -146,15 +150,15 @@ func (b *Bot) handleTopupCallback(ctx context.Context, settings Settings, query 
 		topupErr = err
 		owner = topup.TelegramID
 	default:
-		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Invalid action")
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, localText(ctx, "Invalid action", "اقدام نامعتبر است", "Неверное действие"))
 		return
 	}
 	if topupErr != nil {
-		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Review failed")
-		b.reply(ctx, settings, query.From.ID, "Topup review failed: "+escape(topupErr.Error()), nil)
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, localText(ctx, "Review failed", "بررسی ناموفق بود", "Ошибка проверки"))
+		b.reply(ctx, settings, query.From.ID, localText(ctx, "Topup review failed: ", "بررسی درخواست شارژ ناموفق بود: ", "Не удалось проверить пополнение: ")+escape(topupErr.Error()), nil)
 		return
 	}
-	_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Review saved")
+	_ = b.client.answerCallbackQuery(ctx, settings, query.ID, localText(ctx, "Review saved", "نتیجهٔ بررسی ذخیره شد", "Результат проверки сохранён"))
 	if parts[1] == "approve-confirm" {
 		b.reply(ctx, settings, query.From.ID, localText(ctx, "Topup approved and wallet credited once.", "شارژ تأیید شد و موجودی کیف پول یک‌بار افزایش یافت.", "Пополнение подтверждено, средства зачислены один раз."), nil)
 		ownerCtx := context.WithValue(ctx, languageContextKey{}, b.state.language(ctx, owner, "en"))

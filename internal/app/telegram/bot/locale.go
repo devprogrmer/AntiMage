@@ -38,10 +38,10 @@ func normalizeLanguage(raw string) string {
 
 var languageLabels = map[string]map[string]string{
 	"fa": {
-		"System": "سیستم", "Nodes": "نودها", "Plans": "طرح‌ها", "Sales": "فروش", "Wallet": "کیف پول", "Orders": "سفارش‌ها", "Transactions": "تراکنش‌ها", "My services": "سرویس‌های من", "Support": "پشتیبانی", "Trial": "آزمایشی", "Top-ups": "شارژها", "AntiMage Mini App": "مینی‌اپ AntiMage",
+		"System": "سیستم", "Nodes": "نودها", "Plans": "طرح‌ها", "Sales": "فروش", "Wallet": "کیف پول", "Orders": "سفارش‌ها", "Transactions": "تراکنش‌ها", "My services": "سرویس‌های من", "Support": "پشتیبانی", "Trial": "آزمایشی", "Top-ups": "شارژها", "AntiMage Mini App": "مینی‌اپ AntiMage", "Disable": "غیرفعال‌کردن", "Activate": "فعال‌کردن", "Reset usage": "صفرکردن مصرف", "Revoke sub": "لغو اشتراک", "Links": "لینک‌ها", "Edit note": "ویرایش یادداشت", "Refresh": "به‌روزرسانی", "Delete": "حذف", "Yes, delete": "بله، حذف شود", "Cancel": "انصراف",
 	},
 	"ru": {
-		"System": "Система", "Nodes": "Узлы", "Plans": "Тарифы", "Sales": "Продажи", "Wallet": "Кошелёк", "Orders": "Заказы", "Transactions": "Транзакции", "My services": "Мои услуги", "Support": "Поддержка", "Trial": "Пробный доступ", "Top-ups": "Пополнения", "AntiMage Mini App": "Мини-приложение AntiMage",
+		"System": "Система", "Nodes": "Узлы", "Plans": "Тарифы", "Sales": "Продажи", "Wallet": "Кошелёк", "Orders": "Заказы", "Transactions": "Транзакции", "My services": "Мои услуги", "Support": "Поддержка", "Trial": "Пробный доступ", "Top-ups": "Пополнения", "AntiMage Mini App": "Мини-приложение AntiMage", "Disable": "Отключить", "Activate": "Активировать", "Reset usage": "Сбросить трафик", "Revoke sub": "Отозвать подписку", "Links": "Ссылки", "Edit note": "Изменить заметку", "Refresh": "Обновить", "Delete": "Удалить", "Yes, delete": "Да, удалить", "Cancel": "Отмена",
 	},
 }
 
@@ -52,16 +52,9 @@ func menuForLanguage(admin bool, language, miniAppURL string) *InlineKeyboard {
 	} else {
 		menu = customerMenuKeyboard()
 	}
-	labels := languageLabels[normalizeLanguage(language)]
-	for i := range menu.InlineKeyboard {
-		for j := range menu.InlineKeyboard[i] {
-			button := &menu.InlineKeyboard[i][j]
-			for english, translated := range labels {
-				button.Text = strings.ReplaceAll(button.Text, english, translated)
-			}
-		}
-	}
+	menu = localizeKeyboard(language, menu)
 	menu = appendMiniAppButton(menu, miniAppURL)
+	labels := languageLabels[normalizeLanguage(language)]
 	if len(menu.InlineKeyboard) > 0 && len(menu.InlineKeyboard[len(menu.InlineKeyboard)-1]) == 1 && menu.InlineKeyboard[len(menu.InlineKeyboard)-1][0].WebApp != nil {
 		button := &menu.InlineKeyboard[len(menu.InlineKeyboard)-1][0]
 		if translated := labels["AntiMage Mini App"]; translated != "" {
@@ -70,6 +63,22 @@ func menuForLanguage(admin bool, language, miniAppURL string) *InlineKeyboard {
 	}
 	menu.InlineKeyboard = append(menu.InlineKeyboard, []InlineButton{{Text: "🇮🇷 فارسی", CallbackData: "lang:fa"}, {Text: "🇬🇧 English", CallbackData: "lang:en"}, {Text: "🇷🇺 Русский", CallbackData: "lang:ru"}})
 	return menu
+}
+
+func localizeKeyboard(language string, keyboard *InlineKeyboard) *InlineKeyboard {
+	if keyboard == nil {
+		return nil
+	}
+	labels := languageLabels[normalizeLanguage(language)]
+	for i := range keyboard.InlineKeyboard {
+		for j := range keyboard.InlineKeyboard[i] {
+			button := &keyboard.InlineKeyboard[i][j]
+			for english, translated := range labels {
+				button.Text = strings.ReplaceAll(button.Text, english, translated)
+			}
+		}
+	}
+	return keyboard
 }
 
 func welcomeForLanguage(language string, admin bool) string {

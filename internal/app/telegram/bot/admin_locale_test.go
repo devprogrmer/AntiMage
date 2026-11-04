@@ -34,3 +34,30 @@ func TestAdminNodeAndSalesUseSelectedLanguage(t *testing.T) {
 		})
 	}
 }
+
+func TestUserAndSystemViewsUseSelectedLanguage(t *testing.T) {
+	user := UserView{Username: "demo", Status: "active"}
+	info := SystemInfo{Version: "test"}
+	for _, tc := range []struct {
+		language string
+		user     string
+		system   string
+		limit    string
+	}{
+		{"en", "Username", "Total users", "Unlimited"},
+		{"fa", "نام کاربری", "کل کاربران", "نامحدود"},
+		{"ru", "Пользователь", "Всего пользователей", "Без ограничений"},
+	} {
+		t.Run(tc.language, func(t *testing.T) {
+			ctx := context.WithValue(context.Background(), languageContextKey{}, tc.language)
+			for _, view := range []string{userDetailText(ctx, user), userUsageText(ctx, user)} {
+				if !strings.Contains(view, tc.user) || !strings.Contains(view, tc.limit) {
+					t.Fatalf("user view is not localized: %s", view)
+				}
+			}
+			if view := systemInfoText(ctx, info); !strings.Contains(view, tc.system) {
+				t.Fatalf("system view is not localized: %s", view)
+			}
+		})
+	}
+}

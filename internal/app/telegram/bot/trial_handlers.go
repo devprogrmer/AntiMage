@@ -35,27 +35,27 @@ func (b *Bot) handleAdminTrial(ctx context.Context, settings Settings, msg *Mess
 	}
 	if command == "/trial-off" {
 		if err := b.trials.Disable(ctx); err != nil {
-			b.reply(ctx, settings, msg.Chat.ID, "Could not disable trials: "+escape(err.Error()), nil)
+			b.reply(ctx, settings, msg.Chat.ID, localText(ctx, "Could not disable trials: ", "غیرفعال‌کردن سرویس آزمایشی ناموفق بود: ", "Не удалось отключить пробные услуги: ")+escape(err.Error()), nil)
 			return
 		}
-		b.reply(ctx, settings, msg.Chat.ID, "New trial claims are disabled. Existing claims remain recoverable.", nil)
+		b.reply(ctx, settings, msg.Chat.ID, localText(ctx, "New trial claims are disabled. Existing claims remain recoverable.", "دریافت سرویس آزمایشی جدید غیرفعال شد. درخواست‌های قبلی همچنان قابل بازیابی‌اند.", "Новые пробные заявки отключены. Предыдущие заявки можно восстановить."), nil)
 		return
 	}
 	parts := strings.Fields(arg)
 	if len(parts) != 3 {
-		b.reply(ctx, settings, msg.Chat.ID, "Usage: /trial-config &lt;service_id&gt; &lt;GB&gt; &lt;days&gt;", nil)
+		b.reply(ctx, settings, msg.Chat.ID, localText(ctx, "Usage: /trial-config &lt;service_id&gt; &lt;GB&gt; &lt;days&gt;", "روش استفاده: /trial-config &lt;شناسهٔ سرویس&gt; &lt;گیگابایت&gt; &lt;روز&gt;", "Использование: /trial-config &lt;ID услуги&gt; &lt;ГБ&gt; &lt;дни&gt;"), nil)
 		return
 	}
 	serviceID, e1 := strconv.ParseInt(parts[0], 10, 64)
 	gb, e2 := strconv.ParseInt(parts[1], 10, 64)
 	days, e3 := strconv.ParseInt(parts[2], 10, 64)
 	if e1 != nil || e2 != nil || e3 != nil || serviceID <= 0 || gb <= 0 || gb > math.MaxInt64/(1<<30) || days <= 0 || days > math.MaxInt64/86400 {
-		b.reply(ctx, settings, msg.Chat.ID, "Invalid service, GB, or duration.", nil)
+		b.reply(ctx, settings, msg.Chat.ID, localText(ctx, "Invalid service, GB, or duration.", "شناسهٔ سرویس، حجم یا مدت نامعتبر است.", "Неверная услуга, объём или срок."), nil)
 		return
 	}
 	if err := b.trials.Configure(ctx, shop.TrialConfig{ServiceID: serviceID, DataLimitBytes: gb * (1 << 30), DurationDays: days}); err != nil {
-		b.reply(ctx, settings, msg.Chat.ID, "Could not configure trials: "+escape(err.Error()), nil)
+		b.reply(ctx, settings, msg.Chat.ID, localText(ctx, "Could not configure trials: ", "تنظیم سرویس آزمایشی ناموفق بود: ", "Не удалось настроить пробные услуги: ")+escape(err.Error()), nil)
 		return
 	}
-	b.reply(ctx, settings, msg.Chat.ID, fmt.Sprintf("One trial per Telegram account enabled: service #%d, %d GB, %d days.", serviceID, gb, days), nil)
+	b.reply(ctx, settings, msg.Chat.ID, fmt.Sprintf(localText(ctx, "One trial per Telegram account enabled: service #%d, %d GB, %d days.", "یک سرویس آزمایشی برای هر حساب تلگرام فعال شد: سرویس شمارهٔ %d، حجم %d گیگابایت، مدت %d روز.", "Одна пробная услуга на аккаунт Telegram: услуга №%d, %d ГБ, %d дней."), serviceID, gb, days), nil)
 }

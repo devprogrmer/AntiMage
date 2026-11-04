@@ -146,7 +146,7 @@ func (b *Bot) handleCustomerAccounts(ctx context.Context, settings Settings, cha
 		return
 	}
 	for _, account := range accounts {
-		lines := []string{localText(ctx, "👤 <b>Your service</b>", "👤 <b>سرویس شما</b>", "👤 <b>Ваша услуга</b>"), line(localText(ctx, "Username", "نام کاربری", "Пользователь"), account.Username), "<b>" + localText(ctx, "Status", "وضعیت", "Статус") + ":</b> " + statusLine(account.Status), line(localText(ctx, "Used", "مصرف", "Использовано"), formatBytes(account.UsedTraffic)), line(localText(ctx, "Limit", "سقف حجم", "Лимит"), formatOptionalBytes(account.DataLimit)), line(localText(ctx, "Expires", "انقضا", "Истекает"), formatExpire(account.Expire))}
+		lines := []string{localText(ctx, "👤 <b>Your service</b>", "👤 <b>سرویس شما</b>", "👤 <b>Ваша услуга</b>"), line(localText(ctx, "Username", "نام کاربری", "Пользователь"), account.Username), "<b>" + localText(ctx, "Status", "وضعیت", "Статус") + ":</b> " + localStatusLine(ctx, account.Status), line(localText(ctx, "Used", "مصرف", "Использовано"), formatBytes(account.UsedTraffic)), line(localText(ctx, "Limit", "سقف حجم", "Лимит"), localOptionalBytes(ctx, account.DataLimit)), line(localText(ctx, "Expires", "انقضا", "Истекает"), localExpire(ctx, account.Expire))}
 		if strings.TrimSpace(account.SubscriptionURL) != "" {
 			lines = append(lines, line(localText(ctx, "Subscription", "لینک اشتراک", "Подписка"), account.SubscriptionURL))
 		}
@@ -157,29 +157,29 @@ func (b *Bot) handleCustomerAccounts(ctx context.Context, settings Settings, cha
 func (b *Bot) handleUsageCommand(ctx context.Context, settings Settings, chatID int64, username string) {
 	username = strings.TrimSpace(username)
 	if username == "" {
-		b.reply(ctx, settings, chatID, "Usage: <code>/usage &lt;username&gt;</code>", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Usage: <code>/usage &lt;username&gt;</code>", "روش استفاده: <code>/usage &lt;نام کاربری&gt;</code>", "Использование: <code>/usage &lt;имя пользователя&gt;</code>"), nil)
 		return
 	}
 	user, err := b.users.Get(ctx, username)
 	if err != nil {
-		b.reply(ctx, settings, chatID, notFoundText(username), nil)
+		b.reply(ctx, settings, chatID, notFoundText(ctx, username), nil)
 		return
 	}
-	b.reply(ctx, settings, chatID, userUsageText(user), nil)
+	b.reply(ctx, settings, chatID, userUsageText(ctx, user), nil)
 }
 
 func (b *Bot) handleUserCommand(ctx context.Context, settings Settings, chatID int64, username string) {
 	username = strings.TrimSpace(username)
 	if username == "" {
-		b.reply(ctx, settings, chatID, "Usage: <code>/user &lt;username&gt;</code>", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Usage: <code>/user &lt;username&gt;</code>", "روش استفاده: <code>/user &lt;نام کاربری&gt;</code>", "Использование: <code>/user &lt;имя пользователя&gt;</code>"), nil)
 		return
 	}
 	user, err := b.users.Get(ctx, username)
 	if err != nil {
-		b.reply(ctx, settings, chatID, notFoundText(username), nil)
+		b.reply(ctx, settings, chatID, notFoundText(ctx, username), nil)
 		return
 	}
-	b.reply(ctx, settings, chatID, userDetailText(user), userMenuKeyboard(user.Username, user.Status))
+	b.reply(ctx, settings, chatID, userDetailText(ctx, user), localizeKeyboard(languageFromContext(ctx), userMenuKeyboard(user.Username, user.Status)))
 }
 
 func (b *Bot) handleConversation(ctx context.Context, settings Settings, chatID int64, conv conversation, text string) {
@@ -189,14 +189,14 @@ func (b *Bot) handleConversation(ctx context.Context, settings Settings, chatID 
 		_ = b.state.clear(ctx, chatID)
 		actor, ok := b.authorizer.Actor(ctx, chatID)
 		if !ok {
-			b.reply(ctx, settings, chatID, noActorText(), nil)
+			b.reply(ctx, settings, chatID, noActorText(ctx), nil)
 			return
 		}
 		if err := b.users.SetNote(ctx, actor, username, text); err != nil {
-			b.reply(ctx, settings, chatID, actionErrorText("update note", err), nil)
+			b.reply(ctx, settings, chatID, actionErrorText(ctx, "update note", err), nil)
 			return
 		}
-		b.sendRefreshedUser(ctx, settings, chatID, 0, username, "Note updated")
+		b.sendRefreshedUser(ctx, settings, chatID, 0, username, localText(ctx, "Note updated", "یادداشت به‌روزرسانی شد", "Заметка обновлена"))
 	default:
 		_ = b.state.clear(ctx, chatID)
 	}
@@ -215,7 +215,7 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 				return
 			}
 		}
-		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Invalid language")
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, localText(ctx, "Invalid language", "زبان نامعتبر است", "Неверный язык"))
 		return
 	}
 	if strings.HasPrefix(query.Data, "menu:") && query.From != nil && query.From.ID > 0 && query.Message != nil && query.Message.Chat.Type == "private" && query.Message.Chat.ID == query.From.ID {
@@ -256,7 +256,7 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 		userID = query.From.ID
 	}
 	if query.Message == nil || query.Message.Chat.Type != "private" || query.Message.Chat.ID != userID || !b.adminAuthorized(ctx, settings, userID) {
-		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Not authorized")
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, localText(ctx, "Not authorized", "دسترسی ندارید", "Нет доступа"))
 		return
 	}
 	var chatID, messageID int64
@@ -269,7 +269,7 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 	switch query.Data {
 	case "system":
 		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "")
-		_ = b.client.editMessageText(ctx, settings, chatID, messageID, b.systemText(ctx), mainMenuKeyboard())
+		_ = b.client.editMessageText(ctx, settings, chatID, messageID, b.systemText(ctx), localizeKeyboard(languageFromContext(ctx), mainMenuKeyboard()))
 		return
 	}
 
@@ -282,12 +282,12 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 	case cbEditNote:
 		_ = b.state.set(ctx, chatID, stateAwaitNote, value)
 		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "")
-		b.reply(ctx, settings, chatID, fmt.Sprintf("Send the new note for <code>%s</code>:", escape(value)), nil)
+		b.reply(ctx, settings, chatID, fmt.Sprintf(localText(ctx, "Send the new note for <code>%s</code>:", "یادداشت جدید برای <code>%s</code> را بفرستید:", "Отправьте новую заметку для <code>%s</code>:"), escape(value)), nil)
 	case cbDelete:
 		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "")
 		_ = b.client.editMessageText(ctx, settings, chatID, messageID,
-			fmt.Sprintf("⚠️ Delete user <code>%s</code>? This cannot be undone.", escape(value)),
-			confirmDeleteKeyboard(value))
+			fmt.Sprintf(localText(ctx, "⚠️ Delete user <code>%s</code>? This cannot be undone.", "⚠️ کاربر <code>%s</code> حذف شود؟ این کار قابل بازگشت نیست.", "⚠️ Удалить пользователя <code>%s</code>? Это нельзя отменить."), escape(value)),
+			localizeKeyboard(languageFromContext(ctx), confirmDeleteKeyboard(value)))
 	case cbDeleteYes:
 		b.runUserAction(ctx, settings, query, chatID, messageID, value, "delete")
 	case cbActivate:
@@ -306,18 +306,18 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 func (b *Bot) handleLinks(ctx context.Context, settings Settings, query *CallbackQuery, chatID int64, username string) {
 	user, err := b.users.Get(ctx, username)
 	if err != nil {
-		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "User not found")
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, localText(ctx, "User not found", "کاربر پیدا نشد", "Пользователь не найден"))
 		return
 	}
 	_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "")
-	b.reply(ctx, settings, chatID, linksText(user), nil)
+	b.reply(ctx, settings, chatID, linksText(ctx, user), nil)
 }
 
 // runUserAction performs a lifecycle action then refreshes the detail message.
 func (b *Bot) runUserAction(ctx context.Context, settings Settings, query *CallbackQuery, chatID, messageID int64, username, action string) {
 	actor, ok := b.authorizer.Actor(ctx, chatID)
 	if !ok {
-		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "No admin configured")
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, localText(ctx, "No admin configured", "مدیری تنظیم نشده است", "Администратор не настроен"))
 		return
 	}
 	var err error
@@ -325,29 +325,29 @@ func (b *Bot) runUserAction(ctx context.Context, settings Settings, query *Callb
 	switch action {
 	case "delete":
 		err = b.users.Delete(ctx, actor, username)
-		note = "Deleted"
+		note = localText(ctx, "Deleted", "حذف شد", "Удалено")
 	case "activate":
 		err = b.users.SetStatus(ctx, actor, username, "active")
-		note = "Activated"
+		note = localText(ctx, "Activated", "فعال شد", "Активировано")
 	case "suspend":
 		err = b.users.SetStatus(ctx, actor, username, "disabled")
-		note = "Disabled"
+		note = localText(ctx, "Disabled", "غیرفعال شد", "Отключено")
 	case "reset":
 		err = b.users.Reset(ctx, actor, username)
-		note = "Usage reset"
+		note = localText(ctx, "Usage reset", "مصرف صفر شد", "Использование сброшено")
 	case "revoke":
 		err = b.users.RevokeSubscription(ctx, actor, username)
-		note = "Subscription revoked"
+		note = localText(ctx, "Subscription revoked", "اشتراک لغو شد", "Подписка отозвана")
 	}
 	if err != nil {
-		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "Failed")
-		_ = b.client.editMessageText(ctx, settings, chatID, messageID, actionErrorText(action, err), nil)
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, localText(ctx, "Failed", "ناموفق", "Ошибка"))
+		_ = b.client.editMessageText(ctx, settings, chatID, messageID, actionErrorText(ctx, action, err), nil)
 		return
 	}
 	_ = b.client.answerCallbackQuery(ctx, settings, query.ID, note)
 	if action == "delete" {
 		_ = b.client.editMessageText(ctx, settings, chatID, messageID,
-			fmt.Sprintf("🗑 User <code>%s</code> deleted.", escape(username)), nil)
+			fmt.Sprintf(localText(ctx, "🗑 User <code>%s</code> deleted.", "🗑 کاربر <code>%s</code> حذف شد.", "🗑 Пользователь <code>%s</code> удалён."), escape(username)), nil)
 		return
 	}
 	b.editRefreshedUser(ctx, settings, chatID, messageID, username, note)
@@ -356,42 +356,42 @@ func (b *Bot) runUserAction(ctx context.Context, settings Settings, query *Callb
 func (b *Bot) sendRefreshedUser(ctx context.Context, settings Settings, chatID, messageID int64, username, note string) {
 	user, err := b.users.Get(ctx, username)
 	if err != nil {
-		b.reply(ctx, settings, chatID, notFoundText(username), nil)
+		b.reply(ctx, settings, chatID, notFoundText(ctx, username), nil)
 		return
 	}
-	text := userDetailText(user)
+	text := userDetailText(ctx, user)
 	if strings.TrimSpace(note) != "" {
 		text = "✅ " + escape(note) + "\n" + text
 	}
 	if messageID > 0 {
-		_ = b.client.editMessageText(ctx, settings, chatID, messageID, text, userMenuKeyboard(user.Username, user.Status))
+		_ = b.client.editMessageText(ctx, settings, chatID, messageID, text, localizeKeyboard(languageFromContext(ctx), userMenuKeyboard(user.Username, user.Status)))
 		return
 	}
-	b.reply(ctx, settings, chatID, text, userMenuKeyboard(user.Username, user.Status))
+	b.reply(ctx, settings, chatID, text, localizeKeyboard(languageFromContext(ctx), userMenuKeyboard(user.Username, user.Status)))
 }
 
 func (b *Bot) editRefreshedUser(ctx context.Context, settings Settings, chatID, messageID int64, username, note string) {
 	user, err := b.users.Get(ctx, username)
 	if err != nil {
-		_ = b.client.editMessageText(ctx, settings, chatID, messageID, notFoundText(username), nil)
+		_ = b.client.editMessageText(ctx, settings, chatID, messageID, notFoundText(ctx, username), nil)
 		return
 	}
-	text := userDetailText(user)
+	text := userDetailText(ctx, user)
 	if strings.TrimSpace(note) != "" {
 		text = "✅ " + escape(note) + "\n" + text
 	}
-	_ = b.client.editMessageText(ctx, settings, chatID, messageID, text, userMenuKeyboard(user.Username, user.Status))
+	_ = b.client.editMessageText(ctx, settings, chatID, messageID, text, localizeKeyboard(languageFromContext(ctx), userMenuKeyboard(user.Username, user.Status)))
 }
 
 func (b *Bot) systemText(ctx context.Context) string {
 	if b.system == nil {
-		return "System information unavailable."
+		return localText(ctx, "System information unavailable.", "اطلاعات سیستم در دسترس نیست.", "Информация о системе недоступна.")
 	}
 	info, err := b.system.Info(ctx)
 	if err != nil {
-		return "System information unavailable."
+		return localText(ctx, "System information unavailable.", "اطلاعات سیستم در دسترس نیست.", "Информация о системе недоступна.")
 	}
-	return systemInfoText(info)
+	return systemInfoText(ctx, info)
 }
 
 func splitCommand(text string) (command string, arg string) {
@@ -411,25 +411,39 @@ func splitCommand(text string) (command string, arg string) {
 	return command, arg
 }
 
-func notFoundText(username string) string {
-	return fmt.Sprintf("User <code>%s</code> not found.", escape(username))
+func notFoundText(ctx context.Context, username string) string {
+	return fmt.Sprintf(localText(ctx, "User <code>%s</code> not found.", "کاربر <code>%s</code> پیدا نشد.", "Пользователь <code>%s</code> не найден."), escape(username))
 }
 
-func noActorText() string {
-	return "No admin is configured to perform this action."
+func noActorText(ctx context.Context) string {
+	return localText(ctx, "No admin is configured to perform this action.", "مدیری برای انجام این کار تنظیم نشده است.", "Для этого действия не назначен администратор.")
 }
 
-func actionErrorText(action string, err error) string {
-	return fmt.Sprintf("Failed to %s: <code>%s</code>", escape(action), escape(err.Error()))
-}
-
-func linksText(user UserView) string {
-	if len(user.Links) == 0 && strings.TrimSpace(user.SubscriptionURL) == "" {
-		return fmt.Sprintf("No links available for <code>%s</code>.", escape(user.Username))
+func actionErrorText(ctx context.Context, action string, err error) string {
+	switch action {
+	case "update note":
+		action = localText(ctx, action, "به‌روزرسانی یادداشت", "обновление заметки")
+	case "delete":
+		action = localText(ctx, action, "حذف کاربر", "удаление пользователя")
+	case "activate":
+		action = localText(ctx, action, "فعال‌سازی کاربر", "активацию пользователя")
+	case "suspend":
+		action = localText(ctx, action, "غیرفعال‌کردن کاربر", "отключение пользователя")
+	case "reset":
+		action = localText(ctx, action, "صفرکردن مصرف", "сброс использования")
+	case "revoke":
+		action = localText(ctx, action, "لغو اشتراک", "отзыв подписки")
 	}
-	lines := []string{fmt.Sprintf("🔗 <b>Links for</b> <code>%s</code>", escape(user.Username))}
+	return fmt.Sprintf(localText(ctx, "Failed to %s: <code>%s</code>", "انجام %s ناموفق بود: <code>%s</code>", "Не удалось выполнить %s: <code>%s</code>"), escape(action), escape(err.Error()))
+}
+
+func linksText(ctx context.Context, user UserView) string {
+	if len(user.Links) == 0 && strings.TrimSpace(user.SubscriptionURL) == "" {
+		return fmt.Sprintf(localText(ctx, "No links available for <code>%s</code>.", "لینکی برای <code>%s</code> موجود نیست.", "Нет ссылок для <code>%s</code>."), escape(user.Username))
+	}
+	lines := []string{fmt.Sprintf(localText(ctx, "🔗 <b>Links for</b> <code>%s</code>", "🔗 <b>لینک‌های</b> <code>%s</code>", "🔗 <b>Ссылки для</b> <code>%s</code>"), escape(user.Username))}
 	if strings.TrimSpace(user.SubscriptionURL) != "" {
-		lines = append(lines, "", "<b>Subscription:</b>", "<code>"+escape(user.SubscriptionURL)+"</code>")
+		lines = append(lines, "", "<b>"+localText(ctx, "Subscription", "اشتراک", "Подписка")+":</b>", "<code>"+escape(user.SubscriptionURL)+"</code>")
 	}
 	if len(user.Links) > 0 {
 		lines = append(lines, "")
