@@ -2,8 +2,27 @@ package bot
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
+
+func TestKeyboardTranslationPrefersCompleteLabels(t *testing.T) {
+	for _, tc := range []struct {
+		language string
+		want     string
+	}{
+		{language: "fa", want: "بله، حذف شود"},
+		{language: "ru", want: "Да, удалить"},
+	} {
+		for i := 0; i < 100; i++ {
+			keyboard := localizeKeyboard(tc.language, confirmDeleteKeyboard("alice"))
+			got := keyboard.InlineKeyboard[0][0].Text
+			if got != "✅ "+tc.want || strings.Contains(got, "Yes") {
+				t.Fatalf("%s confirmation label = %q", tc.language, got)
+			}
+		}
+	}
+}
 
 func TestCustomerMenuUsesPrivateChatAndOwner(t *testing.T) {
 	accounts := &fakeCustomers{accounts: []UserView{{Username: "alice", Status: "active"}}}

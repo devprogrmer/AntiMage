@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"sort"
 	"strings"
 )
 
@@ -70,11 +71,21 @@ func localizeKeyboard(language string, keyboard *InlineKeyboard) *InlineKeyboard
 		return nil
 	}
 	labels := languageLabels[normalizeLanguage(language)]
+	keys := make([]string, 0, len(labels))
+	for english := range labels {
+		keys = append(keys, english)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if len(keys[i]) == len(keys[j]) {
+			return keys[i] < keys[j]
+		}
+		return len(keys[i]) > len(keys[j])
+	})
 	for i := range keyboard.InlineKeyboard {
 		for j := range keyboard.InlineKeyboard[i] {
 			button := &keyboard.InlineKeyboard[i][j]
-			for english, translated := range labels {
-				button.Text = strings.ReplaceAll(button.Text, english, translated)
+			for _, english := range keys {
+				button.Text = strings.ReplaceAll(button.Text, english, labels[english])
 			}
 		}
 	}
