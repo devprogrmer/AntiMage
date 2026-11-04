@@ -39,10 +39,12 @@ func normalizeLanguage(raw string) string {
 
 var languageLabels = map[string]map[string]string{
 	"fa": {
-		"System": "سیستم", "Nodes": "نودها", "Plans": "طرح‌ها", "Sales": "فروش", "Wallet": "کیف پول", "Orders": "سفارش‌ها", "Transactions": "تراکنش‌ها", "My services": "سرویس‌های من", "Support": "پشتیبانی", "Trial": "آزمایشی", "Top-ups": "شارژها", "AntiMage Mini App": "مینی‌اپ AntiMage", "Disable": "غیرفعال‌کردن", "Activate": "فعال‌کردن", "Reset usage": "صفرکردن مصرف", "Revoke sub": "لغو اشتراک", "Links": "لینک‌ها", "Edit note": "ویرایش یادداشت", "Refresh": "به‌روزرسانی", "Delete": "حذف", "Yes, delete": "بله، حذف شود", "Cancel": "انصراف",
+		"Online payments": "پرداخت‌های آنلاین",
+		"System":          "سیستم", "Nodes": "نودها", "Plans": "طرح‌ها", "Sales": "فروش", "Wallet": "کیف پول", "Orders": "سفارش‌ها", "Transactions": "تراکنش‌ها", "My services": "سرویس‌های من", "Support": "پشتیبانی", "Trial": "آزمایشی", "Top-ups": "شارژها", "AntiMage Mini App": "مینی‌اپ AntiMage", "Disable": "غیرفعال‌کردن", "Activate": "فعال‌کردن", "Reset usage": "صفرکردن مصرف", "Revoke sub": "لغو اشتراک", "Links": "لینک‌ها", "Edit note": "ویرایش یادداشت", "Refresh": "به‌روزرسانی", "Delete": "حذف", "Yes, delete": "بله، حذف شود", "Cancel": "انصراف",
 	},
 	"ru": {
-		"System": "Система", "Nodes": "Узлы", "Plans": "Тарифы", "Sales": "Продажи", "Wallet": "Кошелёк", "Orders": "Заказы", "Transactions": "Транзакции", "My services": "Мои услуги", "Support": "Поддержка", "Trial": "Пробный доступ", "Top-ups": "Пополнения", "AntiMage Mini App": "Мини-приложение AntiMage", "Disable": "Отключить", "Activate": "Активировать", "Reset usage": "Сбросить трафик", "Revoke sub": "Отозвать подписку", "Links": "Ссылки", "Edit note": "Изменить заметку", "Refresh": "Обновить", "Delete": "Удалить", "Yes, delete": "Да, удалить", "Cancel": "Отмена",
+		"Online payments": "Онлайн-платежи",
+		"System":          "Система", "Nodes": "Узлы", "Plans": "Тарифы", "Sales": "Продажи", "Wallet": "Кошелёк", "Orders": "Заказы", "Transactions": "Транзакции", "My services": "Мои услуги", "Support": "Поддержка", "Trial": "Пробный доступ", "Top-ups": "Пополнения", "AntiMage Mini App": "Мини-приложение AntiMage", "Disable": "Отключить", "Activate": "Активировать", "Reset usage": "Сбросить трафик", "Revoke sub": "Отозвать подписку", "Links": "Ссылки", "Edit note": "Изменить заметку", "Refresh": "Обновить", "Delete": "Удалить", "Yes, delete": "Да, удалить", "Cancel": "Отмена",
 	},
 }
 

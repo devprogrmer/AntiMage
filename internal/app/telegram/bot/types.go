@@ -96,6 +96,7 @@ type Authorizer interface {
 // UserView is the data the bot renders for a user.
 type UserView struct {
 	Username        string
+	ServiceID       *int64
 	TelegramID      *string
 	Status          string
 	UsedTraffic     int64
@@ -146,6 +147,10 @@ type ShopService interface {
 	DisableProduct(ctx context.Context, productID int64) error
 }
 
+type ShopChangesService interface {
+	PlaceChange(ctx context.Context, telegramID, productID int64, username, kind, requestKey string) (shop.Order, error)
+}
+
 type TrialService interface {
 	ClaimAndProvision(ctx context.Context, telegramID int64) (string, error)
 	Configure(ctx context.Context, config shop.TrialConfig) error
@@ -168,6 +173,13 @@ type TopupService interface {
 	List(ctx context.Context, telegramID int64, adminPending bool) ([]shop.Topup, error)
 	Approve(ctx context.Context, topupID string, adminID int64) (shop.Topup, error)
 	Reject(ctx context.Context, topupID string, adminID int64) (shop.Topup, error)
+}
+
+type GatewayTopupService interface {
+	GatewayEnabled() bool
+	CreateGateway(context.Context, int64, int64, string) (shop.GatewayPayment, error)
+	CheckGateway(context.Context, int64, string) (shop.GatewayPayment, error)
+	ListGateway(context.Context, int64) ([]shop.GatewayPayment, error)
 }
 
 // UserService exposes the user operations the bot needs. Implementations must

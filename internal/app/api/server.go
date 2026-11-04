@@ -25,6 +25,7 @@ import (
 	nordvpnapp "github.com/antimage/antimage/internal/app/nordvpn"
 	outboundsubapp "github.com/antimage/antimage/internal/app/outboundsub"
 	settingsapp "github.com/antimage/antimage/internal/app/settings"
+	"github.com/antimage/antimage/internal/app/shop"
 	systemapp "github.com/antimage/antimage/internal/app/system"
 	telegramapp "github.com/antimage/antimage/internal/app/telegram"
 	"github.com/antimage/antimage/internal/app/usage"
@@ -36,6 +37,7 @@ import (
 )
 
 type Server struct {
+	shopGatewayFactory   shop.GatewayFactory
 	cfg                  Config
 	apiDocsEnabled       atomic.Bool
 	db                   *sql.DB

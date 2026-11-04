@@ -25,6 +25,7 @@ type Product struct {
 }
 
 type Order struct {
+	Action         string
 	ID             string
 	RequestKey     string
 	TelegramID     int64
@@ -122,7 +123,7 @@ func (s Orders) ListCustomerOrders(ctx context.Context, telegramID int64) ([]Ord
 	if s.DB == nil || telegramID <= 0 {
 		return nil, fmt.Errorf("invalid customer")
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status, username FROM shop_orders WHERE telegram_id = ? ORDER BY created_at DESC LIMIT 20`, telegramID)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status, username FROM shop_orders WHERE telegram_id = ? ORDER BY created_at DESC, id DESC LIMIT 20`, telegramID)
 	if err != nil {
 		return nil, err
 	}
@@ -158,6 +159,10 @@ func (s Orders) ListProducts(ctx context.Context) ([]Product, error) {
 // Place snapshots the price and service parameters once. Repeated Telegram
 // callbacks with the same request key return the original order.
 func (s Orders) Place(ctx context.Context, telegramID, productID int64, requestKey string) (Order, error) {
+	return s.place(ctx, telegramID, productID, requestKey, nil)
+}
+
+func (s Orders) place(ctx context.Context, telegramID, productID int64, requestKey string, change *OrderChange) (Order, error) {
 	if s.DB == nil || telegramID <= 0 || productID <= 0 || requestKey == "" || len(requestKey) > 128 || strings.TrimSpace(requestKey) != requestKey {
 		return Order{}, fmt.Errorf("invalid order request")
 	}
@@ -166,6 +171,12 @@ func (s Orders) Place(ctx context.Context, telegramID, productID int64, requestK
 	} else if found {
 		if existing.TelegramID != telegramID || existing.ProductID != productID {
 			return Order{}, ErrReferenceConflict
+		}
+		if err := s.checkChangeReplay(ctx, existing.ID, change); err != nil {
+			return Order{}, err
+		}
+		if change != nil {
+			existing.Action = change.Kind
 		}
 		return existing, nil
 	}
@@ -184,6 +195,12 @@ func (s Orders) Place(ctx context.Context, telegramID, productID int64, requestK
 			if existing.TelegramID != telegramID || existing.ProductID != productID {
 				return Order{}, ErrReferenceConflict
 			}
+			if err := s.checkChangeReplay(ctx, existing.ID, change); err != nil {
+				return Order{}, err
+			}
+			if change != nil {
+				existing.Action = change.Kind
+			}
 			return existing, nil
 		}
 		return Order{}, err
@@ -198,6 +215,27 @@ func (s Orders) Place(ctx context.Context, telegramID, productID int64, requestK
 	order, err := scanOrder(tx.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status, username FROM shop_orders WHERE id = ?`, id))
 	if err != nil {
 		return Order{}, err
+	}
+	if change != nil {
+		var count int
+		query := `SELECT COUNT(*) FROM users WHERE username = ? AND telegram_id = ? AND service_id = ? AND data_limit > 0 AND status IN ('active','limited','on_hold')`
+		if change.Kind == "renew" {
+			query = `SELECT COUNT(*) FROM users WHERE username = ? AND telegram_id = ? AND service_id = ? AND data_limit > 0 AND status IN ('active','limited','on_hold','expired')`
+		}
+		if err := tx.QueryRowContext(ctx, query, change.Username, telegramID, order.ServiceID).Scan(&count); err != nil {
+			return Order{}, err
+		}
+		if count != 1 {
+			return Order{}, ErrOrderUnavailable
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO shop_order_changes (order_id, kind, username) VALUES (?, ?, ?)`, id, change.Kind, change.Username); err != nil {
+			return Order{}, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE shop_orders SET username = ? WHERE id = ?`, change.Username, id); err != nil {
+			return Order{}, err
+		}
+		order.Username = &change.Username
+		order.Action = change.Kind
 	}
 	if err := tx.Commit(); err != nil {
 		return Order{}, err

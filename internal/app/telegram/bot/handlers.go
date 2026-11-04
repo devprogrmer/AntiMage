@@ -33,6 +33,8 @@ const helpText = `🤖 <b>AntiMage admin bot</b>
 /ticket &lt;id&gt; — read a ticket
 /reply &lt;id&gt; &lt;message&gt; — admin reply
 /topup &lt;toman&gt; — request wallet charge
+/payonline &lt;toman&gt; — online wallet payment, if configured
+/payments — online payment history and verification
 /receipt &lt;topup_id&gt; — send receipt photo with this caption
 /topups — view your charges
 /pending-topups — admin review queue
@@ -67,6 +69,9 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 			return
 		}
 		switch command {
+		case "/payonline", "/payments", "/payment":
+			b.handleGatewayCommand(ctx, settings, msg, command, arg)
+			return
 		case "/faq":
 			b.reply(ctx, settings, chatID, faqText(ctx), nil)
 			return
@@ -154,7 +159,11 @@ func (b *Bot) handleCustomerAccounts(ctx context.Context, settings Settings, cha
 		if strings.TrimSpace(account.SubscriptionURL) != "" {
 			lines = append(lines, line(localText(ctx, "Subscription", "لینک اشتراک", "Подписка"), account.SubscriptionURL))
 		}
-		b.reply(ctx, settings, chatID, strings.Join(lines, "\n"), nil)
+		var keyboard *InlineKeyboard
+		if _, ok := b.shop.(ShopChangesService); ok && account.DataLimit != nil && *account.DataLimit > 0 && (account.Status == "active" || account.Status == "limited" || account.Status == "expired" || account.Status == "on_hold") {
+			keyboard = &InlineKeyboard{InlineKeyboard: [][]InlineButton{{{Text: localText(ctx, "Renew / add data", "تمدید / افزایش حجم", "Продлить / добавить трафик"), CallbackData: "sx:list:" + account.Username}}}}
+		}
+		b.reply(ctx, settings, chatID, strings.Join(lines, "\n"), keyboard)
 	}
 }
 
@@ -228,6 +237,8 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 		switch query.Data {
 		case "menu:faq":
 			b.reply(ctx, settings, chatID, faqText(ctx), nil)
+		case "menu:payments":
+			b.handleGatewayCommand(ctx, settings, &Message{From: query.From, Chat: query.Message.Chat}, "/payments", "")
 		case "menu:nodes":
 			if b.adminAuthorized(ctx, settings, chatID) {
 				b.handleAdminNodes(ctx, settings, chatID, "/nodes", "")
@@ -251,6 +262,15 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 	}
 	if strings.HasPrefix(query.Data, "shop:") && query.From != nil && query.From.ID > 0 && query.Message != nil && query.Message.Chat.Type == "private" && query.Message.Chat.ID == query.From.ID {
 		b.handleShopCallback(ctx, settings, query)
+		return
+	}
+	if strings.HasPrefix(query.Data, "gp:") && query.From != nil && query.From.ID > 0 && query.Message != nil && query.Message.Chat.Type == "private" && query.Message.Chat.ID == query.From.ID {
+		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "")
+		b.handleGatewayCommand(ctx, settings, &Message{From: query.From, Chat: query.Message.Chat}, "/payment", strings.TrimPrefix(query.Data, "gp:"))
+		return
+	}
+	if strings.HasPrefix(query.Data, "sx:") && query.From != nil && query.From.ID > 0 && query.Message != nil && query.Message.Chat.Type == "private" && query.Message.Chat.ID == query.From.ID {
+		b.handleChangeCallback(ctx, settings, query)
 		return
 	}
 	if strings.HasPrefix(query.Data, "topup:") {

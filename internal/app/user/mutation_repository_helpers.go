@@ -516,11 +516,15 @@ func (r Repository) existingUserTx(ctx context.Context, tx *sql.Tx, username str
 	var dataLimit, expire, serviceID, adminID, holdDuration sql.NullInt64
 	var credentialKey sql.NullString
 	var onlineAt any
+	locking := ""
+	if r.dialect == "mysql" {
+		locking = " FOR UPDATE"
+	}
 	err := tx.QueryRowContext(
 		ctx,
 		`SELECT id, username, status, COALESCE(used_traffic, 0), data_limit, expire, service_id, admin_id, credential_key, on_hold_expire_duration,
 COALESCE((SELECT up.online_at FROM user_presence up WHERE up.user_id = users.id), online_at)
-FROM users WHERE LOWER(username) = LOWER(?) AND status != ? LIMIT 1`,
+FROM users WHERE LOWER(username) = LOWER(?) AND status != ? LIMIT 1`+locking,
 		username,
 		string(UserStatusDeleted),
 	).Scan(

@@ -92,6 +92,7 @@ func (b botUserService) Get(ctx context.Context, username string) (telegrambot.U
 	}
 	view := telegrambot.UserView{
 		Username:        detail.Username,
+		ServiceID:       detail.ServiceID,
 		TelegramID:      detail.TelegramID,
 		Status:          detail.Status,
 		UsedTraffic:     detail.UsedTraffic,
@@ -260,12 +261,48 @@ func (b botShopService) Products(ctx context.Context) ([]shop.Product, error) {
 
 func (b botShopService) Orders(ctx context.Context, telegramID int64) ([]shop.Order, error) {
 	orders, _ := b.stores()
-	return orders.ListCustomerOrders(ctx, telegramID)
+	items, err := orders.ListCustomerOrders(ctx, telegramID)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return items, nil
+	}
+	args := make([]any, len(items))
+	for i := range items {
+		args[i] = items[i].ID
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(items)), ",")
+	rows, err := b.server.db.QueryContext(ctx, `SELECT order_id,kind FROM shop_order_changes WHERE order_id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	actions := map[string]string{}
+	for rows.Next() {
+		var id, kind string
+		if err := rows.Scan(&id, &kind); err != nil {
+			return nil, err
+		}
+		actions[id] = kind
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range items {
+		items[i].Action = actions[items[i].ID]
+	}
+	return items, nil
 }
 
 func (b botShopService) Place(ctx context.Context, telegramID, productID int64, requestKey string) (shop.Order, error) {
 	orders, _ := b.stores()
 	return orders.Place(ctx, telegramID, productID, requestKey)
+}
+
+func (b botShopService) PlaceChange(ctx context.Context, telegramID, productID int64, username, kind, requestKey string) (shop.Order, error) {
+	orders, _ := b.stores()
+	return orders.PlaceChange(ctx, telegramID, productID, username, kind, requestKey)
 }
 
 func (b botShopService) AdminCredit(ctx context.Context, telegramID, amount int64, reference string) (int64, error) {
@@ -317,12 +354,44 @@ func (b botShopService) PayAndProvision(ctx context.Context, telegramID int64, o
 	if _, err := orders.Pay(ctx, telegramID, orderID, wallet); err != nil {
 		return "", err
 	}
-	return orders.Provision(ctx, orderID, botAccountProvisioner{server: b.server})
+	return b.deliverOrder(ctx, orderID)
+}
+
+func (b botShopService) deliverOrder(ctx context.Context, orderID string) (string, error) {
+	orders, _ := b.stores()
+	change, err := orders.Change(ctx, orderID)
+	if err != nil {
+		return "", err
+	}
+	if change == nil {
+		return orders.Provision(ctx, orderID, botAccountProvisioner{server: b.server})
+	}
+	admin, ok, err := b.server.adminRepo.FirstFullAccessAdmin(ctx)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("no active full-access admin for order delivery")
+	}
+	return orders.FulfillChange(ctx, orderID, func(ctx context.Context, tx *sql.Tx, order shop.Order, change shop.OrderChange) error {
+		return b.server.userService.ApplyShopExtensionTx(ctx, tx, admin, order.TelegramID, order.ServiceID, change.Username, change.Kind, order.DataLimitBytes, order.DurationDays)
+	})
 }
 
 type botAccountProvisioner struct{ server *Server }
 
 type botTopupService struct{ server *Server }
+
+func (b botTopupService) GatewayEnabled() bool { return b.server.gatewayEnabled() }
+func (b botTopupService) CreateGateway(ctx context.Context, owner, amount int64, key string) (shop.GatewayPayment, error) {
+	return b.server.createGatewayPayment(ctx, owner, amount, key)
+}
+func (b botTopupService) CheckGateway(ctx context.Context, owner int64, id string) (shop.GatewayPayment, error) {
+	return b.server.gatewayPayments().Check(ctx, owner, id)
+}
+func (b botTopupService) ListGateway(ctx context.Context, owner int64) ([]shop.GatewayPayment, error) {
+	return b.server.gatewayPayments().List(ctx, owner)
+}
 
 func (b botTopupService) store() shop.Topups {
 	return shop.Topups{DB: b.server.db, Dialect: b.server.dialect}

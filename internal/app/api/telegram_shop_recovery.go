@@ -31,6 +31,7 @@ func (s *Server) runTelegramShopRecovery(ctx context.Context) {
 }
 
 func (s *Server) recoverTelegramTrials(ctx context.Context) {
+	provisioner := botAccountProvisioner{server: s}
 	workerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	trials := shop.Trials{DB: s.db, Dialect: s.dialect}
@@ -41,7 +42,6 @@ func (s *Server) recoverTelegramTrials(ctx context.Context) {
 		}
 		return
 	}
-	provisioner := botAccountProvisioner{server: s}
 	recovered := 0
 	for _, id := range ids {
 		if workerCtx.Err() != nil {
@@ -63,6 +63,9 @@ func (s *Server) recoverTelegramTrials(ctx context.Context) {
 func (s *Server) recoverTelegramShopOrders(ctx context.Context) {
 	workerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+	if err := s.gatewayPayments().RecoverVerified(workerCtx); err != nil && ctx.Err() == nil {
+		logging.Warnf(logging.ComponentTelegram, "gateway payment settlement retry failed: %v", err)
+	}
 	orders := shop.Orders{DB: s.db}
 	wallet := shop.Wallet{DB: s.db, Dialect: s.dialect}
 	debited, err := orders.DebitedPending(workerCtx, telegramShopRecoveryBatch, s.dialect)
@@ -87,13 +90,12 @@ func (s *Server) recoverTelegramShopOrders(ctx context.Context) {
 		}
 		return
 	}
-	provisioner := botAccountProvisioner{server: s}
 	recovered := 0
 	for _, id := range ids {
 		if workerCtx.Err() != nil {
 			break
 		}
-		if _, err := orders.Provision(workerCtx, id, provisioner); err != nil {
+		if _, err := (botShopService{server: s}).deliverOrder(workerCtx, id); err != nil {
 			if workerCtx.Err() == nil {
 				logging.Warnf(logging.ComponentTelegram, "shop order %s delivery retry failed: %v", id, err)
 			}

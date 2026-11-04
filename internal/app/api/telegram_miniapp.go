@@ -51,6 +51,10 @@ func (s *Server) handleTelegramMiniAppAPI(w http.ResponseWriter, r *http.Request
 		return
 	}
 	shopService := botShopService{server: s}
+	if r.URL.Path == "/api/telegram-app/gateway" || r.URL.Path == "/api/telegram-app/gateway/verify" {
+		s.handleTelegramGatewayAPI(w, r, telegramID)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/api/telegram-app/tickets/") && strings.HasSuffix(r.URL.Path, "/replies") {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -153,7 +157,12 @@ func (s *Server) handleTelegramMiniAppAPI(w http.ResponseWriter, r *http.Request
 			writeError(w, http.StatusInternalServerError, "Could not load payment instructions")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"telegram_id": telegramID, "balance_toman": balance, "transactions": transactions, "products": products, "orders": orders, "services": accounts, "topups": topups, "tickets": tickets, "payment_instructions": instructions})
+		payments, err := s.gatewayPayments().List(r.Context(), telegramID)
+		if err != nil {
+			writeError(w, 500, "Could not load payments")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"telegram_id": telegramID, "balance_toman": balance, "transactions": transactions, "products": products, "orders": orders, "services": accounts, "topups": topups, "tickets": tickets, "payment_instructions": instructions, "gateway_enabled": s.gatewayEnabled(), "payments": payments})
 	case "/api/telegram-app/orders":
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -162,12 +171,23 @@ func (s *Server) handleTelegramMiniAppAPI(w http.ResponseWriter, r *http.Request
 		var input struct {
 			ProductID  int64  `json:"product_id"`
 			RequestKey string `json:"request_key"`
+			Action     string `json:"action"`
+			Username   string `json:"username"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil || input.ProductID <= 0 || uuid.Validate(input.RequestKey) != nil {
 			writeError(w, http.StatusBadRequest, "Invalid order request")
 			return
 		}
-		order, err := shopService.Place(r.Context(), telegramID, input.ProductID, "tg-mini:"+input.RequestKey)
+		var order shop.Order
+		if input.Action == "" && input.Username == "" {
+			order, err = shopService.Place(r.Context(), telegramID, input.ProductID, "tg-mini:"+input.RequestKey)
+		} else {
+			order, err = shopService.PlaceChange(r.Context(), telegramID, input.ProductID, input.Username, input.Action, "tg-mini:"+input.RequestKey)
+		}
+		if errors.Is(err, shop.ErrOrderUnavailable) {
+			writeError(w, http.StatusNotFound, "Account unavailable for this plan or action")
+			return
+		}
 		if errors.Is(err, shop.ErrProductUnavailable) {
 			writeError(w, http.StatusConflict, "Plan unavailable")
 			return

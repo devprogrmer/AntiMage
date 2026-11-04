@@ -34,6 +34,7 @@ func mainMenuKeyboard() *InlineKeyboard {
 		{{Text: "🛒 Plans", CallbackData: "menu:shop"}, {Text: "📊 Sales", CallbackData: "menu:sales"}},
 		{{Text: "💳 Wallet", CallbackData: "menu:balance"}, {Text: "📦 Orders", CallbackData: "menu:orders"}},
 		{{Text: "🧾 Transactions", CallbackData: "menu:transactions"}},
+		{{Text: "💳 Online payments", CallbackData: "menu:payments"}},
 		{{Text: "👤 My services", CallbackData: "menu:my"}, {Text: "🎫 Support", CallbackData: "menu:tickets"}},
 		{{Text: "❓ FAQ", CallbackData: "menu:faq"}},
 	}}
@@ -43,6 +44,7 @@ func customerMenuKeyboard() *InlineKeyboard {
 	return &InlineKeyboard{InlineKeyboard: [][]InlineButton{
 		{{Text: "🛒 Plans", CallbackData: "menu:shop"}, {Text: "💳 Wallet", CallbackData: "menu:balance"}},
 		{{Text: "🧾 Transactions", CallbackData: "menu:transactions"}},
+		{{Text: "💳 Online payments", CallbackData: "menu:payments"}},
 		{{Text: "🎁 Trial", CallbackData: "menu:trial"}},
 		{{Text: "📦 Orders", CallbackData: "menu:orders"}, {Text: "👤 My services", CallbackData: "menu:my"}},
 		{{Text: "🎫 Support", CallbackData: "menu:tickets"}, {Text: "🧾 Top-ups", CallbackData: "menu:topups"}},

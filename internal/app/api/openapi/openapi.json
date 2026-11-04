@@ -3066,37 +3066,188 @@
     },
     "/api/telegram-app/state": {
       "get": {
-        "tags": ["Settings"],
-        "summary": "Get the Telegram customer's Mini App state",
-        "description": "Requires a fresh signed Telegram initData string in the X-Telegram-Init-Data header. Returns only that Telegram user's wallet balance, plans, orders, linked services, top-up requests, support tickets, and payment instructions. Panel admin credentials do not authorize this endpoint.",
-        "security": [],
-        "parameters": [{"name": "X-Telegram-Init-Data", "in": "header", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"$ref": "#/components/responses/JSON"}, "401": {"$ref": "#/components/responses/Error"}},
-        "operationId": "getTelegramMiniAppState"
+        "tags": [
+          "Telegram Shop"
+        ],
+        "summary": "Read customer shop state",
+        "operationId": "getTelegramMiniAppState",
+        "description": "Returns this customer's wallet balance, transactions, products, orders, linked services, manual top-ups, support tickets and online payments. Gateway merchant details and other customers' records are excluded.\n\nAuthentication: signed X-Telegram-Init-Data, verified by the panel bot token. Permissions: only the verified Telegram customer owns these records. Requests from browser clients must be same-origin.",
+        "security": [
+          {
+            "telegramInitData": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Request processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Missing, stale or invalid Telegram initData."
+          },
+          "404": {
+            "description": "Record unavailable to this customer."
+          },
+          "409": {
+            "description": "Insufficient wallet funds, unavailable plan or conflicting request key."
+          },
+          "503": {
+            "description": "Gateway or fulfillment unavailable. Retry the same request/order; do not create a replacement payment."
+          }
+        }
       }
     },
     "/api/telegram-app/orders": {
       "post": {
-        "tags": ["Settings"],
-        "summary": "Create a customer order",
-        "description": "Requires signed X-Telegram-Init-Data and a same-origin request. JSON body: product_id (integer), request_key (UUID). Reusing the same request key returns the same order; a conflicting customer or plan is rejected. Creating an order does not charge the wallet.",
-        "security": [],
-        "parameters": [{"name": "X-Telegram-Init-Data", "in": "header", "required": true, "schema": {"type": "string"}}],
-        "requestBody": {"$ref": "#/components/requestBodies/JSON"},
-        "responses": {"200": {"$ref": "#/components/responses/JSON"}, "401": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}},
-        "operationId": "postTelegramMiniAppOrder"
+        "tags": [
+          "Telegram Shop"
+        ],
+        "summary": "Create a purchase, renewal or data order",
+        "operationId": "postTelegramMiniAppOrder",
+        "description": "Snapshots product price and terms once. Omit action/username to purchase a new account. For renew/volume the username must belong to this customer and the same service. Reuse request_key after an interrupted response.\n\nAuthentication: signed X-Telegram-Init-Data, verified by the panel bot token. Permissions: only the verified Telegram customer owns these records. Requests from browser clients must be same-origin.",
+        "security": [
+          {
+            "telegramInitData": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Request processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramShopOrder"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Missing, stale or invalid Telegram initData."
+          },
+          "404": {
+            "description": "Record unavailable to this customer."
+          },
+          "409": {
+            "description": "Insufficient wallet funds, unavailable plan or conflicting request key."
+          },
+          "503": {
+            "description": "Gateway or fulfillment unavailable. Retry the same request/order; do not create a replacement payment."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "product_id",
+                  "request_key"
+                ],
+                "properties": {
+                  "product_id": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 1
+                  },
+                  "request_key": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "renew",
+                      "volume"
+                    ]
+                  },
+                  "username": {
+                    "type": "string",
+                    "maxLength": 34
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/telegram-app/pay": {
       "post": {
-        "tags": ["Settings"],
-        "summary": "Pay for and deliver an owned order",
-        "description": "Requires signed X-Telegram-Init-Data and a same-origin request. JSON body: order_id (UUID). The shared wallet and provisioning ledger prevents duplicate charges on retry. A delivery failure may return 503; retry the same order rather than creating a new one.",
-        "security": [],
-        "parameters": [{"name": "X-Telegram-Init-Data", "in": "header", "required": true, "schema": {"type": "string"}}],
-        "requestBody": {"$ref": "#/components/requestBodies/JSON"},
-        "responses": {"200": {"$ref": "#/components/responses/JSON"}, "401": {"$ref": "#/components/responses/Error"}, "503": {"$ref": "#/components/responses/Error"}},
-        "operationId": "postTelegramMiniAppPay"
+        "tags": [
+          "Telegram Shop"
+        ],
+        "summary": "Pay and fulfill an existing order",
+        "operationId": "postTelegramMiniAppPay",
+        "description": "Debits the immutable order price from the wallet once. New accounts are provisioned or existing accounts extended. A paid order remains retryable if delivery fails; concurrent retries cannot charge or extend twice.\n\nAuthentication: signed X-Telegram-Init-Data, verified by the panel bot token. Permissions: only the verified Telegram customer owns these records. Requests from browser clients must be same-origin.",
+        "security": [
+          {
+            "telegramInitData": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Request processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "username": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Missing, stale or invalid Telegram initData."
+          },
+          "404": {
+            "description": "Record unavailable to this customer."
+          },
+          "409": {
+            "description": "Insufficient wallet funds, unavailable plan or conflicting request key."
+          },
+          "503": {
+            "description": "Gateway or fulfillment unavailable. Retry the same request/order; do not create a replacement payment."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "order_id"
+                ],
+                "properties": {
+                  "order_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/telegram-app/topups": {
@@ -4491,6 +4642,184 @@
         },
         "operationId": "deleteAdmin2fa"
       }
+    },
+    "/api/telegram-app/gateway": {
+      "post": {
+        "tags": [
+          "Telegram Shop"
+        ],
+        "summary": "Create an online wallet checkout",
+        "operationId": "createTelegramGatewayPayment",
+        "description": "Requires a configured Zarinpal merchant and HTTPS callback. Amount is integer toman; the server sends exactly ten times that amount as IRR. Reuse request_key to recover an interrupted checkout response.\n\nAuthentication: signed X-Telegram-Init-Data, verified by the panel bot token. Permissions: only the verified Telegram customer owns these records.",
+        "security": [
+          {
+            "telegramInitData": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Request processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramGatewayPayment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Missing, stale or invalid Telegram initData."
+          },
+          "404": {
+            "description": "Record unavailable to this customer."
+          },
+          "409": {
+            "description": "Insufficient wallet funds, unavailable plan or conflicting request key."
+          },
+          "503": {
+            "description": "Gateway or fulfillment unavailable. Retry the same request/order; do not create a replacement payment."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "amount_toman",
+                  "request_key"
+                ],
+                "properties": {
+                  "amount_toman": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 1000,
+                    "maximum": 100000000
+                  },
+                  "request_key": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/telegram-app/gateway/verify": {
+      "post": {
+        "tags": [
+          "Telegram Shop"
+        ],
+        "summary": "Verify an owned payment and settle wallet credit",
+        "operationId": "verifyTelegramGatewayPayment",
+        "description": "Verifies the stored authority and immutable amount with the provider. Successful or previously verified provider transactions are journaled once. Neither callback status nor client-supplied amount can credit a wallet.\n\nAuthentication: signed X-Telegram-Init-Data, verified by the panel bot token. Permissions: only the verified Telegram customer owns these records.",
+        "security": [
+          {
+            "telegramInitData": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Request processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramGatewayPayment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Missing, stale or invalid Telegram initData."
+          },
+          "404": {
+            "description": "Record unavailable to this customer."
+          },
+          "409": {
+            "description": "Insufficient wallet funds, unavailable plan or conflicting request key."
+          },
+          "503": {
+            "description": "Gateway or fulfillment unavailable. Retry the same request/order; do not create a replacement payment."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "payment_id"
+                ],
+                "properties": {
+                  "payment_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/telegram-payment-return": {
+      "get": {
+        "tags": [
+          "Telegram Shop"
+        ],
+        "summary": "Return from online wallet checkout",
+        "operationId": "returnTelegramGatewayPayment",
+        "description": "Public Zarinpal return route. Status=OK triggers server-to-server verification of the saved authority and amount. Query parameters cannot choose a customer or amount. Renders a Persian/English/Russian result; customers can check interrupted payments from the bot.",
+        "security": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "payment",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "Authority",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "in": "query",
+            "name": "Status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OK",
+                "NOK"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HTML payment result; this does not by itself prove wallet settlement."
+          },
+          "400": {
+            "description": "Invalid payment ID."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4506,6 +4835,12 @@
         "in": "cookie",
         "name": "antimage_session",
         "description": "Opaque HttpOnly dashboard session cookie issued by POST /api/auth/login. It is managed by the browser and is not readable by dashboard JavaScript."
+      },
+      "telegramInitData": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Telegram-Init-Data",
+        "description": "Raw Telegram.WebApp.initData; HMAC and timestamp are verified with the panel bot token. Admin bearer tokens are not accepted."
       }
     },
     "parameters": {
@@ -4975,6 +5310,89 @@
             "items": {
               "$ref": "#/components/schemas/AdminSession"
             }
+          }
+        }
+      },
+      "TelegramShopOrder": {
+        "type": "object",
+        "properties": {
+          "ID": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "Action": {
+            "type": "string",
+            "enum": [
+              "",
+              "renew",
+              "volume"
+            ]
+          },
+          "RequestKey": {
+            "type": "string"
+          },
+          "TelegramID": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ProductID": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ServiceID": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "PriceToman": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "DataLimitBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "DurationDays": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "Status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "paid",
+              "provisioning",
+              "completed"
+            ]
+          },
+          "Username": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "TelegramGatewayPayment": {
+        "type": "object",
+        "properties": {
+          "ID": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "AmountToman": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "Status": {
+            "type": "string",
+            "enum": [
+              "creating",
+              "awaiting",
+              "verified",
+              "paid"
+            ]
+          },
+          "CheckoutURL": {
+            "type": "string",
+            "description": "HTTPS checkout URL while awaiting payment; otherwise empty."
           }
         }
       }

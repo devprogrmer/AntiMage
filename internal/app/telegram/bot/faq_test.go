@@ -10,7 +10,7 @@ func TestFAQMatchesImplementedPaymentFlowInEveryLanguage(t *testing.T) {
 	for _, language := range []string{"fa", "en", "ru"} {
 		ctx := context.WithValue(context.Background(), languageContextKey{}, language)
 		content := faqText(ctx)
-		for _, command := range []string{"/shop", "/orders", "/topup", "/receipt", "/my", "/support", "/tickets"} {
+		for _, command := range []string{"/shop", "/orders", "/topup", "/receipt", "/my", "/support", "/tickets", "/payonline", "/payments"} {
 			if !strings.Contains(content, command) {
 				t.Fatalf("%s FAQ missing %s", language, command)
 			}
