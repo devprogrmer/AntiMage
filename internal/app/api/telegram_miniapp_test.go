@@ -142,4 +142,19 @@ func TestTelegramMiniAppOrderOwnershipAndReplay(t *testing.T) {
 	if other := request(http.MethodGet, "/api/telegram-app/tickets/"+createdTicket.ID, "", initB); other.Code != http.StatusNotFound {
 		t.Fatalf("other customer read ticket: %d %s", other.Code, other.Body.String())
 	}
+	replyPath := "/api/telegram-app/tickets/" + createdTicket.ID + "/replies"
+	replyBody := fmt.Sprintf(`{"message":"More details","request_key":%q}`, uuid.NewString())
+	if other := request(http.MethodPost, replyPath, replyBody, initB); other.Code != http.StatusNotFound {
+		t.Fatalf("other customer replied: %d %s", other.Code, other.Body.String())
+	}
+	firstReply := request(http.MethodPost, replyPath, replyBody, initA)
+	if firstReply.Code != http.StatusOK || !strings.Contains(firstReply.Body.String(), "More details") {
+		t.Fatalf("own reply: %d %s", firstReply.Code, firstReply.Body.String())
+	}
+	if replay := request(http.MethodPost, replyPath, replyBody, initA); replay.Code != http.StatusOK {
+		t.Fatalf("reply replay: %d %s", replay.Code, replay.Body.String())
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM telegram_support_messages WHERE ticket_id = ? AND content = 'More details'`, createdTicket.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("reply count=%d err=%v", count, err)
+	}
 }

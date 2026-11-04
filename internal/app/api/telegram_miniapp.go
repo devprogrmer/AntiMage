@@ -51,6 +51,40 @@ func (s *Server) handleTelegramMiniAppAPI(w http.ResponseWriter, r *http.Request
 		return
 	}
 	shopService := botShopService{server: s}
+	if strings.HasPrefix(r.URL.Path, "/api/telegram-app/tickets/") && strings.HasSuffix(r.URL.Path, "/replies") {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/telegram-app/tickets/"), "/replies")
+		if uuid.Validate(id) != nil {
+			writeError(w, http.StatusBadRequest, "Invalid ticket")
+			return
+		}
+		var input struct {
+			Message    string `json:"message"`
+			RequestKey string `json:"request_key"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil || uuid.Validate(input.RequestKey) != nil || len(input.Message) > 12000 || strings.TrimSpace(input.Message) == "" {
+			writeError(w, http.StatusBadRequest, "Invalid support reply")
+			return
+		}
+		ticket, err := (support.Store{DB: s.db}).ReplyCustomer(r.Context(), id, telegramID, input.Message, "tg-mini-reply:"+input.RequestKey)
+		if errors.Is(err, support.ErrTicketNotFound) {
+			writeError(w, http.StatusNotFound, "Ticket unavailable")
+			return
+		}
+		if errors.Is(err, support.ErrTicketClosed) || errors.Is(err, support.ErrMessageConflict) {
+			writeError(w, http.StatusConflict, "Support reply unavailable")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Could not reply to ticket")
+			return
+		}
+		writeJSON(w, http.StatusOK, ticket)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/api/telegram-app/tickets/") {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")

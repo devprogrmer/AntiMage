@@ -104,6 +104,54 @@ func (s Store) Reply(ctx context.Context, ticketID, content, reference string) (
 	return s.Get(ctx, ticketID, 0, true)
 }
 
+// ReplyCustomer appends a customer message only to an open ticket owned by
+// telegramID. The request reference makes a retry safe after a lost response.
+func (s Store) ReplyCustomer(ctx context.Context, ticketID string, telegramID int64, content, reference string) (Ticket, error) {
+	if s.DB == nil || len(ticketID) != 36 || telegramID <= 0 {
+		return Ticket{}, ErrTicketNotFound
+	}
+	if strings.TrimSpace(content) == "" || utf8.RuneCountInString(content) > 3000 || !validReference(reference) {
+		return Ticket{}, fmt.Errorf("invalid support reply")
+	}
+	if existing, message, ok, err := s.byReference(ctx, reference); err != nil {
+		return Ticket{}, err
+	} else if ok {
+		if existing.ID != ticketID || existing.TelegramID != telegramID || message.Content != content || message.Author != "customer" {
+			return Ticket{}, ErrMessageConflict
+		}
+		return existing, nil
+	}
+	ticket, err := s.Get(ctx, ticketID, telegramID, false)
+	if err != nil {
+		return Ticket{}, err
+	}
+	if ticket.Status != "open" {
+		return Ticket{}, ErrTicketClosed
+	}
+	now := time.Now().UTC().Format("2006-01-02 15:04:05.000000")
+	result, err := s.DB.ExecContext(ctx, `INSERT INTO telegram_support_messages (id, ticket_id, author, content, request_key, created_at)
+		SELECT ?, id, 'customer', ?, ?, ? FROM telegram_support_tickets WHERE id = ? AND telegram_id = ? AND status = 'open'`,
+		uuid.NewString(), content, reference, now, ticketID, telegramID)
+	if err != nil {
+		if existing, message, ok, lookupErr := s.byReference(ctx, reference); lookupErr == nil && ok {
+			if existing.ID == ticketID && existing.TelegramID == telegramID && message.Author == "customer" && message.Content == content {
+				return existing, nil
+			}
+			return Ticket{}, ErrMessageConflict
+		}
+		return Ticket{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return Ticket{}, err
+	}
+	if affected == 0 {
+		return Ticket{}, ErrTicketClosed
+	}
+	_, _ = s.DB.ExecContext(ctx, `UPDATE telegram_support_tickets SET updated_at = ? WHERE id = ? AND telegram_id = ?`, now, ticketID, telegramID)
+	return s.Get(ctx, ticketID, telegramID, false)
+}
+
 func (s Store) Get(ctx context.Context, ticketID string, telegramID int64, admin bool) (Ticket, error) {
 	if s.DB == nil || len(ticketID) != 36 {
 		return Ticket{}, ErrTicketNotFound
