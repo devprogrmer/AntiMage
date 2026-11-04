@@ -219,13 +219,22 @@ func scanOrder(row *sql.Row) (Order, error) {
 	return order, err
 }
 
-// Pay debits the wallet once for this order. A crash after the debit and
-// before the status update is recoverable by retrying with the same reference.
+// Pay commits the wallet debit and paid order together. It also recovers
+// matching debits left by older versions without charging the customer again.
 func (s Orders) Pay(ctx context.Context, telegramID int64, orderID string, wallet Wallet) (Order, error) {
 	if s.DB == nil || wallet.DB != s.DB || telegramID <= 0 || orderID == "" {
 		return Order{}, fmt.Errorf("invalid order payment request")
 	}
-	order, err := scanOrder(s.DB.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status, username FROM shop_orders WHERE id = ?`, orderID))
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return Order{}, err
+	}
+	defer tx.Rollback()
+	// Lock before reading so simultaneous payment attempts serialize.
+	if _, err := tx.ExecContext(ctx, `UPDATE shop_orders SET status = status WHERE id = ? AND telegram_id = ?`, orderID, telegramID); err != nil {
+		return Order{}, err
+	}
+	order, err := scanOrder(tx.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status, username FROM shop_orders WHERE id = ?`, orderID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Order{}, ErrOrderUnavailable
 	}
@@ -241,19 +250,48 @@ func (s Orders) Pay(ctx context.Context, telegramID int64, orderID string, walle
 	if order.Status != "pending" {
 		return Order{}, ErrOrderUnavailable
 	}
-	if _, err := wallet.Debit(ctx, telegramID, order.PriceToman, "shop-order:"+order.ID); err != nil {
+	if order.PriceToman <= 0 {
+		return Order{}, ErrOrderUnavailable
+	}
+	reference := "shop-order:" + order.ID
+	var owner, delta int64
+	var reason string
+	err = tx.QueryRowContext(ctx, `SELECT telegram_id, delta, reason FROM shop_wallet_entries WHERE reference = ?`, reference).Scan(&owner, &delta, &reason)
+	if err == nil {
+		if owner != telegramID || delta != -order.PriceToman || reason != "purchase" {
+			return Order{}, ErrReferenceConflict
+		}
+	} else if errors.Is(err, sql.ErrNoRows) {
+		result, err := tx.ExecContext(ctx, `UPDATE shop_wallet_accounts SET balance = balance - ? WHERE telegram_id = ? AND balance >= ?`, order.PriceToman, telegramID, order.PriceToman)
+		if err != nil {
+			return Order{}, err
+		}
+		count, err := result.RowsAffected()
+		if err != nil {
+			return Order{}, err
+		}
+		if count != 1 {
+			return Order{}, ErrInsufficientFunds
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO shop_wallet_entries (reference, telegram_id, delta, reason, created_at) VALUES (?, ?, ?, 'purchase', ?)`, reference, telegramID, -order.PriceToman, time.Now().UTC().Format("2006-01-02 15:04:05")); err != nil {
+			return Order{}, err
+		}
+	} else {
 		return Order{}, err
 	}
-	_, err = s.DB.ExecContext(ctx, `UPDATE shop_orders SET status = 'paid', updated_at = ? WHERE id = ? AND status = 'pending'`, time.Now().UTC().Format("2006-01-02 15:04:05"), orderID)
+	_, err = tx.ExecContext(ctx, `UPDATE shop_orders SET status = 'paid', updated_at = ? WHERE id = ? AND status = 'pending'`, time.Now().UTC().Format("2006-01-02 15:04:05"), orderID)
 	if err != nil {
 		return Order{}, err
 	}
-	order, err = scanOrder(s.DB.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status, username FROM shop_orders WHERE id = ?`, orderID))
+	order, err = scanOrder(tx.QueryRowContext(ctx, `SELECT id, request_key, telegram_id, product_id, service_id, price_toman, data_limit_bytes, duration_days, status, username FROM shop_orders WHERE id = ?`, orderID))
 	if err != nil {
 		return Order{}, err
 	}
 	if order.Status != "paid" && order.Status != "provisioning" && order.Status != "completed" {
 		return Order{}, ErrOrderUnavailable
+	}
+	if err := tx.Commit(); err != nil {
+		return Order{}, err
 	}
 	return order, nil
 }
