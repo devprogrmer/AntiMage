@@ -45,9 +45,10 @@ func TestCustomerMenuUsesPrivateChatAndOwner(t *testing.T) {
 }
 
 func TestMiniAppButtonRequiresHTTPS(t *testing.T) {
+	baseRows := len(customerMenuKeyboard().InlineKeyboard)
 	for _, raw := range []string{"http://panel.example/telegram-app", "https://user:pass@panel.example/telegram-app", "https://panel.example/telegram-app#fragment"} {
 		menu := appendMiniAppButton(customerMenuKeyboard(), raw)
-		if len(menu.InlineKeyboard) != 5 {
+		if len(menu.InlineKeyboard) != baseRows {
 			t.Fatalf("unsafe URL produced Mini App button: %q", raw)
 		}
 	}

@@ -8,7 +8,7 @@ The Telegram bot runs inside the AntiMage panel process. It starts polling when 
 2. Create a bot with BotFather. Save its token in **Panel settings → Telegram**. Do not place the token in a command, documentation, or chat message.
 3. In the same settings form, set **Telegram Mini App URL** to the exact public HTTPS address ending in `/telegram-app`, then save. If the URL is absent, the bot continues to work but does not show a Mini App button.
 4. For admin commands, enter the admin's numeric Telegram ID in the allowed admin chat IDs and in that active full-access admin's AntiMage profile. Customer access is separate: a customer sees only accounts linked to their Telegram ID.
-5. Open the bot's private chat and send `/start`. The menu and Mini App button appear. Use `/lang fa`, `/lang en`, or `/lang ru` to select the bot language. The Mini App also has its own language selector.
+5. Open the bot's private chat and send `/start`. The menu and Mini App button appear. Use `/lang fa`, `/lang en`, or `/lang ru` to select the bot language. `/faq` explains the supported purchase, receipt, subscription, and support steps. The Mini App also has its own language selector.
 
 ## Sales flow
 
@@ -16,7 +16,7 @@ The Telegram bot runs inside the AntiMage panel process. It starts polling when 
 2. A customer opens **Plans** in the bot or Mini App and creates an order. Repeating the same request does not create a second order.
 3. The customer pays from the wallet. If delivery fails after payment, the order remains recoverable; retry delivery from **Orders** instead of buying again. Wallet debits use a unique order reference.
 4. To fund the wallet manually, the customer requests a top-up, transfers the amount, and sends a receipt photo to the bot with caption `/receipt <topup_id>`. The Mini App can create and display the top-up request; receipt photo upload and admin approval happen in the bot. The wallet is credited only after admin approval.
-5. Customer support requests can be created and read from the bot or Mini App. Admin replies are made through the bot.
+5. Customer support requests can be created and read from the bot or Mini App. Customers can reply to their own open tickets in the Mini App. Admin replies are made through the bot.
 
 ## Security and operations
 

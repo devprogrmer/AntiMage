@@ -22,6 +22,7 @@ const helpText = `🤖 <b>AntiMage admin bot</b>
 /wallet &lt;telegram_id&gt; — admin wallet audit
 /orders — show your orders
 /my — show services linked to your Telegram ID
+/faq — purchase, payment, and support guide
 /credit &lt;telegram_id&gt; &lt;toman&gt; &lt;reference&gt; — admin wallet credit
 /plan-add &lt;service_id&gt; &lt;toman&gt; &lt;GB&gt; &lt;days&gt; &lt;title&gt; — admin product
 /plan-disable &lt;product_id&gt; — admin product disable
@@ -66,6 +67,9 @@ func (b *Bot) handleMessage(ctx context.Context, settings Settings, msg *Message
 			return
 		}
 		switch command {
+		case "/faq":
+			b.reply(ctx, settings, chatID, faqText(ctx), nil)
+			return
 		case "/my":
 			b.handleCustomerAccounts(ctx, settings, chatID, msg.From.ID)
 			return
@@ -222,6 +226,8 @@ func (b *Bot) handleCallback(ctx context.Context, settings Settings, query *Call
 		chatID := query.From.ID
 		_ = b.client.answerCallbackQuery(ctx, settings, query.ID, "")
 		switch query.Data {
+		case "menu:faq":
+			b.reply(ctx, settings, chatID, faqText(ctx), nil)
 		case "menu:nodes":
 			if b.adminAuthorized(ctx, settings, chatID) {
 				b.handleAdminNodes(ctx, settings, chatID, "/nodes", "")
