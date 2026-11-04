@@ -2,9 +2,7 @@ package api
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +17,7 @@ import (
 	adminapp "github.com/antimage/antimage/internal/app/admin"
 	telegramapp "github.com/antimage/antimage/internal/app/telegram"
 	webhookapp "github.com/antimage/antimage/internal/app/webhook"
+	"github.com/google/uuid"
 )
 
 const (
@@ -1555,17 +1554,10 @@ func enqueueNodeOperationTx(ctx context.Context, tx *sql.Tx, operationType strin
 	if err != nil {
 		return err
 	}
-	keySource := fmt.Sprintf("%s:%s:%s:%s", operationType, ptrInt64Text(nodeID), ptrInt64Text(userID), string(payloadJSON))
-	sum := sha256.Sum256([]byte(keySource))
-	key := hex.EncodeToString(sum[:])
-	var existing int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM node_operations WHERE idempotency_key = ? LIMIT 1`, key).Scan(&existing)
-	if err == nil {
-		return nil
-	}
-	if err != sql.ErrNoRows {
-		return err
-	}
+	// Each committed mutation needs its own delivery identity. Wall-clock
+	// timestamps can repeat, and identical payloads may follow different state
+	// changes. Retries by the delivery worker reuse this persisted key.
+	key := uuid.NewString()
 	if nodeID != nil && userID != nil && isRuntimeUserNodeOperationType(operationType) {
 		if err := compactPendingRuntimeUserOperationsTx(ctx, tx, *nodeID, *userID, now); err != nil {
 			return err
