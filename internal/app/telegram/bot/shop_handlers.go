@@ -14,22 +14,22 @@ import (
 
 func (b *Bot) handleAdminSales(ctx context.Context, settings Settings, chatID int64) {
 	if b.shop == nil {
-		b.reply(ctx, settings, chatID, "Shop unavailable.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Shop unavailable.", "فروشگاه در دسترس نیست.", "Магазин недоступен."), nil)
 		return
 	}
 	result, err := b.shop.SalesOverview(ctx)
 	if err != nil {
-		b.reply(ctx, settings, chatID, "Could not load sales report. Please try again.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Could not load sales report. Please try again.", "گزارش فروش بارگذاری نشد. دوباره تلاش کنید.", "Не удалось загрузить отчёт о продажах. Попробуйте снова."), nil)
 		return
 	}
-	b.reply(ctx, settings, chatID, fmt.Sprintf("📊 <b>AntiMage sales</b>\nOrders: %d\nAwaiting payment: %d\nPaid, awaiting delivery: %d\nDelivered: %d\nRecorded paid value: %d toman",
+	b.reply(ctx, settings, chatID, fmt.Sprintf(localText(ctx, "📊 <b>AntiMage sales</b>\nOrders: %d\nAwaiting payment: %d\nPaid, awaiting delivery: %d\nDelivered: %d\nRecorded paid value: %d toman", "📊 <b>فروش AntiMage</b>\nسفارش‌ها: %d\nدر انتظار پرداخت: %d\nپرداخت‌شده، در انتظار تحویل: %d\nتحویل‌شده: %d\nمبلغ پرداختی ثبت‌شده: %d تومان", "📊 <b>Продажи AntiMage</b>\nЗаказы: %d\nОжидают оплаты: %d\nОплачены, ожидают выдачи: %d\nВыданы: %d\nУчтённая сумма оплаты: %d томан"),
 		result.TotalOrders, result.PendingOrders, result.UnfulfilledOrders, result.CompletedOrders, result.PaidToman), nil)
 }
 
 func (b *Bot) handleAdminWallet(ctx context.Context, settings Settings, chatID int64, arg string) {
 	owner, err := strconv.ParseInt(strings.TrimSpace(arg), 10, 64)
 	if err != nil || owner <= 0 {
-		b.reply(ctx, settings, chatID, "Usage: /wallet &lt;telegram_id&gt;", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Usage: /wallet &lt;telegram_id&gt;", "روش استفاده: /wallet &lt;شناسهٔ تلگرام&gt;", "Использование: /wallet &lt;ID Telegram&gt;"), nil)
 		return
 	}
 	b.handleWalletHistory(ctx, settings, chatID, owner)
@@ -37,25 +37,25 @@ func (b *Bot) handleAdminWallet(ctx context.Context, settings Settings, chatID i
 
 func (b *Bot) handleWalletHistory(ctx context.Context, settings Settings, chatID, telegramID int64) {
 	if b.shop == nil {
-		b.reply(ctx, settings, chatID, "Wallet unavailable.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Wallet unavailable.", "کیف پول در دسترس نیست.", "Кошелёк недоступен."), nil)
 		return
 	}
 	balance, err := b.shop.Balance(ctx, telegramID)
 	if err != nil {
-		b.reply(ctx, settings, chatID, "Could not load wallet balance.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Could not load wallet balance.", "موجودی کیف پول بارگذاری نشد.", "Не удалось загрузить баланс кошелька."), nil)
 		return
 	}
 	entries, err := b.shop.History(ctx, telegramID)
 	if err != nil {
-		b.reply(ctx, settings, chatID, "Could not load wallet history.", nil)
+		b.reply(ctx, settings, chatID, localText(ctx, "Could not load wallet history.", "تاریخچهٔ کیف پول بارگذاری نشد.", "Не удалось загрузить историю кошелька."), nil)
 		return
 	}
-	lines := []string{fmt.Sprintf("💳 <b>Wallet %d</b> · %d toman", telegramID, balance)}
+	lines := []string{fmt.Sprintf(localText(ctx, "💳 <b>Wallet %d</b> · %d toman", "💳 <b>کیف پول %d</b> · %d تومان", "💳 <b>Кошелёк %d</b> · %d томан"), telegramID, balance)}
 	if len(entries) == 0 {
-		lines = append(lines, "No transactions recorded.")
+		lines = append(lines, localText(ctx, "No transactions recorded.", "تراکنشی ثبت نشده است.", "Транзакций нет."))
 	}
 	for _, entry := range entries {
-		lines = append(lines, fmt.Sprintf("%s · %+d toman · %s · <code>%s</code>", escape(entry.CreatedAt), entry.Delta, escape(entry.Reason), escape(entry.Reference)))
+		lines = append(lines, fmt.Sprintf(localText(ctx, "%s · %+d toman · %s · <code>%s</code>", "%s · %+d تومان · %s · <code>%s</code>", "%s · %+d томан · %s · <code>%s</code>"), escape(entry.CreatedAt), entry.Delta, escape(entry.Reason), escape(entry.Reference)))
 	}
 	b.reply(ctx, settings, chatID, strings.Join(lines, "\n"), nil)
 }
@@ -69,24 +69,24 @@ func (b *Bot) handleAdminShopCommand(ctx context.Context, settings Settings, msg
 	switch command {
 	case "/credit":
 		if len(fields) != 3 {
-			b.reply(ctx, settings, chatID, "Usage: /credit &lt;telegram_id&gt; &lt;toman&gt; &lt;unique_reference&gt;", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Usage: /credit &lt;telegram_id&gt; &lt;toman&gt; &lt;unique_reference&gt;", "روش استفاده: /credit &lt;شناسهٔ تلگرام&gt; &lt;تومان&gt; &lt;شناسهٔ یکتا&gt;", "Использование: /credit &lt;ID Telegram&gt; &lt;томан&gt; &lt;уникальный номер&gt;"), nil)
 			return
 		}
 		owner, ownerErr := strconv.ParseInt(fields[0], 10, 64)
 		amount, amountErr := strconv.ParseInt(fields[1], 10, 64)
 		if ownerErr != nil || amountErr != nil || owner <= 0 || amount <= 0 {
-			b.reply(ctx, settings, chatID, "Telegram ID and amount must be positive integers.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Telegram ID and amount must be positive integers.", "شناسهٔ تلگرام و مبلغ باید عدد صحیح مثبت باشند.", "ID Telegram и сумма должны быть положительными целыми числами."), nil)
 			return
 		}
 		balance, err := b.shop.AdminCredit(ctx, owner, amount, "admin:"+fields[2])
 		if err != nil {
-			b.reply(ctx, settings, chatID, "Credit failed: "+escape(err.Error()), nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Credit failed: ", "شارژ ناموفق بود: ", "Не удалось пополнить: ")+escape(err.Error()), nil)
 			return
 		}
-		b.reply(ctx, settings, chatID, fmt.Sprintf("Credit reference processed once. Wallet %d balance: %d toman.", owner, balance), nil)
+		b.reply(ctx, settings, chatID, fmt.Sprintf(localText(ctx, "Credit reference processed once. Wallet %d balance: %d toman.", "شناسهٔ شارژ فقط یک‌بار پردازش شد. موجودی کیف پول %d: %d تومان.", "Пополнение учтено один раз. Баланс кошелька %d: %d томан."), owner, balance), nil)
 	case "/plan-add":
 		if len(fields) < 5 || msg.MessageID <= 0 {
-			b.reply(ctx, settings, chatID, "Usage: /plan-add &lt;service_id&gt; &lt;toman&gt; &lt;GB&gt; &lt;days&gt; &lt;title&gt;", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Usage: /plan-add &lt;service_id&gt; &lt;toman&gt; &lt;GB&gt; &lt;days&gt; &lt;title&gt;", "روش استفاده: /plan-add &lt;شناسهٔ سرویس&gt; &lt;تومان&gt; &lt;گیگابایت&gt; &lt;روز&gt; &lt;عنوان&gt;", "Использование: /plan-add &lt;ID услуги&gt; &lt;томан&gt; &lt;ГБ&gt; &lt;дни&gt; &lt;название&gt;"), nil)
 			return
 		}
 		serviceID, e1 := strconv.ParseInt(fields[0], 10, 64)
@@ -94,30 +94,30 @@ func (b *Bot) handleAdminShopCommand(ctx context.Context, settings Settings, msg
 		gb, e3 := strconv.ParseInt(fields[2], 10, 64)
 		days, e4 := strconv.ParseInt(fields[3], 10, 64)
 		if e1 != nil || e2 != nil || e3 != nil || e4 != nil || serviceID <= 0 || price <= 0 || gb <= 0 || gb > math.MaxInt64/(1<<30) || days <= 0 {
-			b.reply(ctx, settings, chatID, "Invalid service, price, GB, or duration.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Invalid service, price, GB, or duration.", "شناسهٔ سرویس، قیمت، حجم یا مدت نامعتبر است.", "Неверная услуга, цена, объём или срок."), nil)
 			return
 		}
 		product, err := b.shop.AddProduct(ctx, shop.Product{ServiceID: serviceID, Title: strings.Join(fields[4:], " "), PriceToman: price, DataLimitBytes: gb * (1 << 30), DurationDays: days}, fmt.Sprintf("tg-plan:%d:%d", chatID, msg.MessageID))
 		if err != nil {
-			b.reply(ctx, settings, chatID, "Plan creation failed: "+escape(err.Error()), nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Plan creation failed: ", "ساخت طرح ناموفق بود: ", "Не удалось создать тариф: ")+escape(err.Error()), nil)
 			return
 		}
-		b.reply(ctx, settings, chatID, fmt.Sprintf("Plan #%d created for service #%d. Use /shop to view it.", product.ID, product.ServiceID), nil)
+		b.reply(ctx, settings, chatID, fmt.Sprintf(localText(ctx, "Plan #%d created for service #%d. Use /shop to view it.", "طرح شمارهٔ %d برای سرویس شمارهٔ %d ساخته شد. آن را با /shop ببینید.", "Тариф №%d создан для услуги №%d. Просмотр: /shop."), product.ID, product.ServiceID), nil)
 	case "/plan-disable":
 		if len(fields) != 1 {
-			b.reply(ctx, settings, chatID, "Usage: /plan-disable &lt;product_id&gt;", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Usage: /plan-disable &lt;product_id&gt;", "روش استفاده: /plan-disable &lt;شناسهٔ طرح&gt;", "Использование: /plan-disable &lt;ID тарифа&gt;"), nil)
 			return
 		}
 		productID, err := strconv.ParseInt(fields[0], 10, 64)
 		if err != nil || productID <= 0 {
-			b.reply(ctx, settings, chatID, "Invalid product ID.", nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Invalid product ID.", "شناسهٔ طرح نامعتبر است.", "Неверный ID тарифа."), nil)
 			return
 		}
 		if err := b.shop.DisableProduct(ctx, productID); err != nil {
-			b.reply(ctx, settings, chatID, "Plan disable failed: "+escape(err.Error()), nil)
+			b.reply(ctx, settings, chatID, localText(ctx, "Plan disable failed: ", "غیرفعال‌کردن طرح ناموفق بود: ", "Не удалось отключить тариф: ")+escape(err.Error()), nil)
 			return
 		}
-		b.reply(ctx, settings, chatID, fmt.Sprintf("Plan #%d disabled.", productID), nil)
+		b.reply(ctx, settings, chatID, fmt.Sprintf(localText(ctx, "Plan #%d disabled.", "طرح شمارهٔ %d غیرفعال شد.", "Тариф №%d отключён."), productID), nil)
 	}
 }
 
