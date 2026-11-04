@@ -84,6 +84,11 @@ func (s *Server) handleTelegramMiniAppAPI(w http.ResponseWriter, r *http.Request
 			writeError(w, http.StatusInternalServerError, "Could not load wallet")
 			return
 		}
+		transactions, err := shopService.History(r.Context(), telegramID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Could not load wallet history")
+			return
+		}
 		products, err := shopService.Products(r.Context())
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "Could not load plans")
@@ -114,7 +119,7 @@ func (s *Server) handleTelegramMiniAppAPI(w http.ResponseWriter, r *http.Request
 			writeError(w, http.StatusInternalServerError, "Could not load payment instructions")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"telegram_id": telegramID, "balance_toman": balance, "products": products, "orders": orders, "services": accounts, "topups": topups, "tickets": tickets, "payment_instructions": instructions})
+		writeJSON(w, http.StatusOK, map[string]any{"telegram_id": telegramID, "balance_toman": balance, "transactions": transactions, "products": products, "orders": orders, "services": accounts, "topups": topups, "tickets": tickets, "payment_instructions": instructions})
 	case "/api/telegram-app/orders":
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")

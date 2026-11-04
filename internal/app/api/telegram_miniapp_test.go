@@ -62,6 +62,17 @@ func TestTelegramMiniAppOrderOwnershipAndReplay(t *testing.T) {
 	if got := request(http.MethodGet, "/api/telegram-app/state", "", initA); got.Code != http.StatusOK {
 		t.Fatalf("state: %d %s", got.Code, got.Body.String())
 	}
+	if _, err := (botShopService{server: s}).AdminCredit(t.Context(), 123, 5000, "test-wallet-history-owner"); err != nil {
+		t.Fatal(err)
+	}
+	ownerState := request(http.MethodGet, "/api/telegram-app/state", "", initA)
+	if ownerState.Code != http.StatusOK || !strings.Contains(ownerState.Body.String(), "test-wallet-history-owner") {
+		t.Fatalf("owner wallet history: %d %s", ownerState.Code, ownerState.Body.String())
+	}
+	otherState := request(http.MethodGet, "/api/telegram-app/state", "", initB)
+	if otherState.Code != http.StatusOK || strings.Contains(otherState.Body.String(), "test-wallet-history-owner") {
+		t.Fatalf("other customer saw wallet history: %d %s", otherState.Code, otherState.Body.String())
+	}
 	key := uuid.NewString()
 	body := fmt.Sprintf(`{"product_id":1,"request_key":%q}`, key)
 	first := request(http.MethodPost, "/api/telegram-app/orders", body, initA)
@@ -107,7 +118,7 @@ func TestTelegramMiniAppOrderOwnershipAndReplay(t *testing.T) {
 	if other := request(http.MethodGet, "/api/telegram-app/state", "", initB); strings.Contains(other.Body.String(), `"AmountToman":5000`) {
 		t.Fatal("other customer saw top-up")
 	}
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM shop_wallet_entries`).Scan(&count); err != nil || count != 0 {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM shop_wallet_entries WHERE reference LIKE 'topup:%'`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("unapproved topup credited wallet: %d, %v", count, err)
 	}
 	ticketBody := fmt.Sprintf(`{"message":"Need help","request_key":%q}`, uuid.NewString())
