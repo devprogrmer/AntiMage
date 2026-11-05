@@ -3762,5 +3762,10 @@
 	"panelDiagnostics.unknown.cause": "AntiMage cannot identify a reliable cause from this response, so it is showing general safe checks.",
 	"panelDiagnostics.unknown.step1": "Refresh the page and confirm the item is still in its expected state.",
 	"panelDiagnostics.unknown.step2": "Retry only if the operation is safe to repeat; check the panel logs if it fails again.",
-	"panelDiagnostics.unknown.step3": "Send support the technical details and timestamp after removing private information."
+	"panelDiagnostics.unknown.step3": "Send support the technical details and timestamp after removing private information.",
+	"settings.backup.pageTitle": "Backup and restore",
+	"settings.backup.pageDescription": "Create a protected AntiMage backup or restore a previous backup. Review the selected scope before importing.",
+	"settings.backup.binaryOnlyNotice": "Backup and restore controls are available for binary installations.",
+	"settings.backup.noPermission": "Your administrator account does not have backup permission.",
+	"settings.backup.runtimeCheckFailed": "Could not verify the panel installation mode. Refresh this page and try again."
 }

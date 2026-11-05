@@ -3762,5 +3762,10 @@
 	"panelDiagnostics.unknown.cause": "AntiMage از پاسخ دریافتی علت مطمئنی تشخیص نداده و بررسی‌های عمومی و امن را پیشنهاد می‌کند.",
 	"panelDiagnostics.unknown.step1": "صفحه را تازه کنید و وضعیت فعلی مورد را بررسی کنید.",
 	"panelDiagnostics.unknown.step2": "فقط اگر تکرار عملیات امن است دوباره تلاش کنید؛ در غیر این صورت ابتدا لاگ پنل را بررسی کنید.",
-	"panelDiagnostics.unknown.step3": "پس از حذف اطلاعات خصوصی، جزئیات فنی و زمان خطا را برای پشتیبانی بفرستید."
+	"panelDiagnostics.unknown.step3": "پس از حذف اطلاعات خصوصی، جزئیات فنی و زمان خطا را برای پشتیبانی بفرستید.",
+	"settings.backup.pageTitle": "بکاپ و بازیابی",
+	"settings.backup.pageDescription": "از AntiMage نسخهٔ پشتیبان بگیرید یا نسخهٔ قبلی را بازیابی کنید. پیش از واردکردن فایل، محدودهٔ انتخاب‌شده را بررسی کنید.",
+	"settings.backup.binaryOnlyNotice": "ابزارهای بکاپ و بازیابی برای نصب باینری در دسترس هستند.",
+	"settings.backup.noPermission": "حساب مدیر شما مجوز بکاپ ندارد.",
+	"settings.backup.runtimeCheckFailed": "بررسی نوع نصب پنل انجام نشد. صفحه را تازه کنید و دوباره تلاش کنید."
 }

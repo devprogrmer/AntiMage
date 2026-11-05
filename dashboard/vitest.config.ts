@@ -8,6 +8,7 @@ const dashboardDir = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
 	root: dashboardDir,
 	plugins: [tsconfigPaths({ root: dashboardDir })],
+	esbuild: { jsx: "automatic" },
 	test: {
 		include: ["src/**/*.test.{ts,tsx}"],
 	},
