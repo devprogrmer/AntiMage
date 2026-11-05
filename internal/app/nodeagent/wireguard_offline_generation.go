@@ -76,16 +76,20 @@ func cloneWireGuardGenerations(source map[string]wireGuardOfflineGeneration) map
 
 // Caller holds usageMu. Carry and generation are committed in the same durable write.
 func (s *Server) checkpointWireGuardGenerationLocked(cfg wireGuardUsageRuntimeConfig, name string, peers []wireGuardPeerCounters, capture bool) error {
+	identity, err := wireGuardInterfaceIdentity(name)
+	if err != nil {
+		if !wireGuardUsageAccountingEnabled(cfg) {
+			return nil
+		} // Display failure must not enable accounting or block disabled accounting.
+		return fmt.Errorf("wireguard generation identity: %w", err)
+	}
+	s.observeNativePeerTraffic("wireguard", cfg.InboundTag, name+"\x00"+identity, cfg.Peers, nil, peers, time.Now())
 	if !wireGuardUsageAccountingEnabled(cfg) {
 		return nil
 	}
 	generations, err := s.readWireGuardGenerationStateLocked()
 	if err != nil {
 		return err
-	}
-	identity, err := wireGuardInterfaceIdentity(name)
-	if err != nil {
-		return fmt.Errorf("wireguard generation identity: %w", err)
 	}
 	type carryUndo struct {
 		value  wireGuardUsageCarry

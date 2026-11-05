@@ -181,6 +181,10 @@ func (s *Server) collectOpenVPNUserUsage(
 		}
 
 		scannedInboundTags[cfg.InboundTag] = struct{}{}
+		rateAt := time.Now()
+		ratesDue := s.nativeTrafficDue("openvpn", cfg.InboundTag, rateAt)
+		ratesComplete := true
+		var rates []nativeTrafficCounter
 
 		for _, client := range clients {
 			activeSessionKeys[openVPNStatusSessionKey(cfg.InboundTag, client)] = struct{}{}
@@ -201,6 +205,7 @@ func (s *Server) collectOpenVPNUserUsage(
 
 			total, err := openVPNStatusTotalBytes(client)
 			if err != nil {
+				ratesComplete = false
 				continue
 			}
 
@@ -212,6 +217,9 @@ func (s *Server) collectOpenVPNUserUsage(
 				return nil, fmt.Errorf("OpenVPN accounting requires daemon generation or connected-since identity")
 			}
 			sessionKey := openVPNStatusSessionKey(cfg.InboundTag, client) + "\x00since\x00" + client.ConnectedSince + "\x00generation\x00" + generation
+			if ratesDue {
+				rates = append(rates, nativeTrafficCounter{sessionKey, generation, userID, client.BytesReceived, client.BytesSent})
+			}
 
 			baseline, exists :=
 				nextBaseline[sessionKey]
@@ -254,6 +262,9 @@ func (s *Server) collectOpenVPNUserUsage(
 			nextBaseline[owner] += delta
 
 			aggregated[key] = sample
+		}
+		if ratesDue && ratesComplete {
+			s.observeNativeTraffic("openvpn", cfg.InboundTag, rateAt, rates)
 		}
 	}
 

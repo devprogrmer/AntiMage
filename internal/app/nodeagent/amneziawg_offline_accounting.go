@@ -252,6 +252,7 @@ func (s *Server) amneziaWGOfflineLocked(ctx context.Context, enforce, checkpoint
 				stateChanged = true
 			}
 		}
+		s.observeNativePeerTraffic("amneziawg", cfg.InboundTag, cfg.InterfaceName+"\x00"+identity+"\x00"+cfg.Generation, cfg.Peers, cfg.PeerGenerations, peers, time.Now())
 	}
 	state.Snapshots = snapshots
 	if len(state.Counters) > maxAccountingCounterSeries {

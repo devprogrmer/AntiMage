@@ -184,6 +184,7 @@ func (s *Server) collectL2TPUserUsage(
 		rawPPP = nil
 	}
 
+	pppQueryOK := err == nil
 	pppSessions := parseL2TPPPPInterfaces(string(rawPPP))
 
 	// Seed legacy pending native snapshots: their deltas are already in the batch.
@@ -261,6 +262,10 @@ func (s *Server) collectL2TPUserUsage(
 			cfg.InboundTag = tag
 		}
 
+		rateAt := time.Now()
+		ratesDue := s.nativeTrafficDue("l2tp", cfg.InboundTag, rateAt)
+		ratesComplete := pppQueryOK
+		var rates []nativeTrafficCounter
 		for _, session := range pppSessions {
 			userID := cfg.Users[session.PeerIP]
 			if userID <= 0 {
@@ -272,6 +277,7 @@ func (s *Server) collectL2TPUserUsage(
 				"rx_bytes",
 			)
 			if err != nil {
+				ratesComplete = false
 				s.appendLog(
 					"l2tp rx counter read failed for " +
 						session.Interface + ": " + err.Error(),
@@ -284,6 +290,7 @@ func (s *Server) collectL2TPUserUsage(
 				"tx_bytes",
 			)
 			if err != nil {
+				ratesComplete = false
 				s.appendLog(
 					"l2tp tx counter read failed for " +
 						session.Interface + ": " + err.Error(),
@@ -292,6 +299,7 @@ func (s *Server) collectL2TPUserUsage(
 			}
 
 			if ^uint64(0)-rx < tx {
+				ratesComplete = false
 				continue
 			}
 			total := rx + tx
@@ -316,6 +324,9 @@ func (s *Server) collectL2TPUserUsage(
 				baselineKey = legacyKey + "\x00session:" + record.ID
 			} else if !os.IsNotExist(sessionErr) {
 				return nil, sessionErr
+			}
+			if ratesDue {
+				rates = append(rates, nativeTrafficCounter{session.Interface, baselineKey, userID, rx, tx})
 			}
 			baseline, exists :=
 				nextBaseline[baselineKey]
@@ -350,6 +361,9 @@ func (s *Server) collectL2TPUserUsage(
 			sample.Value += delta
 			nextBaseline[owner] += delta
 			aggregated[key] = sample
+		}
+		if ratesDue && ratesComplete {
+			s.observeNativeTraffic("l2tp", cfg.InboundTag, rateAt, rates)
 		}
 		finals, err := pppOfflineFinalRecords(root)
 		if err != nil {
