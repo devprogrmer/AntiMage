@@ -2,7 +2,6 @@ package nodeagent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,15 +44,11 @@ func (s *Server) wireGuardOfflineTick(ctx context.Context, enforce, checkpoint b
 		if !entry.IsDir() {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(root, entry.Name(), "usage-helper.json"))
+		cfg, err := readNativeHelper[wireGuardUsageRuntimeConfig](s, filepath.Join(root, entry.Name(), "usage-helper.json"))
 		if os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
-			return err
-		}
-		var cfg wireGuardUsageRuntimeConfig
-		if err := json.Unmarshal(raw, &cfg); err != nil {
 			return fmt.Errorf("offline wireguard policy: %w", err)
 		}
 		configs = append(configs, cfg)

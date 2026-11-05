@@ -140,12 +140,8 @@ func (s *Server) collectAmneziaWGUserUsage(ctx context.Context, _ *nodev1.Collec
 	}
 	now := time.Now().UTC()
 	for _, entry := range entries {
-		raw, readErr := os.ReadFile(filepath.Join(s.cfg.DataDir, "amneziawg", "runtime", entry.Name(), "usage-helper.json"))
+		cfg, readErr := readNativeHelper[amneziaWGUsageRuntimeConfig](s, filepath.Join(s.cfg.DataDir, "amneziawg", "runtime", entry.Name(), "usage-helper.json"))
 		if readErr != nil {
-			continue
-		}
-		var cfg amneziaWGUsageRuntimeConfig
-		if json.Unmarshal(raw, &cfg) != nil {
 			continue
 		}
 		peers := ledger.Snapshots[cfg.InterfaceName]

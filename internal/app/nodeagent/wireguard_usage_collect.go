@@ -2,7 +2,6 @@ package nodeagent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -96,7 +95,7 @@ func (s *Server) collectWireGuardUserUsage(
 		}
 
 		path := filepath.Join(root, entry.Name(), "usage-helper.json")
-		raw, err := os.ReadFile(path)
+		cfg, err := readNativeHelper[wireGuardUsageRuntimeConfig](s, path)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
@@ -104,16 +103,6 @@ func (s *Server) collectWireGuardUserUsage(
 			baselinePruningSafe = false
 			s.appendLog(
 				"wireguard usage config read failed for " +
-					entry.Name() + ": " + err.Error(),
-			)
-			continue
-		}
-
-		var cfg wireGuardUsageRuntimeConfig
-		if err := json.Unmarshal(raw, &cfg); err != nil {
-			baselinePruningSafe = false
-			s.appendLog(
-				"wireguard usage config parse failed for " +
 					entry.Name() + ": " + err.Error(),
 			)
 			continue
