@@ -72,7 +72,7 @@ func (s *Server) anyConnectOfflineSnapshots(ctx context.Context) ([]anyConnectOf
 		return nil, err
 	}
 	if policy != nil {
-		payload, err := parseNativeRuntimePayload(policy.NativeJSON)
+		payload, err := policy.nativePayload()
 		if err != nil {
 			return nil, err
 		}

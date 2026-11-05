@@ -324,7 +324,7 @@ func (s *Server) offlineIKEv2RuntimesForCheckpoint(persist bool) (map[string]ike
 		return nil, err
 	}
 	if policy != nil {
-		payload, err := parseNativeRuntimePayload(policy.NativeJSON)
+		payload, err := policy.nativePayload()
 		if err != nil {
 			return nil, err
 		}

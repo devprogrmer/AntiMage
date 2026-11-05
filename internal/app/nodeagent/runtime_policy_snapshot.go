@@ -20,6 +20,18 @@ type runtimePolicySnapshot struct {
 	Revision   uint64 `json:"revision"`
 	Checksum   string `json:"checksum"`
 	Stopped    bool   `json:"stopped,omitempty"`
+	// Parsed once before publication. All nested slices/maps are immutable;
+	// replacing a policy (even at the same revision) builds a new snapshot.
+	native *nativeRuntimePayload
+}
+
+func (snapshot *runtimePolicySnapshot) nativePayload() (nativeRuntimePayload, error) {
+	if snapshot.native != nil {
+		return *snapshot.native, nil
+	}
+	// Legacy/test-created snapshots have not passed the load/persist path.
+	// Do not lazily mutate them: concurrent readers must remain race-free.
+	return parseNativeRuntimePayload(snapshot.NativeJSON)
 }
 
 func runtimePolicyChecksum(snapshot runtimePolicySnapshot) (string, error) {
@@ -53,11 +65,11 @@ func (s *Server) persistRuntimePolicy(req *nodev1.RuntimeConfigRequest) error {
 	if !json.Valid([]byte(req.GetConfigJson())) {
 		return fmt.Errorf("invalid runtime policy config JSON")
 	}
-	if _, err := parseNativeRuntimePayload(req.GetOvRuntimeJson()); err != nil {
+	payload, err := parseNativeRuntimePayload(req.GetOvRuntimeJson())
+	if err != nil {
 		return err
 	}
-	snapshot := runtimePolicySnapshot{Version: 1, ConfigJSON: req.GetConfigJson(), NativeJSON: req.GetOvRuntimeJson(), Revision: req.GetDesiredRevision()}
-	var err error
+	snapshot := runtimePolicySnapshot{Version: 1, ConfigJSON: req.GetConfigJson(), NativeJSON: req.GetOvRuntimeJson(), Revision: req.GetDesiredRevision(), native: &payload}
 	snapshot.Checksum, err = runtimePolicyChecksum(snapshot)
 	if err != nil {
 		return err
@@ -95,9 +107,11 @@ func (s *Server) loadRuntimePolicy() (*runtimePolicySnapshot, error) {
 	if err != nil || snapshot.Version != 1 || checksum != snapshot.Checksum || strings.TrimSpace(snapshot.ConfigJSON) == "" || !json.Valid([]byte(snapshot.ConfigJSON)) {
 		return nil, fmt.Errorf("offline runtime policy integrity check failed")
 	}
-	if _, err := parseNativeRuntimePayload(snapshot.NativeJSON); err != nil {
+	payload, err := parseNativeRuntimePayload(snapshot.NativeJSON)
+	if err != nil {
 		return nil, err
 	}
+	snapshot.native = &payload
 	s.mu.Lock()
 	s.runtimePolicy = &snapshot
 	s.mu.Unlock()
