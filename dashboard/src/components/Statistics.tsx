@@ -1771,6 +1771,10 @@ export const Statistics: FC<BoxProps> = (props) => {
 							)}
 						</HStack>
 					</Flex>
+					<DashboardMaintenanceControls
+						channel={systemData.channel}
+						version={systemData.version}
+					/>
 					<SimpleGrid
 						className="am-dashboard-kpis"
 						columns={{ base: 1, sm: 2, xl: 4 }}

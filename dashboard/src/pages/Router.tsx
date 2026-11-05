@@ -19,6 +19,9 @@ const AppLayout = lazy(async () => ({
 const DashboardPage = lazy(async () => ({
 	default: (await import("./DashboardPage")).DashboardPage,
 }));
+const BackupRestorePage = lazy(async () => ({
+	default: (await import("./BackupRestorePage")).BackupRestorePage,
+}));
 const UsersPage = lazy(async () => ({
 	default: (await import("./UsersPage")).UsersPage,
 }));
@@ -149,6 +152,7 @@ const routeSegments = new Set([
 	"phpmyadmin",
 	"external-apps",
 	"recent-actions",
+	"backup",
 ]);
 
 const trimTrailingSlash = (value: string) => {
@@ -228,6 +232,10 @@ export const router = createBrowserRouter(
 				{
 					path: "users",
 					element: <LazyPage Page={UsersPage} />,
+				},
+				{
+					path: "backup",
+					element: <LazyPage Page={BackupRestorePage} />,
 				},
 				{
 					path: "bulk-actions",

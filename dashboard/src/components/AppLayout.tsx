@@ -118,6 +118,7 @@ type BottomNavItem = {
 };
 
 const routeLabelKeys: Record<string, string> = {
+	backup: "settings.backup.pageTitle",
 	dashboard: "dashboard",
 	users: "users",
 	admins: "admins",

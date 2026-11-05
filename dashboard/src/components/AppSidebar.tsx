@@ -8,6 +8,7 @@ import {
 	VStack,
 } from "@chakra-ui/react";
 import {
+	ArchiveBoxIcon,
 	ArrowsRightLeftIcon,
 	BoltIcon,
 	BookOpenIcon,
@@ -63,6 +64,7 @@ const XrayLogsIconStyled = chakra(DocumentTextIcon, iconProps);
 const ApiDocsIconStyled = chakra(CodeBracketSquareIcon, iconProps);
 const PHPMyAdminIconStyled = chakra(CircleStackIcon, iconProps);
 const ExternalAppsIconStyled = chakra(CommandLineIcon, iconProps);
+const BackupIconStyled = chakra(ArchiveBoxIcon, iconProps);
 interface AppSidebarProps {
 	collapsed: boolean;
 	/** when rendered inside a Drawer on mobile */
@@ -133,6 +135,10 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		: baseSelf;
 	const canViewUsage = Boolean(sectionAccess?.[AdminSection.Usage]);
 	const canViewAdmins = Boolean(sectionAccess?.[AdminSection.Admins]);
+	const canBackUp =
+		isFullAccess ||
+		(userData.role === AdminRole.Sudo &&
+			Boolean(userData.permissions?.sudo?.[AdminSudoScope.Backups]));
 	const canViewServicesSection = Boolean(
 		sectionAccess?.[AdminSection.Services],
 	);
@@ -267,6 +273,13 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		url: "/bulk-actions",
 		icon: BulkActionsIconStyled,
 	});
+	if (canBackUp) {
+		items.push({
+			title: t("settings.backup.tabTitle"),
+			url: "/backup",
+			icon: BackupIconStyled,
+		});
+	}
 
 	if (selfAccess.self_myaccount) {
 		items.splice(1, 0, {
@@ -344,6 +357,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 				pickSetting("/phpmyadmin"),
 				pickSetting("/external-apps"),
 				pickSetting("/api-docs"),
+				pickDirect("/backup"),
 				pickSetting(tutorialsUrl),
 			],
 		},
