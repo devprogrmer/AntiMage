@@ -900,6 +900,11 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow, 
 			if operation.OperationType == "update_user" && !client.Supports("targeted_user_update") {
 				syncConfig = true
 			}
+			// These nodes publish authoritative quota/credential policy through
+			// durable SyncConfig, then apply supported Xray additions live.
+			if client.Supports("durable_user_config_sync") {
+				syncConfig = true
+			}
 			if !syncConfig {
 				return c.grpcApplyUserOperation(ctx, client, node, operation, prepared)
 			}
