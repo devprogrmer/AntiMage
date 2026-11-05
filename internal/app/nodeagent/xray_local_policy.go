@@ -50,7 +50,7 @@ func (s *Server) xrayQuotaPolicyIndexFor(snapshot *runtimePolicySnapshot) (*xray
 		}
 		s.mu.Unlock()
 	}
-	payload, err := parseNativeRuntimePayload(snapshot.NativeJSON)
+	payload, err := snapshot.nativePayload()
 	if err != nil {
 		return nil, err
 	}
