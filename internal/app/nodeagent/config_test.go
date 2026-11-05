@@ -6,6 +6,23 @@ import (
 	"testing"
 )
 
+func TestLoadConfigMasterCertificateTrustPrecedence(t *testing.T) {
+	t.Setenv("ANTIMAGE_NODE_MASTER_CERT_FILE", "")
+	t.Setenv("SSL_CLIENT_CERT_FILE", "")
+	t.Setenv("SSL_CERT_FILE", filepath.Join(t.TempDir(), "node.pem"))
+	if cfg := LoadConfig(); cfg.MasterCertFile != cfg.CertFile {
+		t.Fatalf("existing install bundle trust = %q, node cert = %q", cfg.MasterCertFile, cfg.CertFile)
+	}
+	t.Setenv("SSL_CLIENT_CERT_FILE", "legacy-master.pem")
+	if got := LoadConfig().MasterCertFile; got != "legacy-master.pem" {
+		t.Fatalf("legacy explicit client trust = %q", got)
+	}
+	t.Setenv("ANTIMAGE_NODE_MASTER_CERT_FILE", "explicit-master.pem")
+	if got := LoadConfig().MasterCertFile; got != "explicit-master.pem" {
+		t.Fatalf("explicit master trust = %q", got)
+	}
+}
+
 func TestConfiguredNodeVersion(t *testing.T) {
 	metadataPath := filepath.Join(t.TempDir(), ".binary-release.json")
 	if err := os.WriteFile(metadataPath, []byte(`{"tag":"dev-ad4bf47"}`), 0o600); err != nil {

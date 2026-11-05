@@ -210,6 +210,10 @@ func (s *Server) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("load node certificate: %w", err)
 	}
+	controlTLS, err := nodeControlTLS(s.cfg, cert)
+	if err != nil {
+		return fmt.Errorf("configure node control authentication: %w", err)
+	}
 	addr := net.JoinHostPort(s.cfg.ListenHost, fmt.Sprintf("%d", s.cfg.ServicePort))
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -238,11 +242,7 @@ func (s *Server) Run(ctx context.Context) error {
 		_ = s.stopRuntime()
 	}()
 
-	grpcServer := grpc.NewServer(grpc.Creds(credentials.NewTLS(&tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ClientAuth:   tls.RequireAnyClientCert,
-		MinVersion:   tls.VersionTLS12,
-	})))
+	grpcServer := grpc.NewServer(grpc.Creds(credentials.NewTLS(controlTLS)))
 	if err := s.restoreRuntimePolicy(ctx); err != nil {
 		return fmt.Errorf("restore offline runtime policy: %w", err)
 	}

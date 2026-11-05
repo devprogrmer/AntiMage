@@ -169,11 +169,13 @@ func TestStartAndStopL2TPInboundManageSystemPreUpHook(t *testing.T) {
 	l2TPIPPreUpHookPath = filepath.Join(root, "etc", "ppp", "ip-pre-up.d", "91-antimage-l2tp")
 
 	oldLookPath, oldCommand, oldExecutable := l2TPLookPath, l2TPCommandContext, pppSessionHelperExecutable
-	l2TPLookPath = func(name string) (string, error) { return "/bin/true", nil }
+	l2TPLookPath = func(name string) (string, error) { return os.Args[0], nil }
 	l2TPCommandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
-		return exec.CommandContext(ctx, "/bin/true")
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestL2TPHookDaemonHelperProcess$")
+		cmd.Env = append(os.Environ(), "ANTIMAGE_TEST_L2TP_HOOK_DAEMON=1")
+		return cmd
 	}
-	pppSessionHelperExecutable = func() (string, error) { return "/bin/true", nil }
+	pppSessionHelperExecutable = func() (string, error) { return os.Args[0], nil }
 	t.Cleanup(func() {
 		l2TPLookPath, l2TPCommandContext, pppSessionHelperExecutable = oldLookPath, oldCommand, oldExecutable
 	})
@@ -208,6 +210,13 @@ func TestStartAndStopL2TPInboundManageSystemPreUpHook(t *testing.T) {
 	if _, err := os.Stat(l2TPIPPreUpHookPath); !os.IsNotExist(err) {
 		t.Fatalf("L2TP shutdown did not remove managed pre-up hook: %v", err)
 	}
+}
+
+func TestL2TPHookDaemonHelperProcess(t *testing.T) {
+	if os.Getenv("ANTIMAGE_TEST_L2TP_HOOK_DAEMON") != "1" {
+		return
+	}
+	os.Exit(0)
 }
 
 func TestPrepareL2TPInboundPersistsAllSessionEnforcementFields(t *testing.T) {
