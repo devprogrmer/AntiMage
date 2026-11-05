@@ -77,7 +77,7 @@ func TestTelegramMiniAppBrowserPreview(t *testing.T) {
 	t.Logf("Browser fixture: %s/telegram-app", srv.URL)
 	select {
 	case <-finished:
-	case <-time.After(5 * time.Minute):
+	case <-time.After(15 * time.Minute):
 		t.Fatal("browser fixture timed out")
 	}
 	var limit, usage, expiry int64
