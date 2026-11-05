@@ -150,6 +150,11 @@ type Server struct {
 	nativeLiveMu                     sync.Mutex
 	nativeLiveRates                  map[nativeTrafficScopeKey]*nativeTrafficScope
 	nativeLiveSeries                 int
+	nativeHelperMu                   sync.Mutex
+	nativeHelperEntries              map[string]nativeHelperEntry
+	nativeHelperScratch              []byte
+	nativeHelperClock                uint64
+	nativeHelperBytes                int
 }
 
 type transferSample struct {

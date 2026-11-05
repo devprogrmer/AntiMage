@@ -130,15 +130,11 @@ func (s *Server) amneziaWGOfflineLocked(ctx context.Context, enforce, checkpoint
 		if !entry.IsDir() {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(root, entry.Name(), "usage-helper.json"))
+		cfg, err := readNativeHelper[amneziaWGUsageRuntimeConfig](s, filepath.Join(root, entry.Name(), "usage-helper.json"))
 		if os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
-			return state, err
-		}
-		var cfg amneziaWGUsageRuntimeConfig
-		if err := json.Unmarshal(raw, &cfg); err != nil {
 			return state, err
 		}
 		if cfg.Transitioning {

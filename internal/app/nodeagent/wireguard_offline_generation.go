@@ -297,15 +297,11 @@ func (s *Server) checkWireGuardOfflineGeneration(ctx context.Context, enforce bo
 		if !entry.IsDir() {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(root, entry.Name(), "usage-helper.json"))
+		cfg, err := readNativeHelper[wireGuardUsageRuntimeConfig](s, filepath.Join(root, entry.Name(), "usage-helper.json"))
 		if os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
-			return err
-		}
-		var cfg wireGuardUsageRuntimeConfig
-		if err := json.Unmarshal(raw, &cfg); err != nil {
 			return err
 		}
 		// Legacy port-only helpers are resolved by the normal collection path.
@@ -315,7 +311,7 @@ func (s *Server) checkWireGuardOfflineGeneration(ctx context.Context, enforce bo
 		if len(interfaces) > 0 && cfg.InterfaceName != interfaces[0] {
 			continue
 		}
-		raw, err = wireGuardDumpInterface(ctx, cfg.InterfaceName)
+		raw, err := wireGuardDumpInterface(ctx, cfg.InterfaceName)
 		if err != nil {
 			return err
 		}
