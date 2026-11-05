@@ -1,9 +1,33 @@
 {
   "schema_version": 1,
   "project": "AntiMage",
-  "latest": "dev-67126bd",
-  "updated_at": "2026-11-05T17:18:04Z",
+  "latest": "dev-ea70756",
+  "updated_at": "2026-11-05T17:35:08Z",
   "builds": [
+    {
+      "tag": "dev-ea70756",
+      "sha": "ea70756ec072bc24a14f44bc7b55d2ba6dfb3600",
+      "branch": "dev",
+      "workflow": "Binary Build",
+      "run_id": "42074764052",
+      "run_number": "486",
+      "created_at": "2026-11-05T17:35:08Z",
+      "release_tag": "dev-builds",
+      "assets": {
+        "node-linux-amd64": {
+          "name": "antimage-node-dev-ea70756-linux-amd64",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-node-dev-ea70756-linux-amd64"
+        },
+        "windows-amd64": {
+          "name": "antimage-windows-amd64-dev-ea70756.zip",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-ea70756.zip"
+        },
+        "linux-amd64": {
+          "name": "antimage-linux-amd64-dev-ea70756.tar.gz",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-linux-amd64-dev-ea70756.tar.gz"
+        }
+      }
+    },
     {
       "tag": "dev-67126bd",
       "sha": "67126bda9c2780453134d55f95c570d1e604c275",
@@ -1021,26 +1045,6 @@
         "windows-amd64": {
           "name": "antimage-windows-amd64-dev-e442207.zip",
           "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-e442207.zip"
-        }
-      }
-    },
-    {
-      "tag": "dev-ecca24c",
-      "sha": "ecca24cdc9e542912f05166c7ff5a2e7d74b39f5",
-      "branch": "dev",
-      "workflow": "Binary Build",
-      "run_id": "35513582582",
-      "run_number": "174",
-      "created_at": "2026-09-20T13:34:23Z",
-      "release_tag": "dev-builds",
-      "assets": {
-        "linux-amd64": {
-          "name": "antimage-linux-amd64-dev-ecca24c.tar.gz",
-          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-linux-amd64-dev-ecca24c.tar.gz"
-        },
-        "windows-amd64": {
-          "name": "antimage-windows-amd64-dev-ecca24c.zip",
-          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-ecca24c.zip"
         }
       }
     }
