@@ -108,4 +108,43 @@ func TestGatewayAPIAuthenticatesAndDoesNotTrustCallbackStatus(t *testing.T) {
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM shop_wallet_entries`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("journal=%d %v", count, err)
 	}
+	// Spend the verified payment through the real user service and node outbox,
+	// rather than replacing account creation with a fake provisioner.
+	for _, q := range []string{
+		`INSERT INTO admins(id,username,hashed_password,role,permissions,status) VALUES(1,'owner','unused','full_access','{}','active')`,
+		`INSERT INTO services(id,name) VALUES(1,'Gateway service')`,
+		`INSERT INTO inbounds(tag) VALUES('gateway-in')`,
+		`INSERT INTO xray_config(id,data) VALUES(1,'{"inbounds":[{"tag":"gateway-in","protocol":"vless","port":443,"settings":{"decryption":"none"}}]}') ON CONFLICT(id) DO UPDATE SET data=excluded.data`,
+		`INSERT INTO hosts(id,inbound_tag,remark,address,is_disabled) VALUES(1,'gateway-in','main','example.com',0)`,
+		`INSERT INTO service_hosts(service_id,host_id,sort) VALUES(1,1,0)`,
+		`INSERT INTO nodes(id,name,address,port,api_port,status) VALUES(1,'Test node','127.0.0.1',62050,62051,'connected')`,
+		`INSERT INTO shop_products(id,service_id,title,price_toman,data_limit_bytes,duration_days,enabled,created_at) VALUES(1,1,'Gateway plan',1000,1073741824,30,1,'2026-01-01')`,
+	} {
+		if _, err := s.db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	orderResponse := request("POST", "/api/telegram-app/orders", fmt.Sprintf(`{"product_id":1,"request_key":%q}`, uuid.NewString()), 123)
+	if orderResponse.Code != 200 {
+		t.Fatalf("order=%d %s", orderResponse.Code, orderResponse.Body.String())
+	}
+	var order shop.Order
+	if err := json.Unmarshal(orderResponse.Body.Bytes(), &order); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		rec := request("POST", "/api/telegram-app/pay", fmt.Sprintf(`{"order_id":%q}`, order.ID), 123)
+		if rec.Code != 200 {
+			t.Fatalf("purchase=%d %s", rec.Code, rec.Body.String())
+		}
+	}
+	if balance, err := (shop.Wallet{DB: s.db, Dialect: s.dialect}).Balance(t.Context(), 123); err != nil || balance != 234 {
+		t.Fatalf("purchase balance=%d %v", balance, err)
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE telegram_id=123 AND status='on_hold' AND data_limit=1073741824 AND on_hold_expire_duration=2592000`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("real provisioned accounts=%d %v", count, err)
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM node_operations WHERE operation_type='add_user'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("node outbox=%d %v", count, err)
+	}
 }
