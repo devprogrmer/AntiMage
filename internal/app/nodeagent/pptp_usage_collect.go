@@ -184,6 +184,7 @@ func (s *Server) collectPPTPUserUsage(
 		rawPPP = nil
 	}
 
+	pppQueryOK := err == nil
 	pppSessions := parsePPTPPPPInterfaces(string(rawPPP))
 
 	// Seed legacy pending native snapshots: their deltas are already in the batch.
@@ -261,6 +262,10 @@ func (s *Server) collectPPTPUserUsage(
 			cfg.InboundTag = tag
 		}
 
+		rateAt := time.Now()
+		ratesDue := s.nativeTrafficDue("pptp", cfg.InboundTag, rateAt)
+		ratesComplete := pppQueryOK
+		var rates []nativeTrafficCounter
 		for _, session := range pppSessions {
 			userID := cfg.Users[session.PeerIP]
 			if userID <= 0 {
@@ -272,6 +277,7 @@ func (s *Server) collectPPTPUserUsage(
 				"rx_bytes",
 			)
 			if err != nil {
+				ratesComplete = false
 				s.appendLog(
 					"pptp rx counter read failed for " +
 						session.Interface + ": " + err.Error(),
@@ -284,6 +290,7 @@ func (s *Server) collectPPTPUserUsage(
 				"tx_bytes",
 			)
 			if err != nil {
+				ratesComplete = false
 				s.appendLog(
 					"pptp tx counter read failed for " +
 						session.Interface + ": " + err.Error(),
@@ -292,6 +299,7 @@ func (s *Server) collectPPTPUserUsage(
 			}
 
 			if ^uint64(0)-rx < tx {
+				ratesComplete = false
 				continue
 			}
 			total := rx + tx
@@ -316,6 +324,9 @@ func (s *Server) collectPPTPUserUsage(
 				baselineKey = legacyKey + "\x00session:" + record.ID
 			} else if !os.IsNotExist(sessionErr) {
 				return nil, sessionErr
+			}
+			if ratesDue {
+				rates = append(rates, nativeTrafficCounter{session.Interface, baselineKey, userID, rx, tx})
 			}
 			baseline, exists :=
 				nextBaseline[baselineKey]
@@ -350,6 +361,9 @@ func (s *Server) collectPPTPUserUsage(
 			sample.Value += delta
 			nextBaseline[owner] += delta
 			aggregated[key] = sample
+		}
+		if ratesDue && ratesComplete {
+			s.observeNativeTraffic("pptp", cfg.InboundTag, rateAt, rates)
 		}
 		finals, err := pppOfflineFinalRecords(root)
 		if err != nil {

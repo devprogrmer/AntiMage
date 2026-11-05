@@ -653,6 +653,9 @@ func (s *Server) previewIKEv2OfflineLocked(runtimes map[string]ikev2RuntimeInbou
 	}
 	observations := []offlineUsageObservation{}
 	live := map[string]ikev2UsageSample{}
+	rateAt := time.Now()
+	ratesDue := s.nativeTrafficDue("ikev2", "", rateAt)
+	var rates []nativeTrafficCounter
 	for _, sa := range sas {
 		inbound, ok := runtimes[sa.ConnectionName]
 		if !ok {
@@ -687,6 +690,10 @@ func (s *Server) previewIKEv2OfflineLocked(runtimes map[string]ikev2RuntimeInbou
 				Generation: ikev2ChildGeneration(boot, inbound.Tag, sa, child),
 				Legacy:     ikev2UsageBaselineKey(inbound.Tag, sa, child), Owner: offlineUsageOwner{user.UserID, inbound.Tag}, Native: child.BytesIn + child.BytesOut,
 			})
+			if ratesDue && strings.EqualFold(child.State, "INSTALLED") {
+				generation := ikev2ChildGeneration(boot, inbound.Tag, sa, child)
+				rates = append(rates, nativeTrafficCounter{generation, generation, user.UserID, child.BytesIn, child.BytesOut})
+			}
 		}
 	}
 	legacy := s.ikev2UsageBaseline
@@ -720,6 +727,9 @@ func (s *Server) previewIKEv2OfflineLocked(runtimes map[string]ikev2RuntimeInbou
 	}
 	if err := offlineReplaceOnline(next, live); err != nil {
 		return nil, err
+	}
+	if ratesDue {
+		s.observeNativeTraffic("ikev2", "", rateAt, rates)
 	}
 
 	return next, nil

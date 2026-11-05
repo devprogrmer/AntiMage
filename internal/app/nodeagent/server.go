@@ -147,6 +147,9 @@ type Server struct {
 	appliedRev                       uint64
 	logs                             []string
 	lastTransferSample               *transferSample
+	nativeLiveMu                     sync.Mutex
+	nativeLiveRates                  map[nativeTrafficScopeKey]*nativeTrafficScope
+	nativeLiveSeries                 int
 }
 
 type transferSample struct {
@@ -490,7 +493,7 @@ func (s *Server) CollectUserUsage(
 		return nil, err
 	}
 	s.recordLocalAccountingHealth("delivery", nil)
-	return batch, nil
+	return s.withNativeTrafficSpeeds(batch, time.Now()), nil
 }
 
 func (s *Server) AckUserUsage(

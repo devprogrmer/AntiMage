@@ -19,7 +19,7 @@
 
 ## Work items and acceptance gates
 
-- [ ] Node TLS: reject foreign, absent, expired and changed client certificates; accept current bundles and explicit master pin; cover real TLS handshakes and startup errors.
+- [x] Node TLS: reject foreign, absent, expired and changed client certificates; accept current bundles and explicit master pin; cover real TLS handshakes and startup errors. PR #111 merged as `1332a36`; exact-head unit/build/vet and Linux race/native-protocol CI passed. Production rollout remains separate.
 - [ ] Xray user mutations: actual gRPC Add/Update/Remove, durable desired state, retry/reconcile, no global restart for user-only diffs. Observe uninterrupted witness traffic.
 - [ ] Xray quota cutoff: close only exhausted users' streams. Investigate core capabilities; do not claim RemoveUser closes active streams or introduce a global restart as the solution.
 - [ ] Runtime rollout: validate with target core, retain last-known-good state, rollback on startup failure, preserve accounting generation checkpoints.
