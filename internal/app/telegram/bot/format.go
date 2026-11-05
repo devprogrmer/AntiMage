@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"strings"
@@ -111,8 +112,29 @@ func statusLine(status string) string {
 	return fmt.Sprintf("%s <code>%s</code>", emoji, escape(status))
 }
 
+func localStatusLine(ctx context.Context, status string) string {
+	label := status
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "active":
+		label = localText(ctx, status, "فعال", "Активен")
+	case "expired":
+		label = localText(ctx, status, "منقضی", "Истёк")
+	case "limited":
+		label = localText(ctx, status, "حجم تمام‌شده", "Лимит исчерпан")
+	case "disabled":
+		label = localText(ctx, status, "غیرفعال", "Отключён")
+	case "on_hold":
+		label = localText(ctx, status, "در انتظار", "Приостановлен")
+	}
+	emoji := statusEmoji[strings.ToLower(strings.TrimSpace(status))]
+	if emoji == "" {
+		emoji = "•"
+	}
+	return fmt.Sprintf("%s <code>%s</code>", emoji, escape(label))
+}
+
 // userDetailText renders the admin-facing user detail message.
-func userDetailText(user UserView) string {
+func userDetailText(ctx context.Context, user UserView) string {
 	dataLeft := "-"
 	if user.DataLimit != nil && *user.DataLimit > 0 {
 		left := *user.DataLimit - user.UsedTraffic
@@ -122,30 +144,30 @@ func userDetailText(user UserView) string {
 		dataLeft = formatBytes(left)
 	}
 	lines := []string{
-		"👤 " + statusLine(user.Status),
+		"👤 " + localStatusLine(ctx, user.Status),
 		separator(),
-		line("Username", user.Username),
-		line("Data limit", formatOptionalBytes(user.DataLimit)),
-		line("Data used", formatBytes(user.UsedTraffic)),
-		line("Data left", dataLeft),
-		line("Expires", formatExpire(user.Expire)),
-		line("Online", relativeFromServer(user.OnlineAt)),
-		line("Subscription updated", relativeFromServer(user.SubUpdatedAt)),
+		line(localText(ctx, "Username", "نام کاربری", "Пользователь"), user.Username),
+		line(localText(ctx, "Data limit", "سقف حجم", "Лимит трафика"), localOptionalBytes(ctx, user.DataLimit)),
+		line(localText(ctx, "Data used", "حجم مصرف‌شده", "Использовано"), formatBytes(user.UsedTraffic)),
+		line(localText(ctx, "Data left", "حجم باقیمانده", "Остаток"), dataLeft),
+		line(localText(ctx, "Expires", "انقضا", "Истекает"), localExpire(ctx, user.Expire)),
+		line(localText(ctx, "Online", "آخرین حضور", "Был в сети"), localRelative(ctx, user.OnlineAt)),
+		line(localText(ctx, "Subscription updated", "آخرین به‌روزرسانی اشتراک", "Подписка обновлена"), localRelative(ctx, user.SubUpdatedAt)),
 	}
 	if strings.TrimSpace(user.Note) != "" {
-		lines = append(lines, line("Note", user.Note))
+		lines = append(lines, line(localText(ctx, "Note", "یادداشت", "Заметка"), user.Note))
 	}
 	if strings.TrimSpace(user.OwnerAdmin) != "" {
-		lines = append(lines, line("Belongs to", user.OwnerAdmin))
+		lines = append(lines, line(localText(ctx, "Belongs to", "مدیر مالک", "Администратор"), user.OwnerAdmin))
 	}
 	if strings.TrimSpace(user.SubscriptionURL) != "" {
-		lines = append(lines, separator(), line("Subscription", user.SubscriptionURL))
+		lines = append(lines, separator(), line(localText(ctx, "Subscription", "اشتراک", "Подписка"), user.SubscriptionURL))
 	}
 	return strings.Join(lines, "\n")
 }
 
 // userUsageText renders the public /usage response.
-func userUsageText(user UserView) string {
+func userUsageText(ctx context.Context, user UserView) string {
 	daysLeft := "-"
 	if user.Expire != nil && *user.Expire > 0 {
 		remaining := time.Until(time.Unix(*user.Expire, 0))
@@ -156,28 +178,77 @@ func userUsageText(user UserView) string {
 		}
 	}
 	return strings.Join([]string{
-		"📊 " + statusLine(user.Status),
+		"📊 " + localStatusLine(ctx, user.Status),
 		separator(),
-		line("Username", user.Username),
-		line("Data limit", formatOptionalBytes(user.DataLimit)),
-		line("Data used", formatBytes(user.UsedTraffic)),
-		line("Expires", formatExpire(user.Expire)),
-		line("Days left", daysLeft),
+		line(localText(ctx, "Username", "نام کاربری", "Пользователь"), user.Username),
+		line(localText(ctx, "Data limit", "سقف حجم", "Лимит трафика"), localOptionalBytes(ctx, user.DataLimit)),
+		line(localText(ctx, "Data used", "حجم مصرف‌شده", "Использовано"), formatBytes(user.UsedTraffic)),
+		line(localText(ctx, "Expires", "انقضا", "Истекает"), localExpire(ctx, user.Expire)),
+		line(localText(ctx, "Days left", "روزهای باقیمانده", "Осталось дней"), daysLeft),
 	}, "\n")
 }
 
-func systemInfoText(info SystemInfo) string {
+func systemInfoText(ctx context.Context, info SystemInfo) string {
 	return strings.Join([]string{
-		"🖥 <b>System</b>",
+		localText(ctx, "🖥 <b>System</b>", "🖥 <b>سیستم</b>", "🖥 <b>Система</b>"),
 		separator(),
-		line("Version", firstNonEmpty(info.Version, "-")),
+		line(localText(ctx, "Version", "نسخه", "Версия"), firstNonEmpty(info.Version, "-")),
 		line("CPU", fmt.Sprintf("%.1f%%", info.CPUPercent)),
-		line("Memory", fmt.Sprintf("%s / %s", formatBytes(info.MemUsed), formatBytes(info.MemTotal))),
+		line(localText(ctx, "Memory", "حافظه", "Память"), fmt.Sprintf("%s / %s", formatBytes(info.MemUsed), formatBytes(info.MemTotal))),
 		separator(),
-		line("Total users", fmt.Sprintf("%d", info.TotalUsers)),
-		line("Active users", fmt.Sprintf("%d", info.ActiveUsers)),
-		line("Online users", fmt.Sprintf("%d", info.OnlineUsers)),
+		line(localText(ctx, "Total users", "کل کاربران", "Всего пользователей"), fmt.Sprintf("%d", info.TotalUsers)),
+		line(localText(ctx, "Active users", "کاربران فعال", "Активные пользователи"), fmt.Sprintf("%d", info.ActiveUsers)),
+		line(localText(ctx, "Online users", "کاربران آنلاین", "Пользователи онлайн"), fmt.Sprintf("%d", info.OnlineUsers)),
 	}, "\n")
+}
+
+func localOptionalBytes(ctx context.Context, value *int64) string {
+	if value == nil || *value <= 0 {
+		return localText(ctx, "Unlimited", "نامحدود", "Без ограничений")
+	}
+	return formatBytes(*value)
+}
+
+func localExpire(ctx context.Context, value *int64) string {
+	if value == nil || *value <= 0 {
+		return localText(ctx, "Never", "بدون انقضا", "Без срока")
+	}
+	return formatExpire(value)
+}
+
+func localRelative(ctx context.Context, value *string) string {
+	if languageFromContext(ctx) == "en" {
+		return relativeFromServer(value)
+	}
+	if value == nil {
+		return "-"
+	}
+	parsed, ok := parseServerTime(*value)
+	if !ok {
+		return "-"
+	}
+	ago := time.Since(parsed)
+	if ago < 0 {
+		ago = -ago
+	}
+	var fa, ru string
+	switch {
+	case ago >= 24*time.Hour:
+		fa, ru = fmt.Sprintf("حدود %d روز", int(ago.Hours()/24)), fmt.Sprintf("около %d дн.", int(ago.Hours()/24))
+	case ago >= time.Hour:
+		fa, ru = fmt.Sprintf("حدود %d ساعت", int(ago.Hours())), fmt.Sprintf("около %d ч.", int(ago.Hours()))
+	case ago >= time.Minute:
+		fa, ru = fmt.Sprintf("حدود %d دقیقه", int(ago.Minutes())), fmt.Sprintf("около %d мин.", int(ago.Minutes()))
+	default:
+		fa, ru = "همین حالا", "только что"
+	}
+	if ago < time.Second {
+		return localText(ctx, "just now", fa, ru)
+	}
+	if parsed.After(time.Now()) {
+		return localText(ctx, "in ", "تا ", "через ") + localText(ctx, "", fa, ru)
+	}
+	return localText(ctx, "", fa+" پیش", ru+" назад")
 }
 
 func separator() string {

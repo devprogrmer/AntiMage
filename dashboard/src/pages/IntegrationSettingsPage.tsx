@@ -462,6 +462,7 @@ type FormValues = {
 	api_token: string;
 	use_telegram: boolean;
 	proxy_url: string;
+	mini_app_url: string;
 	admin_chat_ids: string;
 	logs_chat_id: string;
 	logs_chat_is_forum: boolean;
@@ -508,6 +509,7 @@ const buildDefaultValues = (settings: TelegramSettingsResponse): FormValues => {
 		api_token: settings.api_token ?? "",
 		use_telegram: settings.use_telegram ?? true,
 		proxy_url: settings.proxy_url ?? "",
+		mini_app_url: settings.mini_app_url ?? "",
 		admin_chat_ids: (settings.admin_chat_ids || []).join(", "),
 		logs_chat_id:
 			settings.logs_chat_id != null ? String(settings.logs_chat_id) : "",
@@ -677,6 +679,7 @@ const buildTelegramPayload = (
 	api_token: values.api_token.trim() || null,
 	use_telegram: values.use_telegram,
 	proxy_url: values.proxy_url.trim() || null,
+	mini_app_url: values.mini_app_url.trim() || null,
 	admin_chat_ids: parseAdminChatIds(values.admin_chat_ids),
 	logs_chat_id: values.logs_chat_id.trim()
 		? Number(values.logs_chat_id.trim())
@@ -756,7 +759,7 @@ const buildAdminSubscriptionPayload = (
 const readSettingsHash = () => parseSettingsHash(window.location.hash);
 
 export const IntegrationSettingsPage = () => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
 	const { colorMode } = useColorMode();
 	const toast = useToast();
 	const cardBg = useColorModeValue("white", "whiteAlpha.50");
@@ -938,6 +941,7 @@ export const IntegrationSettingsPage = () => {
 				api_token: null,
 				use_telegram: true,
 				proxy_url: null,
+				mini_app_url: null,
 				admin_chat_ids: [],
 				logs_chat_id: null,
 				logs_chat_is_forum: false,
@@ -2351,6 +2355,14 @@ export const IntegrationSettingsPage = () => {
 											/>
 										</FormControl>
 										<FormControl>
+											<FormLabel>{i18n.language.startsWith("fa") ? "آدرس مینی‌اپ تلگرام" : i18n.language.startsWith("ru") ? "Адрес мини-приложения Telegram" : "Telegram Mini App URL"}</FormLabel>
+											<Input
+												placeholder="https://panel.example.com/telegram-app"
+												{...register("mini_app_url")}
+											/>
+											<FormHelperText>{i18n.language.startsWith("fa") ? "آدرس عمومی HTTPS پنل با مسیر /telegram-app را وارد کنید تا دکمهٔ مینی‌اپ در ربات نمایش داده شود." : i18n.language.startsWith("ru") ? "Укажите публичный HTTPS-адрес панели с путём /telegram-app, чтобы показать кнопку в боте." : "Enter the public HTTPS panel URL ending in /telegram-app to show the bot button."}</FormHelperText>
+										</FormControl>
+										<FormControl>
 											<FormLabel>
 												{t("settings.telegram.adminChatIds")}
 											</FormLabel>
@@ -2590,10 +2602,32 @@ export const IntegrationSettingsPage = () => {
 												{t("settings.telegram.botCommandsTitle")}
 											</Heading>
 										</Box>
-										<Badge colorScheme="yellow">
-											{t("settings.tabs.comingSoon")}
-										</Badge>
 									</Flex>
+									<Text fontSize="sm" color="gray.400" mt={2}>
+										{i18n.language.startsWith("fa")
+											? "فرمان‌ها را در گفت‌وگوی خصوصی ربات بفرستید. برای مدیریت، همان شناسهٔ تلگرام را هم در تنظیمات مدیر فعال و هم در فهرست بالا ثبت کنید؛ گروه‌ها دسترسی مدیریتی ندارند."
+											: i18n.language.startsWith("ru")
+												? "Отправляйте команды в личный чат с ботом. Для управления укажите один и тот же Telegram ID в профиле активного администратора и списке выше; группы не дают прав."
+												: "Send commands in a private chat. For admin actions, set the same Telegram ID on an active full-access admin and in the list above; groups do not grant access."}
+									</Text>
+									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mt={3}>
+										<Box p={3} borderWidth="1px" borderColor={borderColor} borderRadius="md">
+											<Text fontWeight="bold" mb={2}>
+												{i18n.language.startsWith("fa") ? "کاربران" : i18n.language.startsWith("ru") ? "Клиенты" : "Customers"}
+											</Text>
+											<Text fontSize="sm" whiteSpace="pre-line" fontFamily="mono" dir="ltr">
+												{"/start  /my  /shop  /trial\n/balance  /transactions  /orders\n/topup  /receipt  /topups\n/support  /tickets  /ticket"}
+											</Text>
+										</Box>
+										<Box p={3} borderWidth="1px" borderColor={borderColor} borderRadius="md">
+											<Text fontWeight="bold" mb={2}>
+												{i18n.language.startsWith("fa") ? "مدیران مجاز" : i18n.language.startsWith("ru") ? "Администраторы" : "Authorized admins"}
+											</Text>
+											<Text fontSize="sm" whiteSpace="pre-line" fontFamily="mono" dir="ltr">
+												{"/system  /nodes  /node  /user  /usage\n/sales  /wallet  /credit\n/plan-add  /plan-disable\n/trial-config  /trial-off\n/pending-topups  /topup-review\n/payment-details  /reply"}
+											</Text>
+										</Box>
+									</SimpleGrid>
 								</Box>
 							</DisabledCard>
 

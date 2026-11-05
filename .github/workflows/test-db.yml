@@ -101,3 +101,9 @@ jobs:
         if: matrix.db != 'sqlite'
         run: |
           go test ./internal/app/nodecontroller -run TestRepositoryTouchesOnlineUsersExternalMySQL
+
+      - name: Verify Telegram commerce concurrency and settlement
+        if: matrix.db != 'sqlite'
+        env:
+          ANTIMAGE_TEST_COMMERCE_DB: '1'
+        run: go test ./internal/app/shop -run '^TestShopCommerceExternalMySQL$' -count=1 -v

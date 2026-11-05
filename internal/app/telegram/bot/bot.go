@@ -19,11 +19,18 @@ type Bot struct {
 	settings   SettingsSource
 	authorizer Authorizer
 	users      UserService
+	customers  CustomerService
+	nodes      NodesService
+	shop       ShopService
+	trials     TrialService
+	support    SupportService
+	topups     TopupService
 	system     SystemService
 	state      stateStore
 
-	offset int64
-	logf   func(format string, args ...any)
+	offset      int64
+	cursorToken string
+	logf        func(format string, args ...any)
 }
 
 // Options configures a Bot.
@@ -32,6 +39,12 @@ type Options struct {
 	Settings   SettingsSource
 	Authorizer Authorizer
 	Users      UserService
+	Customers  CustomerService
+	Nodes      NodesService
+	Shop       ShopService
+	Trials     TrialService
+	Support    SupportService
+	Topups     TopupService
 	System     SystemService
 	DB         *sql.DB
 	Logf       func(format string, args ...any)
@@ -47,6 +60,12 @@ func New(opts Options) *Bot {
 		settings:   opts.Settings,
 		authorizer: opts.Authorizer,
 		users:      opts.Users,
+		customers:  opts.Customers,
+		nodes:      opts.Nodes,
+		shop:       opts.Shop,
+		trials:     opts.Trials,
+		support:    opts.Support,
+		topups:     opts.Topups,
 		system:     opts.System,
 		state:      newStateStore(opts.DB),
 		logf:       logf,
@@ -70,6 +89,18 @@ func (b *Bot) Run(ctx context.Context) {
 			}
 			continue
 		}
+		key := tokenCursorKey(settings.Token)
+		if key != b.cursorToken {
+			offset, err := b.state.updateOffset(ctx, settings.Token)
+			if err != nil {
+				b.logf("telegram bot: load update offset: %v", err)
+				if b.sleep(ctx, 5*time.Second) {
+					return
+				}
+				continue
+			}
+			b.offset, b.cursorToken = offset, key
+		}
 		updates, err := b.client.getUpdates(ctx, settings, b.offset, longPollTimeoutSeconds)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -82,10 +113,15 @@ func (b *Bot) Run(ctx context.Context) {
 			continue
 		}
 		for _, update := range updates {
-			if update.UpdateID >= b.offset {
-				b.offset = update.UpdateID + 1
+			if update.UpdateID < b.offset {
+				continue
 			}
 			b.handleUpdate(ctx, settings, update)
+			if err := b.state.saveUpdateOffset(ctx, settings.Token, update.UpdateID+1); err != nil {
+				b.logf("telegram bot: save update offset: %v", err)
+				break
+			}
+			b.offset = update.UpdateID + 1
 		}
 	}
 }
@@ -118,6 +154,14 @@ func authorized(settings Settings, id int64) bool {
 		}
 	}
 	return false
+}
+
+func (b *Bot) adminAuthorized(ctx context.Context, settings Settings, id int64) bool {
+	if id <= 0 || !authorized(settings, id) || b.authorizer == nil {
+		return false
+	}
+	_, ok := b.authorizer.Actor(ctx, id)
+	return ok
 }
 
 func (b *Bot) reply(ctx context.Context, settings Settings, chatID int64, text string, keyboard *InlineKeyboard) {

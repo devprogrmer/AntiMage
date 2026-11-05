@@ -49,6 +49,8 @@ func (s *Server) Handler() http.Handler {
 
 	r.HandleFunc("/__antimage_api/healthz", s.handleHealth)
 	r.HandleFunc("/openapi.json", s.handleOpenAPIJSON)
+	r.HandleFunc("/telegram-app", s.handleTelegramMiniAppPage)
+	r.HandleFunc("/telegram-payment-return", s.handleTelegramPaymentReturn)
 	r.HandleFunc("/docs", handleLegacyDocsRoute)
 	r.HandleFunc("/docs/*", handleLegacyDocsRoute)
 	r.HandleFunc("/admin/token", s.handleAdminToken)
@@ -65,6 +67,7 @@ func (s *Server) Handler() http.Handler {
 	r.HandleFunc("/sub/*", s.handleSubscriptionPath)
 
 	r.Route("/api", func(r chi.Router) {
+		r.HandleFunc("/telegram-app/*", s.requireSameOrigin(s.handleTelegramMiniAppAPI))
 		s.registerAdminRoutes(r)
 		s.registerMyAccountRoutes(r)
 		s.registerCoreRoutes(r)

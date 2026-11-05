@@ -5,7 +5,12 @@
 // the HTTP API instead of touching the database directly.
 package bot
 
-import "context"
+import (
+	"context"
+
+	"github.com/antimage/antimage/internal/app/shop"
+	"github.com/antimage/antimage/internal/app/support"
+)
 
 // Update mirrors the subset of the Telegram getUpdates response the bot uses.
 type Update struct {
@@ -15,10 +20,16 @@ type Update struct {
 }
 
 type Message struct {
-	MessageID int64  `json:"message_id"`
-	From      *User  `json:"from"`
-	Chat      Chat   `json:"chat"`
-	Text      string `json:"text"`
+	MessageID int64       `json:"message_id"`
+	From      *User       `json:"from"`
+	Chat      Chat        `json:"chat"`
+	Text      string      `json:"text"`
+	Caption   string      `json:"caption"`
+	Photo     []PhotoSize `json:"photo"`
+}
+
+type PhotoSize struct {
+	FileID string `json:"file_id"`
 }
 
 type CallbackQuery struct {
@@ -29,11 +40,13 @@ type CallbackQuery struct {
 }
 
 type User struct {
-	ID int64 `json:"id"`
+	ID           int64  `json:"id"`
+	LanguageCode string `json:"language_code,omitempty"`
 }
 
 type Chat struct {
-	ID int64 `json:"id"`
+	ID   int64  `json:"id"`
+	Type string `json:"type"`
 }
 
 // InlineKeyboard is a Telegram inline_keyboard markup.
@@ -42,9 +55,14 @@ type InlineKeyboard struct {
 }
 
 type InlineButton struct {
-	Text         string `json:"text"`
-	CallbackData string `json:"callback_data,omitempty"`
-	URL          string `json:"url,omitempty"`
+	Text         string      `json:"text"`
+	CallbackData string      `json:"callback_data,omitempty"`
+	URL          string      `json:"url,omitempty"`
+	WebApp       *WebAppInfo `json:"web_app,omitempty"`
+}
+
+type WebAppInfo struct {
+	URL string `json:"url"`
 }
 
 // Settings is the snapshot the bot needs each poll cycle.
@@ -52,6 +70,7 @@ type Settings struct {
 	Enabled      bool
 	Token        string
 	ProxyURL     string
+	MiniAppURL   string
 	AdminChatIDs []int64
 }
 
@@ -68,16 +87,17 @@ type Actor struct {
 	Admin    any
 }
 
-// Authorizer resolves the admin actor that authorized bot mutations run as.
-// Access control itself is the allowlist in Settings.AdminChatIDs; this returns
-// the panel admin (typically a full-access admin) used for service calls.
+// Authorizer resolves the active panel admin bound to this Telegram identity.
+// Notification destinations alone must not grant panel privileges.
 type Authorizer interface {
-	Actor(ctx context.Context) (Actor, bool)
+	Actor(ctx context.Context, telegramID int64) (Actor, bool)
 }
 
 // UserView is the data the bot renders for a user.
 type UserView struct {
 	Username        string
+	ServiceID       *int64
+	TelegramID      *string
 	Status          string
 	UsedTraffic     int64
 	DataLimit       *int64
@@ -88,6 +108,78 @@ type UserView struct {
 	OwnerAdmin      string
 	SubscriptionURL string
 	Links           []string
+}
+
+// CustomerService looks up only accounts explicitly linked to a Telegram ID.
+type CustomerService interface {
+	ListByTelegramID(ctx context.Context, telegramID int64) ([]UserView, error)
+}
+
+type NodeView struct {
+	ID              int64
+	Name            string
+	Status          string
+	AgentStatus     string
+	XrayStatus      string
+	AgentVersion    string
+	XrayVersion     string
+	CPUPercent      float64
+	MemoryPercent   float64
+	AppliedRevision uint64
+	DesiredRevision uint64
+}
+
+type NodesService interface {
+	List(ctx context.Context) ([]NodeView, error)
+	Get(ctx context.Context, id int64) (NodeView, error)
+}
+
+type ShopService interface {
+	SalesOverview(ctx context.Context) (shop.SalesOverview, error)
+	Balance(ctx context.Context, telegramID int64) (int64, error)
+	History(ctx context.Context, telegramID int64) ([]shop.WalletEntry, error)
+	Products(ctx context.Context) ([]shop.Product, error)
+	Orders(ctx context.Context, telegramID int64) ([]shop.Order, error)
+	Place(ctx context.Context, telegramID, productID int64, requestKey string) (shop.Order, error)
+	PayAndProvision(ctx context.Context, telegramID int64, orderID string) (string, error)
+	AdminCredit(ctx context.Context, telegramID, amount int64, reference string) (int64, error)
+	AddProduct(ctx context.Context, product shop.Product, requestKey string) (shop.Product, error)
+	DisableProduct(ctx context.Context, productID int64) error
+}
+
+type ShopChangesService interface {
+	PlaceChange(ctx context.Context, telegramID, productID int64, username, kind, requestKey string) (shop.Order, error)
+}
+
+type TrialService interface {
+	ClaimAndProvision(ctx context.Context, telegramID int64) (string, error)
+	Configure(ctx context.Context, config shop.TrialConfig) error
+	Disable(ctx context.Context) error
+}
+
+type SupportService interface {
+	Create(ctx context.Context, telegramID int64, content, reference string) (support.Ticket, error)
+	List(ctx context.Context, telegramID int64, admin bool) ([]support.Ticket, error)
+	Get(ctx context.Context, ticketID string, telegramID int64, admin bool) (support.Ticket, error)
+	Reply(ctx context.Context, ticketID, content, reference string) (support.Ticket, error)
+}
+
+type TopupService interface {
+	Get(ctx context.Context, id string) (shop.Topup, error)
+	Instructions(ctx context.Context) (string, error)
+	SetInstructions(ctx context.Context, instructions string) error
+	Create(ctx context.Context, telegramID, amount int64, requestKey string) (shop.Topup, error)
+	SubmitReceipt(ctx context.Context, telegramID int64, topupID, fileID string) (shop.Topup, error)
+	List(ctx context.Context, telegramID int64, adminPending bool) ([]shop.Topup, error)
+	Approve(ctx context.Context, topupID string, adminID int64) (shop.Topup, error)
+	Reject(ctx context.Context, topupID string, adminID int64) (shop.Topup, error)
+}
+
+type GatewayTopupService interface {
+	GatewayEnabled() bool
+	CreateGateway(context.Context, int64, int64, string) (shop.GatewayPayment, error)
+	CheckGateway(context.Context, int64, string) (shop.GatewayPayment, error)
+	ListGateway(context.Context, int64) ([]shop.GatewayPayment, error)
 }
 
 // UserService exposes the user operations the bot needs. Implementations must

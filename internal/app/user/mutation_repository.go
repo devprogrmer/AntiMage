@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -66,6 +67,7 @@ func (r Repository) createUserMutation(ctx context.Context, admin adminapp.Admin
 			DataLimitResetStrategy: payload.DataLimitResetStrategy,
 			Note:                   payload.Note,
 			SubscriptionMessage:    payload.SubscriptionMessage,
+			TelegramID:             payload.TelegramID,
 			OnHoldTimeout:          payload.OnHoldTimeout,
 			OnHoldExpireDuration:   payload.OnHoldExpireDuration,
 			AutoDeleteInDays:       payload.AutoDeleteInDays,
@@ -182,7 +184,17 @@ func (r Repository) updateUserMutation(ctx context.Context, admin adminapp.Admin
 		return MutationResult{}, err
 	}
 	defer rollbackQuiet(tx)
+	result, err := r.updateUserMutationTx(ctx, tx, admin, username, payload, rawFields)
+	if err != nil {
+		return MutationResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return MutationResult{}, err
+	}
+	return result, nil
+}
 
+func (r Repository) updateUserMutationTx(ctx context.Context, tx *sql.Tx, admin adminapp.Admin, username string, payload UserModify, rawFields map[string]json.RawMessage) (MutationResult, error) {
 	existing, err := r.existingUserTx(ctx, tx, username)
 	if err != nil {
 		return MutationResult{}, err
@@ -447,9 +459,6 @@ func (r Repository) updateUserMutation(ctx context.Context, admin adminapp.Admin
 		if err := r.enqueueUserOperationForNodesTx(ctx, tx, operationType, existing.ID, time.Now().UTC(), existing.ServiceID, targetServiceID); err != nil {
 			return MutationResult{}, err
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return MutationResult{}, err
 	}
 	return MutationResult{UserID: existing.ID, Username: existing.Username, Status: newStatus}, nil
 }

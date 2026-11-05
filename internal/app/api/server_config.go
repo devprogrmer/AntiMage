@@ -35,6 +35,10 @@ type Config struct {
 	UsersListTimeoutSeconds      float64
 	SubscriptionReadOnly         bool
 	TelegramAPIBase              string
+	TelegramMiniAppURL           string
+	ShopZarinpalMerchantID       string
+	ShopZarinpalSandbox          bool
+	ShopPaymentCallbackURL       string
 	APIDocsEnabled               bool
 	WebhookAddresses             []string
 	WebhookSecret                string
@@ -82,6 +86,10 @@ func LoadConfig() (Config, error) {
 		JWTAccessTokenExpireMinutes:  parseIntDefault(lookup("JWT_ACCESS_TOKEN_EXPIRE_MINUTES"), 1440),
 		UsersListTimeoutSeconds:      parseFloatDefault(lookup("USERS_LIST_TIMEOUT_SECONDS"), 0),
 		TelegramAPIBase:              lookup("ANTIMAGE_TELEGRAM_API_BASE"),
+		TelegramMiniAppURL:           lookup("ANTIMAGE_TELEGRAM_MINI_APP_URL"),
+		ShopZarinpalMerchantID:       lookup("ANTIMAGE_SHOP_ZARINPAL_MERCHANT_ID"),
+		ShopZarinpalSandbox:          parseBoolDefault(lookup("ANTIMAGE_SHOP_ZARINPAL_SANDBOX"), false),
+		ShopPaymentCallbackURL:       lookup("ANTIMAGE_SHOP_PAYMENT_CALLBACK_URL"),
 		WebhookAddresses:             splitWebhookAddresses(lookup("WEBHOOK_ADDRESS")),
 		WebhookSecret:                lookup("WEBHOOK_SECRET"),
 		WebhookSendInterval:          firstNonEmpty(lookup("ANTIMAGE_WEBHOOK_SEND_INTERVAL"), secondsEnv(lookup("JOB_SEND_NOTIFICATIONS_INTERVAL"))),

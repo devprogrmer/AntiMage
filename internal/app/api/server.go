@@ -25,6 +25,7 @@ import (
 	nordvpnapp "github.com/antimage/antimage/internal/app/nordvpn"
 	outboundsubapp "github.com/antimage/antimage/internal/app/outboundsub"
 	settingsapp "github.com/antimage/antimage/internal/app/settings"
+	"github.com/antimage/antimage/internal/app/shop"
 	systemapp "github.com/antimage/antimage/internal/app/system"
 	telegramapp "github.com/antimage/antimage/internal/app/telegram"
 	"github.com/antimage/antimage/internal/app/usage"
@@ -36,6 +37,7 @@ import (
 )
 
 type Server struct {
+	shopGatewayFactory   shop.GatewayFactory
 	cfg                  Config
 	apiDocsEnabled       atomic.Bool
 	db                   *sql.DB
@@ -207,6 +209,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 		go s.runCertificateRenewalWorker(ctx)
 		go s.runWebhookWorker(ctx)
 		go s.runTelegramBot(ctx)
+		go s.runTelegramShopRecovery(ctx)
 		go s.runOutboundSubscriptionRefresher(ctx)
 	})
 }

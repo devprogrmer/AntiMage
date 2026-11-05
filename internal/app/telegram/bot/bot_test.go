@@ -90,14 +90,27 @@ func (f *fakeUsers) SetNote(_ context.Context, _ Actor, username string, note st
 
 type fakeSystem struct{}
 
+type fakeCustomers struct {
+	id       int64
+	accounts []UserView
+}
+
+func (f *fakeCustomers) ListByTelegramID(_ context.Context, id int64) ([]UserView, error) {
+	f.id = id
+	return f.accounts, nil
+}
+
 func (fakeSystem) Info(context.Context) (SystemInfo, error) {
 	return SystemInfo{Version: "1.0.0", CPUPercent: 5, MemUsed: 1 << 30, MemTotal: 4 << 30, TotalUsers: 10, ActiveUsers: 7, OnlineUsers: 3}, nil
 }
 
-type fakeAuthorizer struct{ ok bool }
+type fakeAuthorizer struct {
+	ok        bool
+	allowedID int64
+}
 
-func (f fakeAuthorizer) Actor(context.Context) (Actor, bool) {
-	if !f.ok {
+func (f fakeAuthorizer) Actor(_ context.Context, telegramID int64) (Actor, bool) {
+	if !f.ok || (f.allowedID != 0 && f.allowedID != telegramID) {
 		return Actor{}, false
 	}
 	return Actor{Username: "admin", Admin: "admin"}, true
@@ -172,7 +185,7 @@ func TestUserCommandSendsDetail(t *testing.T) {
 	users.users["alice"] = UserView{Username: "alice", Status: "active", UsedTraffic: 1 << 20, DataLimit: &limit}
 	b, calls, settings := newTestBot(t, users)
 
-	b.handleMessage(context.Background(), settings, &Message{Chat: Chat{ID: 100}, Text: "/user alice"})
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "/user alice"})
 
 	call, ok := lastCall(*calls, "sendMessage")
 	if !ok {
@@ -195,11 +208,52 @@ func TestUnauthorizedChatIgnored(t *testing.T) {
 	}
 }
 
+func TestCustomerCanSeeOnlyOwnLinkedServicesInPrivateChat(t *testing.T) {
+	b, calls, settings := newTestBot(t, newFakeUsers())
+	customers := &fakeCustomers{accounts: []UserView{{Username: "alice", Status: "active", SubscriptionURL: "https://example.test/sub/alice", Note: "admin-only note"}}}
+	b.customers = customers
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 321}, Chat: Chat{ID: 321, Type: "private"}, Text: "/my"})
+	if customers.id != 321 {
+		t.Fatalf("customer lookup ID = %d", customers.id)
+	}
+	call, ok := lastCall(*calls, "sendMessage")
+	if !ok {
+		t.Fatalf("expected customer response, calls=%v", *calls)
+	}
+	body, _ := call.body["text"].(string)
+	if !strings.Contains(body, "alice") || !strings.Contains(body, "example.test/sub/alice") {
+		t.Fatalf("missing own service: %q", body)
+	}
+	if strings.Contains(body, "admin-only note") {
+		t.Fatalf("admin note leaked: %q", body)
+	}
+}
+
+func TestCustomerCommandDoesNotRevealServicesInGroup(t *testing.T) {
+	b, calls, settings := newTestBot(t, newFakeUsers())
+	customers := &fakeCustomers{accounts: []UserView{{Username: "alice"}}}
+	b.customers = customers
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 321}, Chat: Chat{ID: -100, Type: "supergroup"}, Text: "/my"})
+	if customers.id != 0 || len(*calls) != 0 {
+		t.Fatalf("group command accessed customer data: id=%d calls=%d", customers.id, len(*calls))
+	}
+}
+
+func TestCustomerCommandRejectsMismatchedPrivateChat(t *testing.T) {
+	b, calls, settings := newTestBot(t, newFakeUsers())
+	customers := &fakeCustomers{accounts: []UserView{{Username: "alice"}}}
+	b.customers = customers
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 321}, Chat: Chat{ID: 999, Type: "private"}, Text: "/my"})
+	if customers.id != 0 || len(*calls) != 0 {
+		t.Fatalf("mismatched chat accessed customer data: id=%d calls=%d", customers.id, len(*calls))
+	}
+}
+
 func TestUsageCommand(t *testing.T) {
 	users := newFakeUsers()
 	users.users["bob"] = UserView{Username: "bob", Status: "active"}
 	b, calls, settings := newTestBot(t, users)
-	b.handleMessage(context.Background(), settings, &Message{Chat: Chat{ID: 100}, Text: "/usage bob"})
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "/usage bob"})
 	call, ok := lastCall(*calls, "sendMessage")
 	if !ok {
 		t.Fatal("expected sendMessage")
@@ -217,7 +271,7 @@ func TestSuspendCallbackUpdatesStatus(t *testing.T) {
 	b.handleCallback(context.Background(), settings, &CallbackQuery{
 		ID:      "cb1",
 		From:    &User{ID: 100},
-		Message: &Message{MessageID: 5, Chat: Chat{ID: 100}},
+		Message: &Message{MessageID: 5, Chat: Chat{ID: 100, Type: "private"}},
 		Data:    cbSuspend + "alice",
 	})
 
@@ -236,12 +290,12 @@ func TestDeleteFlowRequiresConfirmation(t *testing.T) {
 	ctx := context.Background()
 
 	// First click only asks for confirmation; no deletion yet.
-	b.handleCallback(ctx, settings, &CallbackQuery{ID: "c1", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100}}, Data: cbDelete + "alice"})
+	b.handleCallback(ctx, settings, &CallbackQuery{ID: "c1", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100, Type: "private"}}, Data: cbDelete + "alice"})
 	if len(users.deleted) != 0 {
 		t.Fatalf("delete must require confirmation, got %v", users.deleted)
 	}
 	// Confirmation actually deletes.
-	b.handleCallback(ctx, settings, &CallbackQuery{ID: "c2", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100}}, Data: cbDeleteYes + "alice"})
+	b.handleCallback(ctx, settings, &CallbackQuery{ID: "c2", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100, Type: "private"}}, Data: cbDeleteYes + "alice"})
 	if len(users.deleted) != 1 || users.deleted[0] != "alice" {
 		t.Fatalf("expected alice deleted, got %v", users.deleted)
 	}
@@ -254,12 +308,12 @@ func TestEditNoteConversationFlow(t *testing.T) {
 	ctx := context.Background()
 
 	// Trigger edit_note: sets conversation state and prompts.
-	b.handleCallback(ctx, settings, &CallbackQuery{ID: "c1", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100}}, Data: cbEditNote + "alice"})
+	b.handleCallback(ctx, settings, &CallbackQuery{ID: "c1", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100, Type: "private"}}, Data: cbEditNote + "alice"})
 	if conv, ok := b.state.get(ctx, 100); !ok || conv.State != stateAwaitNote || conv.Payload != "alice" {
 		t.Fatalf("expected await_note state for alice, got %+v ok=%v", conv, ok)
 	}
 	// Next plain message is taken as the note.
-	b.handleMessage(ctx, settings, &Message{Chat: Chat{ID: 100}, Text: "vip customer"})
+	b.handleMessage(ctx, settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "vip customer"})
 	if len(users.notes) != 1 || users.notes[0] != "alice=vip customer" {
 		t.Fatalf("expected note update, got %v", users.notes)
 	}
@@ -270,7 +324,7 @@ func TestEditNoteConversationFlow(t *testing.T) {
 
 func TestSystemCallback(t *testing.T) {
 	b, calls, settings := newTestBot(t, newFakeUsers())
-	b.handleCallback(context.Background(), settings, &CallbackQuery{ID: "c1", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100}}, Data: "system"})
+	b.handleCallback(context.Background(), settings, &CallbackQuery{ID: "c1", From: &User{ID: 100}, Message: &Message{MessageID: 5, Chat: Chat{ID: 100, Type: "private"}}, Data: "system"})
 	call, ok := lastCall(*calls, "editMessageText")
 	if !ok {
 		t.Fatal("expected editMessageText for system info")
@@ -282,7 +336,7 @@ func TestSystemCallback(t *testing.T) {
 
 func TestUnknownUserReportsNotFound(t *testing.T) {
 	b, calls, settings := newTestBot(t, newFakeUsers())
-	b.handleMessage(context.Background(), settings, &Message{Chat: Chat{ID: 100}, Text: "/user ghost"})
+	b.handleMessage(context.Background(), settings, &Message{From: &User{ID: 100}, Chat: Chat{ID: 100, Type: "private"}, Text: "/user ghost"})
 	call, ok := lastCall(*calls, "sendMessage")
 	if !ok {
 		t.Fatal("expected sendMessage")

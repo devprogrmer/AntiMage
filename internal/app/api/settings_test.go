@@ -88,6 +88,7 @@ func createSettingsTables(t *testing.T, db *sql.DB) {
 		`CREATE TABLE telegram_settings (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			api_token TEXT NULL,
+			mini_app_url TEXT NULL,
 			use_telegram INTEGER NOT NULL DEFAULT 1,
 			proxy_url TEXT NULL,
 			admin_chat_ids TEXT NULL,

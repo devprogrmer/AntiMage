@@ -9,6 +9,7 @@ type Settings struct {
 	APIToken            *string                  `json:"api_token"`
 	UseTelegram         bool                     `json:"use_telegram"`
 	ProxyURL            *string                  `json:"proxy_url"`
+	MiniAppURL          *string                  `json:"mini_app_url"`
 	AdminChatIDs        []int64                  `json:"admin_chat_ids"`
 	LogsChatID          *int64                   `json:"logs_chat_id"`
 	LogsChatIsForum     bool                     `json:"logs_chat_is_forum"`

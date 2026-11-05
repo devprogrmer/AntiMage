@@ -1,6 +1,18 @@
 package bot
 
-import "strings"
+import (
+	"net/url"
+	"strings"
+)
+
+func appendMiniAppButton(keyboard *InlineKeyboard, rawURL string) *InlineKeyboard {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+		return keyboard
+	}
+	keyboard.InlineKeyboard = append(keyboard.InlineKeyboard, []InlineButton{{Text: "📱 AntiMage Mini App", WebApp: &WebAppInfo{URL: parsed.String()}}})
+	return keyboard
+}
 
 // Callback data prefixes for the user detail inline keyboard. They mirror the
 // legacy Python callbacks (delete/suspend/activate/reset_usage/revoke_sub/...).
@@ -18,7 +30,25 @@ const (
 
 func mainMenuKeyboard() *InlineKeyboard {
 	return &InlineKeyboard{InlineKeyboard: [][]InlineButton{
-		{{Text: "🖥 System", CallbackData: "system"}},
+		{{Text: "🖥 System", CallbackData: "system"}, {Text: "🌐 Nodes", CallbackData: "menu:nodes"}},
+		{{Text: "🛒 Plans", CallbackData: "menu:shop"}, {Text: "📊 Sales", CallbackData: "menu:sales"}},
+		{{Text: "💳 Wallet", CallbackData: "menu:balance"}, {Text: "📦 Orders", CallbackData: "menu:orders"}},
+		{{Text: "🧾 Transactions", CallbackData: "menu:transactions"}},
+		{{Text: "💳 Online payments", CallbackData: "menu:payments"}},
+		{{Text: "👤 My services", CallbackData: "menu:my"}, {Text: "🎫 Support", CallbackData: "menu:tickets"}},
+		{{Text: "❓ FAQ", CallbackData: "menu:faq"}},
+	}}
+}
+
+func customerMenuKeyboard() *InlineKeyboard {
+	return &InlineKeyboard{InlineKeyboard: [][]InlineButton{
+		{{Text: "🛒 Plans", CallbackData: "menu:shop"}, {Text: "💳 Wallet", CallbackData: "menu:balance"}},
+		{{Text: "🧾 Transactions", CallbackData: "menu:transactions"}},
+		{{Text: "💳 Online payments", CallbackData: "menu:payments"}},
+		{{Text: "🎁 Trial", CallbackData: "menu:trial"}},
+		{{Text: "📦 Orders", CallbackData: "menu:orders"}, {Text: "👤 My services", CallbackData: "menu:my"}},
+		{{Text: "🎫 Support", CallbackData: "menu:tickets"}, {Text: "🧾 Top-ups", CallbackData: "menu:topups"}},
+		{{Text: "❓ FAQ", CallbackData: "menu:faq"}},
 	}}
 }
 

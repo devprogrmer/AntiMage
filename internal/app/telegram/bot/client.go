@@ -76,6 +76,16 @@ func (c client) sendMessage(ctx context.Context, settings Settings, chatID int64
 	return c.fireAndForget(ctx, settings, "sendMessage", payload)
 }
 
+func (c client) sendPhoto(ctx context.Context, settings Settings, chatID int64, fileID, caption string, keyboard *InlineKeyboard) error {
+	payload := map[string]any{
+		"chat_id": chatID, "photo": fileID, "caption": caption, "parse_mode": "HTML",
+	}
+	if keyboard != nil {
+		payload["reply_markup"] = keyboard
+	}
+	return c.fireAndForget(ctx, settings, "sendPhoto", payload)
+}
+
 func (c client) editMessageText(ctx context.Context, settings Settings, chatID int64, messageID int64, text string, keyboard *InlineKeyboard) error {
 	payload := map[string]any{
 		"chat_id":                  chatID,
@@ -115,12 +125,12 @@ func (c client) call(ctx context.Context, httpClient *http.Client, token string,
 	endpoint := fmt.Sprintf("%s/bot%s/%s", c.apiBase, strings.TrimSpace(token), method)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("telegram %s: invalid request: %s", method, redactToken(err.Error(), token))
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("telegram %s: %s", method, redactToken(err.Error(), token))
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
@@ -133,9 +143,16 @@ func (c client) call(ctx context.Context, httpClient *http.Client, token string,
 		if detail == "" {
 			detail = resp.Status
 		}
-		return nil, fmt.Errorf("telegram %s failed (%d): %s", method, parsed.ErrorCode, detail)
+		return nil, fmt.Errorf("telegram %s failed (%d): %s", method, parsed.ErrorCode, redactToken(detail, token))
 	}
 	return parsed.Result, nil
+}
+
+func redactToken(message, token string) string {
+	if token == "" {
+		return message
+	}
+	return strings.ReplaceAll(message, token, "[redacted]")
 }
 
 func httpClientFor(proxyURL string, timeout time.Duration) (*http.Client, error) {
@@ -145,7 +162,7 @@ func httpClientFor(proxyURL string, timeout time.Duration) (*http.Client, error)
 	}
 	parsed, err := url.Parse(proxyURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid Telegram proxy URL")
 	}
 	transport := &http.Transport{}
 	switch strings.ToLower(parsed.Scheme) {
@@ -154,7 +171,7 @@ func httpClientFor(proxyURL string, timeout time.Duration) (*http.Client, error)
 	case "socks5", "socks5h":
 		dialer, err := proxy.FromURL(parsed, proxy.Direct)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("invalid Telegram SOCKS proxy configuration")
 		}
 		if contextDialer, ok := dialer.(proxy.ContextDialer); ok {
 			transport.DialContext = contextDialer.DialContext

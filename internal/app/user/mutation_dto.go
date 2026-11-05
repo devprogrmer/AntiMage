@@ -96,6 +96,7 @@ type UserCreate struct {
 type UserServiceCreate struct {
 	Username               string                     `json:"username"`
 	ServiceID              int64                      `json:"service_id"`
+	TelegramID             *string                    `json:"telegram_id,omitempty"`
 	Status                 UserStatusCreate           `json:"status,omitempty"`
 	Expire                 *int64                     `json:"expire,omitempty"`
 	DataLimit              *int64                     `json:"data_limit,omitempty"`
@@ -194,6 +195,7 @@ func (p UserServiceCreate) ToUserCreate(service ServiceInfo) UserCreate {
 			Inbounds:               map[string][]string{},
 			Note:                   p.Note,
 			SubscriptionMessage:    p.SubscriptionMessage,
+			TelegramID:             p.TelegramID,
 			OnHoldExpireDuration:   p.OnHoldExpireDuration,
 			OnHoldTimeout:          p.OnHoldTimeout,
 			IPLimit:                p.IPLimit,

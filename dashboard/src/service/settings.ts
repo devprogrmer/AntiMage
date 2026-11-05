@@ -9,6 +9,7 @@ export interface TelegramSettingsResponse {
 	api_token: string | null;
 	use_telegram: boolean;
 	proxy_url: string | null;
+	mini_app_url: string | null;
 	admin_chat_ids: number[];
 	logs_chat_id: number | null;
 	logs_chat_is_forum: boolean;
@@ -29,6 +30,7 @@ export interface TelegramSettingsUpdatePayload {
 	api_token?: string | null;
 	use_telegram?: boolean;
 	proxy_url?: string | null;
+	mini_app_url?: string | null;
 	admin_chat_ids?: number[];
 	logs_chat_id?: number | null;
 	logs_chat_is_forum?: boolean;
@@ -60,6 +62,7 @@ const disabledTelegramSettings: TelegramSettingsResponse = {
 	api_token: null,
 	use_telegram: false,
 	proxy_url: null,
+	mini_app_url: null,
 	admin_chat_ids: [],
 	logs_chat_id: null,
 	logs_chat_is_forum: false,
