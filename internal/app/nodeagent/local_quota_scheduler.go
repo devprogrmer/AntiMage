@@ -166,11 +166,15 @@ func (s *Server) runLocalAccountingWorker(ctx context.Context, name string, quot
 			var err error
 			if name == "xray" && checkpoint && enforce {
 				err = s.xrayLocalAccountingTick(sampleCtx, true, true)
-			} else if checkpoint {
-				err = checkpointFn(sampleCtx)
-			}
-			if enforce && err == nil {
-				err = quotaFn(sampleCtx)
+			} else if name == "wireguard" && checkpoint && enforce {
+				err = s.wireGuardOfflineTick(sampleCtx, true, true)
+			} else {
+				if checkpoint {
+					err = checkpointFn(sampleCtx)
+				}
+				if enforce && err == nil {
+					err = quotaFn(sampleCtx)
+				}
 			}
 			cancel()
 			if ctx.Err() == nil {

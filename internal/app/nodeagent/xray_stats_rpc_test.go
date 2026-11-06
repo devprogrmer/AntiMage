@@ -109,4 +109,14 @@ func TestXrayLocalAccountingTickSharesStatsSnapshot(t *testing.T) {
 	if got := queries.Load(); got != 1 {
 		t.Fatalf("same-deadline checkpoint and quota made %d stats calls, want one", got)
 	}
+	// Exercise the real worker dispatch too: it must not call the separate
+	// quota callback after the combined checkpoint+quota operation.
+	queries.Store(0)
+	workerCtx, cancelWorker := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancelWorker()
+	serverState.runLocalAccountingWorker(workerCtx, "xray", 2*time.Second, 10*time.Millisecond,
+		func(context.Context) error { return nil }, serverState.quotaCheckXrayOffline)
+	if got := queries.Load(); got != 1 {
+		t.Fatalf("worker duplicated a same-deadline stats snapshot: calls=%d, want one", got)
+	}
 }
