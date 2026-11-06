@@ -24,7 +24,8 @@
 - [ ] Xray quota cutoff: close only exhausted users' streams. Investigate core capabilities; do not claim RemoveUser closes active streams or introduce a global restart as the solution.
 - [ ] Runtime rollout: target-core preflight now rejects changed invalid configs before replacing applied/durable policy, with real witness and recovery coverage. Runtime startup/bind failure rollback and a complete last-known-good activation protocol remain open work.
 - [x] Native speed collectors: produce real per-user samples for WG/AWG/OpenVPN/PPP/IKEv2; verify reset/reconnect and time units. PR #112 merged as `67126bd`; native/race/recovery CI passed. Production display validation remains separate.
-- [ ] Native policy caching: runtime payload reuse (PR #113, `ea70756`) and content-verified WG/AWG helpers (PR #114, `2f3682d`) merged with race/native CI passing. Additional native helper paths remain to be assessed.
+- [x] Native policy caching: runtime payload reuse (PR #113, `ea70756`), content-verified WG/AWG helpers (PR #114, `2f3682d`) and OpenVPN/L2TP/PPTP helper caches (PR #117, `ac9adb3`) merged with race/native CI passing. PR #118 (`d85c7f1`) coalesces coincident Xray/WG quota/checkpoint sampling without changing intervals.
+- [ ] Empty-user fallback authentication: real Xray 26.10.31 reproduced server-key/static-auth bypass after final SS2022/Hysteria revocation and fresh-node restore. Controller and node filters now omit empty managed fallback-capable listeners; real-core and unit regression verification is in progress. See `docs/xray-empty-user-auth-safety.md`.
 - [ ] Accounting health UI: last sample/checkpoint/ACK/reflection, pending bytes and degraded persistence states.
 - [ ] Backup safety: encryption, preview/check, off-host destinations, retention, isolated restore exercise and crash-safe rollback.
 - [ ] UI completeness: notifications inbox, scoped subscription placeholders, sales administration and independent API-key scopes.

@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/antimage/antimage/internal/app/xrayconfig"
 )
 
 type xrayLocalUserPolicy struct {
@@ -304,6 +306,10 @@ func (s *Server) restartXrayAfterQuotaRevocation(ctx context.Context, snapshot *
 }
 
 func removeXrayConfigClients(configJSON string, emails map[string]struct{}) (string, bool, error) {
+	return filterXrayConfigClients(configJSON, emails, nil)
+}
+
+func filterXrayConfigClients(configJSON string, emails, managedTags map[string]struct{}) (string, bool, error) {
 	var config map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
 		return "", false, err
@@ -313,20 +319,38 @@ func removeXrayConfigClients(configJSON string, emails map[string]struct{}) (str
 		return "", false, err
 	}
 	removed := false
+	keptInbounds := make([]map[string]json.RawMessage, 0, len(inbounds))
 	for _, inbound := range inbounds {
-		var settings map[string]json.RawMessage
-		if len(inbound["settings"]) == 0 {
-			continue
-		}
-		if err := json.Unmarshal(inbound["settings"], &settings); err != nil {
+		var protocol, tag string
+		if err := json.Unmarshal(inbound["protocol"], &protocol); err != nil {
 			return "", false, err
+		}
+		if len(inbound["tag"]) > 0 {
+			if err := json.Unmarshal(inbound["tag"], &tag); err != nil {
+				return "", false, err
+			}
+		}
+		keptInbounds = append(keptInbounds, inbound)
+		var settings map[string]json.RawMessage
+		if len(inbound["settings"]) > 0 {
+			if err := json.Unmarshal(inbound["settings"], &settings); err != nil {
+				return "", false, err
+			}
 		}
 		var clients []json.RawMessage
-		if len(settings["clients"]) == 0 {
-			continue
+		field := "clients"
+		if len(settings[field]) > 0 {
+			if err := json.Unmarshal(settings[field], &clients); err != nil {
+				return "", false, err
+			}
 		}
-		if err := json.Unmarshal(settings["clients"], &clients); err != nil {
-			return "", false, err
+		if clients == nil && (strings.EqualFold(protocol, "shadowsocks") || strings.EqualFold(protocol, "hysteria")) {
+			field = "users"
+			if len(settings[field]) > 0 {
+				if err := json.Unmarshal(settings[field], &clients); err != nil {
+					return "", false, err
+				}
+			}
 		}
 		kept := make([]json.RawMessage, 0, len(clients))
 		for _, client := range clients {
@@ -342,12 +366,26 @@ func removeXrayConfigClients(configJSON string, emails map[string]struct{}) (str
 			}
 			kept = append(kept, client)
 		}
+		_, managed := managedTags[tag]
+		if len(kept) == 0 && (managed || len(kept) != len(clients)) {
+			var method string
+			if len(settings["method"]) > 0 {
+				if err := json.Unmarshal(settings["method"], &method); err != nil {
+					return "", false, err
+				}
+			}
+			if xrayconfig.EmptyUsersAllowServerAuth(protocol, method) {
+				keptInbounds = keptInbounds[:len(keptInbounds)-1]
+				removed = true
+				continue
+			}
+		}
 		if len(kept) != len(clients) {
 			encoded, err := json.Marshal(kept)
 			if err != nil {
 				return "", false, err
 			}
-			settings["clients"] = encoded
+			settings[field] = encoded
 			encoded, err = json.Marshal(settings)
 			if err != nil {
 				return "", false, err
@@ -358,7 +396,7 @@ func removeXrayConfigClients(configJSON string, emails map[string]struct{}) (str
 	if !removed {
 		return configJSON, false, nil
 	}
-	encodedInbounds, err := json.Marshal(inbounds)
+	encodedInbounds, err := json.Marshal(keptInbounds)
 	if err != nil {
 		return "", false, err
 	}
