@@ -878,7 +878,9 @@ func (s *Server) startXray(ctx context.Context, configPath string) error {
 			s.appendLog("xray runtime stopped")
 		}
 	}()
-	if err := s.waitXrayStartup(ctx, exit, port, checkRPC); err != nil {
+	// Once a durable transition has spawned the replacement, a short sampling
+	// or RPC deadline must not kill it. Confirmation has its own bounded window.
+	if err := s.waitXrayStartup(context.Background(), exit, port, checkRPC); err != nil {
 		stopErr := s.stopRuntime()
 		return errors.Join(err, stopErr)
 	}

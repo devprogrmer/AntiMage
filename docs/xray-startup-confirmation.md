@@ -14,7 +14,10 @@ those configs. A core can still fail later during normal operation.
 Controlled stops wait for the owned process's `Wait` to finish, with a two-second
 bound, before attempting a replacement. This avoids starting a new core while
 the previous process is still releasing its listeners. The running core uses
-a lifetime independent of the request context after activation.
+a lifetime independent of the request context. An already canceled request is
+rejected before stopping the old process. Once the replacement is spawned,
+confirmation uses its own bounded window: a short quota-sampling deadline cannot
+kill an otherwise healthy replacement. This adds no delay to durable accounting.
 
 No new periodic polling is added. Startup probes never reset native counters;
 the existing durable checkpoint still precedes a controlled process transition.

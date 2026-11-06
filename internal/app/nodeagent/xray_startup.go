@@ -66,6 +66,9 @@ func (s *Server) waitXrayStartup(ctx context.Context, exit *xrayRuntimeExit, por
 			_, lastErr = client.queryStats(probe, "antimage-startup-confirmation", false)
 			cancel()
 			ready = lastErr == nil
+			if !ready {
+				client.rpc.close()
+			} // Avoid reconnect backoff delaying a newly bound local API.
 		}
 		if ready && !time.Now().Before(stableAt) {
 			select {
