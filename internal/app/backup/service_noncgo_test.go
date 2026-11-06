@@ -4,11 +4,77 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+type failingBackupWriter struct{ err error }
+
+func (w failingBackupWriter) Write([]byte) (int, error) { return 0, w.err }
+
+func TestBackupArchiveReportsFinalCompressionWriteFailure(t *testing.T) {
+	buildDir := t.TempDir()
+	for _, name := range []string{ManifestName, DatabaseSQLName} {
+		if err := os.WriteFile(filepath.Join(buildDir, name), []byte("payload"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := errors.New("disk full")
+	service := NewService(nil, "mysql", "")
+	if err := service.writeArchiveToWriter(failingBackupWriter{err: want}, buildDir, DatabaseSQLName, ScopeDatabase); !errors.Is(err, want) {
+		t.Fatalf("archive finalize error = %v, want %v", err, want)
+	}
+}
+
+func TestSafeExtractRejectsInvalidGzipTrailer(t *testing.T) {
+	for _, mode := range []string{"missing", "corrupt"} {
+		t.Run(mode, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "invalid.ambackup")
+			writeBackupArchiveForTest(t, path, map[string][]byte{ManifestName: []byte(`{"format":"antimage"}`)})
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "missing" {
+				raw = raw[:len(raw)-8]
+			} else {
+				raw[len(raw)-8] ^= 0xff
+			}
+			if err := os.WriteFile(path, raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := safeExtract(path, t.TempDir()); err == nil {
+				t.Fatal("invalid gzip trailer accepted as a complete backup")
+			}
+		})
+	}
+}
+
+func TestWriteArchivePassesFullIntegrityRead(t *testing.T) {
+	buildDir := t.TempDir()
+	for name, content := range map[string]string{ManifestName: "manifest", DatabaseSQLName: "database"} {
+		if err := os.WriteFile(filepath.Join(buildDir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "valid.ambackup")
+	service := NewService(nil, "mysql", "")
+	if err := service.writeArchive(path, buildDir, DatabaseSQLName, ScopeDatabase); err != nil {
+		t.Fatal(err)
+	}
+	destination := t.TempDir()
+	if err := safeExtract(path, destination); err != nil {
+		t.Fatalf("valid exported archive failed integrity read: %v", err)
+	}
+	for name, content := range map[string]string{ManifestName: "manifest", DatabaseSQLName: "database"} {
+		if raw, err := os.ReadFile(filepath.Join(destination, name)); err != nil || string(raw) != content {
+			t.Fatalf("extracted %s = %q, %v", name, raw, err)
+		}
+	}
+}
 
 func TestImportRejectsUnsafeArchivePath(t *testing.T) {
 	archivePath := filepath.Join(t.TempDir(), "unsafe-backup.dat")

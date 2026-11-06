@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -33,6 +34,7 @@ type Service struct {
 const (
 	maxBackupExtractBytes   int64 = 1 << 30
 	maxBackupArchiveEntries       = 10_000
+	maxBackupTrailingBytes  int64 = 1 << 20
 )
 
 type Option func(*Service)
@@ -505,12 +507,24 @@ func (s *Service) writeArchive(outputPath string, buildDir string, databaseArchi
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-	gzipWriter := gzip.NewWriter(file)
-	defer gzipWriter.Close()
-	tarWriter := tar.NewWriter(gzipWriter)
-	defer tarWriter.Close()
+	archiveErr := s.writeArchiveToWriter(file, buildDir, databaseArchiveName, scope)
+	var syncErr error
+	if archiveErr == nil {
+		syncErr = file.Sync()
+	}
+	return errors.Join(archiveErr, syncErr, file.Close())
+}
 
+// Closing tar and gzip writes the archive trailer. Return those errors before
+// Export can publish a path that might contain an incomplete backup.
+func (s *Service) writeArchiveToWriter(output io.Writer, buildDir string, databaseArchiveName string, scope string) error {
+	gzipWriter := gzip.NewWriter(output)
+	tarWriter := tar.NewWriter(gzipWriter)
+	writeErr := s.writeArchiveEntries(tarWriter, buildDir, databaseArchiveName, scope)
+	return errors.Join(writeErr, tarWriter.Close(), gzipWriter.Close())
+}
+
+func (s *Service) writeArchiveEntries(tarWriter *tar.Writer, buildDir string, databaseArchiveName string, scope string) error {
 	if err := addFileToTar(tarWriter, filepath.Join(buildDir, ManifestName), ManifestName); err != nil {
 		return err
 	}
@@ -1084,7 +1098,17 @@ func safeExtract(archivePath string, destination string) error {
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {
-			return nil
+			// tar reaches its end blocks before gzip has necessarily read its
+			// checksum/trailer. Drain a bounded tail so truncated or corrupt
+			// archives cannot be accepted before a database restore.
+			_, tailErr := io.CopyN(io.Discard, gzipReader, maxBackupTrailingBytes+1)
+			if tailErr == io.EOF {
+				return nil
+			}
+			if tailErr != nil {
+				return tailErr
+			}
+			return Error{Message: "Backup archive contains excessive trailing data"}
 		}
 		if err != nil {
 			return err
