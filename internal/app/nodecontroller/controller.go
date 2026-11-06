@@ -1231,6 +1231,24 @@ func runtimeResult(node NodeRow, state *nodev1.RuntimeState, metrics *nodev1.Met
 		result.Capabilities = append([]string(nil), state.GetCapabilities()...)
 	}
 	if metrics != nil {
+		if accounting := metrics.GetAccounting(); accounting != nil {
+			summary := &AccountingHealth{
+				ReflectionLedgerLoaded:    accounting.GetReflectionLedgerLoaded(),
+				AwaitingReflectionBatches: accounting.GetAwaitingReflectionBatches(),
+				AwaitingReflectionBytes:   accounting.GetAwaitingReflectionBytes(),
+				ReflectionBytesOverflow:   accounting.GetReflectionBytesOverflow(),
+				Protocols:                 make([]AccountingProtocolStatus, 0, len(accounting.GetProtocols())),
+			}
+			for _, item := range accounting.GetProtocols() {
+				summary.Protocols = append(summary.Protocols, AccountingProtocolStatus{
+					Protocol: item.GetProtocol(), StateLoaded: item.GetStateLoaded(),
+					PendingBatchID: item.GetPendingBatchId(), PendingBytes: item.GetPendingBytes(),
+					PendingBytesOverflow: item.GetPendingBytesOverflow(), LastAckedBatchID: item.GetLastAckedBatchId(),
+					LastCheckpointUnix: item.GetLastCheckpointUnix(), Failure: item.GetFailure(),
+				})
+			}
+			result.Accounting = summary
+		}
 		system := metrics.GetSystem()
 		transfer := metrics.GetTransfer()
 		result.CPU = CPUInfo{

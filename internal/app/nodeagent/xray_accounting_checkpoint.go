@@ -226,6 +226,9 @@ func (s *Server) runXrayAccountingCheckpoints(ctx context.Context, interval time
 			err := s.checkpointXrayAccounting(sampleCtx)
 			cancel()
 			if ctx.Err() == nil {
+				if err == nil {
+					s.recordLocalAccountingCheckpoint("xray")
+				}
 				s.recordLocalAccountingHealth("xray", err)
 			}
 		}

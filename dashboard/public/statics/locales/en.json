@@ -3767,5 +3767,16 @@
 	"settings.backup.pageDescription": "Create a protected AntiMage backup or restore a previous backup. Review the selected scope before importing.",
 	"settings.backup.binaryOnlyNotice": "Backup and restore controls are available for binary installations.",
 	"settings.backup.noPermission": "Your administrator account does not have backup permission.",
-	"settings.backup.runtimeCheckFailed": "Could not verify the panel installation mode. Refresh this page and try again."
+	"settings.backup.runtimeCheckFailed": "Could not verify the panel installation mode. Refresh this page and try again.",
+	"accountingHealth.open": "Show node accounting status",
+	"accountingHealth.title": "Accounting",
+	"accountingHealth.healthy": "Healthy",
+	"accountingHealth.pending": "Pending",
+	"accountingHealth.degraded": "Degraded",
+	"accountingHealth.unknown": "Unknown",
+	"accountingHealth.reflection": "Awaiting panel reflection",
+	"accountingHealth.checkpoint": "Last successful checkpoint since node start",
+	"accountingHealth.lastAck": "Last ACK batch",
+	"accountingHealth.none": "None",
+	"accountingHealth.failure": "Error"
 }

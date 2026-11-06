@@ -45,6 +45,7 @@ type Server struct {
 	xrayRuntimeGeneration            string
 	xrayStatsClient                  *xrayStatsClient
 	localAccountingFailures          map[string]string
+	accountingLastCheckpoint         map[string]int64
 	localUsageMu                     sync.Mutex
 	localUsageLoaded                 bool
 	localUsageDeliveries             []localUsageDelivery
@@ -1016,7 +1017,7 @@ func (s *Server) metrics(includeRuntime bool) *nodev1.MetricsResponse {
 	if uptime, err := host.Uptime(); err == nil {
 		system.UptimeSeconds = uptime
 	}
-	res := &nodev1.MetricsResponse{System: system, Transfer: s.transferMetrics(), SampledAtUnix: time.Now().Unix()}
+	res := &nodev1.MetricsResponse{System: system, Transfer: s.transferMetrics(), SampledAtUnix: time.Now().Unix(), Accounting: s.accountingHealth()}
 	if includeRuntime {
 		res.Runtime = s.runtimeState("metrics collected")
 	}

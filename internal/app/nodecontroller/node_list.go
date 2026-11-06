@@ -164,6 +164,7 @@ func applyRuntimeToNodeItem(item *NodeListItem, runtime RuntimeResult) {
 	item.Memory = runtime.Memory
 	item.Transfer = runtime.Transfer
 	item.UptimeSeconds = runtime.UptimeSeconds
+	item.Accounting = runtime.Accounting
 }
 
 func enrichCertificateFields(item *NodeListItem, defaultCert string, defaultKey string) {

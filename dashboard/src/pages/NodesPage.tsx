@@ -96,6 +96,7 @@ import { ConfirmDialog } from "../components/dialogs/ConfirmDialog";
 import { GeoUpdateDialog } from "../components/GeoUpdateDialog";
 import { NodeFormModal } from "../components/NodeFormModal";
 import { NodeModalStatusBadge } from "../components/NodeModalStatusBadge";
+import { NodeAccountingHealth } from "../components/NodeAccountingHealth";
 import {
 	DataTable,
 	type DataTableColumn,
@@ -2017,6 +2018,18 @@ export const NodesPage: FC = () => {
 				mobilePriority: 1,
 				mobileMetaLabel: t("status"),
 				cell: renderNodeStatus,
+			},
+			{
+				id: "accounting",
+				header: t("accountingHealth.title"),
+				priority: "medium",
+				hideBelow: "xl",
+				width: { xl: "108px" },
+				minWidth: "96px",
+				maxWidth: "120px",
+				mobileVisible: true,
+				mobileMetaLabel: t("accountingHealth.title"),
+				cell: (node) => <NodeAccountingHealth accounting={node.accounting} />,
 			},
 			{
 				id: "address",
