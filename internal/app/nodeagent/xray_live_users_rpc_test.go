@@ -21,13 +21,14 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
-func xrayLiveRPCFixture(t *testing.T) (*Server, *int, *bool) {
+func xrayLiveRPCFixture(t *testing.T) (*Server, *int, *bool, *bool) {
 	t.Helper()
 	listener := bufconn.Listen(1 << 20)
 	users := map[string]proto.Message{}
 	var mu sync.Mutex
 	adds := 0
 	failSecond := false
+	unsupportedGet := false
 	grpcServer := grpc.NewServer(grpc.UnknownServiceHandler(func(_ any, stream grpc.ServerStream) error {
 		method, _ := grpc.MethodFromServerStream(stream)
 		mu.Lock()
@@ -40,6 +41,9 @@ func xrayLiveRPCFixture(t *testing.T) (*Server, *int, *bool) {
 			}
 			return stream.SendMsg(dynamicpb.NewMessage(xrayStatsWireDescriptor.Messages().ByName("QueryStatsResponse")))
 		case strings.HasSuffix(method, "/GetInboundUsers"):
+			if unsupportedGet {
+				return status.Error(codes.Unimplemented, "older Xray lacks GetInboundUsers")
+			}
 			req := dynamicpb.NewMessage(xrayUserWireDescriptor.Messages().ByName("GetInboundUserRequest"))
 			if err := stream.RecvMsg(req); err != nil {
 				return err
@@ -103,11 +107,25 @@ func xrayLiveRPCFixture(t *testing.T) (*Server, *int, *bool) {
 		return exec.Command("not-a-real-runtime")
 	}
 	t.Cleanup(func() { xrayCommandContext = oldCommand })
-	return s, &adds, &failSecond
+	return s, &adds, &failSecond, &unsupportedGet
+}
+
+func TestXrayLiveUnsupportedReadFallsBackBeforeMutation(t *testing.T) {
+	s, adds, _, unsupportedGet := xrayLiveRPCFixture(t)
+	*unsupportedGet = true
+	old := `{"inbounds":[{"tag":"vless","protocol":"vless","settings":{"decryption":"none","clients":[]}}]}`
+	desired := `{"inbounds":[{"tag":"vless","protocol":"vless","settings":{"decryption":"none","clients":[{"email":"two","id":"22222222-2222-4222-8222-222222222222"}]}}]}`
+	if err := os.WriteFile(s.lastConfig, []byte(old), 0600); err != nil {
+		t.Fatal(err)
+	}
+	usedLive, err := s.tryLiveXrayUserAdditions(context.Background(), desired)
+	if err != nil || usedLive || *adds != 0 {
+		t.Fatalf("older core should use prior full apply before any live mutation: usedLive=%v adds=%d err=%v", usedLive, *adds, err)
+	}
 }
 
 func TestXrayLiveSyncPersistsPolicyAndRetainsRuntime(t *testing.T) {
-	s, adds, _ := xrayLiveRPCFixture(t)
+	s, adds, _, _ := xrayLiveRPCFixture(t)
 	old := `{"inbounds":[{"tag":"vless","protocol":"vless","settings":{"decryption":"none","clients":[]}}]}`
 	desired := `{"inbounds":[{"tag":"vless","protocol":"vless","settings":{"decryption":"none","clients":[{"email":"two","id":"22222222-2222-4222-8222-222222222222"}]}}]}`
 	if err := os.WriteFile(s.lastConfig, []byte(old), 0600); err != nil {
@@ -136,7 +154,7 @@ func TestXrayLiveSyncPersistsPolicyAndRetainsRuntime(t *testing.T) {
 }
 
 func TestXrayLivePartialFailureRetriesWithoutRestart(t *testing.T) {
-	s, adds, failSecond := xrayLiveRPCFixture(t)
+	s, adds, failSecond, _ := xrayLiveRPCFixture(t)
 	*failSecond = true
 	old := `{"inbounds":[{"tag":"vless","protocol":"vless","settings":{"decryption":"none","clients":[]}}]}`
 	desired := `{"inbounds":[{"tag":"vless","protocol":"vless","settings":{"decryption":"none","clients":[{"email":"two","id":"22222222-2222-4222-8222-222222222222"},{"email":"three","id":"33333333-3333-4333-8333-333333333333"}]}}]}`
@@ -160,7 +178,7 @@ func TestXrayLivePartialFailureRetriesWithoutRestart(t *testing.T) {
 }
 
 func TestXrayLiveSyncKeepsOtherUsersPendingQuotaCutoffs(t *testing.T) {
-	s, _, _ := xrayLiveRPCFixture(t)
+	s, _, _, _ := xrayLiveRPCFixture(t)
 	config := `{"inbounds":[{"tag":"vless","protocol":"vless","settings":{"decryption":"none","clients":[]}}]}`
 	if err := os.WriteFile(s.lastConfig, []byte(config), 0600); err != nil {
 		t.Fatal(err)

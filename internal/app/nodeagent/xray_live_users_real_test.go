@@ -2,12 +2,15 @@ package nodeagent
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,8 +23,9 @@ func TestRealXrayLiveUserAdditions(t *testing.T) {
 	if xrayPath == "" {
 		t.Skip("set ANTIMAGE_XRAY_E2E_BINARY for real-core witness traffic tests")
 	}
-	for _, protocol := range []string{"vless", "vmess", "trojan"} {
-		t.Run(protocol, func(t *testing.T) {
+	for _, variant := range []struct{ name, protocol, method string }{{"vless", "vless", ""}, {"vmess", "vmess", ""}, {"trojan", "trojan", ""}, {"shadowsocks-aead", "shadowsocks", "aes-128-gcm"}, {"shadowsocks-2022", "shadowsocks", "2022-blake3-aes-128-gcm"}, {"hysteria-2", "hysteria", ""}} {
+		t.Run(variant.name, func(t *testing.T) {
+			protocol := variant.protocol
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
 			echo, err := net.Listen("tcp", "127.0.0.1:0")
@@ -44,12 +48,41 @@ func TestRealXrayLiveUserAdditions(t *testing.T) {
 				apiPort, serverPort = realXrayFreeTCPPort(t), realXrayFreeTCPPort(t)
 			}
 			oldID, newID := "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"
+			serverKey := "AAAAAAAAAAAAAAAAAAAAAA=="
+			if strings.HasPrefix(variant.method, "2022-") {
+				oldID, newID = "AQEBAQEBAQEBAQEBAQEBAQ==", "AgICAgICAgICAgICAgICAg=="
+			} else if protocol == "hysteria" {
+				oldID, newID = "11111111111141118111111111111111", "22222222222242228222222222222222"
+			}
+			var hysteriaServerStream map[string]any
+			var hysteriaPeerFingerprint string
+			if protocol == "hysteria" {
+				certificate, certPEM, keyPEM := nodeTLSCertificate(t, "localhost")
+				fingerprint := sha256.Sum256(certificate.Certificate[0])
+				hysteriaPeerFingerprint = hex.EncodeToString(fingerprint[:])
+				certDir := t.TempDir()
+				certPath, keyPath := filepath.Join(certDir, "cert.pem"), filepath.Join(certDir, "key.pem")
+				if err := os.WriteFile(certPath, certPEM, 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
+					t.Fatal(err)
+				}
+				hysteriaServerStream = map[string]any{"network": "hysteria", "security": "tls", "hysteriaSettings": map[string]any{"version": 2}, "tlsSettings": map[string]any{"certificates": []any{map[string]any{"certificateFile": certPath, "keyFile": keyPath}}}}
+			}
 			clientCredential := func(id, email string) map[string]any {
 				field := "id"
-				if protocol == "trojan" {
+				if protocol == "trojan" || protocol == "shadowsocks" {
 					field = "password"
+				} else if protocol == "hysteria" {
+					field = "auth"
 				}
-				return map[string]any{field: id, "email": email, "level": 0}
+				client := map[string]any{field: id, "email": email, "level": 0}
+				if protocol == "shadowsocks" && !strings.HasPrefix(variant.method, "2022-") {
+					client["method"] = variant.method
+					client["iv_check"] = false
+				}
+				return client
 			}
 			config := func(includeNew bool) string {
 				clients := []any{clientCredential(oldID, "1.witness")}
@@ -60,10 +93,20 @@ func TestRealXrayLiveUserAdditions(t *testing.T) {
 				if protocol == "vless" {
 					settings["decryption"] = "none"
 				}
+				if strings.HasPrefix(variant.method, "2022-") {
+					settings["method"] = variant.method
+					settings["password"] = serverKey
+				} else if protocol == "hysteria" {
+					settings["version"] = 2
+				}
+				userInbound := map[string]any{"tag": "users", "listen": "127.0.0.1", "port": serverPort, "protocol": protocol, "settings": settings}
+				if protocol == "hysteria" {
+					userInbound["streamSettings"] = hysteriaServerStream
+				}
 				raw, err := json.Marshal(map[string]any{
 					"log": map[string]any{"loglevel": "warning"}, "api": map[string]any{"tag": "API", "services": []string{"HandlerService", "StatsService"}}, "stats": map[string]any{},
 					"policy":    map[string]any{"levels": map[string]any{"0": map[string]any{"statsUserUplink": true, "statsUserDownlink": true}}},
-					"inbounds":  []any{map[string]any{"tag": "API_INBOUND", "listen": "127.0.0.1", "port": apiPort, "protocol": "tunnel", "settings": map[string]any{"allowedNetwork": "tcp", "rewriteAddress": "127.0.0.1"}}, map[string]any{"tag": "users", "listen": "127.0.0.1", "port": serverPort, "protocol": protocol, "settings": settings}},
+					"inbounds":  []any{map[string]any{"tag": "API_INBOUND", "listen": "127.0.0.1", "port": apiPort, "protocol": "tunnel", "settings": map[string]any{"allowedNetwork": "tcp", "rewriteAddress": "127.0.0.1"}}, userInbound},
 					"outbounds": []any{map[string]any{"protocol": "freedom", "tag": "direct", "settings": map[string]any{"finalRules": []any{map[string]any{"action": "allow"}}}}},
 					"routing":   map[string]any{"rules": []any{map[string]any{"type": "field", "inboundTag": []string{"API_INBOUND"}, "outboundTag": "API"}}},
 				})
@@ -101,8 +144,17 @@ func TestRealXrayLiveUserAdditions(t *testing.T) {
 				t.Helper()
 				port := realXrayFreeTCPPort(t)
 				var settings map[string]any
-				if protocol == "trojan" {
-					settings = map[string]any{"servers": []any{map[string]any{"address": "127.0.0.1", "port": serverPort, "password": id}}}
+				if protocol == "hysteria" {
+					settings = map[string]any{"version": 2, "address": "127.0.0.1", "port": serverPort}
+				} else if protocol == "trojan" || protocol == "shadowsocks" {
+					server := map[string]any{"address": "127.0.0.1", "port": serverPort, "password": id}
+					if protocol == "shadowsocks" {
+						server["method"] = variant.method
+						if strings.HasPrefix(variant.method, "2022-") {
+							server["password"] = serverKey + ":" + id
+						}
+					}
+					settings = map[string]any{"servers": []any{server}}
 				} else {
 					user := map[string]any{"id": id}
 					if protocol == "vless" {
@@ -112,7 +164,11 @@ func TestRealXrayLiveUserAdditions(t *testing.T) {
 					}
 					settings = map[string]any{"vnext": []any{map[string]any{"address": "127.0.0.1", "port": serverPort, "users": []any{user}}}}
 				}
-				raw, err := json.Marshal(map[string]any{"log": map[string]any{"loglevel": "warning"}, "inbounds": []any{map[string]any{"listen": "127.0.0.1", "port": port, "protocol": "dokodemo-door", "settings": map[string]any{"address": "127.0.0.1", "port": echoPort, "network": "tcp"}}}, "outbounds": []any{map[string]any{"protocol": protocol, "settings": settings}}})
+				outbound := map[string]any{"protocol": protocol, "settings": settings}
+				if protocol == "hysteria" {
+					outbound["streamSettings"] = map[string]any{"network": "hysteria", "security": "tls", "hysteriaSettings": map[string]any{"version": 2, "auth": id}, "tlsSettings": map[string]any{"pinnedPeerCertSha256": hysteriaPeerFingerprint, "serverName": "localhost"}}
+				}
+				raw, err := json.Marshal(map[string]any{"log": map[string]any{"loglevel": "warning"}, "inbounds": []any{map[string]any{"listen": "127.0.0.1", "port": port, "protocol": "dokodemo-door", "settings": map[string]any{"address": "127.0.0.1", "port": echoPort, "network": "tcp"}}}, "outbounds": []any{outbound}})
 				if err != nil {
 					t.Fatal(err)
 				}

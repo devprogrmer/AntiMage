@@ -3,8 +3,10 @@ package nodeagent
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,8 +14,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
 )
+
+var errXrayLiveUserReadUnsupported = errors.New("Xray does not support reading live inbound users")
 
 type xrayLiveUser struct {
 	Email       string
@@ -32,6 +39,9 @@ func xrayDecodeConfig(raw string) (map[string]any, error) {
 	decoder.UseNumber()
 	if err := decoder.Decode(&out); err != nil {
 		return nil, err
+	}
+	if out == nil {
+		return nil, fmt.Errorf("Xray config must be an object")
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
@@ -52,6 +62,9 @@ func xrayLiveUserAdditions(previous, next string) ([]xrayLiveAddition, bool, err
 	if err != nil {
 		return nil, false, err
 	}
+	if reflect.DeepEqual(oldConfig, newConfig) {
+		return nil, true, nil
+	}
 	oldInbounds, oldOK := oldConfig["inbounds"].([]any)
 	newInbounds, newOK := newConfig["inbounds"].([]any)
 	if !oldOK || !newOK || len(oldInbounds) != len(newInbounds) {
@@ -69,7 +82,7 @@ func xrayLiveUserAdditions(previous, next string) ([]xrayLiveAddition, bool, err
 			return nil, false, nil
 		}
 		protocol, _ := oldInbound["protocol"].(string)
-		if protocol != "vless" && protocol != "vmess" && protocol != "trojan" {
+		if protocol != "vless" && protocol != "vmess" && protocol != "trojan" && protocol != "shadowsocks" && protocol != "hysteria" {
 			continue
 		}
 		tag, _ := oldInbound["tag"].(string)
@@ -93,6 +106,18 @@ func xrayLiveUserAdditions(previous, next string) ([]xrayLiveAddition, bool, err
 		if !ok {
 			return nil, false, nil
 		}
+		serverMethod, _ := oldSettings["method"].(string)
+		if protocol == "shadowsocks" {
+			if _, ok := oldSettings["clients"].([]any); !ok {
+				return nil, false, nil
+			}
+		} // Legacy single-user credentials must not survive a desired multi-user replacement.
+		if protocol == "shadowsocks" && strings.HasPrefix(serverMethod, "2022-") && len(oldClients) == 0 {
+			return nil, false, nil
+		} // Single-user -> multi-user changes the inbound implementation.
+		if protocol == "hysteria" && len(oldClients) == 0 {
+			return nil, false, nil
+		} // The first user would disable the transport's static auth fallback.
 		for email, client := range oldClients {
 			if !reflect.DeepEqual(client, newClients[email]) {
 				return nil, false, nil
@@ -100,13 +125,26 @@ func xrayLiveUserAdditions(previous, next string) ([]xrayLiveAddition, bool, err
 		}
 		// Walk desired order for deterministic, retryable application.
 		clients, _ := newSettings["clients"].([]any)
+		seenCredentials := make(map[string]bool, len(clients))
+		for _, value := range clients {
+			credential, ok := xrayLiveCredentialKey(protocol, serverMethod, value.(map[string]any))
+			if !ok || seenCredentials[credential] {
+				return nil, false, nil
+			}
+			seenCredentials[credential] = true
+		}
 		for _, value := range clients {
 			client := value.(map[string]any)
 			email := strings.ToLower(client["email"].(string))
 			if _, exists := oldClients[email]; exists {
 				continue
 			}
-			user, ok := xrayLiveUserFromClient(protocol, client)
+			var user xrayLiveUser
+			if protocol == "shadowsocks" {
+				user, ok = xrayLiveShadowsocksUser(client, serverMethod)
+			} else {
+				user, ok = xrayLiveUserFromClient(protocol, client)
+			}
 			if !ok {
 				return nil, false, nil
 			}
@@ -119,6 +157,111 @@ func xrayLiveUserAdditions(previous, next string) ([]xrayLiveAddition, bool, err
 		return nil, false, nil
 	}
 	return additions, true, nil
+}
+
+func xrayLiveCredentialKey(protocol, serverMethod string, client map[string]any) (string, bool) {
+	field := "id"
+	switch protocol {
+	case "trojan", "shadowsocks":
+		field = "password"
+	case "hysteria":
+		field = "auth"
+	}
+	credential, ok := client[field].(string)
+	if !ok || credential == "" {
+		return "", false
+	}
+	if protocol == "vless" || protocol == "vmess" {
+		decoded, err := hex.DecodeString(strings.ReplaceAll(credential, "-", ""))
+		if err != nil || len(decoded) != 16 {
+			return "", false
+		}
+		return hex.EncodeToString(decoded), true
+	}
+	if protocol == "hysteria" {
+		if id, err := uuid.Parse(credential); err == nil {
+			// Xray's Hysteria validator resolves UUID auths with bytes 6-7
+			// zeroed; distinct textual UUIDs can otherwise hijack a user.
+			id[6], id[7] = 0, 0
+			return "uuid:" + hex.EncodeToString(id[:]), true
+		}
+	}
+	if protocol == "shadowsocks" && strings.HasPrefix(serverMethod, "2022-") {
+		key, err := base64.StdEncoding.DecodeString(credential)
+		if err != nil {
+			return "", false
+		}
+		return base64.StdEncoding.EncodeToString(key), true
+	}
+	return credential, true
+}
+
+func xrayLiveShadowsocksUser(client map[string]any, serverMethod string) (xrayLiveUser, bool) {
+	user := xrayLiveUser{AccountType: "xray.proxy.shadowsocks.Account"}
+	user.Email, _ = client["email"].(string)
+	for key, value := range client {
+		switch key {
+		case "email", "password", "method":
+		case "level":
+			number, ok := value.(json.Number)
+			if !ok {
+				return user, false
+			}
+			level, err := strconv.ParseUint(string(number), 10, 8)
+			if err != nil {
+				return user, false
+			}
+			user.Level = uint32(level)
+		case "iv_check":
+			if enabled, ok := value.(bool); !ok || enabled {
+				return user, false
+			}
+		default:
+			return user, false
+		}
+	}
+	password, ok := client["password"].(string)
+	if !ok || password == "" {
+		return user, false
+	}
+	method, _ := client["method"].(string)
+	var cipher uint64
+	if strings.HasPrefix(serverMethod, "2022-") {
+		keyLength := 0
+		switch serverMethod {
+		case "2022-blake3-aes-128-gcm":
+			keyLength = 16
+		case "2022-blake3-aes-256-gcm":
+			keyLength = 32
+		default:
+			return user, false
+		}
+		key, err := base64.StdEncoding.DecodeString(password)
+		if method != "" || err != nil || len(key) != keyLength {
+			return user, false
+		}
+		user.AccountType = "xray.proxy.shadowsocks_2022.Account"
+	} else {
+		switch strings.ToLower(method) {
+		case "aes-128-gcm", "aead_aes_128_gcm":
+			cipher = 5
+		case "aes-256-gcm", "aead_aes_256_gcm":
+			cipher = 6
+		case "chacha20-poly1305", "aead_chacha20_poly1305", "chacha20-ietf-poly1305":
+			cipher = 7
+		case "xchacha20-poly1305", "aead_xchacha20_poly1305", "xchacha20-ietf-poly1305":
+			cipher = 8
+		default:
+			return user, false
+		}
+	}
+	user.Account = protowire.AppendTag(user.Account, 1, protowire.BytesType)
+	user.Account = protowire.AppendString(user.Account, password)
+	if cipher != 0 {
+		user.Account = protowire.AppendTag(user.Account, 2, protowire.VarintType)
+		user.Account = protowire.AppendVarint(user.Account, cipher)
+	}
+	return user, true
 }
 
 func xrayLiveClientIndex(value any) (map[string]map[string]any, bool) {
@@ -150,6 +293,9 @@ func xrayLiveClientIndex(value any) (map[string]map[string]any, bool) {
 
 func xrayLiveUserFromClient(protocol string, client map[string]any) (xrayLiveUser, bool) {
 	user := xrayLiveUser{AccountType: "xray.proxy." + protocol + ".Account"}
+	if protocol == "hysteria" {
+		user.AccountType = "xray.proxy.hysteria.account.Account"
+	}
 	user.Email, _ = client["email"].(string)
 	for key, value := range client {
 		switch key {
@@ -165,11 +311,15 @@ func xrayLiveUserFromClient(protocol string, client map[string]any) (xrayLiveUse
 			}
 			user.Level = uint32(level)
 		case "id":
-			if protocol == "trojan" {
+			if protocol == "trojan" || protocol == "hysteria" {
 				return user, false
 			}
 		case "password":
 			if protocol != "trojan" {
+				return user, false
+			}
+		case "auth":
+			if protocol != "hysteria" {
 				return user, false
 			}
 		case "flow":
@@ -183,12 +333,14 @@ func xrayLiveUserFromClient(protocol string, client map[string]any) (xrayLiveUse
 	credentialKey := "id"
 	if protocol == "trojan" {
 		credentialKey = "password"
+	} else if protocol == "hysteria" {
+		credentialKey = "auth"
 	}
 	credential, ok := client[credentialKey].(string)
 	if !ok || credential == "" {
 		return user, false
 	}
-	if protocol != "trojan" {
+	if protocol != "trojan" && protocol != "hysteria" {
 		// Custom short Xray IDs and additional account features retain full apply.
 		compact := strings.ReplaceAll(credential, "-", "")
 		decoded, err := hex.DecodeString(compact)
@@ -254,6 +406,9 @@ func xrayLiveAccountEqual(kind string, expected, actual []byte) bool {
 func (c *xrayStatsClient) ensureLiveUser(ctx context.Context, addition xrayLiveAddition) error {
 	existing, err := c.getUserRPC(ctx, addition.tag, addition.user.Email)
 	if err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			return fmt.Errorf("%w: %w", errXrayLiveUserReadUnsupported, err)
+		}
 		return err
 	}
 	if existing != nil {
@@ -295,7 +450,7 @@ func (s *Server) tryLiveXrayUserAdditions(ctx context.Context, desired string) (
 		return false, err
 	}
 	client := s.cachedXrayStatsClient(path, port)
-	for _, addition := range additions {
+	for index, addition := range additions {
 		// Coordinate the core mutation and revocation marker with quota checks;
 		// do not clear another user's pending active-stream cutoff on live apply.
 		s.xrayUsageMu.Lock()
@@ -305,6 +460,11 @@ func (s *Server) tryLiveXrayUserAdditions(ctx context.Context, desired string) (
 		}
 		s.xrayUsageMu.Unlock()
 		if err != nil {
+			if index == 0 && errors.Is(err, errXrayLiveUserReadUnsupported) {
+				// The read RPC did not exist, so no live mutation was attempted.
+				// The previous full-apply path remains available on older cores.
+				return false, nil
+			}
 			return false, fmt.Errorf("apply live Xray user addition: %w", err)
 		}
 	}
