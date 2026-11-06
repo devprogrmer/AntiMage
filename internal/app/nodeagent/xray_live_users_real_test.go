@@ -26,7 +26,7 @@ func TestRealXrayLiveUserAdditions(t *testing.T) {
 	for _, variant := range []struct{ name, protocol, method string }{{"vless", "vless", ""}, {"vmess", "vmess", ""}, {"trojan", "trojan", ""}, {"shadowsocks-aead", "shadowsocks", "aes-128-gcm"}, {"shadowsocks-2022", "shadowsocks", "2022-blake3-aes-128-gcm"}, {"hysteria-2", "hysteria", ""}} {
 		t.Run(variant.name, func(t *testing.T) {
 			protocol := variant.protocol
-			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
 			echo, err := net.Listen("tcp", "127.0.0.1:0")
 			if err != nil {
@@ -68,7 +68,7 @@ func TestRealXrayLiveUserAdditions(t *testing.T) {
 				if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
 					t.Fatal(err)
 				}
-				hysteriaServerStream = map[string]any{"network": "hysteria", "security": "tls", "hysteriaSettings": map[string]any{"version": 2}, "tlsSettings": map[string]any{"certificates": []any{map[string]any{"certificateFile": certPath, "keyFile": keyPath}}}}
+				hysteriaServerStream = map[string]any{"network": "hysteria", "security": "tls", "hysteriaSettings": map[string]any{"version": 2, "auth": "shared-server-secret"}, "tlsSettings": map[string]any{"certificates": []any{map[string]any{"certificateFile": certPath, "keyFile": keyPath}}}}
 			}
 			clientCredential := func(id, email string) map[string]any {
 				field := "id"
@@ -150,8 +150,10 @@ func TestRealXrayLiveUserAdditions(t *testing.T) {
 					server := map[string]any{"address": "127.0.0.1", "port": serverPort, "password": id}
 					if protocol == "shadowsocks" {
 						server["method"] = variant.method
-						if strings.HasPrefix(variant.method, "2022-") {
+						if strings.HasPrefix(variant.method, "2022-") && id != "" {
 							server["password"] = serverKey + ":" + id
+						} else if strings.HasPrefix(variant.method, "2022-") {
+							server["password"] = serverKey
 						}
 					}
 					settings = map[string]any{"servers": []any{server}}
@@ -182,19 +184,25 @@ func TestRealXrayLiveUserAdditions(t *testing.T) {
 				t.Cleanup(func() { conn.Close() })
 				return conn
 			}
-			ping := func(conn net.Conn, sequence string) {
-				t.Helper()
+			exchange := func(conn net.Conn, sequence string) error {
 				conn.SetDeadline(time.Now().Add(4 * time.Second))
 				payload := []byte("antimage-live-witness-" + sequence)
 				if _, err := conn.Write(payload); err != nil {
-					t.Fatal(err)
+					return err
 				}
 				reply := make([]byte, len(payload))
 				if _, err := io.ReadFull(conn, reply); err != nil {
-					t.Fatal(err)
+					return err
 				}
 				if string(reply) != string(payload) {
-					t.Fatal("tunneled data changed")
+					return fmt.Errorf("tunneled data changed")
+				}
+				return nil
+			}
+			ping := func(conn net.Conn, sequence string) {
+				t.Helper()
+				if err := exchange(conn, sequence); err != nil {
+					t.Fatal(err)
 				}
 			}
 			witness := startClient(oldID)
@@ -284,6 +292,72 @@ func TestRealXrayLiveUserAdditions(t *testing.T) {
 				}
 			}
 			t.Logf("protocol=%s witness PID=%d generation retained during additions; new user authenticated; retry, actual restart authentication and unchanged pending receipt passed", protocol, pid)
+			if strings.HasPrefix(variant.method, "2022-") || protocol == "hysteria" {
+				fallbackID := ""
+				if protocol == "hysteria" {
+					fallbackID = "shared-server-secret"
+				}
+				if err := exchange(startClient(fallbackID), "fallback-before-quota"); err == nil {
+					t.Fatal("server credential accepted while managed users are active")
+				}
+				stopAndWait := func(server *Server) {
+					t.Helper()
+					server.xrayTransitionMu.Lock()
+					err := server.stopRuntime()
+					server.xrayTransitionMu.Unlock()
+					if err != nil {
+						t.Fatal(err)
+					}
+					deadline := time.Now().Add(4 * time.Second)
+					for {
+						conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", apiPort), 100*time.Millisecond)
+						if err != nil {
+							return
+						}
+						conn.Close()
+						if time.Now().After(deadline) {
+							t.Fatal("core did not exit after stop")
+						}
+						time.Sleep(20 * time.Millisecond)
+					}
+				}
+				stopAndWait(restarted)
+				for _, mode := range []string{"quota-filter", "offline-restart"} {
+					t.Run(mode, func(t *testing.T) {
+						denied := New(Config{DataDir: t.TempDir(), XrayPath: xrayPath, XrayAssetsDir: filepath.Dir(xrayPath), XrayAPIPort: apiPort})
+						defer func() { stopAndWait(denied); denied.closeXrayStatsClient() }()
+						blocked := &nodev1.RuntimeConfigRequest{ConfigJson: config(true), DesiredRevision: 3}
+						if mode == "quota-filter" {
+							var removed bool
+							blocked.ConfigJson, removed, err = removeXrayConfigClients(blocked.ConfigJson, map[string]struct{}{"1.witness": {}, "2.new-user": {}})
+							if err != nil || !removed {
+								t.Fatalf("quota filter: removed=%v error=%v", removed, err)
+							}
+						} else {
+							blocked.OvRuntimeJson = strings.ReplaceAll(native(true), `"status":"active"`, `"status":"limited"`)
+							if err := denied.persistRuntimePolicy(blocked); err != nil {
+								t.Fatal(err)
+							}
+							denied = New(denied.cfg)
+						}
+						if mode == "offline-restart" {
+							err = denied.restoreRuntimePolicy(ctx)
+						} else {
+							_, err = denied.SyncConfig(ctx, blocked)
+						}
+						if err != nil {
+							t.Fatal(err)
+						}
+						realXrayWaitForTCP(t, apiPort, &realXrayLogBuffer{})
+						if err := exchange(startClient(fallbackID), "fallback-after-quota"); err == nil {
+							t.Fatal("QUOTA BYPASS: server credential authenticated after the last managed user was revoked")
+						}
+						if err := exchange(startClient(newID), "revoked-after-quota"); err == nil {
+							t.Fatal("revoked managed credential still authenticated")
+						}
+					})
+				}
+			}
 		})
 	}
 }

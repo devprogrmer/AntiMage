@@ -306,6 +306,18 @@ func (c Controller) includeDBUsers(ctx context.Context, raw map[string]any, data
 			ensureMap(inbound, "settings")["clients"] = append(clients, settings)
 		}
 	}
+	// Empty managed SS2022/Hysteria listeners can authenticate with the shared
+	// server credential. Keep their definition in the panel, but omit them from
+	// the core config until at least one authorized user exists.
+	kept := make([]any, 0, len(inbounds))
+	for _, inbound := range inbounds {
+		settings := mapValue(inbound["settings"])
+		if xrayconfig.EmptyUsersAllowServerAuth(stringValue(inbound["protocol"]), stringValue(settings["method"])) && len(interfaceSlice(settings["clients"])) == 0 {
+			continue
+		}
+		kept = append(kept, inbound)
+	}
+	raw["inbounds"] = kept
 	return nil
 }
 

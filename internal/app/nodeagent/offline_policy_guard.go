@@ -203,7 +203,8 @@ func (s *Server) guardOfflineRuntimePolicy(req *nodev1.RuntimeConfigRequest) (*n
 	if err != nil {
 		return nil, err
 	}
-	deniedEmails := map[string]bool{}
+	deniedEmails := map[string]struct{}{}
+	managedXrayTags := map[string]struct{}{}
 	for field, protocol := range map[string]string{"inbounds": "openvpn", "l2tp_inbounds": "l2tp", "pptp_inbounds": "pptp", "wg_inbounds": "wireguard", "awg_inbounds": "amneziawg", "ikev2_inbounds": "ikev2", "anyconnect_inbounds": "anyconnect", "xray_policies": "xray"} {
 		if len(native[field]) == 0 || string(native[field]) == "null" {
 			continue
@@ -229,12 +230,16 @@ func (s *Server) guardOfflineRuntimePolicy(req *nodev1.RuntimeConfigRequest) (*n
 			kept := make([]json.RawMessage, 0, len(users))
 			for _, user := range users {
 				var p struct {
-					UserID int64  `json:"user_id"`
-					Email  string `json:"email"`
+					UserID     int64  `json:"user_id"`
+					Email      string `json:"email"`
+					InboundTag string `json:"inbound_tag"`
 					nativeSessionUserPolicy
 				}
 				if err := json.Unmarshal(user, &p); err != nil {
 					return nil, err
+				}
+				if protocol == "xray" && p.InboundTag != "" {
+					managedXrayTags[p.InboundTag] = struct{}{}
 				}
 				allowed, _ := nativeSessionUserPolicyAllowed(p.nativeSessionUserPolicy, time.Now())
 				if allowed && strings.EqualFold(p.Status, "active") && nativeSessionPolicyWouldExceedDataLimit(p.nativeSessionUserPolicy, effectiveTotals[p.UserID]) {
@@ -243,7 +248,7 @@ func (s *Server) guardOfflineRuntimePolicy(req *nodev1.RuntimeConfigRequest) (*n
 				if allowed {
 					kept = append(kept, user)
 				} else if protocol == "xray" {
-					deniedEmails[p.Email] = true
+					deniedEmails[p.Email] = struct{}{}
 				}
 			}
 			inbound[usersField], _ = json.Marshal(kept)
@@ -253,51 +258,12 @@ func (s *Server) guardOfflineRuntimePolicy(req *nodev1.RuntimeConfigRequest) (*n
 		}
 	}
 	configJSON := req.GetConfigJson()
-	if len(deniedEmails) > 0 {
-		var config map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
-			return nil, err
-		}
-		var inbounds []map[string]json.RawMessage
-		if err := json.Unmarshal(config["inbounds"], &inbounds); err != nil {
-			return nil, err
-		}
-		for _, inbound := range inbounds {
-			var settings map[string]json.RawMessage
-			if len(inbound["settings"]) == 0 {
-				continue
-			}
-			if err := json.Unmarshal(inbound["settings"], &settings); err != nil {
-				return nil, err
-			}
-			if len(settings["clients"]) == 0 {
-				continue
-			}
-			var clients []json.RawMessage
-			if err := json.Unmarshal(settings["clients"], &clients); err != nil {
-				return nil, err
-			}
-			kept := []json.RawMessage{}
-			for _, client := range clients {
-				var identity struct {
-					Email string `json:"email"`
-				}
-				if err := json.Unmarshal(client, &identity); err != nil {
-					return nil, err
-				}
-				if !deniedEmails[identity.Email] {
-					kept = append(kept, client)
-				}
-			}
-			settings["clients"], _ = json.Marshal(kept)
-			inbound["settings"], _ = json.Marshal(settings)
-		}
-		config["inbounds"], _ = json.Marshal(inbounds)
-		raw, err := json.Marshal(config)
+	if len(deniedEmails) > 0 || len(managedXrayTags) > 0 {
+		filtered, _, err := filterXrayConfigClients(configJSON, deniedEmails, managedXrayTags)
 		if err != nil {
 			return nil, err
 		}
-		configJSON = string(raw)
+		configJSON = filtered
 	}
 	raw, err := json.Marshal(native)
 	if err != nil {
