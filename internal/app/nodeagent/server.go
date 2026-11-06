@@ -766,6 +766,9 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	}
 	req = guarded
 	configJSON = req.GetConfigJson()
+	if err := s.validateXrayRuntimeConfig(ctx, configJSON); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 	// Persist the exact guarded policy that will be activated. Persisting the
 	// unguarded panel policy first would let a node restart offline and restore
 	// credentials that the durable quota guard had just denied.
@@ -835,7 +838,7 @@ func (s *Server) startXray(ctx context.Context, configPath string) error {
 	}
 	_ = s.stopRuntime()
 	cmd := xrayCommandContext(context.Background(), s.cfg.XrayPath, "run", "-config", configPath)
-	cmd.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+s.cfg.XrayAssetsDir)
+	cmd.Env = append(cmd.Environ(), "XRAY_LOCATION_ASSET="+s.cfg.XrayAssetsDir)
 	cmd.Stdout = logWriter{server: s}
 	cmd.Stderr = logWriter{server: s}
 	if err := cmd.Start(); err != nil {

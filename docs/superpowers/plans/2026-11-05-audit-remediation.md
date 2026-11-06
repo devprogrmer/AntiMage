@@ -20,9 +20,9 @@
 ## Work items and acceptance gates
 
 - [x] Node TLS: reject foreign, absent, expired and changed client certificates; accept current bundles and explicit master pin; cover real TLS handshakes and startup errors. PR #111 merged as `1332a36`; exact-head unit/build/vet and Linux race/native-protocol CI passed. Production rollout remains separate.
-- [ ] Xray user mutations: actual gRPC Add/Update/Remove, durable desired state, retry/reconcile, no global restart for user-only diffs. Observe uninterrupted witness traffic.
+- [ ] Xray user mutations: PR #115 merged as `999cbd1`; durable synchronization and live additions cover VLESS, VMess, Trojan, Shadowsocks AEAD/2022 and Hysteria 2. Real witness traffic, idempotent retry and restart/pending recovery passed locally and in Linux native CI; race/build/database CI passed. Credential changes/removals still use full apply and remain open work.
 - [ ] Xray quota cutoff: close only exhausted users' streams. Investigate core capabilities; do not claim RemoveUser closes active streams or introduce a global restart as the solution.
-- [ ] Runtime rollout: validate with target core, retain last-known-good state, rollback on startup failure, preserve accounting generation checkpoints.
+- [ ] Runtime rollout: target-core preflight now rejects changed invalid configs before replacing applied/durable policy, with real witness and recovery coverage. Runtime startup/bind failure rollback and a complete last-known-good activation protocol remain open work.
 - [x] Native speed collectors: produce real per-user samples for WG/AWG/OpenVPN/PPP/IKEv2; verify reset/reconnect and time units. PR #112 merged as `67126bd`; native/race/recovery CI passed. Production display validation remains separate.
 - [ ] Native policy caching: runtime payload reuse (PR #113, `ea70756`) and content-verified WG/AWG helpers (PR #114, `2f3682d`) merged with race/native CI passing. Additional native helper paths remain to be assessed.
 - [ ] Accounting health UI: last sample/checkpoint/ACK/reflection, pending bytes and degraded persistence states.

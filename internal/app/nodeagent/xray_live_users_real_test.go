@@ -215,6 +215,22 @@ func TestRealXrayLiveUserAdditions(t *testing.T) {
 			if !same {
 				t.Fatal("adding/retrying user replaced the witness core")
 			}
+			if protocol == "vless" {
+				invalid := proto.Clone(req).(*nodev1.RuntimeConfigRequest)
+				invalid.DesiredRevision = 3
+				invalid.ConfigJson = strings.Replace(req.ConfigJson, `"protocol":"vless"`, `"protocol":"invalid-protocol"`, 1)
+				if _, err := s.SyncConfig(ctx, invalid); err == nil {
+					t.Fatal("target core accepted an invalid replacement config")
+				}
+				ping(witness, "after-invalid-config")
+				ping(newUser, "after-invalid-config")
+				s.mu.Lock()
+				retained := s.lastRuntime != nil && s.lastRuntime.Process.Pid == pid && s.xrayRuntimeGeneration == generation && s.appliedRev == 2
+				s.mu.Unlock()
+				if !retained {
+					t.Fatal("invalid config replaced the running core or advanced its revision")
+				}
+			}
 			// Recovery must keep the authoritative new credential, not only RAM.
 			restarted := New(s.cfg)
 			policy, err := restarted.loadRuntimePolicy()
