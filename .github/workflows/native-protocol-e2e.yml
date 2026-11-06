@@ -104,7 +104,7 @@ jobs:
           go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
           ANTIMAGE_XRAY_E2E_BINARY="$dir/xray" \
             ANTIMAGE_XRAY_PANEL_TEST_BINARY="$nodecontroller_test" \
-            go test ./internal/app/nodeagent -run '^TestRealXray(OnlineAndStatsE2E|LiveUserAdditions)$' -count=1 -v
+            go test ./internal/app/nodeagent -run '^TestRealXray(OnlineAndStatsE2E|LiveUserAdditions|StartupBindFailure)$' -count=1 -v
 
       - name: Run native WireGuard lifecycle
         if: ${{ matrix.protocol == 'wireguard' }}

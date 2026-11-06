@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +48,16 @@ func TestStartRuntimeDoesNotBindXrayProcessToRequestContext(t *testing.T) {
 	case <-processContext.Done():
 		t.Fatal("xray process context was cancelled with the request")
 	case <-time.After(20 * time.Millisecond):
+	}
+	if !server.runtimeState("after cancellation").GetStarted() {
+		t.Fatal("Xray exited after the accepted request was canceled")
+	}
+	process := server.lastRuntime
+	if err := server.stopRuntime(); err != nil {
+		t.Fatal(err)
+	}
+	if process.ProcessState == nil {
+		t.Fatal("stop returned before the prior process was reaped")
 	}
 }
 
@@ -121,8 +130,8 @@ func TestRuntimeHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_RUNTIME_HELPER_PROCESS") != "1" {
 		return
 	}
-	if runtime.GOOS == "windows" {
-		select {}
+	// Keep a live timer so Go does not terminate this subprocess as deadlocked.
+	for {
+		time.Sleep(time.Hour)
 	}
-	select {}
 }
