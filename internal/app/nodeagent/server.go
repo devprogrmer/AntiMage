@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -40,6 +41,7 @@ type Server struct {
 	startedAt                        time.Time
 	lastConfig                       string
 	lastRuntime                      *exec.Cmd
+	lastRuntimeExit                  *xrayRuntimeExit
 	xrayRuntimeGeneration            string
 	xrayStatsClient                  *xrayStatsClient
 	localAccountingFailures          map[string]string
@@ -803,7 +805,9 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 
 	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
 		if !liveApplied {
-			if err := s.startXray(ctx, configPath); err != nil {
+			// The guarded policy and config are durable: complete the owned
+			// transition even if the requesting RPC expires at this boundary.
+			if err := s.startXray(context.Background(), configPath); err != nil {
 				return nil, status.Error(codes.Internal, "start xray: "+err.Error())
 			}
 			if err := s.markRestoredXrayRevocations(req.GetOvRuntimeJson(), configJSON); err != nil {
@@ -832,11 +836,20 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	return s.action(req.GetOperationId(), message), nil
 }
 func (s *Server) startXray(ctx context.Context, configPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	port, checkRPC, err := xrayStartupRPC(configPath)
+	if err != nil {
+		return err
+	}
 	var identity [16]byte
 	if _, err := rand.Read(identity[:]); err != nil {
 		return fmt.Errorf("create xray runtime generation: %w", err)
 	}
-	_ = s.stopRuntime()
+	if err := s.stopRuntime(); err != nil {
+		return fmt.Errorf("stop prior xray: %w", err)
+	}
 	cmd := xrayCommandContext(context.Background(), s.cfg.XrayPath, "run", "-config", configPath)
 	cmd.Env = append(cmd.Environ(), "XRAY_LOCATION_ASSET="+s.cfg.XrayAssetsDir)
 	cmd.Stdout = logWriter{server: s}
@@ -845,36 +858,73 @@ func (s *Server) startXray(ctx context.Context, configPath string) error {
 		s.appendLog("failed to start xray: " + err.Error())
 		return err
 	}
+	exit := &xrayRuntimeExit{done: make(chan struct{})}
 	s.mu.Lock()
 	s.lastRuntime = cmd
+	s.lastRuntimeExit = exit
 	s.xrayRuntimeGeneration = fmt.Sprintf("%x", identity)
 	s.mu.Unlock()
-	s.appendLog("xray runtime started")
 	go func() {
 		err := cmd.Wait()
+		exit.err = err
 		s.mu.Lock()
 		if s.lastRuntime == cmd {
 			s.lastRuntime = nil
+			s.lastRuntimeExit = nil
 		}
 		s.mu.Unlock()
+		close(exit.done)
 		if err != nil {
 			s.appendLog("xray runtime stopped: " + err.Error())
 		} else {
 			s.appendLog("xray runtime stopped")
 		}
 	}()
+	// Once a durable transition has spawned the replacement, a short sampling
+	// or RPC deadline must not kill it. Confirmation has its own bounded window.
+	if err := s.waitXrayStartup(context.Background(), exit, port, checkRPC); err != nil {
+		stopErr := s.stopRuntime()
+		return errors.Join(err, stopErr)
+	}
+	s.appendLog("xray runtime started")
 	return nil
 }
 
 func (s *Server) stopRuntime() error {
 	s.mu.Lock()
 	cmd := s.lastRuntime
-	s.lastRuntime = nil
+	exit := s.lastRuntimeExit
 	s.mu.Unlock()
 	if cmd == nil || cmd.Process == nil {
+		s.mu.Lock()
+		if s.lastRuntime == cmd {
+			s.lastRuntime = nil
+			s.lastRuntimeExit = nil
+		}
+		s.mu.Unlock()
 		return nil
 	}
-	return cmd.Process.Kill()
+	err := cmd.Process.Kill()
+	if errors.Is(err, os.ErrProcessDone) {
+		err = nil
+	}
+	if err != nil {
+		return err
+	}
+	if exit != nil {
+		select {
+		case <-exit.done:
+		case <-time.After(2 * time.Second):
+			return errors.Join(err, fmt.Errorf("timed out waiting for previous Xray process to exit"))
+		}
+	}
+	s.mu.Lock()
+	if s.lastRuntime == cmd {
+		s.lastRuntime = nil
+		s.lastRuntimeExit = nil
+	}
+	s.mu.Unlock()
+	return err
 }
 
 func (s *Server) action(operationID, message string) *nodev1.RuntimeActionResponse {

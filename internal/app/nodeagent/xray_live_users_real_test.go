@@ -242,7 +242,14 @@ func TestRealXrayLiveUserAdditions(t *testing.T) {
 			// Recovery must keep the authoritative new credential, not only RAM.
 			restarted := New(s.cfg)
 			policy, err := restarted.loadRuntimePolicy()
-			if err != nil || policy.ConfigJSON != req.ConfigJson || policy.Revision != 2 {
+			if err != nil {
+				t.Fatal(err)
+			}
+			expectedPolicy, err := s.guardOfflineRuntimePolicy(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if policy.ConfigJSON != expectedPolicy.ConfigJson || policy.Revision != 2 {
 				t.Fatal("new user missing from durable restart policy")
 			}
 			if err := s.checkpointXrayAccounting(ctx); err != nil {
@@ -354,6 +361,84 @@ func TestRealXrayLiveUserAdditions(t *testing.T) {
 						}
 						if err := exchange(startClient(newID), "revoked-after-quota"); err == nil {
 							t.Fatal("revoked managed credential still authenticated")
+						}
+					})
+				}
+				for _, mode := range []string{"users-alias-quota", "hysteria-handler-removal"} {
+					if mode == "hysteria-handler-removal" && protocol != "hysteria" {
+						continue
+					}
+					t.Run(mode, func(t *testing.T) {
+						aliasNode := New(Config{DataDir: t.TempDir(), XrayPath: xrayPath, XrayAssetsDir: filepath.Dir(xrayPath), XrayAPIPort: apiPort})
+						defer func() { stopAndWait(aliasNode); aliasNode.closeXrayStatsClient() }()
+						var payload nativeRuntimePayload
+						if err := json.Unmarshal([]byte(native(true)), &payload); err != nil {
+							t.Fatal(err)
+						}
+						for i := range payload.XrayPolicies {
+							payload.XrayPolicies[i].DataLimit = 1
+						}
+						raw, err := json.Marshal(payload)
+						if err != nil {
+							t.Fatal(err)
+						}
+						aliasConfig := strings.Replace(config(true), `"clients":`, `"users":`, 1)
+						if err := aliasNode.persistRuntimePolicy(&nodev1.RuntimeConfigRequest{ConfigJson: aliasConfig, OvRuntimeJson: string(raw), DesiredRevision: 4}); err != nil {
+							t.Fatal(err)
+						}
+						aliasNode = New(aliasNode.cfg)
+						if err := aliasNode.restoreRuntimePolicy(ctx); err != nil {
+							t.Fatal(err)
+						}
+						realXrayWaitForTCP(t, apiPort, &realXrayLogBuffer{})
+						ping(startClient(oldID), "alias-witness")
+						ping(startClient(newID), "alias-new-user")
+						client := newXrayStatsClient(xrayPath, apiPort)
+						defer client.rpc.close()
+						if mode == "hysteria-handler-removal" {
+							for _, email := range []string{"1.witness", "2.new-user"} {
+								if err := client.removeUserRPC(ctx, "users", email); err != nil {
+									t.Fatal(err)
+								}
+							}
+						} else {
+							deadline := time.Now().Add(5 * time.Second)
+							for {
+								if err := aliasNode.quotaCheckXrayOffline(ctx); err != nil {
+									t.Fatal(err)
+								}
+								var cfg struct {
+									Inbounds []struct {
+										Tag string `json:"tag"`
+									} `json:"inbounds"`
+								}
+								raw, err := os.ReadFile(aliasNode.lastConfig)
+								if err != nil {
+									t.Fatal(err)
+								}
+								if err := json.Unmarshal(raw, &cfg); err != nil {
+									t.Fatal(err)
+								}
+								found := false
+								for _, inbound := range cfg.Inbounds {
+									if inbound.Tag == "users" {
+										found = true
+									}
+								}
+								if !found {
+									break
+								}
+								if time.Now().After(deadline) {
+									t.Fatal("users-alias quota cutoff was skipped after restart")
+								}
+								time.Sleep(25 * time.Millisecond)
+							}
+						}
+						if err := exchange(startClient(fallbackID), "alias-fallback-after-removal"); err == nil {
+							t.Fatal("shared transport/server auth became valid after user removal")
+						}
+						if err := exchange(startClient(newID), "alias-revoked-user"); err == nil {
+							t.Fatal("revoked alias credential still authenticates")
 						}
 					})
 				}

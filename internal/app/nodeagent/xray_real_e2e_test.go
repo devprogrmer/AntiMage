@@ -442,7 +442,21 @@ func TestRealXrayOnlineAndStatsE2E(t *testing.T) {
 	quotaRuntime.mu.Unlock()
 	t.Cleanup(func() { _ = quotaRuntime.stopRuntime() })
 	t.Cleanup(quotaRuntime.closeXrayStatsClient)
-	if err := quotaRuntime.restartXrayAfterQuotaRevocation(context.Background(), quotaSnapshot, realXrayRuntimeGeneration(serverProcess), map[string]struct{}{userEmail: {}}); err != nil {
+	quotaCtx, cancelQuota := context.WithCancel(context.Background())
+	defer cancelQuota()
+	priorSync := accountingAtomicFileSync
+	accountingAtomicFileSync = func(file *os.File) error {
+		err := priorSync(file)
+		cancelQuota() // The sampling deadline expires at the durable cutoff boundary.
+		return err
+	}
+	defer func() { accountingAtomicFileSync = priorSync }()
+	cutoffErr := quotaRuntime.restartXrayAfterQuotaRevocation(quotaCtx, quotaSnapshot, realXrayRuntimeGeneration(serverProcess), map[string]struct{}{userEmail: {}})
+	accountingAtomicFileSync = priorSync
+	if quotaCtx.Err() == nil {
+		t.Fatal("test did not expire the sampling context during the durable cutoff")
+	}
+	if err := cutoffErr; err != nil {
 		t.Fatalf("restart Xray after quota revocation: %v", err)
 	}
 	realXrayWaitForTCP(t, apiPort, &realXrayLogBuffer{})
