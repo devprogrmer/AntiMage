@@ -25,6 +25,38 @@ func TestLocalQuotaInterval(t *testing.T) {
 	}
 }
 
+func TestLocalAccountingWorkerCoalescesCoincidentQuota(t *testing.T) {
+	for _, protocol := range []string{"xray", "wireguard"} {
+		t.Run(protocol, func(t *testing.T) {
+			s := New(Config{DataDir: t.TempDir()})
+			var dumps *int
+			if protocol == "wireguard" {
+				mockWireGuardGenerationIdentity(t)
+				s = offlineWireGuardFixture(t, s.cfg.DataDir, nil)
+				counter := uint64(100)
+				dumps = mockOfflineWireGuardCounters(t, &counter)
+			}
+			checkpoints, separateQuotas := 0, 0
+			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+			defer cancel()
+			// Quota is due on the first tick only. Later checkpoint-only ticks
+			// prove the worker ran and keep this independent of timer precision.
+			s.runLocalAccountingWorker(ctx, protocol, 2*time.Second, 10*time.Millisecond,
+				func(context.Context) error { checkpoints++; return nil },
+				func(context.Context) error { separateQuotas++; return nil })
+			if checkpoints == 0 {
+				t.Fatal("worker did not execute checkpoint-only ticks")
+			}
+			if separateQuotas != 0 {
+				t.Fatalf("coincident tick repeated the separate quota callback %d times", separateQuotas)
+			}
+			if dumps != nil && *dumps != 1 {
+				t.Fatalf("coincident checkpoint/quota used %d WireGuard dumps, want one", *dumps)
+			}
+		})
+	}
+}
+
 func offlineWireGuardFixture(t *testing.T, dir string, limit *int64) *Server {
 	t.Helper()
 	s := New(Config{DataDir: dir})
