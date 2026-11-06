@@ -18,6 +18,11 @@ a lifetime independent of the request context. An already canceled request is
 rejected before stopping the old process. Once the replacement is spawned,
 confirmation uses its own bounded window: a short quota-sampling deadline cannot
 kill an otherwise healthy replacement. This adds no delay to durable accounting.
+After the guarded policy/config or quota revocation has been durably committed,
+the owned transition completes with its bounded startup window even if the
+request expires at that boundary. A real-core regression cancels the sampling
+context during file sync and verifies that the previous active stream still
+closes and exact-once accounting remains intact.
 
 No new periodic polling is added. Startup probes never reset native counters;
 the existing durable checkpoint still precedes a controlled process transition.
@@ -40,6 +45,22 @@ terminate it as deadlocked and would not simulate a long-running VPN process.
 The native Xray CI job explicitly runs the bind-failure test alongside its
 live-user and exact-once accounting tests. Local Windows testing and Linux
 native/race CI are separate evidence. No Production service was changed.
+
+## Recovery authentication and quota bookkeeping
+
+Restored revocation markers now interpret SS/Hysteria `users` aliases using
+the same non-null `clients` precedence as quota filtering. Previously a valid
+alias user was marked already revoked, allowing a later quota check to skip
+removal. Unit tests reproduced that failure. Real-core tests now restore active
+alias users, transfer data, exhaust their quota and verify that neither their
+credentials nor the shared server key can authenticate afterward.
+
+For panel-managed Hysteria listeners, offline activation also removes the
+transport's static `auth` fallback while preserving per-user authentication,
+TLS and other transport options. A real-core RED test showed that deleting the
+last live users through HandlerService enabled that shared auth before a
+subsequent restart. The fixed test denies it even in that interval. Intentional
+unmanaged static-auth listeners retain their original behavior.
 
 ## Remaining recovery work
 

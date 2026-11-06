@@ -805,7 +805,9 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 
 	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
 		if !liveApplied {
-			if err := s.startXray(ctx, configPath); err != nil {
+			// The guarded policy and config are durable: complete the owned
+			// transition even if the requesting RPC expires at this boundary.
+			if err := s.startXray(context.Background(), configPath); err != nil {
 				return nil, status.Error(codes.Internal, "start xray: "+err.Error())
 			}
 			if err := s.markRestoredXrayRevocations(req.GetOvRuntimeJson(), configJSON); err != nil {

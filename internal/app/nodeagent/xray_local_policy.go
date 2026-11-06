@@ -109,11 +109,8 @@ func (s *Server) markRestoredXrayRevocations(nativeJSON, configJSON string) erro
 	}
 	var config struct {
 		Inbounds []struct {
-			Settings struct {
-				Clients []struct {
-					Email string `json:"email"`
-				} `json:"clients"`
-			} `json:"settings"`
+			Protocol string                     `json:"protocol"`
+			Settings map[string]json.RawMessage `json:"settings"`
 		} `json:"inbounds"`
 	}
 	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
@@ -121,7 +118,17 @@ func (s *Server) markRestoredXrayRevocations(nativeJSON, configJSON string) erro
 	}
 	emails := map[string]bool{}
 	for _, inbound := range config.Inbounds {
-		for _, client := range inbound.Settings.Clients {
+		_, clients, err := xrayEffectiveConfigClients(inbound.Settings, inbound.Protocol)
+		if err != nil {
+			return err
+		}
+		for _, raw := range clients {
+			var client struct {
+				Email string `json:"email"`
+			}
+			if err := json.Unmarshal(raw, &client); err != nil {
+				return err
+			}
 			emails[client.Email] = true
 		}
 	}
@@ -293,7 +300,9 @@ func (s *Server) restartXrayAfterQuotaRevocation(ctx context.Context, snapshot *
 	if err := writeAccountingState(configPath, []byte(filtered)); err != nil {
 		return fmt.Errorf("persist quota-filtered Xray config: %w", err)
 	}
-	if err := s.startXray(ctx, configPath); err != nil {
+	// Revocation is durable now. An expired sampling context must not leave
+	// the previous core serving streams after this cutoff commit point.
+	if err := s.startXray(context.Background(), configPath); err != nil {
 		return err
 	}
 	if snapshot != nil {
@@ -307,6 +316,68 @@ func (s *Server) restartXrayAfterQuotaRevocation(ctx context.Context, snapshot *
 
 func removeXrayConfigClients(configJSON string, emails map[string]struct{}) (string, bool, error) {
 	return filterXrayConfigClients(configJSON, emails, nil)
+}
+
+// Match the core's non-nil clients precedence over the legacy users alias.
+// Use the same interpretation for filtering and restored-revocation tracking.
+func xrayEffectiveConfigClients(settings map[string]json.RawMessage, protocol string) (string, []json.RawMessage, error) {
+	var clients []json.RawMessage
+	field := "clients"
+	if len(settings[field]) > 0 {
+		if err := json.Unmarshal(settings[field], &clients); err != nil {
+			return "", nil, err
+		}
+	}
+	if clients == nil && (strings.EqualFold(protocol, "shadowsocks") || strings.EqualFold(protocol, "hysteria")) {
+		field = "users"
+		if len(settings[field]) > 0 {
+			if err := json.Unmarshal(settings[field], &clients); err != nil {
+				return "", nil, err
+			}
+		}
+	}
+	return field, clients, nil
+}
+
+// A managed Hysteria validator must remain the only authentication authority,
+// including the instant after RemoveUser empties it, before a config restart.
+func clearManagedHysteriaSharedAuth(inbound map[string]json.RawMessage) (bool, error) {
+	var stream map[string]json.RawMessage
+	if len(inbound["streamSettings"]) == 0 {
+		return false, nil
+	}
+	if err := json.Unmarshal(inbound["streamSettings"], &stream); err != nil {
+		return false, err
+	}
+	if len(stream["hysteriaSettings"]) == 0 {
+		return false, nil
+	}
+	var settings map[string]json.RawMessage
+	if err := json.Unmarshal(stream["hysteriaSettings"], &settings); err != nil {
+		return false, err
+	}
+	if len(settings["auth"]) == 0 {
+		return false, nil
+	}
+	var auth string
+	if err := json.Unmarshal(settings["auth"], &auth); err != nil {
+		return false, err
+	}
+	if auth == "" {
+		return false, nil
+	}
+	delete(settings, "auth")
+	encoded, err := json.Marshal(settings)
+	if err != nil {
+		return false, err
+	}
+	stream["hysteriaSettings"] = encoded
+	encoded, err = json.Marshal(stream)
+	if err != nil {
+		return false, err
+	}
+	inbound["streamSettings"] = encoded
+	return true, nil
 }
 
 func filterXrayConfigClients(configJSON string, emails, managedTags map[string]struct{}) (string, bool, error) {
@@ -331,26 +402,22 @@ func filterXrayConfigClients(configJSON string, emails, managedTags map[string]s
 			}
 		}
 		keptInbounds = append(keptInbounds, inbound)
+		if _, managed := managedTags[tag]; managed && strings.EqualFold(protocol, "hysteria") {
+			changed, err := clearManagedHysteriaSharedAuth(inbound)
+			if err != nil {
+				return "", false, err
+			}
+			removed = removed || changed
+		}
 		var settings map[string]json.RawMessage
 		if len(inbound["settings"]) > 0 {
 			if err := json.Unmarshal(inbound["settings"], &settings); err != nil {
 				return "", false, err
 			}
 		}
-		var clients []json.RawMessage
-		field := "clients"
-		if len(settings[field]) > 0 {
-			if err := json.Unmarshal(settings[field], &clients); err != nil {
-				return "", false, err
-			}
-		}
-		if clients == nil && (strings.EqualFold(protocol, "shadowsocks") || strings.EqualFold(protocol, "hysteria")) {
-			field = "users"
-			if len(settings[field]) > 0 {
-				if err := json.Unmarshal(settings[field], &clients); err != nil {
-					return "", false, err
-				}
-			}
+		field, clients, err := xrayEffectiveConfigClients(settings, protocol)
+		if err != nil {
+			return "", false, err
 		}
 		kept := make([]json.RawMessage, 0, len(clients))
 		for _, client := range clients {

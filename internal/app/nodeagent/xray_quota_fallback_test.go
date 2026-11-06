@@ -107,3 +107,54 @@ func TestOfflineGuardRemovesAlreadyEmptyManagedFallback(t *testing.T) {
 		})
 	}
 }
+
+func TestMarkRestoredXrayRevocationsHonorsUserAliasPrecedence(t *testing.T) {
+	for _, protocol := range []string{"shadowsocks", "hysteria"} {
+		for _, field := range []string{"clients", "users"} {
+			t.Run(protocol+"/"+field, func(t *testing.T) {
+				s := New(Config{DataDir: t.TempDir()})
+				s.xrayRuntimeGeneration = "restored"
+				config := fmt.Sprintf(`{"inbounds":[{"protocol":%q,"settings":{%q:[{"email":"active"}]}}]}`, protocol, field)
+				native := `{"xray_policies":[{"user_id":1,"email":"active","status":"active"},{"user_id":2,"email":"blocked","status":"limited"}]}`
+				if err := s.markRestoredXrayRevocations(native, config); err != nil {
+					t.Fatal(err)
+				}
+				if _, revoked := s.xrayQuotaRevoked["active"]; revoked {
+					t.Fatal("active alias user marked already revoked, so a future quota cutoff would be skipped")
+				}
+				if revoked, ok := s.xrayQuotaRevoked["blocked"]; !ok || revoked.Generation != "restored" {
+					t.Fatal("absent user lost its revocation marker")
+				}
+			})
+		}
+	}
+}
+
+func TestOfflineGuardDisablesManagedHysteriaSharedAuth(t *testing.T) {
+	s := New(Config{DataDir: t.TempDir()})
+	input := `{"inbounds":[{"tag":"managed","protocol":"hysteria","settings":{"clients":[{"email":"active","auth":"user"}]},"streamSettings":{"network":"hysteria","hysteriaSettings":{"version":2,"auth":"shared-key"},"security":"tls"}}]}`
+	guarded, err := s.guardOfflineRuntimePolicy(&nodev1.RuntimeConfigRequest{ConfigJson: input, OvRuntimeJson: `{"xray_policies":[{"user_id":1,"email":"active","inbound_tag":"managed","status":"active"}]}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Inbounds []struct {
+			Stream struct {
+				Hysteria struct {
+					Auth    string `json:"auth"`
+					Version int    `json:"version"`
+				} `json:"hysteriaSettings"`
+				Security string `json:"security"`
+			} `json:"streamSettings"`
+		} `json:"inbounds"`
+	}
+	if err := json.Unmarshal([]byte(guarded.ConfigJson), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Inbounds[0].Stream.Hysteria.Auth != "" {
+		t.Fatal("managed Hysteria retains static auth that becomes valid after live RemoveUser")
+	}
+	if cfg.Inbounds[0].Stream.Hysteria.Version != 2 || cfg.Inbounds[0].Stream.Security != "tls" {
+		t.Fatal("unrelated transport options changed")
+	}
+}

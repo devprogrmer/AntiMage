@@ -31,6 +31,9 @@ Upstream behavior:
   restarting the node.
 - Both `clients` and the SS/Hysteria `users` alias are handled with Xray's
   non-null `clients` precedence. Unmanaged static listeners are preserved.
+- Restored revocation tracking uses the same alias interpretation; active alias
+  users are not incorrectly marked already revoked. Managed Hysteria transport
+  static auth is removed so live deletion cannot enable it before restart.
 - Pending usage, ACK/reflection state, accounting intervals and coefficients
   are not changed by this patch.
 
