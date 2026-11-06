@@ -19,6 +19,9 @@ func TestStartRuntimeDoesNotBindXrayProcessToRequestContext(t *testing.T) {
 
 	var processContext context.Context
 	xrayCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		if len(args) > 1 && args[0] == "run" && args[1] == "-test" {
+			return xrayValidationHelperCommand(ctx, args, "ok")
+		}
 		processContext = ctx
 		allArgs := append([]string{"-test.run=TestRuntimeHelperProcess", "--", "xray"}, args...)
 		cmd := exec.CommandContext(ctx, name, allArgs...)

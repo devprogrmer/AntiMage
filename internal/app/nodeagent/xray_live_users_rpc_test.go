@@ -102,7 +102,10 @@ func xrayLiveRPCFixture(t *testing.T) (*Server, *int, *bool, *bool) {
 	s.xrayStatsClient = newXrayStatsClient(s.cfg.XrayPath, s.cfg.XrayAPIPort)
 	s.xrayStatsClient.rpc.conn = conn
 	oldCommand := xrayCommandContext
-	xrayCommandContext = func(context.Context, string, ...string) *exec.Cmd {
+	xrayCommandContext = func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+		if len(args) > 1 && args[0] == "run" && args[1] == "-test" {
+			return xrayValidationHelperCommand(ctx, args, "ok")
+		}
 		t.Error("live addition attempted a global Xray restart")
 		return exec.Command("not-a-real-runtime")
 	}
