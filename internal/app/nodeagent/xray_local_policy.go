@@ -27,6 +27,37 @@ type xrayQuotaRevocation struct {
 	ExistingStreams bool
 }
 
+type xrayPendingReflectionKey struct {
+	UserID     int64
+	InboundTag string
+}
+
+type xrayPendingReflectionTotal struct {
+	Value    uint64
+	Overflow bool
+}
+
+// A pending batch is immutable until ACK. Index it once per quota sample so
+// each policy lookup does not rescan every user's pending sample.
+func xrayPendingReflectionTotalsInto(samples []xrayUsageSample, dest map[xrayPendingReflectionKey]xrayPendingReflectionTotal) map[xrayPendingReflectionKey]xrayPendingReflectionTotal {
+	if dest == nil {
+		dest = make(map[xrayPendingReflectionKey]xrayPendingReflectionTotal, len(samples))
+	} else {
+		clear(dest)
+	}
+	for _, sample := range samples {
+		key := xrayPendingReflectionKey{UserID: sample.UserID, InboundTag: sample.InboundTag}
+		entry := dest[key]
+		if ^uint64(0)-entry.Value < sample.Value {
+			entry.Overflow = true
+		} else {
+			entry.Value += sample.Value
+		}
+		dest[key] = entry
+	}
+	return dest
+}
+
 // xrayQuotaPolicyIndex is immutable except for UsageTotal, which is scratch
 // storage protected by xrayUsageMu. It is keyed by the durable policy
 // revision/checksum so quota ticks do not repeatedly decode NativeJSON.
@@ -202,6 +233,9 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 	if err := xrayQuotaUsageTotalsInto(counters, s.xrayUsageBaseline, policyIndex); err != nil {
 		return err
 	}
+	if s.xrayUsagePending != nil {
+		s.xrayPendingReflectionScratch = xrayPendingReflectionTotalsInto(s.xrayUsagePending.Samples, s.xrayPendingReflectionScratch)
+	}
 	var enforcementErr error
 	restartEmails := make(map[string]struct{})
 	for _, policy := range policyIndex.Policies {
@@ -214,15 +248,11 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 				return err
 			}
 			if reflected {
-				for _, sample := range p.Samples {
-					if sample.UserID != policy.UserID || sample.InboundTag != policy.InboundTag {
-						continue
-					}
-					if sample.Value > raw {
-						return fmt.Errorf("xray reflected pending exceeds unacked usage")
-					}
-					raw -= sample.Value
+				pending := s.xrayPendingReflectionScratch[xrayPendingReflectionKey{UserID: policy.UserID, InboundTag: policy.InboundTag}]
+				if pending.Overflow || pending.Value > raw {
+					return fmt.Errorf("xray reflected pending exceeds unacked usage")
 				}
+				raw -= pending.Value
 			}
 		}
 		awaiting, err := s.localAwaitingReflectionUsage("xray", policy.UserID, policy.InboundTag, pendingID, policy.ReflectedUsageBatchID)

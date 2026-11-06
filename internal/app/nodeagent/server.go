@@ -122,6 +122,7 @@ type Server struct {
 	xrayQuotaPolicyIndex             *xrayQuotaPolicyIndex
 	xrayNativeScratch                map[string]uint64
 	xrayCounterScratch               map[string]accountingCounter
+	xrayPendingReflectionScratch     map[xrayPendingReflectionKey]xrayPendingReflectionTotal
 	xrayStatKeyCache                 map[string]xrayStatNativeKey
 	xrayAccountingGeneration         string
 	xrayAccountingJournalSequence    uint64
