@@ -3767,5 +3767,16 @@
 	"settings.backup.pageDescription": "از AntiMage نسخهٔ پشتیبان بگیرید یا نسخهٔ قبلی را بازیابی کنید. پیش از واردکردن فایل، محدودهٔ انتخاب‌شده را بررسی کنید.",
 	"settings.backup.binaryOnlyNotice": "ابزارهای بکاپ و بازیابی برای نصب باینری در دسترس هستند.",
 	"settings.backup.noPermission": "حساب مدیر شما مجوز بکاپ ندارد.",
-	"settings.backup.runtimeCheckFailed": "بررسی نوع نصب پنل انجام نشد. صفحه را تازه کنید و دوباره تلاش کنید."
+	"settings.backup.runtimeCheckFailed": "بررسی نوع نصب پنل انجام نشد. صفحه را تازه کنید و دوباره تلاش کنید.",
+	"accountingHealth.open": "نمایش وضعیت حسابداری نود",
+	"accountingHealth.title": "حسابداری",
+	"accountingHealth.healthy": "سالم",
+	"accountingHealth.pending": "در انتظار",
+	"accountingHealth.degraded": "دچار خطا",
+	"accountingHealth.unknown": "نامشخص",
+	"accountingHealth.reflection": "در انتظار ثبت بازتاب در پنل",
+	"accountingHealth.checkpoint": "آخرین ثبت موفق از زمان شروع نود",
+	"accountingHealth.lastAck": "آخرین بستهٔ تأییدشده",
+	"accountingHealth.none": "ندارد",
+	"accountingHealth.failure": "خطا"
 }

@@ -62,6 +62,26 @@ export const NodeSchema = z
 		node_install_mode: z.string().nullable().optional(),
 		node_binary_tag: z.string().nullable().optional(),
 		node_update_channel: z.string().nullable().optional(),
+		accounting: z
+			.object({
+				protocols: z.array(
+					z.object({
+						protocol: z.string(),
+						state_loaded: z.boolean(),
+						pending_batch_id: z.string(),
+						pending_bytes: z.number(),
+						pending_bytes_overflow: z.boolean(),
+						last_acked_batch_id: z.string(),
+						last_checkpoint_unix: z.number(),
+						failure: z.string(),
+					}),
+				),
+				reflection_ledger_loaded: z.boolean(),
+				awaiting_reflection_batches: z.number(),
+				awaiting_reflection_bytes: z.number(),
+				reflection_bytes_overflow: z.boolean(),
+			})
+			.nullish(),
 		cpu_cores: z.number().nullable().optional(),
 		cpu_frequency_hz: z.number().nullable().optional(),
 		cpu_usage_percent: z.number().nullable().optional(),

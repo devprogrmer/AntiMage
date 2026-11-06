@@ -3793,5 +3793,16 @@
 	"settings.backup.pageDescription": "Создайте защищённую резервную копию AntiMage или восстановите предыдущую. Перед импортом проверьте выбранный объём данных.",
 	"settings.backup.binaryOnlyNotice": "Резервное копирование и восстановление доступны для бинарной установки.",
 	"settings.backup.noPermission": "У вашей учётной записи администратора нет разрешения на резервное копирование.",
-	"settings.backup.runtimeCheckFailed": "Не удалось проверить режим установки панели. Обновите страницу и повторите попытку."
+	"settings.backup.runtimeCheckFailed": "Не удалось проверить режим установки панели. Обновите страницу и повторите попытку.",
+	"accountingHealth.open": "Показать состояние учёта узла",
+	"accountingHealth.title": "Учёт трафика",
+	"accountingHealth.healthy": "Исправно",
+	"accountingHealth.pending": "Ожидает",
+	"accountingHealth.degraded": "Ошибка",
+	"accountingHealth.unknown": "Неизвестно",
+	"accountingHealth.reflection": "Ожидает отражения в панели",
+	"accountingHealth.checkpoint": "Последняя успешная запись с запуска узла",
+	"accountingHealth.lastAck": "Последний подтверждённый пакет",
+	"accountingHealth.none": "Нет",
+	"accountingHealth.failure": "Ошибка"
 }

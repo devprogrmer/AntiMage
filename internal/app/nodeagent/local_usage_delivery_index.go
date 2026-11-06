@@ -8,8 +8,10 @@ type localUsageIndexedRow struct {
 }
 
 type localUsageDeliveryIndex struct {
-	Batches map[string]int
-	Users   map[int64][]localUsageIndexedRow
+	Batches  map[string]int
+	Users    map[int64][]localUsageIndexedRow
+	Bytes    uint64
+	Overflow bool
 }
 
 // localUsageMu protects the durable ledger and this derived read index.
@@ -23,6 +25,15 @@ func (s *Server) localUsageIndexLocked() *localUsageDeliveryIndex {
 			index.Batches[delivery.BatchID] = position
 			for rowPosition, row := range delivery.Rows {
 				index.Users[row.UserID] = append(index.Users[row.UserID], localUsageIndexedRow{Position: position, RowPosition: rowPosition})
+				if index.Overflow {
+					continue
+				}
+				if ^uint64(0)-index.Bytes < row.Raw {
+					index.Overflow = true
+					index.Bytes = ^uint64(0)
+				} else {
+					index.Bytes += row.Raw
+				}
 			}
 		}
 		s.localUsageDeliveryIndex = index

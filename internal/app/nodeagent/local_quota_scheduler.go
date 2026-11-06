@@ -178,10 +178,22 @@ func (s *Server) runLocalAccountingWorker(ctx context.Context, name string, quot
 			}
 			cancel()
 			if ctx.Err() == nil {
+				if checkpoint && err == nil {
+					s.recordLocalAccountingCheckpoint(name)
+				}
 				s.recordLocalAccountingHealth(name, err)
 			}
 		}
 	}
+}
+
+func (s *Server) recordLocalAccountingCheckpoint(protocol string) {
+	s.mu.Lock()
+	if s.accountingLastCheckpoint == nil {
+		s.accountingLastCheckpoint = make(map[string]int64)
+	}
+	s.accountingLastCheckpoint[protocol] = time.Now().Unix()
+	s.mu.Unlock()
 }
 
 func (s *Server) recordLocalAccountingHealth(protocol string, err error) {

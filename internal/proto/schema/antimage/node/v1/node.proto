@@ -140,6 +140,26 @@ message MetricsResponse {
   SystemMetrics system = 2;
   TransferMetrics transfer = 3;
   int64 sampled_at_unix = 4;
+  AccountingHealth accounting = 5;
+}
+
+message AccountingHealth {
+  repeated AccountingProtocolStatus protocols = 1;
+  bool reflection_ledger_loaded = 2;
+  uint32 awaiting_reflection_batches = 3;
+  uint64 awaiting_reflection_bytes = 4;
+  bool reflection_bytes_overflow = 5;
+}
+
+message AccountingProtocolStatus {
+  string protocol = 1;
+  bool state_loaded = 2;
+  string pending_batch_id = 3;
+  uint64 pending_bytes = 4;
+  bool pending_bytes_overflow = 5;
+  string last_acked_batch_id = 6;
+  int64 last_checkpoint_unix = 7;
+  string failure = 8;
 }
 
 message PublicIPsRequest {}
