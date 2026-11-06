@@ -2,7 +2,6 @@ package nodeagent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -121,22 +120,13 @@ func (s *Server) collectOpenVPNUserUsage(
 			"usage-helper.json",
 		)
 
-		rawConfig, err := os.ReadFile(usageConfigPath)
+		cfg, err := readNativeHelper[openVPNUsageRuntimeConfig](s, usageConfigPath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
 			}
 			s.appendLog(
-				"openvpn usage config read failed for " +
-					tag + ": " + err.Error(),
-			)
-			continue
-		}
-
-		var cfg openVPNUsageRuntimeConfig
-		if err := json.Unmarshal(rawConfig, &cfg); err != nil {
-			s.appendLog(
-				"openvpn usage config parse failed for " +
+				"openvpn usage config load failed for " +
 					tag + ": " + err.Error(),
 			)
 			continue

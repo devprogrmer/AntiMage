@@ -2,7 +2,6 @@ package nodeagent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/netip"
 	"os"
@@ -235,7 +234,7 @@ func (s *Server) collectPPTPUserUsage(
 	for _, root := range roots {
 		tag := filepath.Base(root)
 
-		rawConfig, err := os.ReadFile(
+		cfg, err := readNativeHelper[pptpUsageRuntimeConfig](s,
 			filepath.Join(root, "usage-helper.json"),
 		)
 		if err != nil {
@@ -243,16 +242,7 @@ func (s *Server) collectPPTPUserUsage(
 				continue
 			}
 			s.appendLog(
-				"pptp usage config read failed for " +
-					tag + ": " + err.Error(),
-			)
-			continue
-		}
-
-		var cfg pptpUsageRuntimeConfig
-		if err := json.Unmarshal(rawConfig, &cfg); err != nil {
-			s.appendLog(
-				"pptp usage config parse failed for " +
+				"pptp usage config load failed for " +
 					tag + ": " + err.Error(),
 			)
 			continue

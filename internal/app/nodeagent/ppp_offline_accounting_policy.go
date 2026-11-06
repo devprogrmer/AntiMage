@@ -22,15 +22,11 @@ func (s *Server) quotaCheckPPPOffline(ctx context.Context) error {
 			return err
 		}
 		for _, root := range roots {
-			raw, err := os.ReadFile(filepath.Join(root, "session-helper.json"))
+			cfg, err := readNativeHelper[nativeSessionHelperConfig](s, filepath.Join(root, "session-helper.json"))
 			if os.IsNotExist(err) {
 				continue
 			}
 			if err != nil {
-				return err
-			}
-			var cfg nativeSessionHelperConfig
-			if err := json.Unmarshal(raw, &cfg); err != nil {
 				return err
 			}
 			paths, err := filepath.Glob(filepath.Join(root, "ppp-accounting", "active", "*.json"))

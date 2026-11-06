@@ -2,7 +2,6 @@ package nodeagent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/netip"
 	"os"
@@ -235,7 +234,7 @@ func (s *Server) collectL2TPUserUsage(
 	for _, root := range roots {
 		tag := filepath.Base(root)
 
-		rawConfig, err := os.ReadFile(
+		cfg, err := readNativeHelper[l2TPUsageRuntimeConfig](s,
 			filepath.Join(root, "usage-helper.json"),
 		)
 		if err != nil {
@@ -243,16 +242,7 @@ func (s *Server) collectL2TPUserUsage(
 				continue
 			}
 			s.appendLog(
-				"l2tp usage config read failed for " +
-					tag + ": " + err.Error(),
-			)
-			continue
-		}
-
-		var cfg l2TPUsageRuntimeConfig
-		if err := json.Unmarshal(rawConfig, &cfg); err != nil {
-			s.appendLog(
-				"l2tp usage config parse failed for " +
+				"l2tp usage config load failed for " +
 					tag + ": " + err.Error(),
 			)
 			continue

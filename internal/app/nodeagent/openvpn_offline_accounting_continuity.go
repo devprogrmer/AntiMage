@@ -89,15 +89,11 @@ func (s *Server) quotaCheckOpenVPNOffline(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		raw, err := os.ReadFile(filepath.Join(root, "session-helper.json"))
+		cfg, err := readNativeHelper[nativeSessionHelperConfig](s, filepath.Join(root, "session-helper.json"))
 		if os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
-			return err
-		}
-		var cfg nativeSessionHelperConfig
-		if err := json.Unmarshal(raw, &cfg); err != nil {
 			return err
 		}
 		cfg, err = s.openVPNOfflinePolicySnapshot(cfg, preview)
