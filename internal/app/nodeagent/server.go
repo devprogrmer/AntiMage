@@ -391,15 +391,15 @@ func (s *Server) SyncConfig(ctx context.Context, req *nodev1.RuntimeConfigReques
 }
 
 func (s *Server) AddUser(context.Context, *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
-	return s.action("", "user operation queued through full config sync"), nil
+	return nil, status.Error(codes.Unimplemented, "user mutations require durable config sync")
 }
 
 func (s *Server) UpdateUser(context.Context, *nodev1.InboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
-	return s.action("", "user operation queued through full config sync"), nil
+	return nil, status.Error(codes.Unimplemented, "user mutations require durable config sync")
 }
 
 func (s *Server) RemoveUser(context.Context, *nodev1.RemoveInboundUserRequest) (*nodev1.RuntimeActionResponse, error) {
-	return s.action("", "user operation queued through full config sync"), nil
+	return nil, status.Error(codes.Unimplemented, "user mutations require durable config sync")
 }
 
 func (s *Server) Metrics(context.Context, *nodev1.MetricsRequest) (*nodev1.MetricsResponse, error) {
@@ -746,6 +746,10 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	if _, _, err := xrayAPIPortFromRuntimeConfig(configJSON); err != nil {
 		return nil, status.Error(codes.InvalidArgument, "xray api port: "+err.Error())
 	}
+	// Serialize the checkpoint, guarded durable policy and live/core transition.
+	// A concurrent config request must not publish a policy out of apply order.
+	s.xrayTransitionMu.Lock()
+	defer s.xrayTransitionMu.Unlock()
 	// Capture old runtime counters before a config changes its API port or
 	// replaces the process. Refuse a controlled reset if durability failed.
 	checkpointCtx, cancelCheckpoint := context.WithTimeout(ctx, 2*time.Second)
@@ -775,9 +779,11 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 		return nil, err
 	}
 
-	s.xrayTransitionMu.Lock()
-	defer s.xrayTransitionMu.Unlock()
 	configPath := filepath.Join(s.cfg.DataDir, "xray-config.json")
+	liveApplied, err := s.tryLiveXrayUserAdditions(ctx, configJSON)
+	if err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
 	if err := writeAccountingState(configPath, []byte(configJSON)); err != nil {
 		return nil, err
 	}
@@ -793,13 +799,19 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	s.mu.Unlock()
 
 	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
-		if err := s.startXray(ctx, configPath); err != nil {
-			return nil, status.Error(codes.Internal, "start xray: "+err.Error())
+		if !liveApplied {
+			if err := s.startXray(ctx, configPath); err != nil {
+				return nil, status.Error(codes.Internal, "start xray: "+err.Error())
+			}
+			if err := s.markRestoredXrayRevocations(req.GetOvRuntimeJson(), configJSON); err != nil {
+				return nil, status.Error(codes.Internal, err.Error())
+			}
 		}
-		if err := s.markRestoredXrayRevocations(req.GetOvRuntimeJson(), configJSON); err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
+		if liveApplied {
+			message += " with live Xray users; runtime retained"
+		} else {
+			message += " and runtime started"
 		}
-		message += " and runtime started"
 	} else {
 		message += "; xray binary is not installed yet"
 	}
@@ -837,6 +849,11 @@ func (s *Server) startXray(ctx context.Context, configPath string) error {
 	s.appendLog("xray runtime started")
 	go func() {
 		err := cmd.Wait()
+		s.mu.Lock()
+		if s.lastRuntime == cmd {
+			s.lastRuntime = nil
+		}
+		s.mu.Unlock()
 		if err != nil {
 			s.appendLog("xray runtime stopped: " + err.Error())
 		} else {
@@ -873,7 +890,7 @@ func (s *Server) runtimeState(message string) *nodev1.RuntimeState {
 	applied := s.appliedRev
 	torProxyCount := len(s.torProxies)
 	s.mu.Unlock()
-	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync"}
+	capabilities := []string{"config_revision", "logs", "metrics", "full_config_sync", "durable_user_config_sync"}
 	if _, err := torLookPath("tor"); err == nil {
 		capabilities = append(capabilities, "tor_proxy")
 	}

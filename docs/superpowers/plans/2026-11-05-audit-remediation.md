@@ -23,8 +23,8 @@
 - [ ] Xray user mutations: actual gRPC Add/Update/Remove, durable desired state, retry/reconcile, no global restart for user-only diffs. Observe uninterrupted witness traffic.
 - [ ] Xray quota cutoff: close only exhausted users' streams. Investigate core capabilities; do not claim RemoveUser closes active streams or introduce a global restart as the solution.
 - [ ] Runtime rollout: validate with target core, retain last-known-good state, rollback on startup failure, preserve accounting generation checkpoints.
-- [ ] Native speed collectors: produce real per-user samples for WG/AWG/OpenVPN/PPP/IKEv2; verify reset/reconnect and time units.
-- [ ] Native policy caching: avoid repeated helper JSON parsing while invalidating on actual file/config changes.
+- [x] Native speed collectors: produce real per-user samples for WG/AWG/OpenVPN/PPP/IKEv2; verify reset/reconnect and time units. PR #112 merged as `67126bd`; native/race/recovery CI passed. Production display validation remains separate.
+- [ ] Native policy caching: runtime payload reuse (PR #113, `ea70756`) and content-verified WG/AWG helpers (PR #114, `2f3682d`) merged with race/native CI passing. Additional native helper paths remain to be assessed.
 - [ ] Accounting health UI: last sample/checkpoint/ACK/reflection, pending bytes and degraded persistence states.
 - [ ] Backup safety: encryption, preview/check, off-host destinations, retention, isolated restore exercise and crash-safe rollback.
 - [ ] UI completeness: notifications inbox, scoped subscription placeholders, sales administration and independent API-key scopes.
