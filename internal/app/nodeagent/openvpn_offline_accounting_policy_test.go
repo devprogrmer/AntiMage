@@ -51,7 +51,7 @@ func TestOpenVPNOfflineQuotaAggregatesSessionsAndRetainedUsage(t *testing.T) {
 	if err := offlineDurableJSON(filepath.Join(root, "usage-helper.json"), openVPNUsageRuntimeConfig{InboundTag: tag, Users: map[string]int64{"alice": 42}}); err != nil {
 		t.Fatal(err)
 	}
-	cfg := nativeSessionHelperConfig{Protocol: "ov", InboundTag: tag, Users: map[string]int64{"alice": 42}, Policies: map[string]nativeSessionUserPolicy{"alice": {Status: "active", DataLimit: 250}}, ManagementNetwork: "tcp", ManagementAddress: listener.Addr().String()}
+	cfg := nativeSessionHelperConfig{Protocol: "ov", InboundTag: tag, Users: map[string]int64{"alice": 42}, Policies: map[string]nativeSessionUserPolicy{"alice": {Status: "active", DataLimit: 999}}, ManagementNetwork: "tcp", ManagementAddress: listener.Addr().String()}
 	if err := offlineDurableJSON(filepath.Join(root, "session-helper.json"), cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -65,6 +65,28 @@ func TestOpenVPNOfflineQuotaAggregatesSessionsAndRetainedUsage(t *testing.T) {
 	s.openVPNUsageLoaded = true
 	s.openVPNUsageBaseline = map[string]uint64{offlineAccountingTotalKey(42, tag): 200}
 	if err := s.persistOpenVPNUsageStateLocked(); err != nil {
+		t.Fatal(err)
+	}
+	// Warm helper caches below the limit, then replace policy with the same
+	// length/mtime. Content verification must see the lower limit immediately.
+	if err := s.quotaCheckOpenVPNOffline(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case command := <-commands:
+		t.Fatalf("below-limit user was disconnected: %s", command)
+	default:
+	}
+	policyPath := filepath.Join(root, "session-helper.json")
+	info, err := os.Stat(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Policies["alice"] = nativeSessionUserPolicy{Status: "active", DataLimit: 250}
+	if err := offlineDurableJSON(policyPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(policyPath, info.ModTime(), info.ModTime()); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.quotaCheckOpenVPNOffline(context.Background()); err != nil {

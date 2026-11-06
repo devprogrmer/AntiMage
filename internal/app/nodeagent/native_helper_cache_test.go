@@ -1,6 +1,7 @@
 package nodeagent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +9,41 @@ import (
 	"sync"
 	"testing"
 )
+
+func TestQuotaHelpersRejectCorruptionAfterCacheWarm(t *testing.T) {
+	previousQuery := pppOfflineQuery
+	pppOfflineQuery = func(context.Context) ([]byte, error) { return nil, nil }
+	t.Cleanup(func() { pppOfflineQuery = previousQuery })
+	for _, protocol := range []string{"openvpn", "l2tp", "pptp"} {
+		t.Run(protocol, func(t *testing.T) {
+			s := New(Config{DataDir: t.TempDir()})
+			root := filepath.Join(s.cfg.DataDir, protocol, "cache-test")
+			if err := offlineDurableJSON(filepath.Join(root, "usage-helper.json"), map[string]any{"inbound_tag": protocol, "users": map[string]int64{"alice": 42}}); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, "session-helper.json")
+			if err := offlineDurableJSON(path, nativeSessionHelperConfig{InboundTag: protocol, Users: map[string]int64{"alice": 42}, Policies: map[string]nativeSessionUserPolicy{"alice": {Status: "active"}}}); err != nil {
+				t.Fatal(err)
+			}
+			quota := s.quotaCheckPPPOffline
+			if protocol == "openvpn" {
+				quota = s.quotaCheckOpenVPNOffline
+				if err := os.WriteFile(filepath.Join(root, "status.tsv"), []byte("HEADER\tCLIENT_LIST\tUsername\tClient ID\tConnected Since (time_t)\tBytes Received\tBytes Sent\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := quota(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("{"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := quota(context.Background()); err == nil {
+				t.Fatal("corrupt current helper silently used cached quota policy")
+			}
+		})
+	}
+}
 
 func TestNativeHelperCacheChecksContentNotOnlyMetadata(t *testing.T) {
 	s := &Server{}
