@@ -9,7 +9,8 @@ import {
 	useNavigate,
 	useRouteError,
 } from "react-router-dom";
-import { fetch } from "../service/http";
+import { currentAdminQueryKey, getSession } from "../service/auth";
+import { queryClient } from "../utils/react-query";
 import { recoverFromStaleChunk } from "../utils/chunkRecovery";
 import { Login } from "./Login";
 
@@ -193,7 +194,10 @@ normalizeLegacyHashRoute(dashboardBasename);
 
 const fetchAdminLoader = async ({ request }: { request: Request }) => {
 	try {
-		const response = await fetch<{ state?: string }>("/auth/session");
+		const response = await queryClient.fetchQuery(currentAdminQueryKey, getSession, {
+			staleTime: 0,
+			retry: false,
+		});
 		if (response?.state === "disabled") {
 			const pathname = new URL(request.url).pathname.replace(/\/+$/, "");
 			if (!pathname.endsWith("/users")) throw redirect("/users/");

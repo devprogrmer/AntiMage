@@ -34,6 +34,7 @@ export const login = (username: string, password: string) =>
 	});
 
 export const getSession = () => fetch<AuthSession>("/auth/session");
+export const currentAdminQueryKey = ["current-admin"] as const;
 
 export const logout = () => fetch<void>("/auth/logout", { method: "POST" });
 

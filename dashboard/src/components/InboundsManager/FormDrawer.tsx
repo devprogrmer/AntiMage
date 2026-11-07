@@ -34,6 +34,7 @@ import {
 	TabList,
 	TabPanel,
 	TabPanels,
+	Spinner,
 	Tabs,
 	Tag,
 	Text,
@@ -48,14 +49,15 @@ import {
 	QuestionMarkCircleIcon,
 	SparklesIcon,
 } from "@heroicons/react/24/outline";
-import { JsonEditor } from "components/JsonEditor";
 import { SearchableTagSelect } from "components/common/SearchableTagSelect";
 import { getSubscriptionSettings } from "service/settings";
 import { shadowsocksMethods } from "constants/Proxies";
 import type { CoreConfigTarget } from "contexts/CoreSettingsContext";
 import {
 	type FC,
+	Suspense,
 	forwardRef,
+	lazy,
 	useCallback,
 	useEffect,
 	useMemo,
@@ -119,6 +121,10 @@ type Props = {
 	onClone?: () => void;
 	isDeleting?: boolean;
 };
+
+const JsonEditor = lazy(async () => ({
+	default: (await import("components/JsonEditor")).JsonEditor,
+}));
 
 const Input = forwardRef<HTMLInputElement, InputProps>((props, ref) => (
 	<ChakraInput size="sm" ref={ref} {...props} />
@@ -7200,11 +7206,13 @@ export const InboundFormModal: FC<Props> = ({
 										</Alert>
 									)}
 									<Box height="420px">
-										<JsonEditor
-											json={jsonText}
-											canonicalContext="inbound"
-											onChange={handleJsonEditorChange}
-										/>
+										<Suspense fallback={<Spinner />}>
+											<JsonEditor
+												json={jsonText}
+												canonicalContext="inbound"
+												onChange={handleJsonEditorChange}
+											/>
+										</Suspense>
 									</Box>
 								</VStack>
 							</TabPanel>
