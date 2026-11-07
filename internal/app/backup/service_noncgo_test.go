@@ -88,7 +88,7 @@ func TestRestoreDatabaseRejectsManifestPayloadOutsideExtraction(t *testing.T) {
 	service := NewService(nil, "sqlite", "")
 	for _, name := range []string{"../outside.sql", filepath.Join(root, "outside.sql")} {
 		m := manifest{Database: manifestDB{Payload: name, PayloadType: "mysql-dump"}}
-		_, _, _, err := service.restoreDatabasePayload(context.Background(), extracted, m)
+		_, _, _, err := service.restoreDatabasePayload(context.Background(), extracted, m, false)
 		if err == nil || !strings.Contains(err.Error(), "unsafe paths") {
 			t.Errorf("payload %q: expected unsafe path error, got %v", name, err)
 		}

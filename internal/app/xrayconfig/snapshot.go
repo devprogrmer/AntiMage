@@ -35,6 +35,7 @@ type MutationSnapshot struct {
 	TargetStates []TargetState          `json:"target_states,omitempty"`
 	InboundTag   string                 `json:"inbound_tag,omitempty"`
 	Inbound      *InboundRecordSnapshot `json:"inbound,omitempty"`
+	Detached     json.RawMessage        `json:"detached_inbound,omitempty"`
 	HostTags     []string               `json:"host_tags,omitempty"`
 	Hosts        []HostSnapshot         `json:"hosts,omitempty"`
 	ServiceHosts []ServiceHostSnapshot  `json:"service_hosts,omitempty"`
@@ -137,8 +138,13 @@ func (r Repository) CaptureMutationSnapshotTx(ctx context.Context, tx *sql.Tx, s
 		snapshot.TargetStates = append(snapshot.TargetStates, state)
 	}
 	if scope.InboundTag != "" {
+		detached, err := detachedInboundConfig(ctx, tx, scope.InboundTag)
+		if err != nil {
+			return MutationSnapshot{}, err
+		}
+		snapshot.Detached = detached
 		var record InboundRecordSnapshot
-		err := tx.QueryRowContext(ctx, `SELECT id, tag, uplink, downlink, COALESCE(usage_coefficient, 1), COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0) FROM inbounds WHERE tag = ? LIMIT 1`, scope.InboundTag).Scan(&record.ID, &record.Tag, &record.Uplink, &record.Downlink, &record.UsageCoefficient, &record.UploadSpeedLimit, &record.DownloadSpeedLimit)
+		err = tx.QueryRowContext(ctx, `SELECT id, tag, uplink, downlink, COALESCE(usage_coefficient, 1), COALESCE(upload_speed_limit, 0), COALESCE(download_speed_limit, 0) FROM inbounds WHERE tag = ? LIMIT 1`, scope.InboundTag).Scan(&record.ID, &record.Tag, &record.Uplink, &record.Downlink, &record.UsageCoefficient, &record.UploadSpeedLimit, &record.DownloadSpeedLimit)
 		switch {
 		case err == nil:
 			snapshot.Inbound = &record
@@ -423,6 +429,16 @@ func restoreInboundHostsTx(ctx context.Context, tx *sql.Tx, snapshot MutationSna
 		return err
 	}
 	if snapshot.InboundTag != "" {
+		if current.Detached != nil {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM detached_inbounds WHERE tag = ?`, snapshot.InboundTag); err != nil {
+				return err
+			}
+		}
+		if snapshot.Detached != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO detached_inbounds (tag, config) VALUES (?, ?)`, snapshot.InboundTag, string(snapshot.Detached)); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM inbounds WHERE tag = ?`, snapshot.InboundTag); err != nil {
 			return err
 		}

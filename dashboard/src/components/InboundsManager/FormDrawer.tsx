@@ -657,7 +657,9 @@ export const InboundFormModal: FC<Props> = ({
 	}, [existingInbounds, initialValue?.tag, isEditMode]);
 	const availableTargets = useMemo<CoreConfigTarget[]>(
 		() =>
-			configTargets.length
+			initialValue?.detached
+				? configTargets.filter((target) => target.type === "node")
+				: configTargets.length
 				? configTargets
 				: [
 						{
@@ -668,7 +670,7 @@ export const InboundFormModal: FC<Props> = ({
 							mode: "custom",
 						},
 					],
-		[configTargets, t],
+		[configTargets, initialValue?.detached, t],
 	);
 
 	useEffect(() => {
@@ -978,7 +980,7 @@ export const InboundFormModal: FC<Props> = ({
 		if (
 			portValue &&
 			existingInbounds.some((inb) => {
-				if (isEditMode && inb.tag === initialValue?.tag) {
+				if (inb.detached || (isEditMode && inb.tag === initialValue?.tag)) {
 					return false;
 				}
 				const inboundTargets = inb.effective_targets?.length

@@ -70,6 +70,12 @@ describe("importAntiMageBackup", () => {
 		expect(UploadRequest.current.withCredentials).toBe(true);
 		expect(result.rows_restored).toBe(2);
 	});
+
+	it("requests migration only when the no-node option is selected", async () => {
+		vi.stubGlobal("XMLHttpRequest", UploadRequest);
+		await importAntiMageBackup(new File(["backup"], "backup.ambackup"), undefined, true);
+		expect(UploadRequest.current.url).toBe("/api/settings/backup/import?mode=migration");
+	});
 });
 
 describe("importVPNUIBackup", () => {

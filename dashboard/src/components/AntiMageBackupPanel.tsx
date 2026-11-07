@@ -2,6 +2,7 @@ import {
 	Alert,
 	AlertIcon,
 	Button,
+	Checkbox,
 	FormControl,
 	FormLabel,
 	Modal,
@@ -67,6 +68,7 @@ export const DashboardBackupControls = ({
 	const [exportScope, setExportScope] =
 		useState<AntiMageBackupScope>("database");
 	const [selectedFile, setSelectedFile] = useState<File | null>(null);
+	const [migrateWithoutNodes, setMigrateWithoutNodes] = useState(false);
 	const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 	const [vpnUIServiceID, setVPNUIServiceID] = useState("");
 	const [duplicatePolicy, setDuplicatePolicy] = useState<"skip" | "rename">("skip");
@@ -97,7 +99,7 @@ export const DashboardBackupControls = ({
 	});
 
 	const importMutation = useMutation(
-		(file: File) => importAntiMageBackup(file, setUploadProgress),
+		(file: File) => importAntiMageBackup(file, setUploadProgress, migrateWithoutNodes),
 		{
 			onMutate: () => setUploadProgress(0),
 			onSuccess: (result) => {
@@ -166,6 +168,7 @@ export const DashboardBackupControls = ({
 
 	const openDialog = (nextDialog: Exclude<BackupDialog, null>) => {
 		setMenuOpen(false);
+		if (nextDialog === "import") setMigrateWithoutNodes(false);
 		setDialog(nextDialog);
 	};
 
@@ -279,6 +282,18 @@ export const DashboardBackupControls = ({
 									{t("settings.backup.autoDetectImportWarning")}
 								</Text>
 							</Alert>
+							<Checkbox
+								isChecked={migrateWithoutNodes}
+								isDisabled={importMutation.isLoading}
+								onChange={(event) => setMigrateWithoutNodes(event.target.checked)}
+							>
+								{t("settings.backup.migrateWithoutNodes")}
+							</Checkbox>
+							{migrateWithoutNodes && (
+								<Text fontSize="sm" color="panel.textMuted">
+									{t("settings.backup.migrateWithoutNodesHint")}
+								</Text>
+							)}
 							<FormControl isRequired>
 								<FormLabel>{t("settings.backup.file")}</FormLabel>
 								<FileDropzone

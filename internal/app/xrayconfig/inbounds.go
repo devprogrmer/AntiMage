@@ -85,7 +85,7 @@ func (r Repository) FullInbounds(ctx context.Context) ([]map[string]any, error) 
 }
 
 func (r Repository) GetInbound(ctx context.Context, tag string) (map[string]any, error) {
-	inbounds, err := r.manageableInboundsWithTargets(ctx)
+	inbounds, err := r.ManagementInbounds(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,11 @@ func (r Repository) CreateInbound(ctx context.Context, payload map[string]any) (
 	if err != nil {
 		return InboundMutationResult{}, err
 	}
-	if len(directTargets) > 0 {
+	detached, err := detachedInboundConfig(ctx, tx, tag)
+	if err != nil {
+		return InboundMutationResult{}, err
+	}
+	if len(directTargets) > 0 || detached != nil {
 		return InboundMutationResult{}, fmt.Errorf("%w: inbound %q already exists", ErrDuplicateInboundTag, tag)
 	}
 	if err := r.ensureSingleL2TPInboundTx(ctx, tx, inbound, ""); err != nil {
@@ -200,8 +204,15 @@ func (r Repository) UpdateInbound(ctx context.Context, tag string, payload map[s
 	if err != nil {
 		return InboundMutationResult{}, err
 	}
+	var detached json.RawMessage
 	if len(currentTargets) == 0 {
-		return InboundMutationResult{}, ErrInboundNotFound
+		detached, err = detachedInboundConfig(ctx, tx, tag)
+		if err != nil {
+			return InboundMutationResult{}, err
+		}
+		if detached == nil {
+			return InboundMutationResult{}, ErrInboundNotFound
+		}
 	}
 	currentCoefficient, err := r.inboundUsageCoefficientTx(ctx, tx, tag)
 	if err != nil {
@@ -215,6 +226,13 @@ func (r Repository) UpdateInbound(ctx context.Context, tag string, payload map[s
 	targetIDs, cleanPayload, err := r.extractTargetIDs(payload, currentTargets)
 	if err != nil {
 		return InboundMutationResult{}, err
+	}
+	if detached != nil {
+		for _, targetID := range targetIDs {
+			if targetID == MasterTargetID {
+				return InboundMutationResult{}, fmt.Errorf("%w: select a node for the restored inbound", ErrInvalidInbound)
+			}
+		}
 	}
 	usageCoefficient, cleanPayload, err := extractInboundUsageCoefficient(cleanPayload, currentCoefficient)
 	if err != nil {
@@ -258,6 +276,13 @@ func (r Repository) UpdateInbound(ctx context.Context, tag string, payload map[s
 		return InboundMutationResult{}, err
 	}
 	fallbackReverseClients := []any{}
+	if detached != nil {
+		var restored map[string]any
+		if err := json.Unmarshal(detached, &restored); err != nil {
+			return InboundMutationResult{}, err
+		}
+		fallbackReverseClients = ReverseClients(mapValue(restored["settings"])["clients"])
+	}
 	for _, targetID := range currentTargets {
 		if clients, _ := reverseClientsForInbound(configs[targetID], tag); len(clients) > 0 {
 			fallbackReverseClients = clients
@@ -299,6 +324,11 @@ func (r Repository) UpdateInbound(ctx context.Context, tag string, payload map[s
 	if err := r.enqueueSyncForTargetsTx(ctx, tx, changedTargets); err != nil {
 		return InboundMutationResult{}, err
 	}
+	if detached != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM detached_inbounds WHERE tag = ?`, tag); err != nil {
+			return InboundMutationResult{}, err
+		}
+	}
 	after, err := r.captureMutationForRecordTx(ctx, tx, scope)
 	if err != nil {
 		return InboundMutationResult{}, err
@@ -332,15 +362,21 @@ func (r Repository) DeleteInbound(ctx context.Context, tag string) (InboundMutat
 		return InboundMutationResult{}, err
 	}
 	if len(currentTargets) == 0 {
-		return InboundMutationResult{}, ErrInboundNotFound
-	}
-
-	inbound, err := r.findManageableInboundTx(ctx, tx, tag)
-	if err != nil {
-		return InboundMutationResult{}, err
-	}
-	if !r.isManageableInbound(inbound) {
-		return InboundMutationResult{}, ErrInboundNotFound
+		detached, err := detachedInboundConfig(ctx, tx, tag)
+		if err != nil {
+			return InboundMutationResult{}, err
+		}
+		if detached == nil {
+			return InboundMutationResult{}, ErrInboundNotFound
+		}
+	} else {
+		inbound, err := r.findManageableInboundTx(ctx, tx, tag)
+		if err != nil {
+			return InboundMutationResult{}, err
+		}
+		if !r.isManageableInbound(inbound) {
+			return InboundMutationResult{}, ErrInboundNotFound
+		}
 	}
 	scope := SnapshotScope{TargetIDs: currentTargets, InboundTag: tag, HostTags: []string{tag}}
 	before, err := r.captureMutationForRecordTx(ctx, tx, scope)
@@ -365,6 +401,11 @@ func (r Repository) DeleteInbound(ctx context.Context, tag string) (InboundMutat
 	}
 	if err := r.deleteInboundRecordTx(ctx, tx, tag); err != nil {
 		return InboundMutationResult{}, err
+	}
+	if len(currentTargets) == 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM detached_inbounds WHERE tag = ?`, tag); err != nil {
+			return InboundMutationResult{}, err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM amneziawg_devices WHERE inbound_tag = ?`, tag); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") && !strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
 		return InboundMutationResult{}, err
@@ -630,6 +671,10 @@ func (r Repository) extractTargetIDs(payload map[string]any, defaults []string) 
 	}
 	delete(clean, "targets")
 	delete(clean, "target_ids")
+	delete(clean, "effective_targets")
+	delete(clean, "detached")
+	delete(clean, "uplink")
+	delete(clean, "downlink")
 
 	targets := make([]string, 0)
 	if hasTargets {

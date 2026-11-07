@@ -143,6 +143,15 @@ func (s *Service) Export(ctx context.Context, scope string) (ExportResult, error
 }
 
 func (s *Service) Import(ctx context.Context, archivePath string) (ImportResult, error) {
+	return s.importArchive(ctx, archivePath, false)
+}
+
+// ImportForMigration restores a backup to a new panel without enrolling source nodes.
+func (s *Service) ImportForMigration(ctx context.Context, archivePath string) (ImportResult, error) {
+	return s.importArchive(ctx, archivePath, true)
+}
+
+func (s *Service) importArchive(ctx context.Context, archivePath string, migrate bool) (ImportResult, error) {
 	if stat, err := os.Stat(archivePath); err != nil || stat.IsDir() {
 		return ImportResult{}, Error{Message: "Backup file not found"}
 	}
@@ -164,13 +173,28 @@ func (s *Service) Import(ctx context.Context, archivePath string) (ImportResult,
 	if err != nil {
 		return ImportResult{}, err
 	}
+	if migrate {
+		if (s.dialect != "mysql" && s.dialect != "mariadb") || m.Database.PayloadType != "mysql-dump" || m.Database.Payload == "" {
+			return ImportResult{}, Error{Message: "Migration without source nodes requires a native MySQL/MariaDB backup and destination."}
+		}
+		if s.db == nil {
+			return ImportResult{}, Error{Message: "Destination database connection is not available."}
+		}
+		var enrolled int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes WHERE LOWER(COALESCE(status, '')) <> 'deleted'`).Scan(&enrolled); err != nil {
+			return ImportResult{}, err
+		}
+		if enrolled > 0 {
+			return ImportResult{}, Error{Message: "Migration requires a destination panel without enrolled nodes. Add nodes after restoring the backup."}
+		}
+	}
 	if scope == ScopeFull && (s.dialect == "mysql" || s.dialect == "mariadb") {
 		if err := s.preserveLocalDatabaseEnv(filepath.Join(extractDir, FilesPrefix)); err != nil {
 			return ImportResult{}, err
 		}
 	}
 
-	tables, rows, warnings, err := s.restoreDatabasePayload(ctx, extractDir, m)
+	tables, rows, warnings, err := s.restoreDatabasePayload(ctx, extractDir, m, migrate)
 	if err != nil {
 		return ImportResult{}, err
 	}
@@ -213,7 +237,7 @@ func (s *Service) exportDatabasePayload(ctx context.Context, buildDir string) (d
 	}
 }
 
-func (s *Service) restoreDatabasePayload(ctx context.Context, extractDir string, m manifest) (int, int, []string, error) {
+func (s *Service) restoreDatabasePayload(ctx context.Context, extractDir string, m manifest, migrate bool) (int, int, []string, error) {
 	if m.Database.Payload != "" {
 		payloadName, err := safeArchiveName(m.Database.Payload)
 		if err != nil {
@@ -229,14 +253,14 @@ func (s *Service) restoreDatabasePayload(ctx context.Context, extractDir string,
 				return 0, 0, nil, err
 			}
 		case "mysql-dump":
-			if err := s.restoreMySQL(ctx, payloadPath); err != nil {
+			if err := s.restoreMySQL(ctx, payloadPath, migrate); err != nil {
 				return 0, 0, nil, err
 			}
 		default:
 			return 0, 0, nil, Error{Message: "Backup database payload type is not supported"}
 		}
 		tables, rows, err := s.databaseCounts(ctx)
-		return tables, rows, nil, err
+		return tables, rows, []string{}, err
 	}
 
 	legacyPath := filepath.Join(extractDir, DatabaseDumpName)
@@ -344,7 +368,7 @@ func (s *Service) exportMySQL(ctx context.Context, outputPath string) error {
 	return nil
 }
 
-func (s *Service) restoreMySQL(ctx context.Context, payloadPath string) error {
+func (s *Service) restoreMySQL(ctx context.Context, payloadPath string, migrate bool) error {
 	command, err := findExecutable([]string{"mariadb", "mysql"})
 	if err != nil {
 		return err
@@ -363,8 +387,31 @@ func (s *Service) restoreMySQL(ctx context.Context, payloadPath string) error {
 		return err
 	}
 	filteredPath := filepath.Join(tempDir, "database.sql")
-	if err := filterMySQLDumpForDatabase(payloadPath, filteredPath); err != nil {
-		return err
+	if migrate {
+		sourceEngine, err := portableMySQLSourceEngine(payloadPath)
+		if err != nil {
+			return err
+		}
+		if sourceEngine != "" {
+			var version string
+			if err := s.db.QueryRowContext(ctx, "SELECT VERSION()").Scan(&version); err != nil {
+				return err
+			}
+			targetEngine := "mysql"
+			if strings.Contains(strings.ToLower(version), "mariadb") {
+				targetEngine = "mariadb"
+			}
+			if sourceEngine != targetEngine {
+				return Error{Message: "Migration requires the same database engine as the backup. The backup uses " + sourceEngine + " and the destination uses " + targetEngine + "."}
+			}
+		}
+		if err := preparePortableMySQLDump(payloadPath, filteredPath); err != nil {
+			return Error{Message: "Cannot prepare this backup for migration: " + err.Error()}
+		}
+	} else {
+		if err := filterMySQLDumpForDatabase(payloadPath, filteredPath); err != nil {
+			return err
+		}
 	}
 	rollbackRawPath := filepath.Join(tempDir, "rollback.sql")
 	if err := s.exportMySQL(ctx, rollbackRawPath); err != nil {

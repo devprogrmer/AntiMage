@@ -662,6 +662,7 @@ export const exportAntiMageBackup = async (
 export const importAntiMageBackup = async (
 	file: File,
 	onProgress?: (percent: number) => void,
+	migrateWithoutNodes = false,
 ): Promise<AntiMageBackupImportResponse> => {
 	return new Promise((resolve, reject) => {
 		const body = new FormData();
@@ -677,7 +678,8 @@ export const importAntiMageBackup = async (
 			onProgress?.(next);
 		};
 		const baseURL = (apiBaseURL || "/api").replace(/\/$/, "");
-		xhr.open("POST", `${baseURL}/settings/backup/import`);
+		const query = migrateWithoutNodes ? "?mode=migration" : "";
+		xhr.open("POST", `${baseURL}/settings/backup/import${query}`);
 		xhr.withCredentials = true;
 		xhr.responseType = "json";
 		xhr.upload.onprogress = (event) => {

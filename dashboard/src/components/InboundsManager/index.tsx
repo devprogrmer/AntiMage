@@ -79,7 +79,9 @@ const normalizeInboundTargets = (inbound: RawInbound): RawInbound => ({
 });
 
 const getInboundTargetIds = (inbound: RawInbound) =>
-	inbound.effective_targets?.length
+	inbound.detached
+		? []
+		: inbound.effective_targets?.length
 		? inbound.effective_targets
 		: inbound.targets?.length
 			? inbound.targets
@@ -182,6 +184,9 @@ export const InboundsManager: FC = () => {
 		try {
 			const normalizedTag = (values.tag || "").trim().toLowerCase();
 			const isEditMode = mode === "edit";
+			if (initial?.detached && !values.targetIds?.length) {
+				throw new Error(t("inbounds.error.targetsRequired"));
+			}
 			const selectedTargets = new Set(
 				values.targetIds?.length ? values.targetIds : ["master"],
 			);
@@ -194,11 +199,7 @@ export const InboundsManager: FC = () => {
 				if (isEditMode && inb.tag === initial?.tag) {
 					return false;
 				}
-				const inboundTargets = inb.effective_targets?.length
-					? inb.effective_targets
-					: inb.targets?.length
-						? inb.targets
-						: ["master"];
+				const inboundTargets = getInboundTargetIds(inb);
 				return (
 					inb.port?.toString() === values.port &&
 					inboundTargets.some((targetId) => selectedTargets.has(targetId))
@@ -660,6 +661,13 @@ export const InboundsManager: FC = () => {
 				mobilePriority: 7,
 				mobileMetaLabel: t("inbounds.targets"),
 				cell: (inbound) => {
+					if (inbound.detached) {
+						return (
+							<Tag size="sm" colorScheme="orange">
+								{t("inbounds.detachedTarget")}
+							</Tag>
+						);
+					}
 					const targetIds = getInboundTargetIds(inbound);
 					const targetLabels = targetIds.map(
 						(targetId) => targetNameById[targetId] || targetId,
