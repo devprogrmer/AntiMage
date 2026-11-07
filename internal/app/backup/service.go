@@ -914,15 +914,10 @@ func filterMySQLDumpForDatabase(inputPath string, outputPath string) error {
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 64*1024*1024)
 	writer := bufio.NewWriter(output)
-	defer writer.Flush()
+	var filter mysqlDumpFilter
 	for scanner.Scan() {
-		line := scanner.Text()
-		normalized := strings.TrimSpace(line)
-		upper := strings.ToUpper(normalized)
-		if strings.HasPrefix(upper, "USE ") ||
-			strings.Contains(upper, "DROP DATABASE") ||
-			strings.Contains(upper, "CREATE DATABASE") ||
-			strings.HasPrefix(upper, "-- CURRENT DATABASE:") {
+		line, keep := filter.line(scanner.Text())
+		if !keep {
 			continue
 		}
 		if _, err := writer.WriteString(line + "\n"); err != nil {
@@ -932,7 +927,7 @@ func filterMySQLDumpForDatabase(inputPath string, outputPath string) error {
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-	return nil
+	return writer.Flush()
 }
 
 func (s *Service) quoteIdentifier(name string) string {
