@@ -253,9 +253,12 @@ func (s *Service) restoreDatabasePayload(ctx context.Context, extractDir string,
 				return 0, 0, nil, err
 			}
 		case "mysql-dump":
-			if err := s.restoreMySQL(ctx, payloadPath, migrate); err != nil {
+			warnings, err := s.restoreMySQL(ctx, payloadPath, migrate)
+			if err != nil {
 				return 0, 0, nil, err
 			}
+			tables, rows, err := s.databaseCounts(ctx)
+			return tables, rows, warnings, err
 		default:
 			return 0, 0, nil, Error{Message: "Backup database payload type is not supported"}
 		}
@@ -368,66 +371,78 @@ func (s *Service) exportMySQL(ctx context.Context, outputPath string) error {
 	return nil
 }
 
-func (s *Service) restoreMySQL(ctx context.Context, payloadPath string, migrate bool) error {
+func (s *Service) restoreMySQL(ctx context.Context, payloadPath string, migrate bool) ([]string, error) {
 	command, err := findExecutable([]string{"mariadb", "mysql"})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	databaseName, err := s.mysqlDatabaseName()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	tempDir, err := os.MkdirTemp("", "antimage-mysql-restore-*")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer os.RemoveAll(tempDir)
 	defaultsFile, err := s.writeMySQLDefaultsFile(tempDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	filteredPath := filepath.Join(tempDir, "database.sql")
+	var destinationAdmins []destinationAdmin
 	if migrate {
 		sourceEngine, err := portableMySQLSourceEngine(payloadPath)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if sourceEngine != "" {
 			var version string
 			if err := s.db.QueryRowContext(ctx, "SELECT VERSION()").Scan(&version); err != nil {
-				return err
+				return nil, err
 			}
 			targetEngine := "mysql"
 			if strings.Contains(strings.ToLower(version), "mariadb") {
 				targetEngine = "mariadb"
 			}
 			if sourceEngine != targetEngine {
-				return Error{Message: "Migration requires the same database engine as the backup. The backup uses " + sourceEngine + " and the destination uses " + targetEngine + "."}
+				return nil, Error{Message: "Migration requires the same database engine as the backup. The backup uses " + sourceEngine + " and the destination uses " + targetEngine + "."}
 			}
 		}
 		if err := preparePortableMySQLDump(payloadPath, filteredPath); err != nil {
-			return Error{Message: "Cannot prepare this backup for migration: " + err.Error()}
+			return nil, Error{Message: "Cannot prepare this backup for migration: " + err.Error()}
+		}
+		destinationAdmins, err = s.captureDestinationAdmins(ctx)
+		if err != nil {
+			return nil, Error{Message: "Cannot preserve destination administrators before migration: " + err.Error()}
 		}
 	} else {
 		if err := filterMySQLDumpForDatabase(payloadPath, filteredPath); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	rollbackRawPath := filepath.Join(tempDir, "rollback.sql")
 	if err := s.exportMySQL(ctx, rollbackRawPath); err != nil {
-		return Error{Message: "Failed to create a rollback backup before restoring MySQL/MariaDB: " + err.Error()}
+		return nil, Error{Message: "Failed to create a rollback backup before restoring MySQL/MariaDB: " + err.Error()}
 	}
 	rollbackPath := filepath.Join(tempDir, "rollback-filtered.sql")
 	if err := filterMySQLDumpForDatabase(rollbackRawPath, rollbackPath); err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.dropMySQLTables(ctx); err != nil {
-		return s.restoreMySQLRollback(command, defaultsFile, databaseName, rollbackPath, err)
+		return nil, s.restoreMySQLRollback(command, defaultsFile, databaseName, rollbackPath, err)
 	}
 	if err := restoreMySQLDump(ctx, command, defaultsFile, databaseName, filteredPath); err != nil {
-		return s.restoreMySQLRollback(command, defaultsFile, databaseName, rollbackPath, err)
+		return nil, s.restoreMySQLRollback(command, defaultsFile, databaseName, rollbackPath, err)
 	}
-	return nil
+	if !migrate {
+		return nil, nil
+	}
+	warnings, err := s.restoreDestinationAdmins(ctx, destinationAdmins)
+	if err != nil {
+		return nil, s.restoreMySQLRollback(command, defaultsFile, databaseName, rollbackPath, err)
+	}
+	return warnings, nil
 }
 
 func (s *Service) restoreMySQLRollback(command string, defaultsFile string, databaseName string, rollbackPath string, restoreErr error) error {

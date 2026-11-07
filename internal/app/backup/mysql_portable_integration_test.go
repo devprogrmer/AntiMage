@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	adminapp "github.com/antimage/antimage/internal/app/admin"
 	"github.com/antimage/antimage/internal/app/migrations"
 	"github.com/antimage/antimage/internal/app/xrayconfig"
 	"github.com/go-sql-driver/mysql"
@@ -81,6 +82,26 @@ func TestPortableBackupExternalMySQL(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	sourceHash, err := adminapp.HashPassword("source-login-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetHash, err := adminapp.HashPassword("destination-login-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetKey, err := adminapp.NewRepository(target, "mysql").AdminSecret(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const totpSecret = "JBSWY3DPEHPK3PXP"
+	encryptedTOTP, err := adminapp.EncryptTOTPSecret(totpSecret, targetKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(source, `INSERT INTO admins (username,hashed_password,role,status) VALUES ('admin',?,'full_access','active')`, sourceHash)
+	exec(target, `INSERT INTO admins (username,hashed_password,role,status,require_2fa,totp_secret,totp_enabled_at)
+		VALUES ('admin',?,'full_access','active',1,?,CURRENT_TIMESTAMP)`, targetHash, encryptedTOTP)
 	const clientID = "11111111-1111-4111-8111-111111111111"
 	wgServerBytes := [32]byte{4, 5, 6}
 	wgKey := base64.StdEncoding.EncodeToString(wgServerBytes[:])
@@ -128,8 +149,33 @@ func TestPortableBackupExternalMySQL(t *testing.T) {
 	if xrayBinary != "" {
 		verifyOldStream = restoreTestVLESSStream(t, xrayBinary, clientID, inbounds[0])
 	}
-	if _, err := targetBackup.ImportForMigration(ctx, archive.Path); err != nil {
+	result, err := targetBackup.ImportForMigration(ctx, archive.Path)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if len(result.Warnings) < 2 || !strings.Contains(strings.Join(result.Warnings, " "), `"admin_local_1"`) {
+		t.Fatalf("migration did not report renamed destination administrator: %v", result.Warnings)
+	}
+	var restoredSourceHash, restoredTargetHash, restoredTOTP string
+	var restored2FA int
+	if err := target.QueryRowContext(ctx, `SELECT hashed_password FROM admins WHERE username='admin'`).Scan(&restoredSourceHash); err != nil {
+		t.Fatal(err)
+	}
+	if err := target.QueryRowContext(ctx, `SELECT hashed_password, require_2fa, totp_secret FROM admins WHERE username='admin_local_1'`).
+		Scan(&restoredTargetHash, &restored2FA, &restoredTOTP); err != nil {
+		t.Fatal(err)
+	}
+	if !adminapp.VerifyPassword(restoredSourceHash, "source-login-password") ||
+		!adminapp.VerifyPassword(restoredTargetHash, "destination-login-password") || restored2FA != 1 {
+		t.Fatal("source or destination admin login was not preserved")
+	}
+	restoredKey, err := adminapp.NewRepository(target, "mysql").AdminSecret(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plainTOTP, err := adminapp.DecryptTOTPSecret(restoredTOTP, restoredKey)
+	if err != nil || plainTOTP != totpSecret {
+		t.Fatal("destination TOTP credential was not usable after migration")
 	}
 	if verifyOldStream != nil {
 		verifyOldStream()

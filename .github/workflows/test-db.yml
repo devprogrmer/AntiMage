@@ -102,6 +102,12 @@ jobs:
         run: |
           go test ./internal/app/nodecontroller -run TestRepositoryTouchesOnlineUsersExternalMySQL
 
+      - name: Verify portable restore preserves destination login
+        if: matrix.db == 'mysql'
+        env:
+          ANTIMAGE_TEST_PORTABLE_MYSQL: mysql://root:root@127.0.0.1:3306/
+        run: go test -race ./internal/app/backup -run '^TestPortableBackupExternalMySQL$' -count=1 -v
+
       - name: Verify Telegram commerce concurrency and settlement
         if: matrix.db != 'sqlite'
         env:
