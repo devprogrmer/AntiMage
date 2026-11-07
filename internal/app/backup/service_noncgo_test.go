@@ -76,6 +76,25 @@ func TestWriteArchivePassesFullIntegrityRead(t *testing.T) {
 	}
 }
 
+func TestRestoreDatabaseRejectsManifestPayloadOutsideExtraction(t *testing.T) {
+	root := t.TempDir()
+	extracted := filepath.Join(root, "extracted")
+	if err := os.Mkdir(extracted, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "outside.sql"), []byte("outside archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(nil, "sqlite", "")
+	for _, name := range []string{"../outside.sql", filepath.Join(root, "outside.sql")} {
+		m := manifest{Database: manifestDB{Payload: name, PayloadType: "mysql-dump"}}
+		_, _, _, err := service.restoreDatabasePayload(context.Background(), extracted, m)
+		if err == nil || !strings.Contains(err.Error(), "unsafe paths") {
+			t.Errorf("payload %q: expected unsafe path error, got %v", name, err)
+		}
+	}
+}
+
 func TestImportRejectsUnsafeArchivePath(t *testing.T) {
 	archivePath := filepath.Join(t.TempDir(), "unsafe-backup.dat")
 	file, err := os.Create(archivePath)

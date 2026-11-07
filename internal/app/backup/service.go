@@ -215,7 +215,11 @@ func (s *Service) exportDatabasePayload(ctx context.Context, buildDir string) (d
 
 func (s *Service) restoreDatabasePayload(ctx context.Context, extractDir string, m manifest) (int, int, []string, error) {
 	if m.Database.Payload != "" {
-		payloadPath := filepath.Join(extractDir, filepath.FromSlash(m.Database.Payload))
+		payloadName, err := safeArchiveName(m.Database.Payload)
+		if err != nil {
+			return 0, 0, nil, err
+		}
+		payloadPath := filepath.Join(extractDir, payloadName)
 		if !isRegularFile(payloadPath) {
 			return 0, 0, nil, Error{Message: "Backup database payload is missing"}
 		}
