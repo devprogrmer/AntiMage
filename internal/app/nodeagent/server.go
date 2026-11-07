@@ -361,6 +361,8 @@ func (s *Server) StopRuntime(
 	ctx context.Context,
 	_ *nodev1.StopRuntimeRequest,
 ) (*nodev1.RuntimeActionResponse, error) {
+	s.xrayTransitionMu.Lock()
+	defer s.xrayTransitionMu.Unlock()
 	if err := s.checkpointBeforeRuntimeTransition(ctx); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
@@ -383,9 +385,7 @@ func (s *Server) StopRuntime(
 	s.stopAllWireGuardRuntimes()
 	s.stopAllAmneziaWGRuntimes()
 	s.clearNativeSpeedLimitsLogged()
-	s.xrayTransitionMu.Lock()
 	_ = s.stopRuntime()
-	s.xrayTransitionMu.Unlock()
 
 	return s.action("", "stopped"), nil
 }
@@ -773,14 +773,23 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	if err := s.validateXrayRuntimeConfig(ctx, configJSON); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	_, coreErr := os.Stat(s.cfg.XrayPath)
+	var recovery *runtimePolicySnapshot
+	if coreErr == nil {
+		recovery = s.xrayPortRecoveryPolicy(req)
+	}
 	// Persist the exact guarded policy that will be activated. Persisting the
 	// unguarded panel policy first would let a node restart offline and restore
 	// credentials that the durable quota guard had just denied.
-	if err := s.persistRuntimePolicy(req); err != nil {
-		s.recordLocalAccountingHealth("policy", err)
-		return nil, status.Error(codes.FailedPrecondition, "persist offline policy: "+err.Error())
+	// A port-only change preserves that access policy, so the prior revision
+	// can remain durable until the replacement confirms startup.
+	if recovery == nil {
+		if err := s.persistRuntimePolicy(req); err != nil {
+			s.recordLocalAccountingHealth("policy", err)
+			return nil, status.Error(codes.FailedPrecondition, "persist offline policy: "+err.Error())
+		}
+		s.recordLocalAccountingHealth("policy", nil)
 	}
-	s.recordLocalAccountingHealth("policy", nil)
 
 	if err := os.MkdirAll(s.cfg.DataDir, 0755); err != nil {
 		return nil, err
@@ -805,12 +814,26 @@ func (s *Server) applyConfig(ctx context.Context, req *nodev1.RuntimeConfigReque
 	s.lastConfig = configPath
 	s.mu.Unlock()
 
-	if _, err := os.Stat(s.cfg.XrayPath); err == nil {
+	if coreErr == nil {
 		if !liveApplied {
-			// The guarded policy and config are durable: complete the owned
-			// transition even if the requesting RPC expires at this boundary.
+			// Complete the transition even if the requesting RPC expires at
+			// this boundary. A failed port-only update keeps the prior policy.
 			if err := s.startXray(context.Background(), configPath); err != nil {
+				if recovery != nil {
+					if recoveryErr := s.recoverXrayPortChange(configPath, recovery); recoveryErr != nil {
+						return nil, status.Errorf(codes.Internal, "start xray: %v; recover previous revision: %v", err, recoveryErr)
+					}
+					s.appendLog("restored previous Xray revision after failed port change")
+					return nil, status.Errorf(codes.Internal, "start xray: %v; restored previous revision %d", err, recovery.Revision)
+				}
 				return nil, status.Error(codes.Internal, "start xray: "+err.Error())
+			}
+			if recovery != nil {
+				if err := s.persistRuntimePolicy(req); err != nil {
+					s.recordLocalAccountingHealth("policy", err)
+					return nil, status.Error(codes.FailedPrecondition, "persist offline policy: "+err.Error())
+				}
+				s.recordLocalAccountingHealth("policy", nil)
 			}
 			if err := s.markRestoredXrayRevocations(req.GetOvRuntimeJson(), configJSON); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())

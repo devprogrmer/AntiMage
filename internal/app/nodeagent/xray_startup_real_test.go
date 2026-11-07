@@ -3,9 +3,11 @@ package nodeagent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,5 +80,74 @@ func TestRealXrayStartupBindFailure(t *testing.T) {
 	defer client.rpc.close()
 	if _, err := client.queryStats(ctx, "antimage-startup-test", false); err != nil {
 		t.Fatalf("activation was acknowledged before RPC readiness: %v", err)
+	}
+
+	// A second bind failure now has a confirmed configuration to recover.
+	oldPort := occupied.Addr().(*net.TCPAddr).Port
+	conflict, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conflict.Close()
+	failedConfig := strings.Replace(req.ConfigJson, fmt.Sprintf(`"port":%d`, oldPort), fmt.Sprintf(`"port":%d`, conflict.Addr().(*net.TCPAddr).Port), 1)
+	if failedConfig == req.ConfigJson {
+		t.Fatal("test did not change the inbound port")
+	}
+	if response, err = s.SyncConfig(ctx, &nodev1.RuntimeConfigRequest{ConfigJson: failedConfig, DesiredRevision: 8}); err == nil || response.GetAccepted() {
+		t.Fatal("failed update was accepted")
+	}
+	if runtime := s.runtimeState("check"); !runtime.GetStarted() || runtime.GetAppliedRevision() != 7 {
+		t.Fatalf("previous revision did not recover: %v", runtime)
+	}
+	durable, err := New(s.cfg).loadRuntimePolicy()
+	if err != nil || durable == nil || durable.Revision != 7 || durable.ConfigJSON != req.ConfigJson {
+		t.Fatalf("previous revision was not retained for agent restart: %v", err)
+	}
+	conn, err := net.DialTimeout("tcp", occupied.Addr().String(), time.Second)
+	if err != nil {
+		t.Fatalf("previous inbound did not recover: %v", err)
+	}
+	conn.Close()
+
+	if err := s.stopRuntime(); err != nil {
+		t.Fatal(err)
+	}
+	s.closeXrayStatsClient()
+	s = New(s.cfg)
+	if err := s.restoreRuntimePolicy(ctx); err != nil || !s.runtimeState("check").GetStarted() {
+		t.Fatalf("previous revision did not start on offline agent recovery: %v", err)
+	}
+	if err := conflict.Close(); err != nil {
+		t.Fatal(err)
+	}
+	response, err = s.SyncConfig(ctx, &nodev1.RuntimeConfigRequest{ConfigJson: failedConfig, DesiredRevision: 8})
+	if err != nil || response.GetRuntime().GetAppliedRevision() != 8 {
+		t.Fatalf("released port did not apply: %v", err)
+	}
+	durable, err = New(s.cfg).loadRuntimePolicy()
+	if err != nil || durable == nil || durable.Revision != 8 || durable.ConfigJSON != failedConfig {
+		t.Fatalf("confirmed port change was not persisted: %v", err)
+	}
+
+	// The same rollback must not restore an account deleted by the panel.
+	blocked, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocked.Close()
+	blockedConfig := strings.Replace(req.ConfigJson, fmt.Sprintf(`"port":%d`, oldPort), fmt.Sprintf(`"port":%d`, blocked.Addr().(*net.TCPAddr).Port), 1)
+	reduced := strings.Replace(blockedConfig, `[{"email":"one","id":"11111111-1111-4111-8111-111111111111"}]`, "[]", 1)
+	if reduced == blockedConfig {
+		t.Fatal("test did not remove the prior account")
+	}
+	if _, err = s.SyncConfig(ctx, &nodev1.RuntimeConfigRequest{ConfigJson: reduced, DesiredRevision: 9}); err == nil {
+		t.Fatal("bind failure with changed credentials was accepted")
+	}
+	if s.runtimeState("check").GetStarted() {
+		t.Fatal("rollback restored a listener with a deleted credential")
+	}
+	durable, err = New(s.cfg).loadRuntimePolicy()
+	if err != nil || durable == nil || durable.ConfigJSON != reduced {
+		t.Fatalf("credential removal was not retained on disk: %v", err)
 	}
 }
