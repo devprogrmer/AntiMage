@@ -2767,7 +2767,7 @@
 	"settings.backup.import": "Import backup",
 	"settings.backup.importHint": "Upload an AntiMage backup file exported by this panel.",
 	"settings.backup.migrateWithoutNodes": "Move to a new panel without importing nodes",
-	"settings.backup.migrateWithoutNodesHint": "Use the same database engine as the backup (MySQL or MariaDB) and a destination with no enrolled nodes. Add nodes after restoring and assign the inbounds.",
+	"settings.backup.migrateWithoutNodesHint": "Default for a new panel: use the same database engine as the backup (MySQL or MariaDB) and a destination with no enrolled nodes. The destination administrator stays available; if its username also exists in the backup, the result shows its new login name. Add nodes after restoring and assign the inbounds.",
 	"settings.backup.uploadProgress": "Uploading backup: {{percent}}%",
 	"settings.backup.processing": "Upload complete. Restoring backup on the server...",
 	"settings.backup.autoDetectImportWarning": "The backup type is detected automatically. Import always replaces the database and also restores AntiMage files when the backup contains them.",
