@@ -107,3 +107,25 @@ jobs:
         env:
           ANTIMAGE_TEST_COMMERCE_DB: '1'
         run: go test ./internal/app/shop -run '^TestShopCommerceExternalMySQL$' -count=1 -v
+
+      - name: Verify portable backup restore with a live Xray connection
+        if: matrix.db == 'mysql'
+        timeout-minutes: 12
+        env:
+          ANTIMAGE_TEST_PORTABLE_MYSQL: ${{ matrix.url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v mysql >/dev/null || ! command -v mysqldump >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends mysql-client
+          fi
+          fixture="$(mktemp -d "${RUNNER_TEMP}/antimage-restore-xray.XXXXXXXX")"
+          archive="$fixture/Xray-linux-64.zip"
+          curl --fail --location --retry 3 --output "$archive" \
+            'https://github.com/XTLS/Xray-core/releases/download/v26.10.31/Xray-linux-64.zip'
+          echo "e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214  $archive" | sha256sum --check -
+          python3 -m zipfile -e "$archive" "$fixture"
+          chmod +x "$fixture/xray"
+          ANTIMAGE_TEST_XRAY_BINARY="$fixture/xray" \
+            go test ./internal/app/backup -run '^TestPortableBackupExternalMySQL$' -count=1 -v
