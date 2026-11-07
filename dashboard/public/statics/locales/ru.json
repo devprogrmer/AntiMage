@@ -3807,5 +3807,8 @@
 	"accountingHealth.checkpoint": "Последняя успешная запись с запуска узла",
 	"accountingHealth.lastAck": "Последний подтверждённый пакет",
 	"accountingHealth.none": "Нет",
+	"accountingHealth.warning": "Задержка",
+	"accountingHealth.checkpointOverdue": "Последняя успешная контрольная точка была более 3 минут назад.",
+	"accountingHealth.pendingACKOverdue": "Пакет ожидает подтверждения более 10 минут.",
 	"accountingHealth.failure": "Ошибка"
 }

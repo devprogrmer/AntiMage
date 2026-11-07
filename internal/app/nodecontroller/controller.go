@@ -1240,7 +1240,9 @@ func runtimeResult(node NodeRow, state *nodev1.RuntimeState, metrics *nodev1.Met
 				Protocols:                 make([]AccountingProtocolStatus, 0, len(accounting.GetProtocols())),
 			}
 			for _, item := range accounting.GetProtocols() {
+				checkpointOverdue, pendingACKOverdue := accountingTimingWarnings(metrics.GetSampledAtUnix(), item)
 				summary.Protocols = append(summary.Protocols, AccountingProtocolStatus{
+					CheckpointOverdue: checkpointOverdue, PendingACKOverdue: pendingACKOverdue,
 					Protocol: item.GetProtocol(), StateLoaded: item.GetStateLoaded(),
 					PendingBatchID: item.GetPendingBatchId(), PendingBytes: item.GetPendingBytes(),
 					PendingBytesOverflow: item.GetPendingBytesOverflow(), LastAckedBatchID: item.GetLastAckedBatchId(),

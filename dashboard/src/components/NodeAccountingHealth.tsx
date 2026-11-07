@@ -24,8 +24,11 @@ export function NodeAccountingHealth({ accounting }: { accounting?: Accounting |
 	const failures = accounting.protocols.filter((item) => item.failure);
 	const pending = accounting.protocols.filter((item) => item.pending_batch_id);
 	const incomplete = !accounting.reflection_ledger_loaded || accounting.protocols.some((item) => !item.state_loaded);
-	const state = failures.length > 0 ? "degraded" : pending.length > 0 || accounting.awaiting_reflection_batches > 0 ? "pending" : incomplete ? "unknown" : "healthy";
-	const color = state === "degraded" ? "red" : state === "pending" ? "yellow" : state === "healthy" ? "green" : "gray";
+	const hasTimingWarning = accounting.protocols.some(
+		(item) => item.checkpoint_overdue || item.pending_ack_overdue,
+	);
+	const state = failures.length > 0 ? "degraded" : hasTimingWarning ? "warning" : pending.length > 0 || accounting.awaiting_reflection_batches > 0 ? "pending" : incomplete ? "unknown" : "healthy";
+	const color = state === "degraded" ? "red" : state === "warning" ? "orange" : state === "pending" ? "yellow" : state === "healthy" ? "green" : "gray";
 	return (
 		<Popover trigger="click" placement="auto" isLazy>
 			<PopoverTrigger>
@@ -70,6 +73,12 @@ export function NodeAccountingHealth({ accounting }: { accounting?: Accounting |
 										? item.last_acked_batch_id || t("accountingHealth.none")
 										: t("accountingHealth.unknown")}
 								</Text>
+								{item.checkpoint_overdue && (
+									<Text color="orange.400">{t("accountingHealth.checkpointOverdue")}</Text>
+								)}
+								{item.pending_ack_overdue && (
+									<Text color="orange.400">{t("accountingHealth.pendingACKOverdue")}</Text>
+								)}
 								{item.failure && (
 									<Text color="red.400" overflowWrap="anywhere">
 										{t("accountingHealth.failure")}: {item.failure}
