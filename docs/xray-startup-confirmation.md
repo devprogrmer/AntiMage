@@ -62,11 +62,19 @@ last live users through HandlerService enabled that shared auth before a
 subsequent restart. The fixed test denies it even in that interval. Intentional
 unmanaged static-auth listeners retain their original behavior.
 
-## Remaining recovery work
+## Recovery after an inbound port change
 
-This change detects startup failure; it is not an automatic rollback transaction.
-The guarded desired policy remains durable so offline recovery and a later retry
-continue enforcing the latest restrictions. A failed replacement may leave the
-core stopped. Restoring an older config without intersecting current credentials
-and quota can revive revoked users, so full last-known-good recovery remains a
-separate task. Never restore old accounting files to work around a bind failure.
+For a change to one numeric inbound port, the node retains the previously
+applied policy on disk until startup succeeds. Recovery requires the running
+config to match that policy, the guarded native policy to be identical, and
+all other Xray config values to remain the same. If the replacement fails,
+the node reevaluates offline quotas and expiry, restarts the prior listener,
+and returns the original update as failed without advancing its revision.
+The real-core test covers an occupied port, offline startup from the retained
+policy, and a successful retry after the port becomes available.
+
+For other changes, the guarded desired policy remains durable. If a replacement
+fails while removing an account or changing access rules, the node keeps the
+latest restrictions and may leave Xray stopped. The real-core test verifies
+that an update removing a credential cannot restore the earlier listener.
+Existing sessions can disconnect during a failed restart and recovery.
