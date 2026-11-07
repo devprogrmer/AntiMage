@@ -1,8 +1,14 @@
 import useGetUser from "hooks/useGetUser";
+import { renderToStaticMarkup } from "react-dom/server";
 import { QueryObserver, type QueryObserverOptions } from "react-query";
 import { getSession } from "service/auth";
 import { queryClient } from "utils/react-query";
 import { expect, it, vi } from "vitest";
+
+const SessionPage = () => {
+	const page = useGetUser();
+	return <span>{page.getUserIsSuccess ? page.userData.username : "loading"}</span>;
+};
 
 const useQuery = vi.hoisted(() => vi.fn());
 
@@ -53,9 +59,7 @@ it("shares the route session with page controls and rejects a revoked session", 
 			return observer.getCurrentResult();
 		});
 		try {
-			const page = useGetUser();
-			expect(page.userData.username).toBe("fixture");
-			expect(page.getUserIsSuccess).toBe(true);
+			expect(renderToStaticMarkup(<SessionPage />)).toBe("<span>fixture</span>");
 			expect(getCurrentSession).toHaveBeenCalledTimes(1);
 		} finally {
 			unsubscribe?.();
