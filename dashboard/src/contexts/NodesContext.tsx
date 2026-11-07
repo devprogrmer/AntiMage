@@ -253,6 +253,7 @@ const liveMetricKeys: Array<keyof NodeType> = [
 ];
 
 const liveNodeKeys: Array<keyof NodeType> = [
+	"accounting",
 	"status",
 	"message",
 	"xray_version",
@@ -305,6 +306,9 @@ export const useNodesQuery = (options?: { enabled?: boolean }) => {
 				if (!current) return node;
 
 				const stableNode = { ...node };
+				if (stableNode.accounting === undefined) {
+					stableNode.accounting = current.accounting;
+				}
 				liveMetricKeys.forEach((key) => {
 					const nextValue = stableNode[key];
 					const currentValue = current[key];
@@ -325,7 +329,7 @@ export const useNodesQuery = (options?: { enabled?: boolean }) => {
 	});
 };
 
-const mergeLiveNodes = (
+export const mergeLiveNodes = (
 	current: NodeType[] | undefined,
 	liveNodes: NodeType[],
 ) => {

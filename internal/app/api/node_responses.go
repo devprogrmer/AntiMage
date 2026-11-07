@@ -3,7 +3,7 @@ package api
 import "github.com/antimage/antimage/internal/app/nodecontroller"
 
 func flattenNodeItem(node nodecontroller.NodeListItem) map[string]any {
-	return map[string]any{
+	item := map[string]any{
 		"id":                       node.ID,
 		"name":                     node.Name,
 		"note":                     node.Note,
@@ -50,10 +50,19 @@ func flattenNodeItem(node nodecontroller.NodeListItem) map[string]any {
 		"node_certificate":         node.NodeCertificate,
 		"node_certificate_key":     node.NodeCertificateKey,
 	}
+	if node.Accounting != nil || node.Status == "disabled" || node.Status == "limited" {
+		item["accounting"] = node.Accounting
+	}
+	return item
 }
 
 func flattenNodeStaticItem(node nodecontroller.NodeListItem) map[string]any {
 	item := flattenNodeItem(node)
+	if node.Status == "disabled" || node.Status == "limited" {
+		item["accounting"] = nil
+	} else {
+		delete(item, "accounting")
+	}
 	for _, key := range []string{
 		"status",
 		"message",
@@ -78,6 +87,7 @@ func flattenNodeStaticItem(node nodecontroller.NodeListItem) map[string]any {
 
 func flattenNodeLiveItem(node nodecontroller.NodeListItem) map[string]any {
 	item := flattenNodeItem(node)
+	item["accounting"] = node.Accounting
 	delete(item, "node_binary_tag")
 	if node.NodeServiceVersion != nil {
 		return item

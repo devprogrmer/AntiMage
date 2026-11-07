@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { NodeSchema, normalizeNodeUpdateChannel } from "./NodesContext";
+import {
+	mergeLiveNodes,
+	NodeSchema,
+	normalizeNodeUpdateChannel,
+} from "./NodesContext";
 
 describe("normalizeNodeUpdateChannel", () => {
 	it.each([
@@ -30,6 +34,21 @@ describe("node accounting diagnostics", () => {
 		if (parsed.success) {
 			expect(parsed.data.accounting).toBeUndefined();
 		}
+	});
+	it("applies live diagnostics, preserves them on static updates, and clears them when unavailable", () => {
+		const accounting = {
+			protocols: [],
+			reflection_ledger_loaded: true,
+			awaiting_reflection_batches: 1,
+			awaiting_reflection_bytes: 42,
+			reflection_bytes_overflow: false,
+		};
+		const updated = mergeLiveNodes([node], [{ ...node, accounting }]);
+		expect(updated[0].accounting).toEqual(accounting);
+		expect(mergeLiveNodes(updated, [node])[0].accounting).toEqual(accounting);
+		expect(
+			mergeLiveNodes(updated, [{ ...node, accounting: null }])[0].accounting,
+		).toBeNull();
 	});
 	it("retains pending, ACK and reflection status in the node response", () => {
 		const parsed = NodeSchema.safeParse({
