@@ -38,6 +38,7 @@ export type RawInbound = {
 	sniffing?: Record<string, any>;
 	targets?: string[];
 	effective_targets?: string[];
+	detached?: boolean;
 	uplink?: number;
 	downlink?: number;
 	upload_speed?: number;
@@ -3258,7 +3259,7 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "anyconnect"
 				? (settings.cert_user_oid ?? "2.5.4.3")
 				: base.acCertUserOID,
-		targetIds: raw.targets?.length ? raw.targets : base.targetIds,
+		targetIds: raw.detached ? [] : raw.targets?.length ? raw.targets : base.targetIds,
 		usageCoefficient: Number.isFinite(Number(raw.usage_coefficient))
 			? String(raw.usage_coefficient)
 			: base.usageCoefficient,

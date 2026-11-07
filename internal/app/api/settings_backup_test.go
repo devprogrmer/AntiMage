@@ -91,6 +91,9 @@ func TestBackupImportRoute(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("import status=%d body=%s", rec.Code, rec.Body.String())
 	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"warnings":[]`)) {
+		t.Fatalf("empty restore warnings must be an array: %s", rec.Body.String())
+	}
 	var name string
 	if err := db.QueryRow(`SELECT name FROM backup_items WHERE id = 2`).Scan(&name); err != nil {
 		t.Fatal(err)

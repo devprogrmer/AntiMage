@@ -53,6 +53,11 @@ func (s *Server) handleBackupImport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, backupapp.DisabledDetail)
 		return
 	}
+	mode := r.URL.Query().Get("mode")
+	if mode != "" && mode != "migration" {
+		writeError(w, http.StatusBadRequest, "invalid backup import mode")
+		return
+	}
 	uploadPath, cleanup, err := saveBackupUpload(w, r)
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
@@ -64,7 +69,12 @@ func (s *Server) handleBackupImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer cleanup()
-	result, err := s.backup().Import(r.Context(), uploadPath)
+	var result backupapp.ImportResult
+	if mode == "migration" {
+		result, err = s.backup().ImportForMigration(r.Context(), uploadPath)
+	} else {
+		result, err = s.backup().Import(r.Context(), uploadPath)
+	}
 	if err != nil {
 		writeBackupError(w, err)
 		return

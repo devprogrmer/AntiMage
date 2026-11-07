@@ -57,7 +57,7 @@ func (s *Server) handleInboundsFull(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	inbounds, err := s.configRepo.FullInbounds(r.Context())
+	inbounds, err := s.configRepo.ManagementInbounds(r.Context())
 	if err != nil {
 		writeInboundError(w, err)
 		return
