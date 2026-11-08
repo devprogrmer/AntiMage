@@ -76,11 +76,12 @@ func TestAccountingHealthOldestReflectionUsesDurableBatchIdentity(t *testing.T) 
 	newer := old.Add(2 * time.Minute)
 	s.localUsageDeliveries = []localUsageDelivery{
 		{BatchID: "legacy-unknown", Rows: []localUsageDeliveryRow{{Raw: 1}}},
+		{BatchID: fmt.Sprintf("combined-%d", old.Add(-time.Minute).UnixNano()), Rows: []localUsageDeliveryRow{{Raw: 0}}},
 		{BatchID: fmt.Sprintf("merged-%d", newer.UnixNano()), Rows: []localUsageDeliveryRow{{Raw: 2}}},
 		{BatchID: fmt.Sprintf("combined-%d", old.UnixNano()), Rows: []localUsageDeliveryRow{{Raw: 3}}},
 	}
 	health := s.accountingHealth()
-	if health.GetOldestReflectionBatchUnix() != old.Unix() || health.GetAwaitingReflectionBatches() != 3 {
+	if health.GetOldestReflectionBatchUnix() != old.Unix() || health.GetAwaitingReflectionBatches() != 4 {
 		t.Fatalf("oldest reflection batch not reported: %#v", health)
 	}
 	if s.localUsageDeliveries[0].BatchID != "legacy-unknown" {
