@@ -1237,6 +1237,8 @@ func runtimeResult(node NodeRow, state *nodev1.RuntimeState, metrics *nodev1.Met
 				AwaitingReflectionBatches: accounting.GetAwaitingReflectionBatches(),
 				AwaitingReflectionBytes:   accounting.GetAwaitingReflectionBytes(),
 				ReflectionBytesOverflow:   accounting.GetReflectionBytesOverflow(),
+				OldestReflectionBatchUnix: accounting.GetOldestReflectionBatchUnix(),
+				ReflectionOverdue:         accountingReflectionOverdue(metrics.GetSampledAtUnix(), accounting),
 				Protocols:                 make([]AccountingProtocolStatus, 0, len(accounting.GetProtocols())),
 			}
 			for _, item := range accounting.GetProtocols() {

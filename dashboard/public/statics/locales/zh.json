@@ -788,5 +788,7 @@
 	"settings.subscriptions.disabledRemark": "订阅已停用消息",
 	"accountingHealth.warning": "延迟",
 	"accountingHealth.checkpointOverdue": "距上次成功保存检查点已超过 3 分钟。",
-	"accountingHealth.pendingACKOverdue": "此批次等待确认已超过 10 分钟。"
+	"accountingHealth.pendingACKOverdue": "此批次等待确认已超过 10 分钟。",
+	"accountingHealth.reflectionOverdue": "流量等待面板回写已超过 10 分钟。",
+	"accountingHealth.oldestReflection": "最早的批次"
 }

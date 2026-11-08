@@ -1,9 +1,11 @@
 package nodeagent
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestAccountingHealthReportsLoadedPendingACKAndReflectionWithoutDiskRead(t *testing.T) {
@@ -64,6 +66,26 @@ func TestAccountingHealthReportsLoadedPendingACKAndReflectionWithoutDiskRead(t *
 		if got := status[protocol]; got.checkpoint != 1235 || got.failure != "ppp checkpoint failed" {
 			t.Fatalf("shared PPP worker result missing from %s: %#v", protocol, got)
 		}
+	}
+}
+
+func TestAccountingHealthOldestReflectionUsesDurableBatchIdentity(t *testing.T) {
+	s := New(Config{DataDir: t.TempDir()})
+	s.localUsageLoaded = true
+	old := time.Unix(1_800_000_000, 0)
+	newer := old.Add(2 * time.Minute)
+	s.localUsageDeliveries = []localUsageDelivery{
+		{BatchID: "legacy-unknown", Rows: []localUsageDeliveryRow{{Raw: 1}}},
+		{BatchID: fmt.Sprintf("combined-%d", old.Add(-time.Minute).UnixNano()), Rows: []localUsageDeliveryRow{{Raw: 0}}},
+		{BatchID: fmt.Sprintf("merged-%d", newer.UnixNano()), Rows: []localUsageDeliveryRow{{Raw: 2}}},
+		{BatchID: fmt.Sprintf("combined-%d", old.UnixNano()), Rows: []localUsageDeliveryRow{{Raw: 3}}},
+	}
+	health := s.accountingHealth()
+	if health.GetOldestReflectionBatchUnix() != old.Unix() || health.GetAwaitingReflectionBatches() != 4 {
+		t.Fatalf("oldest reflection batch not reported: %#v", health)
+	}
+	if s.localUsageDeliveries[0].BatchID != "legacy-unknown" {
+		t.Fatal("health check modified the durable reflection ledger")
 	}
 }
 

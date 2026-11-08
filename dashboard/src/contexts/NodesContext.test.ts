@@ -42,6 +42,7 @@ describe("node accounting diagnostics", () => {
 			awaiting_reflection_batches: 1,
 			awaiting_reflection_bytes: 42,
 			reflection_bytes_overflow: false,
+			oldest_reflection_batch_unix: 0,
 		};
 		const updated = mergeLiveNodes([node], [{ ...node, accounting }]);
 		expect(updated[0].accounting).toEqual(accounting);
@@ -65,6 +66,8 @@ describe("node accounting diagnostics", () => {
 				awaiting_reflection_batches: 1,
 				awaiting_reflection_bytes: 12,
 				reflection_bytes_overflow: false,
+				oldest_reflection_batch_unix: 100,
+				reflection_overdue: true,
 			},
 		});
 		expect(parsed.success).toBe(true);
@@ -74,6 +77,22 @@ describe("node accounting diagnostics", () => {
 			expect(parsed.data.accounting?.protocols[0].checkpoint_overdue).toBe(true);
 			expect(parsed.data.accounting?.protocols[0].pending_ack_overdue).toBe(true);
 			expect(parsed.data.accounting?.awaiting_reflection_batches).toBe(1);
+			expect(parsed.data.accounting?.reflection_overdue).toBe(true);
+			expect(parsed.data.accounting?.oldest_reflection_batch_unix).toBe(100);
+		}
+	});
+	it("accepts accounting snapshots from older nodes without a reflection timestamp", () => {
+		const parsed = NodeSchema.safeParse({
+			...node,
+			accounting: {
+				protocols: [], reflection_ledger_loaded: true,
+				awaiting_reflection_batches: 1, awaiting_reflection_bytes: 12,
+				reflection_bytes_overflow: false,
+			},
+		});
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data.accounting?.oldest_reflection_batch_unix).toBe(0);
 		}
 	});
 });

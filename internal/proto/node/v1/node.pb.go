@@ -1012,6 +1012,7 @@ type AccountingHealth struct {
 	AwaitingReflectionBatches uint32                      `protobuf:"varint,3,opt,name=awaiting_reflection_batches,json=awaitingReflectionBatches,proto3" json:"awaiting_reflection_batches,omitempty"`
 	AwaitingReflectionBytes   uint64                      `protobuf:"varint,4,opt,name=awaiting_reflection_bytes,json=awaitingReflectionBytes,proto3" json:"awaiting_reflection_bytes,omitempty"`
 	ReflectionBytesOverflow   bool                        `protobuf:"varint,5,opt,name=reflection_bytes_overflow,json=reflectionBytesOverflow,proto3" json:"reflection_bytes_overflow,omitempty"`
+	OldestReflectionBatchUnix int64                       `protobuf:"varint,6,opt,name=oldest_reflection_batch_unix,json=oldestReflectionBatchUnix,proto3" json:"oldest_reflection_batch_unix,omitempty"`
 	unknownFields             protoimpl.UnknownFields
 	sizeCache                 protoimpl.SizeCache
 }
@@ -1079,6 +1080,13 @@ func (x *AccountingHealth) GetReflectionBytesOverflow() bool {
 		return x.ReflectionBytesOverflow
 	}
 	return false
+}
+
+func (x *AccountingHealth) GetOldestReflectionBatchUnix() int64 {
+	if x != nil {
+		return x.OldestReflectionBatchUnix
+	}
+	return 0
 }
 
 type AccountingProtocolStatus struct {
@@ -3708,13 +3716,14 @@ const file_antimage_node_v1_node_proto_rawDesc = "" +
 	"\x0fsampled_at_unix\x18\x04 \x01(\x03R\rsampledAtUnix\x12B\n" +
 	"\n" +
 	"accounting\x18\x05 \x01(\v2\".antimage.node.v1.AccountingHealthR\n" +
-	"accounting\"\xce\x02\n" +
+	"accounting\"\x8f\x03\n" +
 	"\x10AccountingHealth\x12H\n" +
 	"\tprotocols\x18\x01 \x03(\v2*.antimage.node.v1.AccountingProtocolStatusR\tprotocols\x128\n" +
 	"\x18reflection_ledger_loaded\x18\x02 \x01(\bR\x16reflectionLedgerLoaded\x12>\n" +
 	"\x1bawaiting_reflection_batches\x18\x03 \x01(\rR\x19awaitingReflectionBatches\x12:\n" +
 	"\x19awaiting_reflection_bytes\x18\x04 \x01(\x04R\x17awaitingReflectionBytes\x12:\n" +
-	"\x19reflection_bytes_overflow\x18\x05 \x01(\bR\x17reflectionBytesOverflow\"\xd9\x02\n" +
+	"\x19reflection_bytes_overflow\x18\x05 \x01(\bR\x17reflectionBytesOverflow\x12?\n" +
+	"\x1coldest_reflection_batch_unix\x18\x06 \x01(\x03R\x19oldestReflectionBatchUnix\"\xd9\x02\n" +
 	"\x18AccountingProtocolStatus\x12\x1a\n" +
 	"\bprotocol\x18\x01 \x01(\tR\bprotocol\x12!\n" +
 	"\fstate_loaded\x18\x02 \x01(\bR\vstateLoaded\x12(\n" +

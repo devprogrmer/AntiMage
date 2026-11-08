@@ -82,6 +82,8 @@ export const NodeSchema = z
 				awaiting_reflection_batches: z.number(),
 				awaiting_reflection_bytes: z.number(),
 				reflection_bytes_overflow: z.boolean(),
+				oldest_reflection_batch_unix: z.number().default(0),
+				reflection_overdue: z.boolean().optional(),
 			})
 			.nullish(),
 		cpu_cores: z.number().nullable().optional(),

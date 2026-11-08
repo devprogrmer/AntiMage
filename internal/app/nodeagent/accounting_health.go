@@ -2,6 +2,9 @@ package nodeagent
 
 import (
 	"sort"
+	"strconv"
+	"strings"
+	"time"
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
@@ -134,8 +137,23 @@ func (s *Server) accountingHealth() *nodev1.AccountingHealth {
 			index := s.localUsageIndexLocked()
 			health.AwaitingReflectionBytes = index.Bytes
 			health.ReflectionBytesOverflow = index.Overflow
+			health.OldestReflectionBatchUnix = index.OldestBatchUnix
 		}
 	}
 	s.localUsageMu.Unlock()
 	return health
+}
+
+// Root delivery IDs are generated when the durable batch is created. Unknown
+// legacy IDs remain undated rather than producing a false stale warning.
+func reflectionBatchUnix(batchID string) int64 {
+	prefix, stamp, ok := strings.Cut(batchID, "-")
+	if !ok || (prefix != "combined" && prefix != "merged") || len(stamp) != 19 {
+		return 0
+	}
+	nanos, err := strconv.ParseInt(stamp, 10, 64)
+	if err != nil || nanos <= 0 {
+		return 0
+	}
+	return nanos / int64(time.Second)
 }

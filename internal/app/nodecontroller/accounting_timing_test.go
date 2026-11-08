@@ -45,3 +45,28 @@ func TestRuntimeAccountingTimingWarnings(t *testing.T) {
 		})
 	}
 }
+
+func TestAccountingReflectionOverdueUsesNodeSampleTime(t *testing.T) {
+	sampledAt := int64(1_800_000_000)
+	for _, tc := range []struct {
+		name   string
+		health *nodev1.AccountingHealth
+		sample int64
+		want   bool
+	}{
+		{"fresh", &nodev1.AccountingHealth{ReflectionLedgerLoaded: true, AwaitingReflectionBatches: 1, OldestReflectionBatchUnix: sampledAt - 600}, sampledAt, false},
+		{"stale", &nodev1.AccountingHealth{ReflectionLedgerLoaded: true, AwaitingReflectionBatches: 1, OldestReflectionBatchUnix: sampledAt - 601}, sampledAt, true},
+		{"old node", &nodev1.AccountingHealth{ReflectionLedgerLoaded: true, AwaitingReflectionBatches: 1, OldestReflectionBatchUnix: sampledAt - 601}, 0, false},
+		{"unloaded", &nodev1.AccountingHealth{AwaitingReflectionBatches: 1, OldestReflectionBatchUnix: sampledAt - 601}, sampledAt, false},
+		{"empty", &nodev1.AccountingHealth{ReflectionLedgerLoaded: true, OldestReflectionBatchUnix: sampledAt - 601}, sampledAt, false},
+		{"unknown age", &nodev1.AccountingHealth{ReflectionLedgerLoaded: true, AwaitingReflectionBatches: 1}, sampledAt, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			metrics := &nodev1.MetricsResponse{SampledAtUnix: tc.sample, Accounting: tc.health}
+			result := runtimeResult(NodeRow{}, nil, metrics)
+			if got := result.Accounting.ReflectionOverdue; got != tc.want {
+				t.Fatalf("reflection overdue = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}

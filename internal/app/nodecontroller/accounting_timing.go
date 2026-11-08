@@ -12,7 +12,16 @@ const (
 	// The node accepts a checkpoint interval up to one minute.
 	accountingCheckpointWarning = int64(3 * time.Minute / time.Second)
 	accountingPendingACKWarning = int64(10 * time.Minute / time.Second)
+	accountingReflectionWarning = int64(10 * time.Minute / time.Second)
 )
+
+func accountingReflectionOverdue(sampledAt int64, health *nodev1.AccountingHealth) bool {
+	if sampledAt <= 0 || health == nil || !health.GetReflectionLedgerLoaded() || health.GetAwaitingReflectionBatches() == 0 {
+		return false
+	}
+	oldest := health.GetOldestReflectionBatchUnix()
+	return oldest > 0 && sampledAt-oldest > accountingReflectionWarning
+}
 
 func accountingTimingWarnings(sampledAt int64, item *nodev1.AccountingProtocolStatus) (checkpointOverdue, pendingACKOverdue bool) {
 	if sampledAt <= 0 || !item.GetStateLoaded() {

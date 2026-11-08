@@ -27,7 +27,7 @@ export function NodeAccountingHealth({ accounting }: { accounting?: Accounting |
 	const hasTimingWarning = accounting.protocols.some(
 		(item) => item.checkpoint_overdue || item.pending_ack_overdue,
 	);
-	const state = failures.length > 0 ? "degraded" : hasTimingWarning ? "warning" : pending.length > 0 || accounting.awaiting_reflection_batches > 0 ? "pending" : incomplete ? "unknown" : "healthy";
+	const state = failures.length > 0 ? "degraded" : hasTimingWarning || accounting.reflection_overdue ? "warning" : pending.length > 0 || accounting.awaiting_reflection_batches > 0 ? "pending" : incomplete ? "unknown" : "healthy";
 	const color = state === "degraded" ? "red" : state === "warning" ? "orange" : state === "pending" ? "yellow" : state === "healthy" ? "green" : "gray";
 	return (
 		<Popover trigger="click" placement="auto" isLazy>
@@ -53,6 +53,11 @@ export function NodeAccountingHealth({ accounting }: { accounting?: Accounting |
 								? `${accounting.awaiting_reflection_batches} · ${accounting.reflection_bytes_overflow ? "≥" : ""}${formatBytes(accounting.awaiting_reflection_bytes)}`
 								: t("accountingHealth.unknown")}
 						</Text>
+						{accounting.reflection_overdue && (
+							<Text color="orange.400">
+								{t("accountingHealth.reflectionOverdue")} {t("accountingHealth.oldestReflection")}: {dayjs.unix(accounting.oldest_reflection_batch_unix).format("YYYY-MM-DD HH:mm:ss")}
+							</Text>
+						)}
 						{accounting.protocols.map((item) => (
 							<Box key={item.protocol} borderTopWidth="1px" borderColor="panel.border" pt={2}>
 								<Text fontWeight="semibold">{item.protocol.toUpperCase()}</Text>
