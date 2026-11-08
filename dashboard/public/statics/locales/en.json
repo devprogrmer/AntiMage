@@ -3784,5 +3784,7 @@
 	"accountingHealth.warning": "Delayed",
 	"accountingHealth.checkpointOverdue": "No successful checkpoint in over 3 minutes.",
 	"accountingHealth.pendingACKOverdue": "This batch has been waiting for an ACK for over 10 minutes.",
+	"accountingHealth.reflectionOverdue": "Usage has been waiting for panel reflection for over 10 minutes.",
+	"accountingHealth.oldestReflection": "Oldest batch",
 	"accountingHealth.failure": "Error"
 }

@@ -147,6 +147,8 @@ type AccountingHealth struct {
 	AwaitingReflectionBatches uint32                     `json:"awaiting_reflection_batches"`
 	AwaitingReflectionBytes   uint64                     `json:"awaiting_reflection_bytes"`
 	ReflectionBytesOverflow   bool                       `json:"reflection_bytes_overflow"`
+	OldestReflectionBatchUnix int64                      `json:"oldest_reflection_batch_unix"`
+	ReflectionOverdue         bool                       `json:"reflection_overdue,omitempty"`
 }
 
 type AccountingProtocolStatus struct {

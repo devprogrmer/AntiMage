@@ -149,6 +149,7 @@ message AccountingHealth {
   uint32 awaiting_reflection_batches = 3;
   uint64 awaiting_reflection_bytes = 4;
   bool reflection_bytes_overflow = 5;
+  int64 oldest_reflection_batch_unix = 6;
 }
 
 message AccountingProtocolStatus {

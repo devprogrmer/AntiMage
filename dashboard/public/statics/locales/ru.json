@@ -3810,5 +3810,7 @@
 	"accountingHealth.warning": "Задержка",
 	"accountingHealth.checkpointOverdue": "Последняя успешная контрольная точка была более 3 минут назад.",
 	"accountingHealth.pendingACKOverdue": "Пакет ожидает подтверждения более 10 минут.",
+	"accountingHealth.reflectionOverdue": "Отражение трафика в панели задерживается более 10 минут.",
+	"accountingHealth.oldestReflection": "Самый старый пакет",
 	"accountingHealth.failure": "Ошибка"
 }
