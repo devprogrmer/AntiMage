@@ -149,6 +149,17 @@ func TestPortableBackupExternalMySQL(t *testing.T) {
 	if xrayBinary != "" {
 		verifyOldStream = restoreTestVLESSStream(t, xrayBinary, clientID, inbounds[0])
 	}
+	preview, err := targetBackup.Preview(ctx, archive.Path, true)
+	if err != nil {
+		t.Fatalf("migration preview rejected valid backup: %v", err)
+	}
+	if preview.Mode != "migration" || preview.Scope != ScopeDatabase || preview.Tables == 0 || preview.Rows == 0 {
+		t.Fatalf("unexpected migration preview: %#v", preview)
+	}
+	var beforeUsers int
+	if err := target.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&beforeUsers); err != nil || beforeUsers != 0 {
+		t.Fatalf("preview changed destination users: %d, %v", beforeUsers, err)
+	}
 	result, err := targetBackup.ImportForMigration(ctx, archive.Path)
 	if err != nil {
 		t.Fatal(err)

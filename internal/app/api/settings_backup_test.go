@@ -103,6 +103,40 @@ func TestBackupImportRoute(t *testing.T) {
 	}
 }
 
+func TestBackupPreviewRouteDoesNotRestore(t *testing.T) {
+	t.Setenv("ANTIMAGE_INSTALL_MODE", "binary")
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+	if _, err := db.Exec(`CREATE TABLE backup_items (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO backup_items (id, name) VALUES (1, 'before')`); err != nil {
+		t.Fatal(err)
+	}
+	token := adminBearerToken(t, server, "pouria", "pass123")
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "backup.ambackup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(buildSQLiteBackupArchiveForRouteTest(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/backup/preview", body)
+	req.Header.Set("Authorization", token)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"mode":"replace"`)) {
+		t.Fatalf("preview status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var name string
+	if err := db.QueryRow(`SELECT name FROM backup_items WHERE id = 1`).Scan(&name); err != nil || name != "before" {
+		t.Fatalf("preview changed database: %q, %v", name, err)
+	}
+}
+
 func TestBackupImportRejectsOversizedUpload(t *testing.T) {
 	t.Setenv("ANTIMAGE_INSTALL_MODE", "binary")
 	server, db := testAdminServer(t)

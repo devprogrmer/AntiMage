@@ -162,6 +162,17 @@ func TestImportRejectsInvalidManifest(t *testing.T) {
 	}
 }
 
+func TestPreviewRejectsMissingDatabasePayload(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "missing-payload.ambackup")
+	writeBackupArchiveForTest(t, archivePath, map[string][]byte{
+		ManifestName: []byte(`{"format":"antimage-backup","version":1,"scope":"database","database":{"payload":"database.sqlite3","payload_type":"sqlite-file","tables":1,"rows":1}}`),
+	})
+	service := NewService(nil, "sqlite", "sqlite:///tmp/antimage.sqlite3")
+	if _, err := service.Preview(context.Background(), archivePath, false); err == nil || !strings.Contains(err.Error(), "payload is missing") {
+		t.Fatalf("preview accepted incomplete backup: %v", err)
+	}
+}
+
 func TestMySQLMissingDumpTool(t *testing.T) {
 	t.Setenv("PATH", filepath.Join(t.TempDir(), "empty-bin"))
 	service := NewService(nil, "mysql", "mysql://user:pass@127.0.0.1:3306/antimage")

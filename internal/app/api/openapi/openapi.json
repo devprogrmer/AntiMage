@@ -3395,6 +3395,15 @@
         ],
         "summary": "Import backup",
         "description": "Import a AntiMage backup archive and restore database/files according to backup scope.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits. The browser dashboard authenticates with its HttpOnly session cookie. Integrations should use a personal API key.\n\nPermissions: Panel read requires an authenticated admin. Settings mutation, backup, templates, and TODO/410 settings routes require sudo/full_access.\n\nRequest body: send JSON unless this operation explicitly declares multipart/form-data. Unknown fields are generally ignored only when the underlying handler is compatibility-oriented; business-rule violations return 400/403/409.\n\nSide effects: this is a mutation. Database writes are transactional where applicable; runtime-affecting changes enqueue node operations or call the node controller as documented by the route.\n\nRoute details: Only works in binary installation mode. Import performs safe extraction and hard restore; use a maintenance window for production restores.",
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "description": "Set to migration to omit source nodes and require an empty MySQL/MariaDB destination.",
+            "schema": {"type": "string", "enum": ["migration"]}
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3420,6 +3429,40 @@
           }
         },
         "operationId": "postSettingsBackupImport"
+      }
+    },
+    "/api/settings/backup/preview": {
+      "post": {
+        "tags": ["Settings"],
+        "summary": "Check backup before import",
+        "description": "Validate archive integrity, database payload and destination prerequisites without changing the destination. Manifest counts are informational; a successful preview does not guarantee a subsequent restore or live VPN connection. Requires a full-access admin on a binary installation. The import repeats its checks because the destination may change after preview.",
+        "operationId": "postSettingsBackupPreview",
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "description": "Set to migration to omit source nodes and require an empty MySQL/MariaDB destination.",
+            "schema": {"type": "string", "enum": ["migration"]}
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": {"file": {"type": "string", "format": "binary"}}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/JSON"},
+          "400": {"$ref": "#/components/responses/Error"},
+          "409": {"$ref": "#/components/responses/Error"}
+        }
       }
     },
     "/api/settings/subscriptions": {

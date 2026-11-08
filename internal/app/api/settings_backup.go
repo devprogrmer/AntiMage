@@ -82,6 +82,43 @@ func (s *Server) handleBackupImport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (s *Server) handleBackupPreview(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/api/settings/backup/preview" {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !s.isBinaryRuntime() {
+		writeError(w, http.StatusConflict, backupapp.DisabledDetail)
+		return
+	}
+	mode := r.URL.Query().Get("mode")
+	if mode != "" && mode != "migration" {
+		writeError(w, http.StatusBadRequest, "invalid backup preview mode")
+		return
+	}
+	uploadPath, cleanup, err := saveBackupUpload(w, r)
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) || errors.Is(err, errBackupUploadTooLarge) {
+			writeError(w, http.StatusRequestEntityTooLarge, "backup upload is too large")
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer cleanup()
+	result, err := s.backup().Preview(r.Context(), uploadPath, mode == "migration")
+	if err != nil {
+		writeBackupError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (s *Server) backup() *backupapp.Service {
 	if s.backupService != nil {
 		return s.backupService

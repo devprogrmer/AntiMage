@@ -47,6 +47,19 @@ type ImportResult struct {
 	Warnings       []string `json:"warnings"`
 }
 
+// PreviewResult describes an archive and the selected import mode without
+// changing the destination database or file roots. Counts come from the
+// archive manifest; they are not a promise that the restore will succeed.
+type PreviewResult struct {
+	Scope     string   `json:"scope"`
+	CreatedAt string   `json:"created_at"`
+	Tables    int      `json:"tables"`
+	Rows      int      `json:"rows"`
+	FileRoots []string `json:"file_roots"`
+	Mode      string   `json:"mode"`
+	Warnings  []string `json:"warnings"`
+}
+
 type databasePayload struct {
 	ArchiveName string
 	PayloadType string

@@ -151,6 +151,16 @@ export interface AntiMageBackupImportResponse {
 	warnings: string[];
 }
 
+export interface AntiMageBackupPreviewResponse {
+	scope: AntiMageBackupScope;
+	created_at: string;
+	tables: number;
+	rows: number;
+	file_roots: string[];
+	mode: "replace" | "migration";
+	warnings: string[];
+}
+
 export interface VPNUIBackupImportResponse {
 	detected: number;
 	imported: number;
@@ -664,6 +674,27 @@ export const importAntiMageBackup = async (
 	onProgress?: (percent: number) => void,
 	migrateWithoutNodes = false,
 ): Promise<AntiMageBackupImportResponse> => {
+	return uploadAntiMageBackup<AntiMageBackupImportResponse>(
+		"import", file, onProgress, migrateWithoutNodes,
+	);
+};
+
+export const previewAntiMageBackup = async (
+	file: File,
+	onProgress?: (percent: number) => void,
+	migrateWithoutNodes = false,
+): Promise<AntiMageBackupPreviewResponse> => {
+	return uploadAntiMageBackup<AntiMageBackupPreviewResponse>(
+		"preview", file, onProgress, migrateWithoutNodes,
+	);
+};
+
+const uploadAntiMageBackup = async <T>(
+	action: "import" | "preview",
+	file: File,
+	onProgress?: (percent: number) => void,
+	migrateWithoutNodes = false,
+): Promise<T> => {
 	return new Promise((resolve, reject) => {
 		const body = new FormData();
 		body.append("file", file);
@@ -679,7 +710,7 @@ export const importAntiMageBackup = async (
 		};
 		const baseURL = (apiBaseURL || "/api").replace(/\/$/, "");
 		const query = migrateWithoutNodes ? "?mode=migration" : "";
-		xhr.open("POST", `${baseURL}/settings/backup/import${query}`);
+		xhr.open("POST", `${baseURL}/settings/backup/${action}${query}`);
 		xhr.withCredentials = true;
 		xhr.responseType = "json";
 		xhr.upload.onprogress = (event) => {
@@ -690,7 +721,7 @@ export const importAntiMageBackup = async (
 		xhr.upload.onload = () => reportProgress(100);
 		xhr.onload = () => {
 			if (xhr.status >= 200 && xhr.status < 300) {
-				resolve(xhr.response as AntiMageBackupImportResponse);
+				resolve(xhr.response as T);
 				return;
 			}
 			reject({ response: { _data: xhr.response } });
