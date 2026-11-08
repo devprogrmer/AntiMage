@@ -42,6 +42,7 @@ describe("node accounting diagnostics", () => {
 			awaiting_reflection_batches: 1,
 			awaiting_reflection_bytes: 42,
 			reflection_bytes_overflow: false,
+			oldest_reflection_batch_unix: 0,
 		};
 		const updated = mergeLiveNodes([node], [{ ...node, accounting }]);
 		expect(updated[0].accounting).toEqual(accounting);
