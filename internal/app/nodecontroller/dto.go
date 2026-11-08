@@ -157,6 +157,8 @@ type AccountingProtocolStatus struct {
 	PendingBytesOverflow bool   `json:"pending_bytes_overflow"`
 	LastAckedBatchID     string `json:"last_acked_batch_id"`
 	LastCheckpointUnix   int64  `json:"last_checkpoint_unix"`
+	CheckpointOverdue    bool   `json:"checkpoint_overdue,omitempty"`
+	PendingACKOverdue    bool   `json:"pending_ack_overdue,omitempty"`
 	Failure              string `json:"failure"`
 }
 

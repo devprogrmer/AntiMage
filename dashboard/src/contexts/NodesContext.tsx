@@ -73,6 +73,8 @@ export const NodeSchema = z
 						pending_bytes_overflow: z.boolean(),
 						last_acked_batch_id: z.string(),
 						last_checkpoint_unix: z.number(),
+						checkpoint_overdue: z.boolean().optional(),
+						pending_ack_overdue: z.boolean().optional(),
 						failure: z.string(),
 					}),
 				),

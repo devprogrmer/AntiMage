@@ -3781,5 +3781,8 @@
 	"accountingHealth.checkpoint": "Last successful checkpoint since node start",
 	"accountingHealth.lastAck": "Last ACK batch",
 	"accountingHealth.none": "None",
+	"accountingHealth.warning": "Delayed",
+	"accountingHealth.checkpointOverdue": "No successful checkpoint in over 3 minutes.",
+	"accountingHealth.pendingACKOverdue": "This batch has been waiting for an ACK for over 10 minutes.",
 	"accountingHealth.failure": "Error"
 }

@@ -785,5 +785,8 @@
 	"settings.subscriptions.placeholdersVariables": "可以在消息中使用以下变量：",
 	"settings.subscriptions.expiredRemark": "订阅已过期消息",
 	"settings.subscriptions.limitedRemark": "流量用尽消息",
-	"settings.subscriptions.disabledRemark": "订阅已停用消息"
+	"settings.subscriptions.disabledRemark": "订阅已停用消息",
+	"accountingHealth.warning": "延迟",
+	"accountingHealth.checkpointOverdue": "距上次成功保存检查点已超过 3 分钟。",
+	"accountingHealth.pendingACKOverdue": "此批次等待确认已超过 10 分钟。"
 }

@@ -58,6 +58,7 @@ describe("node accounting diagnostics", () => {
 					protocol: "xray", state_loaded: true, pending_batch_id: "pending",
 					pending_bytes: 12, pending_bytes_overflow: false,
 					last_acked_batch_id: "acked", last_checkpoint_unix: 100,
+					checkpoint_overdue: true, pending_ack_overdue: true,
 					failure: "",
 				}],
 				reflection_ledger_loaded: true,
@@ -70,6 +71,8 @@ describe("node accounting diagnostics", () => {
 		if (parsed.success) {
 			expect(parsed.data.accounting?.protocols[0].pending_batch_id).toBe("pending");
 			expect(parsed.data.accounting?.protocols[0].last_acked_batch_id).toBe("acked");
+			expect(parsed.data.accounting?.protocols[0].checkpoint_overdue).toBe(true);
+			expect(parsed.data.accounting?.protocols[0].pending_ack_overdue).toBe(true);
 			expect(parsed.data.accounting?.awaiting_reflection_batches).toBe(1);
 		}
 	});

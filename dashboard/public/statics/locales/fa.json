@@ -3781,5 +3781,8 @@
 	"accountingHealth.checkpoint": "آخرین ثبت موفق از زمان شروع نود",
 	"accountingHealth.lastAck": "آخرین بستهٔ تأییدشده",
 	"accountingHealth.none": "ندارد",
+	"accountingHealth.warning": "با تأخیر",
+	"accountingHealth.checkpointOverdue": "بیش از ۳ دقیقه از آخرین ثبت موفق گذشته است.",
+	"accountingHealth.pendingACKOverdue": "این بسته بیش از ۱۰ دقیقه در انتظار تأیید است.",
 	"accountingHealth.failure": "خطا"
 }
