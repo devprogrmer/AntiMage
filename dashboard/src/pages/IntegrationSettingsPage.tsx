@@ -1794,6 +1794,7 @@ export const IntegrationSettingsPage = () => {
 	if (!canManageIntegrations) {
 		return (
 			<VStack spacing={4} align="stretch">
+				<Heading size="lg">{t("header.integrationSettings")}</Heading>
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
 					{t("integrations.noPermission")}
 				</Text>
@@ -1895,6 +1896,7 @@ export const IntegrationSettingsPage = () => {
 				},
 			}}
 		>
+			<Heading size="lg" mb={4}>{t("header.integrationSettings")}</Heading>
 			<Flex
 				align={{ base: "stretch", md: "center" }}
 				justify="space-between"

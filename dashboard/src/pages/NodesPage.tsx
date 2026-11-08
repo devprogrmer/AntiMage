@@ -2621,6 +2621,7 @@ export const NodesPage: FC = () => {
 	if (!canManageNodes) {
 		return (
 			<VStack spacing={4} align="stretch">
+				<Text as="h1" fontWeight="semibold" fontSize="2xl">{t("nodes.title")}</Text>
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
 					{t("nodes.noPermission")}
 				</Text>
@@ -2634,6 +2635,7 @@ export const NodesPage: FC = () => {
 			align="stretch"
 			pb={selectedNodeIds.length > 0 ? { base: 32, md: 24 } : 0}
 		>
+			<Text as="h1" fontWeight="semibold" fontSize="2xl">{t("nodes.title")}</Text>
 			{hasError && (
 				<Alert status="error" borderRadius="md">
 					<AlertIcon />

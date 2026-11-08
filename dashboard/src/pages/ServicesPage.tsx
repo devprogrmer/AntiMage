@@ -1754,6 +1754,7 @@ const ServicesPage: FC = () => {
 	if (!canManageServices) {
 		return (
 			<VStack spacing={3} align="stretch">
+				<PageHeader title={t("services.title")} />
 				<Text fontSize="sm" color="panel.textMuted">
 					{t("services.noPermission")}
 				</Text>
@@ -1763,6 +1764,7 @@ const ServicesPage: FC = () => {
 
 	return (
 		<VStack spacing={4} align="stretch">
+			<PageHeader title={t("services.title")} />
 			<ResourceListCard
 				title={t("services.listHeader")}
 				summaryItems={serviceSummaryItems}

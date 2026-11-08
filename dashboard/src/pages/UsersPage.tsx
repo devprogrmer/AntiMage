@@ -23,7 +23,7 @@ import { ReloadIcon } from "components/Filters";
 import { Icon } from "components/Icon";
 import { Pagination } from "components/Pagination";
 import { UsersTable } from "components/UsersTable";
-import { ResourceRefreshButton } from "components/ui";
+import { PageHeader, ResourceRefreshButton } from "components/ui";
 import { UsersFilterBar } from "components/users";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
@@ -326,6 +326,7 @@ export const UsersPage: FC = () => {
 	if (isAdminDisabled) {
 		return (
 			<VStack spacing={5} align="stretch" dir={isRTL ? "rtl" : "ltr"}>
+				<PageHeader title={t("users")} />
 				<Flex
 					align="center"
 					border="1px solid"
@@ -358,6 +359,7 @@ export const UsersPage: FC = () => {
 			align="stretch"
 			dir={isRTL ? "rtl" : "ltr"}
 		>
+			<PageHeader title={t("users")} />
 			<UsersTable
 				toolbar={<UsersFilterBar />}
 				headerActions={

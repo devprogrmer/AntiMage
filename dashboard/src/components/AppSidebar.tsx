@@ -10,6 +10,7 @@ import {
 import {
 	ArchiveBoxIcon,
 	ArrowsRightLeftIcon,
+	BellAlertIcon,
 	BoltIcon,
 	BookOpenIcon,
 	BriefcaseIcon,
@@ -32,7 +33,11 @@ import {
 } from "@heroicons/react/24/outline";
 import logoUrl from "assets/logo.svg";
 import useGetUser from "hooks/useGetUser";
-import type { ElementType, FC, MouseEvent as ReactMouseEvent } from "react";
+import {
+	type ElementType,
+	type FC,
+	type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { AdminRole, AdminSection, AdminSudoScope } from "types/Admin";
@@ -59,12 +64,18 @@ const UsageIconStyled = chakra(ChartBarIcon, iconProps);
 const MyAccountIconStyled = chakra(UserCircleIcon, iconProps);
 const InsightsIconStyled = chakra(EyeIcon, iconProps);
 const TutorialIconStyled = chakra(BookOpenIcon, iconProps);
+const BackupIconStyled = chakra(ArchiveBoxIcon, iconProps);
 const XraySettingsIconStyled = chakra(WrenchScrewdriverIcon, iconProps);
 const XrayLogsIconStyled = chakra(DocumentTextIcon, iconProps);
 const ApiDocsIconStyled = chakra(CodeBracketSquareIcon, iconProps);
 const PHPMyAdminIconStyled = chakra(CircleStackIcon, iconProps);
 const ExternalAppsIconStyled = chakra(CommandLineIcon, iconProps);
-const BackupIconStyled = chakra(ArchiveBoxIcon, iconProps);
+const TutorialUpdateIconStyled = chakra(BellAlertIcon, {
+	baseStyle: {
+		w: 3,
+		h: 3,
+	},
+});
 interface AppSidebarProps {
 	collapsed: boolean;
 	/** when rendered inside a Drawer on mobile */
@@ -101,7 +112,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	const location = useLocation();
 	const navigate = useNavigate();
 	const { userData } = useGetUser();
-	const currentLanguage = i18n.resolvedLanguage || i18n.language || "en";
+	const currentLanguage = i18n.language || "en";
 	const tutorialsUrl = "/guide";
 	const sectionAccess = userData.permissions?.sections;
 	const isFullAccess = userData.role === AdminRole.FullAccess;
@@ -135,10 +146,6 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		: baseSelf;
 	const canViewUsage = Boolean(sectionAccess?.[AdminSection.Usage]);
 	const canViewAdmins = Boolean(sectionAccess?.[AdminSection.Admins]);
-	const canBackUp =
-		isFullAccess ||
-		(userData.role === AdminRole.Sudo &&
-			Boolean(userData.permissions?.sudo?.[AdminSudoScope.Backups]));
 	const canViewServicesSection = Boolean(
 		sectionAccess?.[AdminSection.Services],
 	);
@@ -146,6 +153,11 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		isFullAccess ||
 		(userData.role === AdminRole.Sudo &&
 			Boolean(userData.permissions?.sudo?.[AdminSudoScope.Xray]));
+	const hasNewTutorials = false;
+	const canBackUp =
+		isFullAccess ||
+		(userData.role === AdminRole.Sudo &&
+			Boolean(userData.permissions?.sudo?.[AdminSudoScope.Backups]));
 
 	const baseSettingsSubItems: SidebarSubItems = [
 		sectionAccess?.[AdminSection.Hosts]
@@ -371,7 +383,6 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	return (
 		<Box
 			w={inDrawer ? "full" : collapsed ? "16" : "56"}
-			className="am-panel-sidebar"
 			h={inDrawer ? "100%" : "calc(100vh - 24px)"}
 			maxH={inDrawer ? "100%" : "calc(100vh - 24px)"}
 			bg={sidebaamg}
@@ -408,7 +419,6 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 				>
 					{!collapsed ? (
 						<HStack
-							className="am-panel-brand"
 							spacing={3}
 							align="center"
 							mb={5}
@@ -421,7 +431,10 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 							borderRadius="md"
 							bg={sidebarPanelBg}
 						>
-							<LogoIcon src={logoUrl} alt="AntiMage" />
+							<LogoIcon
+								src={logoUrl}
+								alt="AntiMage"
+							/>
 							<Text
 								color={logoTextColor}
 								fontSize="lg"
@@ -433,7 +446,6 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 						</HStack>
 					) : (
 						<HStack
-							className="am-panel-brand am-panel-brand-collapsed"
 							justify="center"
 							mb={5}
 							borderWidth="1px"
@@ -444,12 +456,11 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 							bg={sidebarPanelBg}
 							py={2}
 						>
-							<Tooltip
-								label="AntiMage"
-								placement={isRTL ? "left" : "right"}
-								hasArrow
-							>
-								<LogoIcon src={logoUrl} alt="AntiMage" />
+							<Tooltip label="AntiMage" placement="right" hasArrow>
+								<LogoIcon
+									src={logoUrl}
+									alt="AntiMage"
+								/>
 							</Tooltip>
 						</HStack>
 					)}
@@ -487,6 +498,8 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 												(itemUrl !== "/" &&
 													location.pathname.startsWith(itemUrl));
 											const Icon = item.icon;
+											const showTutorialBadge =
+												itemUrl === tutorialsUrl && hasNewTutorials;
 											const navItem = (
 												<Tooltip
 													key={itemUrl}
@@ -495,8 +508,6 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 													hasArrow
 												>
 													<HStack
-														className="am-panel-nav-item"
-														data-active={isActive}
 														spacing={3}
 														px={collapsed ? 2 : 3}
 														py={2}
@@ -516,10 +527,37 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 														transition="background 0.15s ease, color 0.15s ease"
 														justifyContent={collapsed ? "center" : "flex-start"}
 													>
-														<Icon
-															w={collapsed ? 5 : undefined}
-															h={collapsed ? 5 : undefined}
-														/>
+														{showTutorialBadge && collapsed ? (
+															<Box position="relative" display="inline-flex">
+																<Icon
+																	w={collapsed ? 5 : undefined}
+																	h={collapsed ? 5 : undefined}
+																/>
+																<Box
+																	position="absolute"
+																	top="-6px"
+																	left={isRTL ? "-7px" : undefined}
+																	right={isRTL ? undefined : "-7px"}
+																	w="4"
+																	h="4"
+																	borderRadius="full"
+																	bg="panel.accent"
+																	color="white"
+																	border="2px solid"
+																	borderColor={sidebaamg}
+																	display="inline-flex"
+																	alignItems="center"
+																	justifyContent="center"
+																>
+																	<TutorialUpdateIconStyled />
+																</Box>
+															</Box>
+														) : (
+															<Icon
+																w={collapsed ? 5 : undefined}
+																h={collapsed ? 5 : undefined}
+															/>
+														)}
 														{!collapsed && (
 															<>
 																<Text
@@ -529,6 +567,22 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 																>
 																	{item.title}
 																</Text>
+																{showTutorialBadge ? (
+																	<Box
+																		ml={isRTL ? undefined : "auto"}
+																		mr={isRTL ? "auto" : undefined}
+																		w="5"
+																		h="5"
+																		borderRadius="full"
+																		bg="panel.accent"
+																		color="white"
+																		display="inline-flex"
+																		alignItems="center"
+																		justifyContent="center"
+																	>
+																		<TutorialUpdateIconStyled />
+																	</Box>
+																) : null}
 															</>
 														)}
 													</HStack>

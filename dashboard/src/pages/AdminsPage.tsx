@@ -7,7 +7,7 @@ import { AdminDialog } from "components/AdminDialog";
 import { AdminsTable } from "components/AdminsTable";
 import { Filters, ReloadIcon } from "components/Filters";
 import { Pagination } from "components/Pagination";
-import { ResourceRefreshButton } from "components/ui";
+import { PageHeader, ResourceRefreshButton } from "components/ui";
 import { useAdminsStore } from "contexts/AdminsContext";
 import useGetUser from "hooks/useGetUser";
 import { type FC, useEffect } from "react";
@@ -39,6 +39,7 @@ export const AdminsPage: FC = () => {
 	if (!canViewAdmins) {
 		return (
 			<VStack spacing={4} align="stretch">
+				<PageHeader title={t("admins")} description={t("admins.pageDescription")} />
 				<Text color="panel.textMuted">
 					{t("admins.noPermission")}
 				</Text>
@@ -48,6 +49,7 @@ export const AdminsPage: FC = () => {
 
 	return (
 		<VStack spacing={4} align="stretch">
+			<PageHeader title={t("admins")} description={t("admins.pageDescription")} />
 			<AdminsTable
 				toolbar={<Filters for="admins" py={0} showRefresh={false} />}
 				footerActions={

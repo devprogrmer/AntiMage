@@ -330,6 +330,7 @@ export default function HAProxyPage() {
 
 	return (
 		<VStack align="stretch" spacing={5}>
+			<Heading size="lg">{t("haproxy.title")}</Heading>
 			<ResourceListCard
 				title={t("haproxy.configurations")}
 				summaryItems={[

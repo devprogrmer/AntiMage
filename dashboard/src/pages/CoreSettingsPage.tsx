@@ -3999,6 +3999,7 @@ export const CoreSettingsPage: FC = () => {
 	if (!canManageXraySettings) {
 		return (
 			<VStack spacing={4} align="stretch">
+				<Text as="h1" fontWeight="semibold" fontSize="2xl">{t("header.xraySettings")}</Text>
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
 					{t("xraySettings.noPermission")}
 				</Text>
@@ -4057,6 +4058,10 @@ export const CoreSettingsPage: FC = () => {
 
 	return (
 		<VStack spacing={4} align="stretch">
+			<Box minW={0}>
+				<Text as="h1" fontWeight="semibold" fontSize="2xl">{t("header.coreSettings")}</Text>
+				<Text color={pageHintColor} fontSize="sm" mt={1}>{t("pages.xray.coreDescription")}</Text>
+			</Box>
 			<Box
 				borderWidth="1px"
 				borderColor={pageShellBorder}
