@@ -145,6 +145,19 @@ func TestExportImportFullBackupFileRoots(t *testing.T) {
 	if err := os.Remove(envFile); err != nil {
 		t.Fatal(err)
 	}
+	preview, err := service.Preview(ctx, exported.Path, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Scope != ScopeFull || len(preview.FileRoots) != 3 {
+		t.Fatalf("full backup preview omitted file roots: %#v", preview)
+	}
+	if _, err := os.Stat(filepath.Join(configRoot, "stale.txt")); err != nil {
+		t.Fatalf("preview changed destination files: %v", err)
+	}
+	if _, err := os.Stat(envFile); !os.IsNotExist(err) {
+		t.Fatalf("preview restored env before confirmation: %v", err)
+	}
 
 	result, err := service.Import(ctx, exported.Path)
 	if err != nil {
