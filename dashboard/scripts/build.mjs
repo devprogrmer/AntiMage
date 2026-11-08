@@ -1,6 +1,8 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { copyFile } from "node:fs/promises";
+import { copyFile, readFile, readdir, writeFile } from "node:fs/promises";
+import { promisify } from "node:util";
+import { gzip } from "node:zlib";
 
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
@@ -47,6 +49,7 @@ const getApiProxyConfig = (baseAPI) => {
 const mode = process.env.NODE_ENV || "production";
 const env = loadEnv(mode, dashboardDir, "");
 const apiProxy = getApiProxyConfig(env.VITE_BASE_API);
+const compress = promisify(gzip);
 
 await build({
 	root: dashboardDir,
@@ -97,3 +100,15 @@ await copyFile(
 	path.join(dashboardDir, "build", "index.html"),
 	path.join(dashboardDir, "build", "404.html"),
 );
+
+const assetsDir = path.join(dashboardDir, "build", "statics");
+for (const name of await readdir(assetsDir, { recursive: true })) {
+	if (!/\.(?:js|css|json|svg)$/.test(name)) continue;
+	const file = path.join(assetsDir, name);
+	const original = await readFile(file);
+	if (original.length < 1024) continue;
+	const compressed = await compress(original);
+	if (compressed.length < original.length) {
+		await writeFile(file + ".gz", compressed);
+	}
+}

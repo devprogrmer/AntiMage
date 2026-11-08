@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -474,43 +475,50 @@ func (r Repository) manageableInboundsWithTargets(ctx context.Context) ([]map[st
 		return nil, err
 	}
 	byTag := make(map[string]map[string]any)
-	order := make([]string, 0)
+	directByTag := make(map[string][]string)
+	tags := make([]string, 0)
 	for _, item := range stored {
-		inbounds := listOfMaps(item.Config["inbounds"])
-		for _, inbound := range inbounds {
-			if !r.isManageableInbound(inbound) {
-				continue
-			}
+		for _, inbound := range listOfMaps(item.Config["inbounds"]) {
 			tag := stringValue(inbound["tag"])
 			if tag == "" {
 				continue
 			}
-			if _, exists := byTag[tag]; exists {
-				continue
+			targets := directByTag[tag]
+			if len(targets) == 0 || targets[len(targets)-1] != item.TargetID {
+				directByTag[tag] = append(targets, item.TargetID)
 			}
-			direct, err := r.directTargetsForInbound(ctx, tag)
-			if err != nil {
-				return nil, err
+			if byTag[tag] == nil && r.isManageableInbound(inbound) {
+				byTag[tag] = inbound
+				tags = append(tags, tag)
 			}
-			effective, err := r.effectiveTargetsForInbound(ctx, tag, direct)
-			if err != nil {
-				return nil, err
-			}
-			sanitized := sanitizeInbound(inbound, direct, effective)
-			record := metadata[tag]
-			sanitized["uplink"] = record.Uplink
-			sanitized["downlink"] = record.Downlink
-			sanitized["usage_coefficient"] = normalizedInboundUsageCoefficient(record.UsageCoefficient)
-			sanitized["upload_speed_limit"] = normalizeInboundSpeedLimit(record.UploadSpeedLimit)
-			sanitized["download_speed_limit"] = normalizeInboundSpeedLimit(record.DownloadSpeedLimit)
-			byTag[tag] = sanitized
-			order = append(order, tag)
 		}
 	}
-	sort.Strings(order)
-	out := make([]map[string]any, 0, len(order))
-	for _, tag := range order {
-		out = append(out, byTag[tag])
+	out := make([]map[string]any, 0, len(tags))
+	if len(tags) == 0 {
+		return out, nil
+	}
+	inherited, err := r.inboundTargetsInheritingMaster(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(tags)
+	for _, tag := range tags {
+		direct := directByTag[tag]
+		sort.Strings(direct)
+		effective := direct
+		if len(inherited) > 0 && slices.Contains(direct, MasterTargetID) {
+			effective = append(slices.Clone(direct), inherited...)
+			sort.Strings(effective)
+			effective = slices.Compact(effective)
+		}
+		inbound := sanitizeInbound(byTag[tag], direct, effective)
+		record := metadata[tag]
+		inbound["uplink"] = record.Uplink
+		inbound["downlink"] = record.Downlink
+		inbound["usage_coefficient"] = normalizedInboundUsageCoefficient(record.UsageCoefficient)
+		inbound["upload_speed_limit"] = normalizeInboundSpeedLimit(record.UploadSpeedLimit)
+		inbound["download_speed_limit"] = normalizeInboundSpeedLimit(record.DownloadSpeedLimit)
+		out = append(out, inbound)
 	}
 	return out, nil
 }
@@ -1087,24 +1095,6 @@ func sortedTargetIDs(configs map[string]map[string]any) []string {
 	return out
 }
 
-func (r Repository) directTargetsForInbound(ctx context.Context, tag string) ([]string, error) {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	return r.directTargetsForInboundTx(ctx, tx, tag)
-}
-
-func (r Repository) effectiveTargetsForInbound(ctx context.Context, tag string, direct []string) ([]string, error) {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	return r.effectiveTargetsForInboundTx(ctx, tx, tag, direct)
-}
-
 func (r Repository) directTargetsForInboundTx(ctx context.Context, tx *sql.Tx, tag string) ([]string, error) {
 	out := make([]string, 0)
 	master, err := r.masterRawConfigTx(ctx, tx)
@@ -1138,34 +1128,21 @@ func (r Repository) directTargetsForInboundTx(ctx context.Context, tx *sql.Tx, t
 	return out, nil
 }
 
-func (r Repository) effectiveTargetsForInboundTx(ctx context.Context, tx *sql.Tx, tag string, direct []string) ([]string, error) {
-	seen := make(map[string]bool, len(direct))
-	for _, targetID := range direct {
-		seen[targetID] = true
+func (r Repository) inboundTargetsInheritingMaster(ctx context.Context) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) <> 'deleted' AND COALESCE(xray_config_mode, ?) != ?`, ConfigModeDefault, ConfigModeCustom)
+	if err != nil {
+		return nil, err
 	}
-	if seen[MasterTargetID] {
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) <> 'deleted' AND COALESCE(xray_config_mode, ?) != ?`, ConfigModeDefault, ConfigModeCustom)
-		if err != nil {
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var id int64
-			if err := rows.Scan(&id); err != nil {
-				return nil, err
-			}
-			seen[fmt.Sprintf("%s%d", NodePrefix, id)] = true
-		}
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
+		out = append(out, NodeTargetID(id))
 	}
-	out := make([]string, 0, len(seen))
-	for targetID := range seen {
-		out = append(out, targetID)
-	}
-	sort.Strings(out)
-	return out, nil
+	return out, rows.Err()
 }
 
 func configHasInbound(config map[string]any, tag string) bool {

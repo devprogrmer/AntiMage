@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"embed"
 	"io/fs"
+	"mime"
 	"net/http"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -101,11 +103,6 @@ func (d *dashboardFiles) serve(w http.ResponseWriter, r *http.Request) {
 	} else {
 		name = "index.html"
 	}
-	content, err := fs.ReadFile(d.fs, name)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
 	if path.Base(name) == "index.html" {
 		w.Header().Set("Cache-Control", "no-store")
 	} else if staticAsset && hashedDashboardAsset.MatchString(name) {
@@ -113,7 +110,52 @@ func (d *dashboardFiles) serve(w http.ResponseWriter, r *http.Request) {
 	} else if staticAsset {
 		w.Header().Set("Cache-Control", "no-cache")
 	}
+	if staticAsset && fileExists(d.fs, name+".gz") {
+		w.Header().Add("Vary", "Accept-Encoding")
+		if r.Header.Get("Range") == "" && acceptsDashboardGzip(r.Header.Values("Accept-Encoding")) {
+			if contentType := mime.TypeByExtension(path.Ext(name)); contentType != "" {
+				if content, err := fs.ReadFile(d.fs, name+".gz"); err == nil {
+					w.Header().Set("Content-Encoding", "gzip")
+					w.Header().Set("Content-Type", contentType)
+					w.Header().Set("Content-Length", strconv.Itoa(len(content)))
+					http.ServeContent(w, r, path.Base(name), time.Time{}, bytes.NewReader(content))
+					return
+				}
+			}
+		}
+	}
+	content, err := fs.ReadFile(d.fs, name)
+	if err != nil {
+		w.Header().Del("Cache-Control")
+		http.NotFound(w, r)
+		return
+	}
 	http.ServeContent(w, r, path.Base(name), time.Time{}, bytes.NewReader(content))
+}
+
+func acceptsDashboardGzip(values []string) bool {
+	wildcard := false
+	for _, value := range values {
+		for _, encoding := range strings.Split(value, ",") {
+			name, parameter, hasParameter := strings.Cut(encoding, ";")
+			name = strings.ToLower(strings.TrimSpace(name))
+			if name != "gzip" && name != "*" {
+				continue
+			}
+			accepted := true
+			if hasParameter {
+				key, weight, ok := strings.Cut(parameter, "=")
+				quality, err := strconv.ParseFloat(strings.TrimSpace(weight), 64)
+				accepted = ok && strings.EqualFold(strings.TrimSpace(key), "q") &&
+					err == nil && quality > 0 && quality <= 1
+			}
+			if name == "gzip" {
+				return accepted
+			}
+			wildcard = accepted
+		}
+	}
+	return wildcard
 }
 
 func resolveDashboardFile(source fs.FS, name string) (string, bool) {
