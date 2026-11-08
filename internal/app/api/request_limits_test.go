@@ -41,16 +41,17 @@ func TestAPIRequestBodyLimitCapsUndeclaredBody(t *testing.T) {
 }
 
 func TestAPIRequestBodyLimitKeepsBackupImportException(t *testing.T) {
-	called := false
-	handler := withAPIRequestBodyLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-	}))
-	req := httptest.NewRequest(http.MethodPost, "/api/settings/backup/import", strings.NewReader("x"))
-	req.ContentLength = maxAPIRequestBodyBytes + 1
-
-	handler.ServeHTTP(httptest.NewRecorder(), req)
-	if !called {
-		t.Fatal("backup import should use its dedicated 128 MiB limit")
+	for _, path := range []string{"/api/settings/backup/import", "/api/settings/backup/preview"} {
+		called := false
+		handler := withAPIRequestBodyLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			called = true
+		}))
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("x"))
+		req.ContentLength = maxAPIRequestBodyBytes + 1
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+		if !called {
+			t.Fatalf("%s should use its dedicated 128 MiB limit", path)
+		}
 	}
 }
 

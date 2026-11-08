@@ -60,6 +60,41 @@ func TestExportImportSQLiteDatabase(t *testing.T) {
 	}
 }
 
+func TestPreviewSQLiteBackupDoesNotMutateDestination(t *testing.T) {
+	ctx := context.Background()
+	sourcePath := filepath.Join(t.TempDir(), "source.sqlite3")
+	sourceDB := openSQLiteForBackupTest(t, sourcePath)
+	defer sourceDB.Close()
+	if _, err := sourceDB.Exec(`CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO items VALUES (1, 'source')`); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := NewService(sourceDB, "sqlite", sqliteURL(sourcePath)).Export(ctx, ScopeDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(archive.Path)
+	targetPath := filepath.Join(t.TempDir(), "target.sqlite3")
+	targetDB := openSQLiteForBackupTest(t, targetPath)
+	defer targetDB.Close()
+	if _, err := targetDB.Exec(`CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO items VALUES (1, 'destination')`); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := NewService(targetDB, "sqlite", sqliteURL(targetPath)).Preview(ctx, archive.Path, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Scope != ScopeDatabase || preview.Tables != 1 || preview.Rows != 1 || preview.Mode != "replace" || preview.FileRoots == nil {
+		t.Fatalf("unexpected preview: %#v", preview)
+	}
+	var name string
+	if err := targetDB.QueryRow(`SELECT name FROM items WHERE id = 1`).Scan(&name); err != nil || name != "destination" {
+		t.Fatalf("preview changed destination row: %q, %v", name, err)
+	}
+	if _, err := NewService(targetDB, "sqlite", sqliteURL(targetPath)).Preview(ctx, archive.Path, true); err == nil || !strings.Contains(err.Error(), "MySQL/MariaDB") {
+		t.Fatalf("SQLite migration preview should be rejected: %v", err)
+	}
+}
+
 func TestExportImportFullBackupFileRoots(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "source.sqlite3")
@@ -109,6 +144,19 @@ func TestExportImportFullBackupFileRoots(t *testing.T) {
 	}
 	if err := os.Remove(envFile); err != nil {
 		t.Fatal(err)
+	}
+	preview, err := service.Preview(ctx, exported.Path, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Scope != ScopeFull || len(preview.FileRoots) != 3 {
+		t.Fatalf("full backup preview omitted file roots: %#v", preview)
+	}
+	if _, err := os.Stat(filepath.Join(configRoot, "stale.txt")); err != nil {
+		t.Fatalf("preview changed destination files: %v", err)
+	}
+	if _, err := os.Stat(envFile); !os.IsNotExist(err) {
+		t.Fatalf("preview restored env before confirmation: %v", err)
 	}
 
 	result, err := service.Import(ctx, exported.Path)

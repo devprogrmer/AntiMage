@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { importAntiMageBackup, importVPNUIBackup } from "./settings";
+import { importAntiMageBackup, importVPNUIBackup, previewAntiMageBackup } from "./settings";
 
 class UploadRequest {
 	static current: UploadRequest;
@@ -75,6 +75,20 @@ describe("importAntiMageBackup", () => {
 		vi.stubGlobal("XMLHttpRequest", UploadRequest);
 		await importAntiMageBackup(new File(["backup"], "backup.ambackup"), undefined, true);
 		expect(UploadRequest.current.url).toBe("/api/settings/backup/import?mode=migration");
+	});
+});
+
+describe("previewAntiMageBackup", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("uploads the same archive to the read-only preview route with the selected mode", async () => {
+		vi.stubGlobal("XMLHttpRequest", UploadRequest);
+		await previewAntiMageBackup(new File(["backup"], "backup.ambackup"), undefined, true);
+		expect(UploadRequest.current.url).toBe("/api/settings/backup/preview?mode=migration");
+		expect(UploadRequest.current.withCredentials).toBe(true);
+		expect(UploadRequest.current.body?.get("file")).toBeInstanceOf(File);
 	});
 });
 

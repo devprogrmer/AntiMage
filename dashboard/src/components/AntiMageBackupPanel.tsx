@@ -35,8 +35,10 @@ import { useMutation } from "react-query";
 import {
 	exportAntiMageBackup,
 	importAntiMageBackup,
+	previewAntiMageBackup,
 	importVPNUIBackup,
 	type AntiMageBackupScope,
+	type AntiMageBackupPreviewResponse,
 } from "service/settings";
 import { useServicesStore } from "contexts/ServicesContext";
 import {
@@ -69,12 +71,29 @@ export const DashboardBackupControls = ({
 		useState<AntiMageBackupScope>("database");
 	const [selectedFile, setSelectedFile] = useState<File | null>(null);
 	const [migrateWithoutNodes, setMigrateWithoutNodes] = useState(true);
+	const [preview, setPreview] = useState<{
+		file: File;
+		migration: boolean;
+		result: AntiMageBackupPreviewResponse;
+	} | null>(null);
 	const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 	const [vpnUIServiceID, setVPNUIServiceID] = useState("");
 	const [duplicatePolicy, setDuplicatePolicy] = useState<"skip" | "rename">("skip");
 	const serviceOptions = useServicesStore((state) => state.serviceOptions);
 	const fetchServiceOptions = useServicesStore((state) => state.fetchServiceOptions);
 	const backupActionsAvailable = isBinaryRuntime && !runtimeLoading;
+	const previewWarningText = (warning: string) => {
+		if (warning === "Source nodes will not be enrolled. Assign restored inbound definitions to new nodes after import.") {
+			return t("settings.backup.previewMigrationWarning");
+		}
+		if (warning === "Preview does not execute database restore, file replacement, or a live user connection test.") {
+			return t("settings.backup.previewLimitWarning");
+		}
+		if (warning === "This full backup has no recognized file payloads for this installation.") {
+			return t("settings.backup.previewMissingFilesWarning");
+		}
+		return warning;
+	};
 
 	useEffect(() => {
 		if (dialog === "vpn-ui") void fetchServiceOptions();
@@ -120,8 +139,26 @@ export const DashboardBackupControls = ({
 					});
 				}
 				setSelectedFile(null);
+				setPreview(null);
 				setDialog(null);
 			},
+			onError: (error) => {
+				generateErrorMessage(error, toast);
+			},
+			onSettled: () => setUploadProgress(null),
+		},
+	);
+
+	const previewMutation = useMutation(
+		({ file, migration }: { file: File; migration: boolean }) =>
+			previewAntiMageBackup(file, setUploadProgress, migration),
+		{
+			onMutate: () => {
+				setPreview(null);
+				setUploadProgress(0);
+			},
+			onSuccess: (result, { file, migration }) =>
+				setPreview({ file, migration, result }),
 			onError: (error) => {
 				generateErrorMessage(error, toast);
 			},
@@ -168,13 +205,26 @@ export const DashboardBackupControls = ({
 
 	const openDialog = (nextDialog: Exclude<BackupDialog, null>) => {
 		setMenuOpen(false);
-		if (nextDialog === "import") setMigrateWithoutNodes(false);
+		if (nextDialog === "import") setMigrateWithoutNodes(true);
+		setPreview(null);
 		setDialog(nextDialog);
+	};
+
+	const handlePreview = () => {
+		if (!selectedFile) {
+			toast({ status: "warning", title: t("settings.backup.fileRequired") });
+			return;
+		}
+		previewMutation.mutate({ file: selectedFile, migration: migrateWithoutNodes });
 	};
 
 	const handleImport = () => {
 		if (!selectedFile) {
 			toast({ status: "warning", title: t("settings.backup.fileRequired") });
+			return;
+		}
+		if (preview?.file !== selectedFile || preview.migration !== migrateWithoutNodes) {
+			toast({ status: "warning", title: t("settings.backup.previewRequired") });
 			return;
 		}
 		importMutation.mutate(selectedFile);
@@ -259,7 +309,7 @@ export const DashboardBackupControls = ({
 				onClose={() => setDialog(null)}
 				isCentered
 				size="xl"
-				closeOnOverlayClick={!importMutation.isLoading}
+				closeOnOverlayClick={!importMutation.isLoading && !previewMutation.isLoading}
 			>
 				<ModalOverlay bg="blackAlpha.500" />
 				<ModalContent
@@ -270,7 +320,7 @@ export const DashboardBackupControls = ({
 					mx={{ base: 4, sm: 0 }}
 				>
 					<ModalHeader>{t("settings.backup.import")}</ModalHeader>
-					<ModalCloseButton isDisabled={importMutation.isLoading} />
+					<ModalCloseButton isDisabled={importMutation.isLoading || previewMutation.isLoading} />
 					<ModalBody>
 						<Stack spacing={4}>
 							<Text fontSize="sm" color="panel.textMuted">
@@ -284,8 +334,11 @@ export const DashboardBackupControls = ({
 							</Alert>
 							<Checkbox
 								isChecked={migrateWithoutNodes}
-								isDisabled={importMutation.isLoading}
-								onChange={(event) => setMigrateWithoutNodes(event.target.checked)}
+								isDisabled={importMutation.isLoading || previewMutation.isLoading}
+								onChange={(event) => {
+									setMigrateWithoutNodes(event.target.checked);
+									setPreview(null);
+								}}
 							>
 								{t("settings.backup.migrateWithoutNodes")}
 							</Checkbox>
@@ -298,16 +351,36 @@ export const DashboardBackupControls = ({
 								<FormLabel>{t("settings.backup.file")}</FormLabel>
 								<FileDropzone
 									isDisabled={
-										!backupActionsAvailable || importMutation.isLoading
+										!backupActionsAvailable || importMutation.isLoading || previewMutation.isLoading
 									}
 									selectedFile={selectedFile}
 									title={t("settings.backup.dropTitle")}
 									description={t("settings.backup.dropHint")}
 									emptyText={t("settings.backup.selectFile")}
-									onFileSelect={setSelectedFile}
+									onFileSelect={(file) => {
+										setSelectedFile(file);
+										setPreview(null);
+									}}
 								/>
 							</FormControl>
-							{importMutation.isLoading && uploadProgress !== null && (
+							{preview && preview.file === selectedFile && preview.migration === migrateWithoutNodes && (
+								<Alert status="info" borderRadius="lg" alignItems="flex-start">
+									<AlertIcon />
+									<Stack spacing={1} fontSize="sm">
+										<Text fontWeight="bold">{t("settings.backup.previewReady")}</Text>
+										<Text>{t("settings.backup.previewSummary", {
+											scope: preview.result.scope,
+											tables: preview.result.tables,
+											rows: preview.result.rows,
+										})}</Text>
+										<Text>{t("settings.backup.previewFiles", {
+											files: preview.result.file_roots.length ? preview.result.file_roots.join(", ") : t("settings.backup.previewNoFiles"),
+										})}</Text>
+										{preview.result.warnings.map((warning, index) => <Text key={`${index}-${warning}`}>{previewWarningText(warning)}</Text>)}
+									</Stack>
+								</Alert>
+							)}
+							{(importMutation.isLoading || previewMutation.isLoading) && uploadProgress !== null && (
 								<Stack spacing={2} aria-live="polite">
 									<Text fontSize="sm" fontWeight="semibold">
 										{uploadProgress < 100
@@ -329,18 +402,21 @@ export const DashboardBackupControls = ({
 						<Button
 							variant="ghost"
 							onClick={() => setDialog(null)}
-							isDisabled={importMutation.isLoading}
+							isDisabled={importMutation.isLoading || previewMutation.isLoading}
 						>
 							{t("cancel")}
 						</Button>
-						<Button
-							colorScheme="red"
-							leftIcon={<ArrowUpTrayIcon width={16} height={16} />}
-							onClick={handleImport}
-							isLoading={importMutation.isLoading}
-						>
-							{t("settings.backup.import")}
-						</Button>
+						{preview?.file === selectedFile && preview.migration === migrateWithoutNodes ? (
+							<Button colorScheme="red" leftIcon={<ArrowUpTrayIcon width={16} height={16} />}
+								onClick={handleImport} isLoading={importMutation.isLoading}>
+								{t("settings.backup.import")}
+							</Button>
+						) : (
+							<Button colorScheme="blue" onClick={handlePreview} isLoading={previewMutation.isLoading}
+								isDisabled={importMutation.isLoading}>
+								{t("settings.backup.preview")}
+							</Button>
+						)}
 					</ModalFooter>
 				</ModalContent>
 			</Modal>
