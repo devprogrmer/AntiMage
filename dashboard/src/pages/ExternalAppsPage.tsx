@@ -571,6 +571,7 @@ export const ExternalAppsPage = () => {
 	if (appsQuery.data?.supported === false) {
 		return (
 			<Stack spacing={5}>
+				<Heading size="lg">{t("externalApps.title")}</Heading>
 				<Alert status="warning" borderRadius="md">
 					<AlertIcon />
 					<Text>{t("externalApps.unsupported")}</Text>
@@ -581,6 +582,7 @@ export const ExternalAppsPage = () => {
 
 	return (
 		<Stack spacing={5}>
+			<Heading size="lg">{t("externalApps.title")}</Heading>
 			<ConfirmDialog
 				isOpen={Boolean(updateTarget)}
 				title={t("externalApps.update")}

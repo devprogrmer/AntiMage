@@ -930,6 +930,7 @@ export const RecentActionsPage: FC = () => {
 			dir={i18n.dir(i18n.resolvedLanguage || i18n.language)}
 			pb={{ base: 8, md: 16 }}
 		>
+			<Text as="h1" fontWeight="semibold" fontSize="2xl">{t("recentActions.title")}</Text>
 			<ResourceListCard
 				title={t("recentActions.logTitle")}
 				summaryItems={[
