@@ -68,7 +68,7 @@ export const DashboardBackupControls = ({
 	const [exportScope, setExportScope] =
 		useState<AntiMageBackupScope>("database");
 	const [selectedFile, setSelectedFile] = useState<File | null>(null);
-	const [migrateWithoutNodes, setMigrateWithoutNodes] = useState(false);
+	const [migrateWithoutNodes, setMigrateWithoutNodes] = useState(true);
 	const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 	const [vpnUIServiceID, setVPNUIServiceID] = useState("");
 	const [duplicatePolicy, setDuplicatePolicy] = useState<"skip" | "rename">("skip");
@@ -115,7 +115,7 @@ export const DashboardBackupControls = ({
 						status: "warning",
 						title: t("settings.backup.importWarnings"),
 						description: result.warnings.join("\n"),
-						duration: 8000,
+						duration: null,
 						isClosable: true,
 					});
 				}
