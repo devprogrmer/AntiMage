@@ -48,6 +48,7 @@ func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
 
 	r.HandleFunc("/__antimage_api/healthz", s.handleHealth)
+	r.HandleFunc("/metrics", s.handlePrometheusMetrics)
 	r.HandleFunc("/openapi.json", s.handleOpenAPIJSON)
 	r.HandleFunc("/telegram-app", s.handleTelegramMiniAppPage)
 	r.HandleFunc("/telegram-payment-return", s.handleTelegramPaymentReturn)

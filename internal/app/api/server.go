@@ -82,6 +82,7 @@ type Server struct {
 	loginLimiter         loginRateLimiter
 	operators            *operatorResolver
 	recentActionsEnabled bool
+	prometheusToken      string
 }
 
 func New(cfg Config) (*Server, error) {
@@ -174,6 +175,7 @@ func New(cfg Config) (*Server, error) {
 		recentActionsEnabled: true,
 	}
 	server.apiDocsEnabled.Store(cfg.APIDocsEnabled)
+	server.prometheusToken = strings.TrimSpace(os.Getenv("ANTIMAGE_PROMETHEUS_TOKEN"))
 	server.configRepo = xrayconfig.NewRepository(pool.DB, pool.Dialect, xrayconfig.Options{
 		MutationRecorder: server.recordXrayMutationTx,
 		RollbackMarker:   server.markRecentActionUndoneTx,
