@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -88,6 +90,15 @@ func New(cfg Config) (*Server, error) {
 	}
 	migrationCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
+	dataDir := strings.TrimSpace(os.Getenv("ANTIMAGE_DATA_DIR"))
+	if dataDir == "" {
+		dataDir = "/var/lib/antimage"
+	}
+	journalDir := filepath.Join(filepath.Dir(dataDir), "."+filepath.Base(dataDir)+"-restore-journal")
+	backupService := backupapp.NewService(pool.DB, pool.Dialect, cfg.Database, backupapp.WithRestoreJournalDir(journalDir))
+	if err := backupService.RecoverInterruptedRestore(migrationCtx); err != nil {
+		return nil, fmt.Errorf("recover interrupted backup restore: %w", err)
+	}
 	if err := migrations.RunMigrations(migrationCtx, pool.DB, pool.Dialect); err != nil {
 		return nil, fmt.Errorf("run database migrations: %w", err)
 	}
@@ -116,7 +127,6 @@ func New(cfg Config) (*Server, error) {
 		MaxRetries:    cfg.WebhookMaxRetries,
 		RetryInterval: parseWorkerInterval(cfg.WebhookRetryInterval, 30*time.Second),
 	})
-	backupService := backupapp.NewService(pool.DB, pool.Dialect, cfg.Database)
 	certificateManager := certificateapp.NewManager(pool.DB, certificateapp.Config{
 		BaseDir:       cfg.CertificateBase,
 		CertbotBinary: cfg.CertbotBinary,

@@ -97,10 +97,11 @@ func TestFullImportMySQLRollsBackAfterFileFailure(t *testing.T) {
 	if err := os.WriteFile(blocker, []byte("blocker"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	journalDir := filepath.Join(t.TempDir(), "restore-journal")
 	importer := NewService(targetDB, "mysql", targetURL, WithFileRoots([]FileRoot{
 		{ArchiveName: "etc_antimage", Path: targetRoot},
 		{ArchiveName: "antimage_env", Path: filepath.Join(blocker, ".env")},
-	}))
+	}), WithRestoreJournalDir(journalDir))
 	if _, err := importer.Import(ctx, archive.Path); err == nil {
 		t.Fatal("expected file restore to fail")
 	}
@@ -111,5 +112,8 @@ func TestFullImportMySQLRollsBackAfterFileFailure(t *testing.T) {
 	value, err := os.ReadFile(filepath.Join(targetRoot, "value"))
 	if err != nil || string(value) != "destination" {
 		t.Fatalf("files were not rolled back: %q, %v", value, err)
+	}
+	if _, err := os.Stat(journalDir); !os.IsNotExist(err) {
+		t.Fatalf("journal remains after rollback: %v", err)
 	}
 }

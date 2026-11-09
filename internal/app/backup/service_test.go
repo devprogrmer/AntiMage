@@ -123,11 +123,12 @@ func TestExportImportFullBackupFileRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	journalDir := filepath.Join(t.TempDir(), "restore-journal")
 	service := NewService(db, "sqlite", sqliteURL(dbPath), WithFileRoots([]FileRoot{
 		{ArchiveName: "etc_antimage", Path: configRoot},
 		{ArchiveName: "var_lib_antimage", Path: dataRoot},
 		{ArchiveName: "antimage_env", Path: envFile},
-	}))
+	}), WithRestoreJournalDir(journalDir))
 	exported, err := service.Export(ctx, ScopeFull)
 	if err != nil {
 		t.Fatal(err)
@@ -165,6 +166,9 @@ func TestExportImportFullBackupFileRoots(t *testing.T) {
 	}
 	if len(result.FilesRestored) != 3 {
 		t.Fatalf("expected three restored roots, got %#v", result)
+	}
+	if _, err := os.Stat(journalDir); !os.IsNotExist(err) {
+		t.Fatalf("journal remains after completed restore: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(configRoot, "nested", "config.yml")); err != nil {
 		t.Fatalf("restored config missing: %v", err)
