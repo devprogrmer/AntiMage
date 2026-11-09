@@ -47,19 +47,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          XRAY_VERSION="v26.10.31"
-          XRAY_ARCHIVE="${RUNNER_TEMP}/Xray-linux-64-${XRAY_VERSION}.zip"
-          XRAY_DIR="${RUNNER_TEMP}/antimage-xray-e2e-${XRAY_VERSION}"
-
-          curl --fail --location --retry 3 --retry-delay 2 \
-            --output "${XRAY_ARCHIVE}" \
-            "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-64.zip"
-          echo "e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214  ${XRAY_ARCHIVE}" | sha256sum --check -
-
-          rm -rf "${XRAY_DIR}"
+          XRAY_DIR="${RUNNER_TEMP}/antimage-xray-e2e-26.10.31"
+          XRAY_IMAGE="ghcr.io/xtls/xray-core@sha256:db94b52238af7311f30044a1ef64e77b0edf285a302c276a7f4d7b368e6a17ab"
           mkdir -p "${XRAY_DIR}"
-
-          python3 -m zipfile -e "${XRAY_ARCHIVE}" "${XRAY_DIR}"
+          docker pull --platform linux/amd64 "${XRAY_IMAGE}"
+          XRAY_CONTAINER="$(docker create --platform linux/amd64 "${XRAY_IMAGE}")"
+          trap 'docker rm -f "${XRAY_CONTAINER}" >/dev/null 2>&1 || true' EXIT
+          docker cp "${XRAY_CONTAINER}:/usr/local/bin/xray" "${XRAY_DIR}/xray"
           chmod +x "${XRAY_DIR}/xray"
 
           "${XRAY_DIR}/xray" -version
