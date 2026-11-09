@@ -8,6 +8,7 @@ on:
       - 'internal/app/nodeagent/**'
       - 'internal/app/nodecontroller/**'
       - 'internal/app/api/**'
+      - 'internal/app/backup/**'
       - 'internal/proto/**'
       - 'go.mod'
       - 'go.sum'
@@ -303,6 +304,18 @@ jobs:
       - name: Run protocol policy and durable-state integration suites
         run: |
           go test ./internal/app/nodeagent -run 'Test(AmneziaWG|OpenVPN|L2TP|PPTP|IKEv2|AnyConnect|WireGuard|Xray)' -count=1 -v
+
+  backup-restore-restart:
+    name: backup-restore-restart
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Verify durable full restore after process exit
+        run: go test ./internal/app/backup -run 'Test(InterruptedFullRestoreRecoversAfterProcessExit|FullImportRollsBackDatabaseAndFilesWhenFileRestoreFails|ExportImportFullBackupFileRoots)' -count=1 -v
 
   native-race:
     name: native-race

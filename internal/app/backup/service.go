@@ -19,16 +19,19 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
 type Service struct {
-	db          *sql.DB
-	dialect     string
-	databaseURL string
-	fileRoots   []FileRoot
+	db                *sql.DB
+	dialect           string
+	databaseURL       string
+	fileRoots         []FileRoot
+	restoreJournalDir string
+	restoreMu         sync.Mutex
 }
 
 const (
@@ -43,6 +46,12 @@ func WithFileRoots(roots []FileRoot) Option {
 	return func(s *Service) {
 		s.fileRoots = roots
 	}
+}
+
+// WithRestoreJournalDir enables crash recovery for full restores. The directory
+// must live outside every restored file root and on persistent storage.
+func WithRestoreJournalDir(dir string) Option {
+	return func(s *Service) { s.restoreJournalDir = dir }
 }
 
 func NewService(db *sql.DB, dialect string, databaseURL string, opts ...Option) *Service {
@@ -152,6 +161,11 @@ func (s *Service) ImportForMigration(ctx context.Context, archivePath string) (I
 }
 
 func (s *Service) importArchive(ctx context.Context, archivePath string, migrate bool) (ImportResult, error) {
+	s.restoreMu.Lock()
+	defer s.restoreMu.Unlock()
+	if err := s.recoverInterruptedRestore(ctx); err != nil {
+		return ImportResult{}, fmt.Errorf("recover interrupted backup restore: %w", err)
+	}
 	if stat, err := os.Stat(archivePath); err != nil || stat.IsDir() {
 		return ImportResult{}, Error{Message: "Backup file not found"}
 	}
@@ -197,23 +211,46 @@ func (s *Service) importArchive(ctx context.Context, archivePath string, migrate
 	var rollbackDatabase databasePayload
 	var rollbackFiles []fileRootSnapshot
 	if scope == ScopeFull {
-		rollbackDir, err = os.MkdirTemp("", "antimage-backup-rollback-*")
+		if s.restoreJournalDir != "" {
+			rollbackDir, err = s.createRestoreJournalDir()
+		} else {
+			rollbackDir, err = os.MkdirTemp("", "antimage-backup-rollback-*")
+		}
 		if err != nil {
 			return ImportResult{}, err
 		}
-		defer os.RemoveAll(rollbackDir)
+		if s.restoreJournalDir == "" {
+			defer os.RemoveAll(rollbackDir)
+		}
 		rollbackDatabase, err = s.exportDatabasePayload(ctx, rollbackDir)
 		if err != nil {
+			if s.restoreJournalDir != "" {
+				_ = os.RemoveAll(rollbackDir)
+			}
 			return ImportResult{}, Error{Message: "Cannot snapshot the destination database before restoring files: " + err.Error()}
 		}
 		rollbackFiles, err = s.snapshotFileRoots(filepath.Join(extractDir, FilesPrefix), filepath.Join(rollbackDir, "files"))
 		if err != nil {
+			if s.restoreJournalDir != "" {
+				_ = os.RemoveAll(rollbackDir)
+			}
 			return ImportResult{}, Error{Message: "Cannot snapshot destination files before restore: " + err.Error()}
+		}
+		if s.restoreJournalDir != "" {
+			if err := s.activateRestoreJournal(rollbackDir, rollbackDatabase, rollbackFiles); err != nil {
+				_ = os.RemoveAll(rollbackDir)
+				return ImportResult{}, fmt.Errorf("prepare durable restore journal: %w", err)
+			}
 		}
 	}
 
 	tables, rows, warnings, err := s.restoreDatabasePayload(ctx, extractDir, m, migrate)
 	if err != nil {
+		if scope == ScopeFull && s.restoreJournalDir != "" {
+			rollbackCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			return ImportResult{}, errors.Join(err, s.recoverInterruptedRestore(rollbackCtx))
+		}
 		return ImportResult{}, err
 	}
 
@@ -223,6 +260,12 @@ func (s *Service) importArchive(ctx context.Context, archivePath string, migrate
 		if restoreErr != nil {
 			rollbackCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
+			if s.restoreJournalDir != "" {
+				if rollbackErr := s.recoverInterruptedRestore(rollbackCtx); rollbackErr != nil {
+					return ImportResult{}, errors.Join(restoreErr, fmt.Errorf("automatic rollback failed: %w", rollbackErr))
+				}
+				return ImportResult{}, Error{Message: "File restore failed; destination database and files were rolled back: " + restoreErr.Error()}
+			}
 			filesErr := s.rollbackFileRoots(rollbackFiles)
 			rollbackManifest := manifest{}
 			rollbackManifest.Database.Payload = rollbackDatabase.ArchiveName
@@ -235,6 +278,11 @@ func (s *Service) importArchive(ctx context.Context, archivePath string, migrate
 		}
 		filesRestored = restored
 		warnings = append(warnings, fileWarnings...)
+		if s.restoreJournalDir != "" {
+			if err := s.completeRestoreJournal(rollbackDir); err != nil {
+				return ImportResult{}, fmt.Errorf("finish durable restore journal: %w", err)
+			}
+		}
 	}
 
 	return ImportResult{
