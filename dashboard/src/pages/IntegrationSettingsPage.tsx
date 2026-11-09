@@ -417,6 +417,13 @@ const EVENT_TOGGLE_GROUPS: EventToggleGroup[] = [
 				hintKey: "settings.telegram.events.nodeStatusLimitedHint",
 				defaultHint: "Notify when a node is limited.",
 			},
+			{
+				key: "node.accounting",
+				labelKey: "settings.telegram.events.nodeAccounting",
+				defaultLabel: "Accounting health",
+				hintKey: "settings.telegram.events.nodeAccountingHint",
+				defaultHint: "Notify when a node reports overdue checkpoints, pending ACKs, reflection, or collector failures.",
+			},
 		],
 	},
 	{

@@ -60,6 +60,7 @@ type Server struct {
 	telegramRepo         telegramapp.Repository
 	telegramSender       telegramapp.Sender
 	telegramReports      telegramapp.Reporter
+	accountingAlerts     accountingAlertTracker
 	telegramBackup       telegramapp.BackupDelivery
 	webhookRepo          webhookapp.Repository
 	webhookDispatch      webhookapp.Dispatcher

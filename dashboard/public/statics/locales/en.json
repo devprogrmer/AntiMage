@@ -1638,6 +1638,8 @@
 	"settings.telegram.events.nodeDeleted": "Node deleted",
 	"settings.telegram.events.nodeDeletedHint": "Notify when a node is deleted.",
 	"settings.telegram.events.nodeErrors": "Node error logs",
+	"settings.telegram.events.nodeAccounting": "Accounting health",
+	"settings.telegram.events.nodeAccountingHint": "Notify about overdue checkpoints, pending ACKs, reflection, and collector failures.",
 	"settings.telegram.events.nodeErrorsHint": "Notify about node errors reported by the system.",
 	"settings.telegram.events.nodeStatusConnected": "Node connected",
 	"settings.telegram.events.nodeStatusConnectedHint": "Notify when a node connects.",

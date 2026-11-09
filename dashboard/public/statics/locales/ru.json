@@ -2786,6 +2786,8 @@
 	"settings.telegram.events.login": "Уведомления о входе",
 	"settings.telegram.events.loginHint": "Отправлять уведомление при попытках входа администратора.",
 	"settings.telegram.events.nodeErrors": "Журнал ошибок узла",
+	"settings.telegram.events.nodeAccounting": "Состояние учёта трафика",
+	"settings.telegram.events.nodeAccountingHint": "Уведомлять о задержке контрольных точек, ACK, отражения трафика и сбоях сборщика.",
 	"settings.telegram.events.nodeErrorsHint": "Отправлять уведомление при ошибках узла, зафиксированных системой.",
 	"nodes.remainingData": "Остаток данных",
 	"nodes.lastUpdated": "Последнее обновление",

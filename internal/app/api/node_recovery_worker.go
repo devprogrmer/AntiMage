@@ -57,6 +57,14 @@ func (s *Server) checkConnectedNodeHealth(ctx context.Context) {
 		logging.Warnf(logging.ComponentNode, "node health sweep incomplete checked=%d failed=%d duration=%s: %v", health.Checked, len(health.Errors), duration, err)
 		return
 	}
+	for _, alert := range s.accountingAlerts.observe(health.AccountingCheckedNodes, health.AccountingAlerts, time.Now()) {
+		reportCtx, reportCancel := context.WithTimeout(ctx, 5*time.Second)
+		sent := s.telegramReports.NodeAccountingAlert(reportCtx, alert.NodeName, alert.Protocol, alert.Kind)
+		reportCancel()
+		if sent {
+			s.accountingAlerts.markSent(alert, time.Now())
+		}
+	}
 	logging.Infof(logging.ComponentNode, "node health sweep checked=%d failed=%d duration=%s", health.Checked, len(health.Errors), duration)
 }
 

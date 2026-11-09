@@ -1628,6 +1628,8 @@
 	"settings.telegram.events.nodeDeleted": "حذف نود",
 	"settings.telegram.events.nodeDeletedHint": "با حذف نود اعلان ارسال شود.",
 	"settings.telegram.events.nodeErrors": "گزارش خطای نود",
+	"settings.telegram.events.nodeAccounting": "سلامت حسابداری",
+	"settings.telegram.events.nodeAccountingHint": "برای تأخیر ثبت ترافیک، تأیید بسته‌ها، بازتاب مصرف و خطای گردآوری اعلان ارسال شود.",
 	"settings.telegram.events.nodeErrorsHint": "با گزارش خطای سیستم برای نود اعلان ارسال شود.",
 	"settings.telegram.events.nodeStatusConnected": "اتصال نود",
 	"settings.telegram.events.nodeStatusConnectedHint": "با آنلاین شدن نود اعلان ارسال شود.",

@@ -73,8 +73,17 @@ type RecoverNodesResult struct {
 }
 
 type HealthCheckNodesResult struct {
-	Checked int      `json:"checked"`
-	Errors  []string `json:"errors,omitempty"`
+	Checked                int               `json:"checked"`
+	Errors                 []string          `json:"errors,omitempty"`
+	AccountingCheckedNodes []int64           `json:"-"`
+	AccountingAlerts       []AccountingAlert `json:"-"`
+}
+
+type AccountingAlert struct {
+	NodeID   int64
+	NodeName string
+	Protocol string
+	Kind     string
 }
 
 type CollectUsageRequest struct {
