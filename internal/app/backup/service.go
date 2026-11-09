@@ -193,6 +193,24 @@ func (s *Service) importArchive(ctx context.Context, archivePath string, migrate
 			return ImportResult{}, err
 		}
 	}
+	var rollbackDir string
+	var rollbackDatabase databasePayload
+	var rollbackFiles []fileRootSnapshot
+	if scope == ScopeFull {
+		rollbackDir, err = os.MkdirTemp("", "antimage-backup-rollback-*")
+		if err != nil {
+			return ImportResult{}, err
+		}
+		defer os.RemoveAll(rollbackDir)
+		rollbackDatabase, err = s.exportDatabasePayload(ctx, rollbackDir)
+		if err != nil {
+			return ImportResult{}, Error{Message: "Cannot snapshot the destination database before restoring files: " + err.Error()}
+		}
+		rollbackFiles, err = s.snapshotFileRoots(filepath.Join(extractDir, FilesPrefix), filepath.Join(rollbackDir, "files"))
+		if err != nil {
+			return ImportResult{}, Error{Message: "Cannot snapshot destination files before restore: " + err.Error()}
+		}
+	}
 
 	tables, rows, warnings, err := s.restoreDatabasePayload(ctx, extractDir, m, migrate)
 	if err != nil {
@@ -203,7 +221,17 @@ func (s *Service) importArchive(ctx context.Context, archivePath string, migrate
 	if scope == ScopeFull {
 		restored, fileWarnings, restoreErr := s.restoreFileRoots(filepath.Join(extractDir, FilesPrefix))
 		if restoreErr != nil {
-			return ImportResult{}, restoreErr
+			rollbackCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			filesErr := s.rollbackFileRoots(rollbackFiles)
+			rollbackManifest := manifest{}
+			rollbackManifest.Database.Payload = rollbackDatabase.ArchiveName
+			rollbackManifest.Database.PayloadType = rollbackDatabase.PayloadType
+			_, _, _, databaseErr := s.restoreDatabasePayload(rollbackCtx, rollbackDir, rollbackManifest, false)
+			if filesErr != nil || databaseErr != nil {
+				return ImportResult{}, errors.Join(restoreErr, fmt.Errorf("automatic rollback failed: %w", errors.Join(filesErr, databaseErr)))
+			}
+			return ImportResult{}, Error{Message: "File restore failed; destination database and files were rolled back: " + restoreErr.Error()}
 		}
 		filesRestored = restored
 		warnings = append(warnings, fileWarnings...)
@@ -662,6 +690,156 @@ func (s *Service) restoreFileRoots(filesDir string) ([]string, []string, error) 
 		restored = append(restored, root.Path)
 	}
 	return restored, warnings, nil
+}
+
+type fileRootSnapshot struct {
+	target   string
+	copyPath string
+	mode     fs.FileMode
+	existed  bool
+}
+
+// Snapshot only roots present in the archive, since those are the only roots
+// restoreFileRoots may change. Keep a separate database snapshot for SQLite.
+func (s *Service) snapshotFileRoots(filesDir string, snapshotDir string) ([]fileRootSnapshot, error) {
+	var snapshots []fileRootSnapshot
+	skips := s.activeSQLitePaths()
+	for index, root := range s.fileRoots {
+		if root.Path == "" || root.ArchiveName == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(filesDir, root.ArchiveName)); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		target, err := filepath.Abs(root.Path)
+		if err != nil {
+			return nil, err
+		}
+		snapshot := fileRootSnapshot{target: target, copyPath: filepath.Join(snapshotDir, fmt.Sprintf("root-%d", index))}
+		info, err := os.Lstat(target)
+		if os.IsNotExist(err) {
+			snapshots = append(snapshots, snapshot)
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		snapshot.existed, snapshot.mode = true, info.Mode()
+		if err := copyPathPreservingLinks(target, snapshot.copyPath, skips); err != nil {
+			return nil, err
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+	return snapshots, nil
+}
+
+func (s *Service) rollbackFileRoots(snapshots []fileRootSnapshot) error {
+	var rollbackErr error
+	skips := s.activeSQLitePaths()
+	for index := len(snapshots) - 1; index >= 0; index-- {
+		snapshot := snapshots[index]
+		if snapshot.mode.IsDir() && len(skips) > 0 {
+			if err := replaceDirectoryContentsWithLinks(snapshot.copyPath, snapshot.target, skips); err != nil {
+				rollbackErr = errors.Join(rollbackErr, err)
+			} else if err := os.Chmod(snapshot.target, snapshot.mode.Perm()); err != nil {
+				rollbackErr = errors.Join(rollbackErr, err)
+			}
+			continue
+		}
+		if err := os.RemoveAll(snapshot.target); err != nil {
+			rollbackErr = errors.Join(rollbackErr, err)
+			continue
+		}
+		if snapshot.existed {
+			rollbackErr = errors.Join(rollbackErr, copyPathPreservingLinks(snapshot.copyPath, snapshot.target, skips))
+		}
+	}
+	return rollbackErr
+}
+
+func replaceDirectoryContentsWithLinks(source string, target string, skips map[string]bool) error {
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		return err
+	}
+	if err := removeDirectoryContentsExceptSkipped(target, skips); err != nil {
+		return err
+	}
+	return copyPathPreservingLinks(source, target, skips)
+}
+
+func removeDirectoryContentsExceptSkipped(target string, skips map[string]bool) error {
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		path := filepath.Join(target, entry.Name())
+		if skips[path] {
+			continue
+		}
+		preserveChild := false
+		for skipped := range skips {
+			if strings.HasPrefix(skipped, path+string(filepath.Separator)) {
+				preserveChild = true
+				break
+			}
+		}
+		if preserveChild {
+			if !entry.IsDir() {
+				return Error{Message: "Cannot preserve active database through a non-directory path: " + path}
+			}
+			if err := removeDirectoryContentsExceptSkipped(path, skips); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.RemoveAll(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyPathPreservingLinks(source string, target string, skips map[string]bool) error {
+	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		destination := filepath.Join(target, rel)
+		if skips[path] || skips[destination] {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return os.MkdirAll(destination, info.Mode().Perm())
+		}
+		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			link, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(link, destination)
+		}
+		if info.Mode().IsRegular() {
+			return copyFile(path, destination, info.Mode().Perm())
+		}
+		return Error{Message: "Cannot snapshot unsupported file type: " + path}
+	})
 }
 
 func (s *Service) preserveLocalDatabaseEnv(filesDir string) error {
@@ -1340,22 +1518,8 @@ func replaceDirectoryContents(source string, target string, skip map[string]bool
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		return err
 	}
-	entries, err := os.ReadDir(target)
-	if err != nil {
+	if err := removeDirectoryContentsExceptSkipped(target, skip); err != nil {
 		return err
-	}
-	for _, entry := range entries {
-		path := filepath.Join(target, entry.Name())
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			return err
-		}
-		if skip[abs] {
-			continue
-		}
-		if err := os.RemoveAll(path); err != nil {
-			return err
-		}
 	}
 	return copyTree(source, target, skip)
 }
