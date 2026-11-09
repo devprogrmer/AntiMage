@@ -1,6 +1,7 @@
 name: Native Protocol E2E
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: ['**']
     paths:
@@ -87,18 +88,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version='latest'
-          archive="$RUNNER_TEMP/Xray-linux-64-${version}.zip"
-          dir="$RUNNER_TEMP/xray-${version}"
-          curl --fail --location --retry 3 --output "$archive" \
-            "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip"
-          curl --fail --location --retry 3 --output "$archive.dgst" \
-            "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip.dgst"
-          xray_sha256="$(awk -F '= ' '$1 == "SHA2-256" { print $2; exit }' "$archive.dgst")"
-          [[ "$xray_sha256" =~ ^[[:xdigit:]]{64}$ ]]
-          echo "$xray_sha256  $archive" | sha256sum --check -
+          dir="$RUNNER_TEMP/xray-26.10.31"
+          image='ghcr.io/xtls/xray-core@sha256:db94b52238af7311f30044a1ef64e77b0edf285a302c276a7f4d7b368e6a17ab'
           mkdir -p "$dir"
-          python3 -m zipfile -e "$archive" "$dir"
+          docker pull --platform linux/amd64 "$image"
+          container="$(docker create --platform linux/amd64 "$image")"
+          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+          docker cp "$container:/usr/local/bin/xray" "$dir/xray"
           chmod +x "$dir/xray"
           nodecontroller_test="$RUNNER_TEMP/antimage-nodecontroller.test"
           go test -c -o "$nodecontroller_test" ./internal/app/nodecontroller
