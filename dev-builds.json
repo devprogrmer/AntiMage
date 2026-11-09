@@ -1,9 +1,33 @@
 {
   "schema_version": 1,
   "project": "AntiMage",
-  "latest": "dev-7ef2de0",
-  "updated_at": "2026-11-09T12:44:54Z",
+  "latest": "dev-8046f46",
+  "updated_at": "2026-11-09T17:52:04Z",
   "builds": [
+    {
+      "tag": "dev-8046f46",
+      "sha": "8046f4623bffdd767f335a00aa79109868e02015",
+      "branch": "dev",
+      "workflow": "Binary Build",
+      "run_id": "42667791814",
+      "run_number": "548",
+      "created_at": "2026-11-09T17:52:04Z",
+      "release_tag": "dev-builds",
+      "assets": {
+        "windows-amd64": {
+          "name": "antimage-windows-amd64-dev-8046f46.zip",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-8046f46.zip"
+        },
+        "node-linux-amd64": {
+          "name": "antimage-node-dev-8046f46-linux-amd64",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-node-dev-8046f46-linux-amd64"
+        },
+        "linux-amd64": {
+          "name": "antimage-linux-amd64-dev-8046f46.tar.gz",
+          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-linux-amd64-dev-8046f46.tar.gz"
+        }
+      }
+    },
     {
       "tag": "dev-7ef2de0",
       "sha": "7ef2de05ed39afc3aa75c175386604af8680944a",
@@ -1105,26 +1129,6 @@
         "linux-amd64": {
           "name": "antimage-linux-amd64-dev-280cdf8.tar.gz",
           "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-linux-amd64-dev-280cdf8.tar.gz"
-        }
-      }
-    },
-    {
-      "tag": "dev-d9f3737",
-      "sha": "d9f37372c18bed9aea52c7680dfb0b30ebbb2c8b",
-      "branch": "dev",
-      "workflow": "Binary Build",
-      "run_id": "36207480807",
-      "run_number": "222",
-      "created_at": "2026-09-26T01:17:07Z",
-      "release_tag": "dev-builds",
-      "assets": {
-        "linux-amd64": {
-          "name": "antimage-linux-amd64-dev-d9f3737.tar.gz",
-          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-linux-amd64-dev-d9f3737.tar.gz"
-        },
-        "windows-amd64": {
-          "name": "antimage-windows-amd64-dev-d9f3737.zip",
-          "url": "https://github.com/devprogrmer/AntiMage/releases/download/dev-builds/antimage-windows-amd64-dev-d9f3737.zip"
         }
       }
     }
