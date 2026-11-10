@@ -222,6 +222,8 @@ func (s *Server) registerSubscriptionRoutes(r chi.Router) {
 }
 
 func (s *Server) registerNodeRoutes(r chi.Router) {
+	r.HandleFunc("/nodes/accounting-alerts/read", s.requireSudo(s.handleAccountingInboxRead))
+	r.HandleFunc("/nodes/accounting-alerts", s.requireSudo(s.handleAccountingInbox))
 	r.HandleFunc("/haproxy/*", s.requireSudo(s.handleHAProxyPath))
 	r.HandleFunc("/haproxy", s.requireSudo(s.handleHAProxyRoot))
 	r.HandleFunc("/nodes/service/update", s.requireSudo(s.handleNodesServiceUpdate))

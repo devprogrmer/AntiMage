@@ -3826,5 +3826,15 @@
 	"accountingHealth.pendingACKOverdue": "Пакет ожидает подтверждения более 10 минут.",
 	"accountingHealth.reflectionOverdue": "Отражение трафика в панели задерживается более 10 минут.",
 	"accountingHealth.oldestReflection": "Самый старый пакет",
-	"accountingHealth.failure": "Ошибка"
+	"accountingHealth.failure": "Ошибка",
+	"accountingInbox.title": "Оповещения учета",
+	"accountingInbox.description": "Сохраненные предупреждения узлов. Только успешная проверка снимает предупреждение.",
+	"accountingInbox.refresh": "Обновить",
+	"accountingInbox.empty": "Нет предупреждений учета",
+	"accountingInbox.active": "Активно",
+	"accountingInbox.resolved": "Устранено",
+	"accountingInbox.unread": "Не прочитано",
+	"accountingInbox.markRead": "Отметить прочитанным",
+	"accountingInbox.loadFailed": "Не удалось загрузить предупреждения учета",
+	"accountingInbox.readFailed": "Не удалось отметить предупреждение прочитанным"
 }

@@ -3800,5 +3800,15 @@
 	"accountingHealth.pendingACKOverdue": "این بسته بیش از ۱۰ دقیقه در انتظار تأیید است.",
 	"accountingHealth.reflectionOverdue": "ثبت بازتاب ترافیک در پنل بیش از ۱۰ دقیقه تأخیر دارد.",
 	"accountingHealth.oldestReflection": "قدیمی‌ترین بسته",
-	"accountingHealth.failure": "خطا"
+	"accountingHealth.failure": "خطا",
+	"accountingInbox.title": "هشدارهای حسابداری",
+	"accountingInbox.description": "هشدارهای پایدار نود؛ فقط نمونهٔ سلامت موفق، هشدار را رفع می‌کند.",
+	"accountingInbox.refresh": "بازخوانی",
+	"accountingInbox.empty": "هشدار حسابداری وجود ندارد",
+	"accountingInbox.active": "فعال",
+	"accountingInbox.resolved": "رفع‌شده",
+	"accountingInbox.unread": "خوانده‌نشده",
+	"accountingInbox.markRead": "علامت‌گذاری به‌عنوان خوانده‌شده",
+	"accountingInbox.loadFailed": "بارگذاری هشدارهای حسابداری ممکن نشد",
+	"accountingInbox.readFailed": "ثبت وضعیت خواندن هشدار ممکن نشد"
 }
