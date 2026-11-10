@@ -48,6 +48,7 @@ var defaultEventToggles = map[string]bool{
 	"node.status.error":         true,
 	"node.status.disabled":      true,
 	"node.status.limited":       true,
+	"node.accounting":           true,
 	"login":                     true,
 	"errors.node":               true,
 }

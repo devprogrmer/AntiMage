@@ -53,6 +53,7 @@ const HomeIconStyled = chakra(HomeIcon, iconProps);
 const UsersIconStyled = chakra(UserGroupIcon, iconProps);
 const BulkActionsIconStyled = chakra(BoltIcon, iconProps);
 const RecentActionsIconStyled = chakra(ClockIcon, iconProps);
+const AccountingAlertsIconStyled = chakra(BellAlertIcon, iconProps);
 const SettingsIconStyled = chakra(Cog6ToothIcon, iconProps);
 const MasterSettingsIconStyled = chakra(Cog8ToothIcon, iconProps);
 const NodeIconStyled = chakra(ServerStackIcon, iconProps);
@@ -216,6 +217,13 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 					icon: RecentActionsIconStyled,
 				}
 			: null,
+		isPrivilegedAdmin && (isFullAccess || userData.permissions?.sudo?.[AdminSudoScope.Nodes])
+			? {
+					title: t("accountingInbox.title"),
+					url: "/accounting-alerts",
+					icon: AccountingAlertsIconStyled,
+				}
+			: null,
 		isPrivilegedAdmin
 			? {
 					title: t("phpmyadmin.menu"),
@@ -366,6 +374,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 				pickSetting("/xray-logs"),
 				pickSetting("/access-insights"),
 				pickSetting("/recent-actions"),
+				pickSetting("/accounting-alerts"),
 				pickSetting("/phpmyadmin"),
 				pickSetting("/external-apps"),
 				pickSetting("/api-docs"),

@@ -48,6 +48,7 @@ func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
 
 	r.HandleFunc("/__antimage_api/healthz", s.handleHealth)
+	r.HandleFunc("/metrics", s.handlePrometheusMetrics)
 	r.HandleFunc("/openapi.json", s.handleOpenAPIJSON)
 	r.HandleFunc("/telegram-app", s.handleTelegramMiniAppPage)
 	r.HandleFunc("/telegram-payment-return", s.handleTelegramPaymentReturn)
@@ -221,6 +222,8 @@ func (s *Server) registerSubscriptionRoutes(r chi.Router) {
 }
 
 func (s *Server) registerNodeRoutes(r chi.Router) {
+	r.HandleFunc("/nodes/accounting-alerts/read", s.requireSudo(s.handleAccountingInboxRead))
+	r.HandleFunc("/nodes/accounting-alerts", s.requireSudo(s.handleAccountingInbox))
 	r.HandleFunc("/haproxy/*", s.requireSudo(s.handleHAProxyPath))
 	r.HandleFunc("/haproxy", s.requireSudo(s.handleHAProxyRoot))
 	r.HandleFunc("/nodes/service/update", s.requireSudo(s.handleNodesServiceUpdate))

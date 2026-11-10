@@ -219,6 +219,31 @@ func (r Reporter) NodeError(ctx context.Context, report NodeReport) {
 	))
 }
 
+func (r Reporter) NodeAccountingAlert(ctx context.Context, name, protocol, kind string) bool {
+	message := reportText(
+		"⚠️ <b>#NodeAccounting</b>",
+		line("Node", name),
+		line("Protocol", protocol),
+		line("Issue", kind),
+		line("Next step", "Check node accounting health and delivery logs."),
+	)
+	if r.repo.db == nil {
+		return false
+	}
+	settings, enabled, err := r.repo.EventEnabled(ctx, "node.accounting")
+	if err != nil {
+		return false
+	}
+	if !enabled || !telegramReportsReady(settings) {
+		return false
+	}
+	_, err = r.sender.SendMessage(ctx, MessageRequest{
+		Destination: DestinationRequest{Purpose: DestinationLogs, Category: "node.accounting"},
+		Text:        message, ParseMode: "HTML", DisableWebPagePreview: true,
+	})
+	return err == nil
+}
+
 func (r Reporter) sendHTML(ctx context.Context, event string, text string) {
 	if strings.TrimSpace(text) == "" {
 		return

@@ -50,10 +50,10 @@ export const listApiKeys = async (): Promise<AdminApiKey[]> => {
 	return [];
 };
 
-export const createApiKey = async (lifetime: string): Promise<AdminApiKey> => {
+export const createApiKey = async ({ lifetime, scope }: { lifetime: string; scope: "full" | "users_read" }): Promise<AdminApiKey> => {
 	return apiFetch("/myaccount/api-keys", {
 		method: "POST",
-		body: JSON.stringify({ lifetime }),
+		body: JSON.stringify({ lifetime, scope }),
 	});
 };
 

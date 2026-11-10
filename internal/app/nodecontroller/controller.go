@@ -384,9 +384,15 @@ func (c Controller) CheckConnectedNodes(ctx context.Context) (HealthCheckNodesRe
 			result.Checked++
 			mu.Unlock()
 			metricsCtx, cancel := withListMetricsTimeout(ctx)
-			_, err := c.Metrics(metricsCtx, Request{NodeID: nodeID})
+			runtime, err := c.Metrics(metricsCtx, Request{NodeID: nodeID})
 			cancel()
 			if err == nil {
+				mu.Lock()
+				if runtime.Accounting != nil {
+					result.AccountingCheckedNodes = append(result.AccountingCheckedNodes, nodeID)
+					result.AccountingAlerts = append(result.AccountingAlerts, accountingAlerts(runtime)...)
+				}
+				mu.Unlock()
 				return
 			}
 			if c.healthFailureCount(nodeID) < nodeHealthFailureThreshold {

@@ -93,7 +93,8 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			key_hash TEXT NOT NULL UNIQUE,
 			created_at DATETIME NOT NULL,
 			expires_at DATETIME NULL,
-			last_used_at DATETIME NULL
+			last_used_at DATETIME NULL,
+			scope TEXT NOT NULL DEFAULT 'full'
 		)`,
 		`CREATE TABLE admins_services (
 			admin_id INTEGER NOT NULL,
@@ -1337,6 +1338,38 @@ func TestMyAccountAPIKeyLifecycle(t *testing.T) {
 	server.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("deleted api key validate status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUserReadAPIKeyCannotMutateOrAccessOtherResources(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 1, "owner", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+	ownerToken := adminBearerToken(t, server, "owner", "pass123")
+	rec := adminJSONRequest(t, server, http.MethodPost, "/api/myaccount/api-keys", ownerToken, `{"lifetime":"1m","scope":"users_read"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create restricted key: %d %s", rec.Code, rec.Body.String())
+	}
+	var key apiKeyResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &key); err != nil {
+		t.Fatal(err)
+	}
+	if key.Scope != "users_read" || key.APIKey == nil {
+		t.Fatalf("created key scope = %#v", key)
+	}
+	for _, test := range []struct{ method, path string }{
+		{http.MethodPost, "/api/v2/users"},
+		{http.MethodGet, "/api/admin"},
+		{http.MethodGet, "/api/settings/backup/export"},
+		{http.MethodGet, "/api/myaccount/api-keys"},
+	} {
+		rec = adminJSONRequest(t, server, test.method, test.path, "Bearer "+*key.APIKey, ``)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("restricted key %s %s: got %d, want 403", test.method, test.path, rec.Code)
+		}
+	}
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/v2/users", "Bearer "+*key.APIKey, ``)
+	if rec.Code == http.StatusForbidden || rec.Code == http.StatusUnauthorized {
+		t.Fatalf("read users was blocked by key scope: %d %s", rec.Code, rec.Body.String())
 	}
 }
 

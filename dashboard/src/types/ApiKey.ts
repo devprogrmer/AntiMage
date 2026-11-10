@@ -1,5 +1,6 @@
 export type AdminApiKey = {
 	id: number;
+	scope: "full" | "users_read";
 	created_at: string;
 	expires_at: string | null;
 	last_used_at: string | null;

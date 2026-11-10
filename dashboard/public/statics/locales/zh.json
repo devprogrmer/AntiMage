@@ -776,6 +776,8 @@
 	"settings.telegram.events.login": "登录通知",
 	"settings.telegram.events.loginHint": "当管理员尝试登录时发送通知。",
 	"settings.telegram.events.nodeErrors": "节点错误日志",
+	"settings.telegram.events.nodeAccounting": "流量统计健康状态",
+	"settings.telegram.events.nodeAccountingHint": "统计检查点、确认、回写或采集发生延迟时发送通知。",
 	"settings.telegram.events.nodeErrorsHint": "当系统记录节点错误时发送通知。",
 	"settings.save": "Save Settings",
 	"settings.savedSuccess": "设置已成功保存。",

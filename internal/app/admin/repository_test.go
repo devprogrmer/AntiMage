@@ -61,7 +61,8 @@ func testAdminRepository(t *testing.T) (Repository, *sql.DB) {
 			key_hash TEXT NOT NULL UNIQUE,
 			created_at DATETIME NOT NULL,
 			expires_at DATETIME NULL,
-			last_used_at DATETIME NULL
+			last_used_at DATETIME NULL,
+			scope TEXT NOT NULL DEFAULT 'full'
 		)`,
 		`CREATE TABLE admin_sessions (
 			id INTEGER PRIMARY KEY,

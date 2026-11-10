@@ -4,11 +4,61 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+func TestAccountingAlertUsesConfiguredToggleAndEscapesNodeName(t *testing.T) {
+	ctx := context.Background()
+	db, repo := testTelegramRepo(t)
+	seedTelegramSettings(t, db, "")
+	var message string
+	sender := NewSender(repo, "https://telegram.invalid")
+	sender.retryDelays = nil
+	sender.client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		var payload struct {
+			Text string `json:"text"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		message = payload.Text
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true}`)), Header: make(http.Header)}, nil
+	})
+	reporter := NewReporter(repo, sender)
+	if !reporter.NodeAccountingAlert(ctx, "node <private>", "xray", "pending_ack_overdue") {
+		t.Fatal("expected successful delivery")
+	}
+	if !strings.Contains(message, "node &lt;private&gt;") || !strings.Contains(message, "pending_ack_overdue") || strings.Contains(message, "node <private>") {
+		t.Fatalf("unexpected alert message: %q", message)
+	}
+	message = ""
+	if _, err := db.Exec(`UPDATE telegram_settings SET event_toggles = '{"node.accounting":false}' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if reporter.NodeAccountingAlert(ctx, "node", "xray", "checkpoint_overdue") {
+		t.Fatal("disabled event must remain eligible if notifications are enabled later")
+	}
+	if message != "" {
+		t.Fatalf("disabled event sent: %q", message)
+	}
+	if _, err := db.Exec(`UPDATE telegram_settings SET event_toggles = '{"node.accounting":true}' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	sender.client.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusBadGateway, Body: io.NopCloser(strings.NewReader(`{"ok":false,"description":"unavailable"}`)), Header: make(http.Header)}, nil
+	})
+	if NewReporter(repo, sender).NodeAccountingAlert(ctx, "node", "xray", "checkpoint_overdue") {
+		t.Fatal("failed delivery must remain eligible for retry")
+	}
+}
 
 func TestReporterSendsLegacyUserCreatedWhenEnabled(t *testing.T) {
 	ctx := context.Background()

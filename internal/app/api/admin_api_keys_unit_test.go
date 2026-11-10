@@ -43,7 +43,8 @@ func TestAdminAPIKeyHelpersKeepSecretOutOfStorageAndEnforceOwner(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(`CREATE TABLE admin_api_keys (
 		id INTEGER PRIMARY KEY, admin_id INTEGER NOT NULL, key_hash TEXT NOT NULL UNIQUE,
-		created_at DATETIME NOT NULL, expires_at DATETIME NULL, last_used_at DATETIME NULL
+		created_at DATETIME NOT NULL, expires_at DATETIME NULL, last_used_at DATETIME NULL,
+		scope TEXT NOT NULL DEFAULT 'full'
 	)`); err != nil {
 		t.Fatal(err)
 	}
