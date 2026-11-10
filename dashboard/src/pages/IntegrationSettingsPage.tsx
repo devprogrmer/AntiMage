@@ -3536,7 +3536,7 @@ export const IntegrationSettingsPage = () => {
 															</FormControl>
 															))}
 														</SimpleGrid>
-														<FormHelperText>{t("settings.subscriptions.adminPlaceholdersHint")}</FormHelperText>
+														<Text mt={2} fontSize="sm" color="gray.500">{t("settings.subscriptions.adminPlaceholdersHint")}</Text>
 													</Box>
 													<SimpleGrid
 														columns={{ base: 1, md: 2 }}
