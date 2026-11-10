@@ -3810,5 +3810,10 @@
 	"accountingInbox.unread": "Unread",
 	"accountingInbox.markRead": "Mark read",
 	"accountingInbox.loadFailed": "Could not load accounting alerts",
-	"accountingInbox.readFailed": "Could not mark this alert read"
+	"accountingInbox.readFailed": "Could not mark this alert read",
+	"settings.subscriptions.adminPlaceholdersTitle": "Fallback messages for this admin",
+	"settings.subscriptions.adminPlaceholdersHint": "Leave a message empty to inherit the panel text. These settings apply only to this admin's users.",
+	"settings.subscriptions.inheritGlobal": "Inherit panel setting",
+	"settings.subscriptions.enabled": "Enabled",
+	"settings.subscriptions.disabled": "Disabled"
 }

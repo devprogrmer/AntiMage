@@ -1359,6 +1359,23 @@ export const IntegrationSettingsPage = () => {
 		});
 	};
 
+	const handleAdminPlaceholderMode = (adminId: number, value: string) => {
+		setAdminOverrides((prev) => {
+			const current = prev[adminId];
+			if (!current) return prev;
+			const settings = { ...(current.subscription_settings || {}) };
+			if (value === "inherit") {
+				delete settings.subscription_placeholder_enabled;
+			} else {
+				settings.subscription_placeholder_enabled = value === "on";
+			}
+			return {
+				...prev,
+				[adminId]: { ...current, subscription_settings: settings },
+			};
+		});
+	};
+
 	const handleAdminReset = (adminId: number) => {
 		const admin = adminOverrides[adminId];
 		if (!admin) return;
@@ -3494,8 +3511,35 @@ export const IntegrationSettingsPage = () => {
 																</FormControl>
 															</SimpleGrid>
 
-															<SimpleGrid
-																columns={{ base: 1, md: 2 }}
+													<Box mt={4} p={4} borderWidth="1px" borderColor={borderColor} borderRadius="md">
+														<Text fontWeight="semibold" mb={3}>{t("settings.subscriptions.adminPlaceholdersTitle")}</Text>
+														<FormControl maxW={{ base: "full", md: "300px" }}>
+															<FormLabel>{t("settings.subscriptions.placeholdersEnabled")}</FormLabel>
+															<Select
+																value={settings.subscription_placeholder_enabled === undefined ? "inherit" : settings.subscription_placeholder_enabled ? "on" : "off"}
+																onChange={(event) => handleAdminPlaceholderMode(admin.id, event.target.value)}
+															>
+															<option value="inherit">{t("settings.subscriptions.inheritGlobal")}</option>
+															<option value="on">{t("settings.subscriptions.enabled")}</option>
+															<option value="off">{t("settings.subscriptions.disabled")}</option>
+															</Select>
+														</FormControl>
+														<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4} mt={4}>
+															{(["subscription_placeholder_expired_remark", "subscription_placeholder_limited_remark", "subscription_placeholder_disabled_remark"] as const).map((key) => (
+																<FormControl key={key}>
+																	<FormLabel>{t(key === "subscription_placeholder_expired_remark" ? "settings.subscriptions.expiredRemark" : key === "subscription_placeholder_limited_remark" ? "settings.subscriptions.limitedRemark" : "settings.subscriptions.disabledRemark")}</FormLabel>
+																	<Input
+																		value={settings[key] ?? ""}
+																		placeholder={subscriptionBundle?.settings[key] ?? ""}
+																		onChange={(event) => handleAdminTemplateChange(admin.id, key, event.target.value)}
+																	/>
+															</FormControl>
+															))}
+														</SimpleGrid>
+														<FormHelperText>{t("settings.subscriptions.adminPlaceholdersHint")}</FormHelperText>
+													</Box>
+													<SimpleGrid
+														columns={{ base: 1, md: 2 }}
 																spacing={4}
 																mt={4}
 															>

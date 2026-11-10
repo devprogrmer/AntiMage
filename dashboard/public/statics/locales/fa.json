@@ -3810,5 +3810,10 @@
 	"accountingInbox.unread": "خوانده‌نشده",
 	"accountingInbox.markRead": "علامت‌گذاری به‌عنوان خوانده‌شده",
 	"accountingInbox.loadFailed": "بارگذاری هشدارهای حسابداری ممکن نشد",
-	"accountingInbox.readFailed": "ثبت وضعیت خواندن هشدار ممکن نشد"
+	"accountingInbox.readFailed": "ثبت وضعیت خواندن هشدار ممکن نشد",
+	"settings.subscriptions.adminPlaceholdersTitle": "پیام جایگزین مخصوص این ادمین",
+	"settings.subscriptions.adminPlaceholdersHint": "متن خالی، متن سراسری پنل را به ارث می‌برد. این تنظیمات فقط برای کاربران همین ادمین اعمال می‌شوند.",
+	"settings.subscriptions.inheritGlobal": "ارث‌بری از پنل",
+	"settings.subscriptions.enabled": "روشن",
+	"settings.subscriptions.disabled": "خاموش"
 }

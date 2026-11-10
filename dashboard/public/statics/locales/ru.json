@@ -3836,5 +3836,14 @@
 	"accountingInbox.unread": "Не прочитано",
 	"accountingInbox.markRead": "Отметить прочитанным",
 	"accountingInbox.loadFailed": "Не удалось загрузить предупреждения учета",
-	"accountingInbox.readFailed": "Не удалось отметить предупреждение прочитанным"
+	"accountingInbox.readFailed": "Не удалось отметить предупреждение прочитанным",
+	"settings.subscriptions.placeholdersEnabled": "Показывать заменяющее сообщение для неактивной подписки",
+	"settings.subscriptions.expiredRemark": "Сообщение при истечении срока",
+	"settings.subscriptions.limitedRemark": "Сообщение при исчерпании трафика",
+	"settings.subscriptions.disabledRemark": "Сообщение для отключённой подписки",
+	"settings.subscriptions.adminPlaceholdersTitle": "Замещающие сообщения этого администратора",
+	"settings.subscriptions.adminPlaceholdersHint": "Пустое поле наследует текст панели. Настройки применяются только к пользователям этого администратора.",
+	"settings.subscriptions.inheritGlobal": "Наследовать настройку панели",
+	"settings.subscriptions.enabled": "Включено",
+	"settings.subscriptions.disabled": "Выключено"
 }

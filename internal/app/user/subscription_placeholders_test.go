@@ -61,3 +61,47 @@ func TestRenderSubscriptionUsesFallbackInsteadOfRealConnections(t *testing.T) {
 		t.Fatalf("inactive subscription page leaked connection details or omitted its message: %s", html.Body)
 	}
 }
+
+func TestAdminPlaceholderSettingsOverridePanelWithoutChangingOtherAdmins(t *testing.T) {
+	base := SubscriptionSettings{
+		SubscriptionPlaceholderEnabled:       true,
+		SubscriptionPlaceholderLimitedRemark: "Panel limit for {USERNAME}",
+	}
+	limited := UserDetail{Username: "alice", Status: "limited"}
+	adminOff := AdminLinkSettings{SubscriptionSettings: []byte(`{"subscription_placeholder_enabled":false}`)}
+	if got := subscriptionPlaceholderRemark(limited, effectiveSubscriptionSettings(base, adminOff)); got != "" {
+		t.Fatalf("admin false override did not disable placeholder: %q", got)
+	}
+	adminCustom := AdminLinkSettings{SubscriptionSettings: []byte(`{"subscription_placeholder_enabled":true,"subscription_placeholder_limited_remark":"Seller limit for {USERNAME}"}`)}
+	if got := subscriptionPlaceholderRemark(limited, effectiveSubscriptionSettings(base, adminCustom)); got != "Seller limit for alice" {
+		t.Fatalf("admin placeholder override = %q", got)
+	}
+	if got := subscriptionPlaceholderRemark(limited, effectiveSubscriptionSettings(base, AdminLinkSettings{})); got != "Panel limit for alice" {
+		t.Fatalf("another admin did not inherit panel placeholder: %q", got)
+	}
+}
+
+func TestRenderSubscriptionUsesAdminScopedPlaceholder(t *testing.T) {
+	service, key := newSubscriptionClientTestService(t)
+	ctx := context.Background()
+	for _, statement := range []string{
+		`ALTER TABLE subscription_settings ADD COLUMN subscription_placeholder_enabled INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE subscription_settings ADD COLUMN subscription_placeholder_expired_remark TEXT NOT NULL DEFAULT 'Subscription expired'`,
+		`ALTER TABLE subscription_settings ADD COLUMN subscription_placeholder_limited_remark TEXT NOT NULL DEFAULT 'Traffic limit reached'`,
+		`ALTER TABLE subscription_settings ADD COLUMN subscription_placeholder_disabled_remark TEXT NOT NULL DEFAULT 'Subscription disabled'`,
+		`UPDATE subscription_settings SET subscription_placeholder_enabled = 1, subscription_placeholder_limited_remark = 'Panel message'`,
+		`UPDATE admins SET subscription_settings = '{"subscription_placeholder_enabled":true,"subscription_placeholder_limited_remark":"Seller message for {USERNAME}"}' WHERE id = 1`,
+		`UPDATE users SET status = 'limited' WHERE username = 'alice'`,
+	} {
+		if _, err := service.repo.db.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	response, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, Accept: "text/html"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := string(response.Body); !strings.Contains(body, "Seller message for alice") || strings.Contains(body, "Panel message") {
+		t.Fatalf("admin-scoped message not applied: %s", body)
+	}
+}
