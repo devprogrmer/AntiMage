@@ -75,7 +75,7 @@ func (s *Server) handleCreateAdminAPIKey(w http.ResponseWriter, r *http.Request,
 		if !canManageAdminAPIKeys(actor, target) {
 			return statusError{status: http.StatusForbidden, detail: "You're not allowed"}
 		}
-		response, err = createAdminAPIKeyTx(r.Context(), tx, target.ID, payload.Lifetime, time.Now().UTC())
+		response, err = createAdminAPIKeyWithScopeTx(r.Context(), tx, target.ID, payload.Lifetime, payload.Scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}

@@ -98,10 +98,10 @@ func (r Repository) apiKeyByHash(ctx context.Context, keyHash string) (AdminAPIK
 	var createdRaw, expiresRaw, lastUsedRaw any
 	err := r.db.QueryRowContext(
 		ctx,
-		`SELECT id, admin_id, key_hash, created_at, expires_at, last_used_at
+		`SELECT id, admin_id, key_hash, created_at, expires_at, last_used_at, scope
 FROM admin_api_keys WHERE key_hash = ? LIMIT 1`,
 		keyHash,
-	).Scan(&row.ID, &row.AdminID, &row.KeyHash, &createdRaw, &expiresRaw, &lastUsedRaw)
+	).Scan(&row.ID, &row.AdminID, &row.KeyHash, &createdRaw, &expiresRaw, &lastUsedRaw, &row.Scope)
 	if err == sql.ErrNoRows {
 		return AdminAPIKey{}, false, nil
 	}

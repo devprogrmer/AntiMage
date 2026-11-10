@@ -781,6 +781,7 @@ export const MyAccountPage: React.FC = () => {
 		},
 	});
 	const [selectedLifetime, setSelectedLifetime] = useState<string>("1m");
+	const [selectedScope, setSelectedScope] = useState<"full" | "users_read">("users_read");
 	const [generatedKey, setGeneratedKey] = useState<string>("");
 	const hasGeneratedKey = Boolean(generatedKey);
 	const deleteModal = useDisclosure();
@@ -1283,6 +1284,9 @@ export const MyAccountPage: React.FC = () => {
 															>
 																{key.masked_key ?? "****"}
 															</Text>
+													<Text fontSize="xs" color="panel.textMuted">
+														{t(key.scope === "users_read" ? "myaccount.apiKeyScopeUsersRead" : "myaccount.apiKeyScopeFull")}
+													</Text>
 															<HStack
 																spacing={2.5}
 																color="panel.textMuted"
@@ -1356,7 +1360,7 @@ export const MyAccountPage: React.FC = () => {
 								<Button
 									colorScheme="primary"
 									isLoading={createKeyMutation.isLoading}
-									onClick={() => createKeyMutation.mutate(selectedLifetime)}
+									onClick={() => createKeyMutation.mutate({ lifetime: selectedLifetime, scope: selectedScope })}
 									isDisabled={hasGeneratedKey}
 								>
 									{t("create")}
@@ -1368,6 +1372,11 @@ export const MyAccountPage: React.FC = () => {
 					<VStack spacing={4} align="stretch">
 						{!hasGeneratedKey && (
 							<Box>
+								<Text fontWeight="medium" mb={2}>{t("myaccount.apiKeyScope")}</Text>
+								<Select value={selectedScope} onChange={(e) => setSelectedScope(e.target.value as "full" | "users_read")} mb={4}>
+									<option value="users_read">{t("myaccount.apiKeyScopeUsersRead")}</option>
+									<option value="full">{t("myaccount.apiKeyScopeFull")}</option>
+								</Select>
 								<Text fontWeight="medium" mb={2}>
 									{t("myaccount.apiKeyLifetime")}
 								</Text>

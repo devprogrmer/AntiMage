@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	pathpkg "path"
 	"strings"
 
 	adminapp "github.com/antimage/antimage/internal/app/admin"
@@ -35,12 +36,35 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusForbidden, "Invalid request origin")
 			return
 		}
+		if principal.Context.APIKey != nil && !apiKeyScopeAllows(principal.Context.APIKey.Scope, r) {
+			writeError(w, http.StatusForbidden, "API key scope does not allow this request")
+			return
+		}
 		ctx := context.WithValue(r.Context(), adminContextKey, principal)
 		if batchID := recentActionBatchID(r); batchID != "" {
 			ctx = context.WithValue(ctx, recentActionBatchContextKey, batchID)
 		}
 		next(w, r.WithContext(ctx))
 	}
+}
+
+// Explicit allowlist: new endpoints remain inaccessible to restricted keys
+// until reviewed. Admin permissions are still enforced by each handler.
+func apiKeyScopeAllows(scope string, r *http.Request) bool {
+	if scope == "full" {
+		return true
+	}
+	if scope != "users_read" || r.Method != http.MethodGet {
+		return false
+	}
+	path := r.URL.Path
+	if pathpkg.Clean(path) != path {
+		return false
+	}
+	return path == "/api/users" || path == "/api/users/usage" ||
+		path == "/api/users/onlines" || path == "/api/v2/users" ||
+		strings.HasPrefix(path, "/api/v2/users/") ||
+		strings.HasPrefix(path, "/api/user/")
 }
 
 func recentActionBatchID(r *http.Request) string {

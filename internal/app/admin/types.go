@@ -156,6 +156,7 @@ type AdminAPIKey struct {
 	ID         int64      `json:"id"`
 	AdminID    int64      `json:"admin_id"`
 	KeyHash    string     `json:"-"`
+	Scope      string     `json:"scope"`
 	CreatedAt  *time.Time `json:"created_at"`
 	ExpiresAt  *time.Time `json:"expires_at"`
 	LastUsedAt *time.Time `json:"last_used_at"`

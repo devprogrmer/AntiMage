@@ -21,6 +21,7 @@ type changePasswordPayload struct {
 
 type apiKeyCreatePayload struct {
 	Lifetime string `json:"lifetime"`
+	Scope    string `json:"scope"`
 }
 
 type apiKeyDeletePayload struct {
@@ -29,6 +30,7 @@ type apiKeyDeletePayload struct {
 
 type apiKeyResponse struct {
 	ID         int64   `json:"id"`
+	Scope      string  `json:"scope"`
 	CreatedAt  string  `json:"created_at"`
 	ExpiresAt  *string `json:"expires_at"`
 	LastUsedAt *string `json:"last_used_at"`
@@ -241,7 +243,7 @@ func (s *Server) handleCreateMyAccountAPIKey(w http.ResponseWriter, r *http.Requ
 	var response apiKeyResponse
 	err := s.withTx(r.Context(), func(tx *sql.Tx) error {
 		var err error
-		response, err = createAdminAPIKeyTx(r.Context(), tx, dbadmin.ID, payload.Lifetime, time.Now().UTC())
+		response, err = createAdminAPIKeyWithScopeTx(r.Context(), tx, dbadmin.ID, payload.Lifetime, payload.Scope, time.Now().UTC())
 		return err
 	})
 	if err != nil {
@@ -252,6 +254,16 @@ func (s *Server) handleCreateMyAccountAPIKey(w http.ResponseWriter, r *http.Requ
 }
 
 func createAdminAPIKeyTx(ctx context.Context, tx *sql.Tx, adminID int64, lifetime string, now time.Time) (apiKeyResponse, error) {
+	return createAdminAPIKeyWithScopeTx(ctx, tx, adminID, lifetime, "full", now)
+}
+
+func createAdminAPIKeyWithScopeTx(ctx context.Context, tx *sql.Tx, adminID int64, lifetime, scope string, now time.Time) (apiKeyResponse, error) {
+	if scope == "" {
+		scope = "full"
+	}
+	if scope != "full" && scope != "users_read" {
+		return apiKeyResponse{}, statusError{status: http.StatusBadRequest, detail: "Invalid API key scope"}
+	}
 	expiresAt, err := apiKeyExpiresAt(lifetime, now)
 	if err != nil {
 		return apiKeyResponse{}, statusError{status: http.StatusBadRequest, detail: err.Error()}
@@ -262,11 +274,12 @@ func createAdminAPIKeyTx(ctx context.Context, tx *sql.Tx, adminID int64, lifetim
 	}
 	result, err := tx.ExecContext(
 		ctx,
-		`INSERT INTO admin_api_keys (admin_id, key_hash, created_at, expires_at) VALUES (?, ?, ?, ?)`,
+		`INSERT INTO admin_api_keys (admin_id, key_hash, created_at, expires_at, scope) VALUES (?, ?, ?, ?, ?)`,
 		adminID,
 		adminapp.APIKeyTokenHash(token),
 		dbTimestamp(now),
 		timePtrDB(expiresAt),
+		scope,
 	)
 	if err != nil {
 		return apiKeyResponse{}, err
@@ -278,6 +291,7 @@ func createAdminAPIKeyTx(ctx context.Context, tx *sql.Tx, adminID int64, lifetim
 	masked := "****" + token[len(token)-4:]
 	return apiKeyResponse{
 		ID:        id,
+		Scope:     scope,
 		CreatedAt: formatAPIKeyTimeValue(&now),
 		ExpiresAt: formatAPIKeyTime(expiresAt),
 		MaskedKey: &masked,
@@ -331,7 +345,7 @@ func (s *Server) myAccountSummary(ctx context.Context, dbadmin adminapp.Admin) (
 func listAdminAPIKeys(ctx context.Context, db *sql.DB, adminID int64) ([]apiKeyResponse, error) {
 	rows, err := db.QueryContext(
 		ctx,
-		`SELECT id, key_hash, created_at, expires_at, last_used_at FROM admin_api_keys WHERE admin_id = ? ORDER BY created_at DESC`,
+		`SELECT id, key_hash, created_at, expires_at, last_used_at, scope FROM admin_api_keys WHERE admin_id = ? ORDER BY created_at DESC`,
 		adminID,
 	)
 	if err != nil {
@@ -342,8 +356,9 @@ func listAdminAPIKeys(ctx context.Context, db *sql.DB, adminID int64) ([]apiKeyR
 	for rows.Next() {
 		var id int64
 		var keyHash string
+		var scope string
 		var createdRaw, expiresRaw, lastUsedRaw any
-		if err := rows.Scan(&id, &keyHash, &createdRaw, &expiresRaw, &lastUsedRaw); err != nil {
+		if err := rows.Scan(&id, &keyHash, &createdRaw, &expiresRaw, &lastUsedRaw, &scope); err != nil {
 			return nil, err
 		}
 		createdAt := formatAPIKeyTimeValue(parseDBTime(createdRaw))
@@ -353,6 +368,7 @@ func listAdminAPIKeys(ctx context.Context, db *sql.DB, adminID int64) ([]apiKeyR
 		}
 		keys = append(keys, apiKeyResponse{
 			ID:         id,
+			Scope:      scope,
 			CreatedAt:  createdAt,
 			ExpiresAt:  formatAPIKeyTime(parseDBTime(expiresRaw)),
 			LastUsedAt: formatAPIKeyTime(parseDBTime(lastUsedRaw)),
