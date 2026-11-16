@@ -11,6 +11,8 @@ import (
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
+const maxLocalUsageDeliveries = 4096
+
 type localUsageDeliveryRow struct {
 	Protocol   string `json:"protocol"`
 	ChildID    string `json:"child_id"`
@@ -45,7 +47,7 @@ func (s *Server) ensureLocalUsageDeliveriesLocked() error {
 	if err := json.Unmarshal(raw, &state); err != nil {
 		return fmt.Errorf("decode accounting delivery ledger: %w", err)
 	}
-	if state.Version != 1 || len(state.Deliveries) > 4096 {
+	if state.Version != 1 || len(state.Deliveries) > maxLocalUsageDeliveries {
 		return fmt.Errorf("invalid accounting delivery ledger version or capacity")
 	}
 	seen := map[string]bool{}
@@ -258,23 +260,136 @@ func (s *Server) recordLocalUsageDelivery(batchID string) error {
 	if len(rows) == 0 {
 		return nil
 	}
+	return s.appendLocalUsageDelivery(localUsageDelivery{BatchID: batchID, Rows: rows})
+}
+
+func (s *Server) appendLocalUsageDelivery(delivery localUsageDelivery) error {
+	s.localUsageMu.Lock()
+	if len(s.localUsageDeliveries) < maxLocalUsageDeliveries {
+		defer s.localUsageMu.Unlock()
+		return s.commitLocalUsageDeliveryLocked(s.localUsageDeliveries, delivery)
+	}
+	s.localUsageMu.Unlock()
+
+	// Policy applies and ledger reclamation must agree on the committed quota
+	// snapshot. Never hold localUsageMu while waiting for a policy transition.
+	s.xrayTransitionMu.Lock()
+	defer s.xrayTransitionMu.Unlock()
+	snapshot, err := s.currentRuntimePolicy()
+	if err != nil {
+		return fmt.Errorf("load policy for accounting delivery recovery: %w", err)
+	}
+
 	s.localUsageMu.Lock()
 	defer s.localUsageMu.Unlock()
-	for _, delivery := range s.localUsageDeliveries {
-		if delivery.BatchID == batchID {
+	deliveries := s.localUsageDeliveries
+	for _, existing := range deliveries {
+		if existing.BatchID == delivery.BatchID {
 			return nil
 		}
 	}
-	if len(s.localUsageDeliveries) >= 4096 {
+	if len(deliveries) >= maxLocalUsageDeliveries && snapshot != nil && !snapshot.Stopped {
+		payload, err := snapshot.nativePayload()
+		if err != nil {
+			return fmt.Errorf("read policy for accounting delivery recovery: %w", err)
+		}
+		deliveries = s.reclaimReflectedDeliveriesLocked(payload)
+	}
+	return s.commitLocalUsageDeliveryLocked(deliveries, delivery)
+}
+
+func (s *Server) commitLocalUsageDeliveryLocked(deliveries []localUsageDelivery, delivery localUsageDelivery) error {
+	for _, existing := range deliveries {
+		if existing.BatchID == delivery.BatchID {
+			return nil
+		}
+	}
+	if len(deliveries) >= maxLocalUsageDeliveries {
 		return fmt.Errorf("unreflected accounting delivery capacity exceeded")
 	}
-	next := append(append([]localUsageDelivery(nil), s.localUsageDeliveries...), localUsageDelivery{BatchID: batchID, Rows: rows})
+	next := make([]localUsageDelivery, len(deliveries), len(deliveries)+1)
+	copy(next, deliveries)
+	next = append(next, delivery)
 	if err := s.persistLocalUsageDeliveriesLocked(next); err != nil {
 		return err
 	}
 	s.localUsageDeliveries = next
 	s.localUsageDeliveryIndex = nil
 	return nil
+}
+
+// Retain every marker batch, including its child identities for lost ACK
+// recovery. A batch can disappear only when all of its rows precede an
+// applicable marker. Absent markers and conflicting policy views are treated
+// conservatively.
+func (s *Server) reclaimReflectedDeliveriesLocked(payload nativeRuntimePayload) []localUsageDelivery {
+	positions := s.localUsageIndexLocked().Batches
+	through := make(map[int64]int)
+	anchors := make(map[string]bool)
+	add := func(userID int64, marker string) {
+		position, found := positions[marker]
+		if found {
+			anchors[marker] = true
+		} else {
+			position = -1
+		}
+		if previous, seen := through[userID]; !seen || position < previous {
+			through[userID] = position
+		}
+	}
+	for _, user := range payload.XrayPolicies {
+		add(user.UserID, user.ReflectedUsageBatchID)
+	}
+	for _, inbound := range payload.OpenVPNInbounds {
+		for _, user := range inbound.Users {
+			add(user.UserID, user.ReflectedUsageBatchID)
+		}
+	}
+	for _, inbound := range payload.L2TPInbounds {
+		for _, user := range inbound.Users {
+			add(user.UserID, user.ReflectedUsageBatchID)
+		}
+	}
+	for _, inbound := range payload.PPTPInbounds {
+		for _, user := range inbound.Users {
+			add(user.UserID, user.ReflectedUsageBatchID)
+		}
+	}
+	for _, inbound := range payload.WireGuardInbounds {
+		for _, peer := range inbound.Peers {
+			add(peer.UserID, peer.ReflectedUsageBatchID)
+		}
+	}
+	for _, inbound := range payload.AmneziaWGInbounds {
+		for _, peer := range inbound.Peers {
+			add(peer.UserID, peer.ReflectedUsageBatchID)
+		}
+	}
+	for _, inbound := range payload.IKEv2Inbounds {
+		for _, user := range inbound.Users {
+			add(user.UserID, user.ReflectedUsageBatchID)
+		}
+	}
+	for _, inbound := range payload.AnyConnectInbounds {
+		for _, user := range inbound.Users {
+			add(user.UserID, user.ReflectedUsageBatchID)
+		}
+	}
+
+	kept := make([]localUsageDelivery, 0, len(s.localUsageDeliveries))
+	for index, delivery := range s.localUsageDeliveries {
+		keep := anchors[delivery.BatchID] || len(delivery.Rows) == 0
+		for _, row := range delivery.Rows {
+			if index >= through[row.UserID] {
+				keep = true
+				break
+			}
+		}
+		if keep {
+			kept = append(kept, delivery)
+		}
+	}
+	return kept
 }
 
 func (s *Server) localAwaitingReflectionUsage(protocol string, userID int64, inboundTag, pendingChildID, reflectedRootBatchID string) (uint64, error) {
