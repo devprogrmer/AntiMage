@@ -93,6 +93,10 @@ func (s *Server) refreshOpenVPNSessions(
 	root string,
 	cfg nativeSessionHelperConfig,
 ) error {
+	if !cfg.OfflinePolicyOnly {
+		s.nativeAccountingPolicyMu.RLock()
+		defer s.nativeAccountingPolicyMu.RUnlock()
+	}
 	cfg.OfflineRuntimeRoot = root
 	if !cfg.OfflinePolicyOnly && s.cfg.DataDir != "" {
 		if raw, readErr := os.ReadFile(filepath.Join(root, "session-helper.json")); readErr == nil {

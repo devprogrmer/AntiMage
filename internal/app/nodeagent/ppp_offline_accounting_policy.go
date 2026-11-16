@@ -90,6 +90,10 @@ func (s *Server) quotaCheckPPPOffline(ctx context.Context) error {
 					if !ok {
 						continue
 					}
+					policy, err := s.currentNativeAccountingPolicy(protocol, uid, cfg.InboundTag, policy)
+					if err != nil {
+						return err
+					}
 					preview := previews[protocol]
 					pendingRaw, err := offlinePreviewPendingRaw(preview, uid, cfg.InboundTag)
 					if err != nil {

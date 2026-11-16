@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,8 @@ import (
 )
 
 const maxLocalUsageDeliveries = 4096
+
+var errLocalUsageDeliveryCapacity = errors.New("unreflected accounting delivery capacity exceeded")
 
 type localUsageDeliveryRow struct {
 	Protocol   string `json:"protocol"`
@@ -305,7 +308,7 @@ func (s *Server) commitLocalUsageDeliveryLocked(deliveries []localUsageDelivery,
 		}
 	}
 	if len(deliveries) >= maxLocalUsageDeliveries {
-		return fmt.Errorf("unreflected accounting delivery capacity exceeded")
+		return errLocalUsageDeliveryCapacity
 	}
 	next := make([]localUsageDelivery, len(deliveries), len(deliveries)+1)
 	copy(next, deliveries)
@@ -376,6 +379,23 @@ func (s *Server) reclaimReflectedDeliveriesLocked(payload nativeRuntimePayload) 
 		}
 	}
 
+	type protocolOwner struct {
+		protocol string
+		userID   int64
+	}
+	latest := make(map[protocolOwner]string)
+	for _, delivery := range s.localUsageDeliveries {
+		for _, row := range delivery.Rows {
+			latest[protocolOwner{row.Protocol, row.UserID}] = delivery.BatchID
+		}
+	}
+	for _, marker := range payload.WireGuardAccountingRefreshed {
+		anchors[marker] = true
+	}
+	for _, marker := range latest {
+		anchors[marker] = true
+	}
+
 	kept := make([]localUsageDelivery, 0, len(s.localUsageDeliveries))
 	for index, delivery := range s.localUsageDeliveries {
 		keep := anchors[delivery.BatchID] || len(delivery.Rows) == 0
@@ -398,80 +418,10 @@ func (s *Server) localAwaitingReflectionUsage(protocol string, userID int64, inb
 	if err := s.ensureLocalUsageDeliveriesLocked(); err != nil {
 		return 0, err
 	}
-	if total, indexed, err := s.localUsageReflectionIndexedLocked(protocol, userID, inboundTag, pendingChildID, reflectedRootBatchID); indexed || err != nil {
-		return total, err
-	}
-	reflectedThrough := -1
-	for index, delivery := range s.localUsageDeliveries {
-		if delivery.BatchID == reflectedRootBatchID {
-			reflectedThrough = index
-			break
-		}
-	}
-	var total uint64
-	// The common path only reads the ledger. Do not copy every delivery and
-	// row unless reflection actually requires pruning or zeroing a row. All
-	// access remains under localUsageMu and the durable rewrite below is kept.
-	needsRewrite := false
-readOnly:
-	for index, delivery := range s.localUsageDeliveries {
-		for _, row := range delivery.Rows {
-			if row.UserID == userID && (index < reflectedThrough ||
-				(index == reflectedThrough && (row.Raw != 0 || (row.Protocol == protocol && row.ChildID != pendingChildID)))) {
-				needsRewrite = true
-				break readOnly
-			}
-			if row.Protocol != protocol || row.UserID != userID || row.InboundTag != inboundTag || row.ChildID == pendingChildID {
-				continue
-			}
-			if ^uint64(0)-total < row.Raw {
-				return 0, fmt.Errorf("unreflected accounting usage overflow")
-			}
-			total += row.Raw
-		}
-	}
-	if !needsRewrite {
-		return total, nil
-	}
-	total = 0
-	changed := false
-	next := make([]localUsageDelivery, 0, len(s.localUsageDeliveries))
-	for index, delivery := range s.localUsageDeliveries {
-		rows := make([]localUsageDeliveryRow, 0, len(delivery.Rows))
-		for _, row := range delivery.Rows {
-			if index < reflectedThrough && row.UserID == userID {
-				changed = true
-				continue
-			}
-			if index == reflectedThrough && row.UserID == userID && row.Raw != 0 {
-				row.Raw = 0
-				changed = true
-			}
-			if index == reflectedThrough && row.UserID == userID && row.Protocol == protocol && row.ChildID != pendingChildID {
-				changed = true
-				continue
-			}
-			rows = append(rows, row)
-			if row.Protocol != protocol || row.UserID != userID || row.InboundTag != inboundTag || row.ChildID == pendingChildID {
-				continue
-			}
-			if ^uint64(0)-total < row.Raw {
-				return 0, fmt.Errorf("unreflected accounting usage overflow")
-			}
-			total += row.Raw
-		}
-		if len(rows) > 0 {
-			next = append(next, localUsageDelivery{BatchID: delivery.BatchID, Rows: rows})
-		}
-	}
-	if changed {
-		if err := s.persistLocalUsageDeliveriesLocked(next); err != nil {
-			return 0, err
-		}
-		s.localUsageDeliveries = next
-		s.localUsageDeliveryIndex = nil
-	}
-	return total, nil
+	// Readers can run in helper subprocesses. Keep quota evaluation read-only
+	// and preserve batch/child identities until the committed policy permits
+	// reclaiming the whole delivery.
+	return s.localUsageReflectionIndexedLocked(protocol, userID, inboundTag, pendingChildID, reflectedRootBatchID)
 }
 
 func (s *Server) localPendingUsageReflected(protocol string, userID int64, pendingChildID, reflectedRootBatchID string) (bool, error) {
@@ -490,7 +440,7 @@ func (s *Server) localPendingUsageReflected(protocol string, userID int64, pendi
 	}
 	for _, entry := range index.Users[userID] {
 		row := s.localUsageDeliveries[entry.Position].Rows[entry.RowPosition]
-		if entry.Position == position && row.Protocol == protocol && row.ChildID == pendingChildID {
+		if entry.Position <= position && row.Protocol == protocol && row.ChildID == pendingChildID {
 			return true, nil
 		}
 	}

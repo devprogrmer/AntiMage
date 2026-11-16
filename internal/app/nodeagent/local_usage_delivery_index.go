@@ -49,22 +49,22 @@ func (s *Server) localUsageIndexLocked() *localUsageDeliveryIndex {
 	return s.localUsageDeliveryIndex
 }
 
-func (s *Server) localUsageReflectionIndexedLocked(protocol string, userID int64, inboundTag, pendingChildID, reflectedRootBatchID string) (uint64, bool, error) {
+func (s *Server) localUsageReflectionIndexedLocked(protocol string, userID int64, inboundTag, pendingChildID, reflectedRootBatchID string) (uint64, error) {
 	index := s.localUsageIndexLocked()
 	reflectedThrough, found := index.Batches[reflectedRootBatchID]
 	var total uint64
 	for _, entry := range index.Users[userID] {
 		row := s.localUsageDeliveries[entry.Position].Rows[entry.RowPosition]
-		if found && (entry.Position < reflectedThrough || entry.Position == reflectedThrough && (row.Raw != 0 || row.Protocol == protocol && row.ChildID != pendingChildID)) {
-			return 0, false, nil
+		if found && entry.Position <= reflectedThrough {
+			continue
 		}
 		if row.Protocol != protocol || row.InboundTag != inboundTag || row.ChildID == pendingChildID {
 			continue
 		}
 		if ^uint64(0)-total < row.Raw {
-			return 0, true, fmt.Errorf("unreflected accounting usage overflow")
+			return 0, fmt.Errorf("unreflected accounting usage overflow")
 		}
 		total += row.Raw
 	}
-	return total, true, nil
+	return total, nil
 }

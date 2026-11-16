@@ -4,7 +4,35 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
+
+const accountingReflectionPageSize = 500
+
+// Read the committed usage and its exact acknowledgement together. The
+// cursor bounds each refresh without excluding users with larger IDs.
+func (r Repository) accountingReflectionPage(ctx context.Context, nodeID, afterUserID int64) ([]*nodev1.AccountingReflection, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT ref.user_id, ref.batch_id, COALESCE(u.used_traffic, 0)
+FROM node_wireguard_usage_reflection ref
+JOIN users u ON u.id = ref.user_id
+WHERE ref.node_id = ? AND ref.user_id > ?
+ORDER BY ref.user_id
+LIMIT ?`, nodeID, afterUserID, accountingReflectionPageSize)
+	if err != nil {
+		return nil, fmt.Errorf("read accounting reflection page: %w", err)
+	}
+	defer rows.Close()
+	var page []*nodev1.AccountingReflection
+	for rows.Next() {
+		proof := new(nodev1.AccountingReflection)
+		if err := rows.Scan(&proof.UserId, &proof.BatchId, &proof.UsedTraffic); err != nil {
+			return nil, fmt.Errorf("read accounting reflection row: %w", err)
+		}
+		page = append(page, proof)
+	}
+	return page, rows.Err()
+}
 
 type runtimeUsageReflection struct {
 	UsedTraffic int64

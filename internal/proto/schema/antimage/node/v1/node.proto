@@ -336,6 +336,15 @@ message TransferMetrics {
 message CollectUsageRequest {
   string collector_id = 1;
   bool reset = 2;
+  repeated AccountingReflection accounting_reflections = 3;
+  bool can_refresh_accounting = 4;
+}
+
+// The panel reads these values together from its committed accounting state.
+message AccountingReflection {
+  int64 user_id = 1;
+  string batch_id = 2;
+  int64 used_traffic = 3;
 }
 
 message UserUsageBatch {

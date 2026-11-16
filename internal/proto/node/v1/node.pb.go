@@ -2846,11 +2846,13 @@ func (x *TransferMetrics) GetDownloadSpeed() uint64 {
 }
 
 type CollectUsageRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	CollectorId   string                 `protobuf:"bytes,1,opt,name=collector_id,json=collectorId,proto3" json:"collector_id,omitempty"`
-	Reset_        bool                   `protobuf:"varint,2,opt,name=reset,proto3" json:"reset,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                 protoimpl.MessageState  `protogen:"open.v1"`
+	CollectorId           string                  `protobuf:"bytes,1,opt,name=collector_id,json=collectorId,proto3" json:"collector_id,omitempty"`
+	Reset_                bool                    `protobuf:"varint,2,opt,name=reset,proto3" json:"reset,omitempty"`
+	AccountingReflections []*AccountingReflection `protobuf:"bytes,3,rep,name=accounting_reflections,json=accountingReflections,proto3" json:"accounting_reflections,omitempty"`
+	CanRefreshAccounting  bool                    `protobuf:"varint,4,opt,name=can_refresh_accounting,json=canRefreshAccounting,proto3" json:"can_refresh_accounting,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *CollectUsageRequest) Reset() {
@@ -2897,6 +2899,81 @@ func (x *CollectUsageRequest) GetReset_() bool {
 	return false
 }
 
+func (x *CollectUsageRequest) GetAccountingReflections() []*AccountingReflection {
+	if x != nil {
+		return x.AccountingReflections
+	}
+	return nil
+}
+
+func (x *CollectUsageRequest) GetCanRefreshAccounting() bool {
+	if x != nil {
+		return x.CanRefreshAccounting
+	}
+	return false
+}
+
+// The panel reads these values together from its committed accounting state.
+type AccountingReflection struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        int64                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	BatchId       string                 `protobuf:"bytes,2,opt,name=batch_id,json=batchId,proto3" json:"batch_id,omitempty"`
+	UsedTraffic   int64                  `protobuf:"varint,3,opt,name=used_traffic,json=usedTraffic,proto3" json:"used_traffic,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountingReflection) Reset() {
+	*x = AccountingReflection{}
+	mi := &file_antimage_node_v1_node_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountingReflection) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountingReflection) ProtoMessage() {}
+
+func (x *AccountingReflection) ProtoReflect() protoreflect.Message {
+	mi := &file_antimage_node_v1_node_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountingReflection.ProtoReflect.Descriptor instead.
+func (*AccountingReflection) Descriptor() ([]byte, []int) {
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *AccountingReflection) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *AccountingReflection) GetBatchId() string {
+	if x != nil {
+		return x.BatchId
+	}
+	return ""
+}
+
+func (x *AccountingReflection) GetUsedTraffic() int64 {
+	if x != nil {
+		return x.UsedTraffic
+	}
+	return 0
+}
+
 type UserUsageBatch struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BatchId       string                 `protobuf:"bytes,1,opt,name=batch_id,json=batchId,proto3" json:"batch_id,omitempty"`
@@ -2909,7 +2986,7 @@ type UserUsageBatch struct {
 
 func (x *UserUsageBatch) Reset() {
 	*x = UserUsageBatch{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[43]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2921,7 +2998,7 @@ func (x *UserUsageBatch) String() string {
 func (*UserUsageBatch) ProtoMessage() {}
 
 func (x *UserUsageBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[43]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2934,7 +3011,7 @@ func (x *UserUsageBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserUsageBatch.ProtoReflect.Descriptor instead.
 func (*UserUsageBatch) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{43}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *UserUsageBatch) GetBatchId() string {
@@ -2976,7 +3053,7 @@ type UserTrafficSpeed struct {
 
 func (x *UserTrafficSpeed) Reset() {
 	*x = UserTrafficSpeed{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[44]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2988,7 +3065,7 @@ func (x *UserTrafficSpeed) String() string {
 func (*UserTrafficSpeed) ProtoMessage() {}
 
 func (x *UserTrafficSpeed) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[44]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3001,7 +3078,7 @@ func (x *UserTrafficSpeed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserTrafficSpeed.ProtoReflect.Descriptor instead.
 func (*UserTrafficSpeed) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{44}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *UserTrafficSpeed) GetUid() string {
@@ -3036,7 +3113,7 @@ type UserUsageSample struct {
 
 func (x *UserUsageSample) Reset() {
 	*x = UserUsageSample{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[45]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3048,7 +3125,7 @@ func (x *UserUsageSample) String() string {
 func (*UserUsageSample) ProtoMessage() {}
 
 func (x *UserUsageSample) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[45]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3061,7 +3138,7 @@ func (x *UserUsageSample) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserUsageSample.ProtoReflect.Descriptor instead.
 func (*UserUsageSample) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{45}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *UserUsageSample) GetUid() string {
@@ -3096,7 +3173,7 @@ type OnlineUserIP struct {
 
 func (x *OnlineUserIP) Reset() {
 	*x = OnlineUserIP{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[46]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3108,7 +3185,7 @@ func (x *OnlineUserIP) String() string {
 func (*OnlineUserIP) ProtoMessage() {}
 
 func (x *OnlineUserIP) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[46]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3121,7 +3198,7 @@ func (x *OnlineUserIP) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OnlineUserIP.ProtoReflect.Descriptor instead.
 func (*OnlineUserIP) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{46}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *OnlineUserIP) GetUid() string {
@@ -3155,7 +3232,7 @@ type OnlineIP struct {
 
 func (x *OnlineIP) Reset() {
 	*x = OnlineIP{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[47]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3167,7 +3244,7 @@ func (x *OnlineIP) String() string {
 func (*OnlineIP) ProtoMessage() {}
 
 func (x *OnlineIP) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[47]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3180,7 +3257,7 @@ func (x *OnlineIP) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OnlineIP.ProtoReflect.Descriptor instead.
 func (*OnlineIP) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{47}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *OnlineIP) GetIp() string {
@@ -3208,7 +3285,7 @@ type OutboundUsageBatch struct {
 
 func (x *OutboundUsageBatch) Reset() {
 	*x = OutboundUsageBatch{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[48]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3220,7 +3297,7 @@ func (x *OutboundUsageBatch) String() string {
 func (*OutboundUsageBatch) ProtoMessage() {}
 
 func (x *OutboundUsageBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[48]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3233,7 +3310,7 @@ func (x *OutboundUsageBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutboundUsageBatch.ProtoReflect.Descriptor instead.
 func (*OutboundUsageBatch) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{48}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *OutboundUsageBatch) GetBatchId() string {
@@ -3268,7 +3345,7 @@ type OutboundUsageSample struct {
 
 func (x *OutboundUsageSample) Reset() {
 	*x = OutboundUsageSample{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[49]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3280,7 +3357,7 @@ func (x *OutboundUsageSample) String() string {
 func (*OutboundUsageSample) ProtoMessage() {}
 
 func (x *OutboundUsageSample) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[49]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3293,7 +3370,7 @@ func (x *OutboundUsageSample) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutboundUsageSample.ProtoReflect.Descriptor instead.
 func (*OutboundUsageSample) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{49}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *OutboundUsageSample) GetTag() string {
@@ -3328,7 +3405,7 @@ type InboundUsageSample struct {
 
 func (x *InboundUsageSample) Reset() {
 	*x = InboundUsageSample{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[50]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3340,7 +3417,7 @@ func (x *InboundUsageSample) String() string {
 func (*InboundUsageSample) ProtoMessage() {}
 
 func (x *InboundUsageSample) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[50]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3353,7 +3430,7 @@ func (x *InboundUsageSample) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InboundUsageSample.ProtoReflect.Descriptor instead.
 func (*InboundUsageSample) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{50}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *InboundUsageSample) GetTag() string {
@@ -3386,7 +3463,7 @@ type AckUsageRequest struct {
 
 func (x *AckUsageRequest) Reset() {
 	*x = AckUsageRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[51]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3398,7 +3475,7 @@ func (x *AckUsageRequest) String() string {
 func (*AckUsageRequest) ProtoMessage() {}
 
 func (x *AckUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[51]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3411,7 +3488,7 @@ func (x *AckUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckUsageRequest.ProtoReflect.Descriptor instead.
 func (*AckUsageRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{51}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *AckUsageRequest) GetBatchId() string {
@@ -3431,7 +3508,7 @@ type AckUsageResponse struct {
 
 func (x *AckUsageResponse) Reset() {
 	*x = AckUsageResponse{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[52]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3443,7 +3520,7 @@ func (x *AckUsageResponse) String() string {
 func (*AckUsageResponse) ProtoMessage() {}
 
 func (x *AckUsageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[52]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3456,7 +3533,7 @@ func (x *AckUsageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckUsageResponse.ProtoReflect.Descriptor instead.
 func (*AckUsageResponse) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{52}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *AckUsageResponse) GetBatchId() string {
@@ -3484,7 +3561,7 @@ type StreamLogsRequest struct {
 
 func (x *StreamLogsRequest) Reset() {
 	*x = StreamLogsRequest{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[53]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3496,7 +3573,7 @@ func (x *StreamLogsRequest) String() string {
 func (*StreamLogsRequest) ProtoMessage() {}
 
 func (x *StreamLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[53]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3509,7 +3586,7 @@ func (x *StreamLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamLogsRequest.ProtoReflect.Descriptor instead.
 func (*StreamLogsRequest) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{53}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *StreamLogsRequest) GetStreamId() string {
@@ -3544,7 +3621,7 @@ type LogLine struct {
 
 func (x *LogLine) Reset() {
 	*x = LogLine{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[54]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3556,7 +3633,7 @@ func (x *LogLine) String() string {
 func (*LogLine) ProtoMessage() {}
 
 func (x *LogLine) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[54]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3569,7 +3646,7 @@ func (x *LogLine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogLine.ProtoReflect.Descriptor instead.
 func (*LogLine) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{54}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *LogLine) GetStreamId() string {
@@ -3602,7 +3679,7 @@ type OnlineUsersResponse struct {
 
 func (x *OnlineUsersResponse) Reset() {
 	*x = OnlineUsersResponse{}
-	mi := &file_antimage_node_v1_node_proto_msgTypes[55]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3614,7 +3691,7 @@ func (x *OnlineUsersResponse) String() string {
 func (*OnlineUsersResponse) ProtoMessage() {}
 
 func (x *OnlineUsersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_antimage_node_v1_node_proto_msgTypes[55]
+	mi := &file_antimage_node_v1_node_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3627,7 +3704,7 @@ func (x *OnlineUsersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OnlineUsersResponse.ProtoReflect.Descriptor instead.
 func (*OnlineUsersResponse) Descriptor() ([]byte, []int) {
-	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{55}
+	return file_antimage_node_v1_node_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *OnlineUsersResponse) GetUids() []string {
@@ -3869,10 +3946,16 @@ const file_antimage_node_v1_node_proto_rawDesc = "" +
 	"\fuplink_total\x18\x01 \x01(\x04R\vuplinkTotal\x12%\n" +
 	"\x0edownlink_total\x18\x02 \x01(\x04R\rdownlinkTotal\x12!\n" +
 	"\fupload_speed\x18\x03 \x01(\x04R\vuploadSpeed\x12%\n" +
-	"\x0edownload_speed\x18\x04 \x01(\x04R\rdownloadSpeed\"N\n" +
+	"\x0edownload_speed\x18\x04 \x01(\x04R\rdownloadSpeed\"\xe3\x01\n" +
 	"\x13CollectUsageRequest\x12!\n" +
 	"\fcollector_id\x18\x01 \x01(\tR\vcollectorId\x12\x14\n" +
-	"\x05reset\x18\x02 \x01(\bR\x05reset\"\xdf\x01\n" +
+	"\x05reset\x18\x02 \x01(\bR\x05reset\x12]\n" +
+	"\x16accounting_reflections\x18\x03 \x03(\v2&.antimage.node.v1.AccountingReflectionR\x15accountingReflections\x124\n" +
+	"\x16can_refresh_accounting\x18\x04 \x01(\bR\x14canRefreshAccounting\"m\n" +
+	"\x14AccountingReflection\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x03R\x06userId\x12\x19\n" +
+	"\bbatch_id\x18\x02 \x01(\tR\abatchId\x12!\n" +
+	"\fused_traffic\x18\x03 \x01(\x03R\vusedTraffic\"\xdf\x01\n" +
 	"\x0eUserUsageBatch\x12\x19\n" +
 	"\bbatch_id\x18\x01 \x01(\tR\abatchId\x127\n" +
 	"\x05stats\x18\x02 \x03(\v2!.antimage.node.v1.UserUsageSampleR\x05stats\x12=\n" +
@@ -3973,7 +4056,7 @@ func file_antimage_node_v1_node_proto_rawDescGZIP() []byte {
 	return file_antimage_node_v1_node_proto_rawDescData
 }
 
-var file_antimage_node_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 57)
+var file_antimage_node_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 58)
 var file_antimage_node_v1_node_proto_goTypes = []any{
 	(*Empty)(nil),                    // 0: antimage.node.v1.Empty
 	(*HelloRequest)(nil),             // 1: antimage.node.v1.HelloRequest
@@ -4018,20 +4101,21 @@ var file_antimage_node_v1_node_proto_goTypes = []any{
 	(*SystemMetrics)(nil),            // 40: antimage.node.v1.SystemMetrics
 	(*TransferMetrics)(nil),          // 41: antimage.node.v1.TransferMetrics
 	(*CollectUsageRequest)(nil),      // 42: antimage.node.v1.CollectUsageRequest
-	(*UserUsageBatch)(nil),           // 43: antimage.node.v1.UserUsageBatch
-	(*UserTrafficSpeed)(nil),         // 44: antimage.node.v1.UserTrafficSpeed
-	(*UserUsageSample)(nil),          // 45: antimage.node.v1.UserUsageSample
-	(*OnlineUserIP)(nil),             // 46: antimage.node.v1.OnlineUserIP
-	(*OnlineIP)(nil),                 // 47: antimage.node.v1.OnlineIP
-	(*OutboundUsageBatch)(nil),       // 48: antimage.node.v1.OutboundUsageBatch
-	(*OutboundUsageSample)(nil),      // 49: antimage.node.v1.OutboundUsageSample
-	(*InboundUsageSample)(nil),       // 50: antimage.node.v1.InboundUsageSample
-	(*AckUsageRequest)(nil),          // 51: antimage.node.v1.AckUsageRequest
-	(*AckUsageResponse)(nil),         // 52: antimage.node.v1.AckUsageResponse
-	(*StreamLogsRequest)(nil),        // 53: antimage.node.v1.StreamLogsRequest
-	(*LogLine)(nil),                  // 54: antimage.node.v1.LogLine
-	(*OnlineUsersResponse)(nil),      // 55: antimage.node.v1.OnlineUsersResponse
-	nil,                              // 56: antimage.node.v1.InboundUser.FieldsEntry
+	(*AccountingReflection)(nil),     // 43: antimage.node.v1.AccountingReflection
+	(*UserUsageBatch)(nil),           // 44: antimage.node.v1.UserUsageBatch
+	(*UserTrafficSpeed)(nil),         // 45: antimage.node.v1.UserTrafficSpeed
+	(*UserUsageSample)(nil),          // 46: antimage.node.v1.UserUsageSample
+	(*OnlineUserIP)(nil),             // 47: antimage.node.v1.OnlineUserIP
+	(*OnlineIP)(nil),                 // 48: antimage.node.v1.OnlineIP
+	(*OutboundUsageBatch)(nil),       // 49: antimage.node.v1.OutboundUsageBatch
+	(*OutboundUsageSample)(nil),      // 50: antimage.node.v1.OutboundUsageSample
+	(*InboundUsageSample)(nil),       // 51: antimage.node.v1.InboundUsageSample
+	(*AckUsageRequest)(nil),          // 52: antimage.node.v1.AckUsageRequest
+	(*AckUsageResponse)(nil),         // 53: antimage.node.v1.AckUsageResponse
+	(*StreamLogsRequest)(nil),        // 54: antimage.node.v1.StreamLogsRequest
+	(*LogLine)(nil),                  // 55: antimage.node.v1.LogLine
+	(*OnlineUsersResponse)(nil),      // 56: antimage.node.v1.OnlineUsersResponse
+	nil,                              // 57: antimage.node.v1.InboundUser.FieldsEntry
 }
 var file_antimage_node_v1_node_proto_depIdxs = []int32{
 	7,  // 0: antimage.node.v1.HelloResponse.runtime:type_name -> antimage.node.v1.RuntimeState
@@ -4040,7 +4124,7 @@ var file_antimage_node_v1_node_proto_depIdxs = []int32{
 	15, // 3: antimage.node.v1.HealthResponse.metrics:type_name -> antimage.node.v1.MetricsResponse
 	7,  // 4: antimage.node.v1.RuntimeActionResponse.runtime:type_name -> antimage.node.v1.RuntimeState
 	13, // 5: antimage.node.v1.InboundUserRequest.user:type_name -> antimage.node.v1.InboundUser
-	56, // 6: antimage.node.v1.InboundUser.fields:type_name -> antimage.node.v1.InboundUser.FieldsEntry
+	57, // 6: antimage.node.v1.InboundUser.fields:type_name -> antimage.node.v1.InboundUser.FieldsEntry
 	7,  // 7: antimage.node.v1.MetricsResponse.runtime:type_name -> antimage.node.v1.RuntimeState
 	40, // 8: antimage.node.v1.MetricsResponse.system:type_name -> antimage.node.v1.SystemMetrics
 	41, // 9: antimage.node.v1.MetricsResponse.transfer:type_name -> antimage.node.v1.TransferMetrics
@@ -4053,75 +4137,76 @@ var file_antimage_node_v1_node_proto_depIdxs = []int32{
 	35, // 16: antimage.node.v1.WindscribeProxyResponse.locations:type_name -> antimage.node.v1.WindscribeLocation
 	7,  // 17: antimage.node.v1.PsiphonProxyResponse.runtime:type_name -> antimage.node.v1.RuntimeState
 	38, // 18: antimage.node.v1.PsiphonProxyResponse.instances:type_name -> antimage.node.v1.PsiphonProxyInstance
-	45, // 19: antimage.node.v1.UserUsageBatch.stats:type_name -> antimage.node.v1.UserUsageSample
-	46, // 20: antimage.node.v1.UserUsageBatch.online_ips:type_name -> antimage.node.v1.OnlineUserIP
-	44, // 21: antimage.node.v1.UserUsageBatch.speeds:type_name -> antimage.node.v1.UserTrafficSpeed
-	47, // 22: antimage.node.v1.OnlineUserIP.ips:type_name -> antimage.node.v1.OnlineIP
-	49, // 23: antimage.node.v1.OutboundUsageBatch.stats:type_name -> antimage.node.v1.OutboundUsageSample
-	50, // 24: antimage.node.v1.OutboundUsageBatch.inbound_stats:type_name -> antimage.node.v1.InboundUsageSample
-	1,  // 25: antimage.node.v1.NodeControlService.Hello:input_type -> antimage.node.v1.HelloRequest
-	3,  // 26: antimage.node.v1.NodeControlService.Connect:input_type -> antimage.node.v1.ConnectRequest
-	5,  // 27: antimage.node.v1.NodeControlService.Health:input_type -> antimage.node.v1.HealthRequest
-	8,  // 28: antimage.node.v1.NodeRuntimeService.StartRuntime:input_type -> antimage.node.v1.RuntimeConfigRequest
-	8,  // 29: antimage.node.v1.NodeRuntimeService.RestartRuntime:input_type -> antimage.node.v1.RuntimeConfigRequest
-	9,  // 30: antimage.node.v1.NodeRuntimeService.StopRuntime:input_type -> antimage.node.v1.StopRuntimeRequest
-	8,  // 31: antimage.node.v1.NodeRuntimeService.SyncConfig:input_type -> antimage.node.v1.RuntimeConfigRequest
-	11, // 32: antimage.node.v1.NodeRuntimeService.AddUser:input_type -> antimage.node.v1.InboundUserRequest
-	11, // 33: antimage.node.v1.NodeRuntimeService.UpdateUser:input_type -> antimage.node.v1.InboundUserRequest
-	12, // 34: antimage.node.v1.NodeRuntimeService.RemoveUser:input_type -> antimage.node.v1.RemoveInboundUserRequest
-	14, // 35: antimage.node.v1.NodeRuntimeService.Metrics:input_type -> antimage.node.v1.MetricsRequest
-	18, // 36: antimage.node.v1.NodeRuntimeService.PublicIPs:input_type -> antimage.node.v1.PublicIPsRequest
-	20, // 37: antimage.node.v1.NodeRuntimeService.TestOutbound:input_type -> antimage.node.v1.OutboundTestRequest
-	22, // 38: antimage.node.v1.NodeRuntimeService.TestRoute:input_type -> antimage.node.v1.RouteTestRequest
-	25, // 39: antimage.node.v1.NodeRuntimeService.UpdateRuntime:input_type -> antimage.node.v1.RuntimeUpdateRequest
-	26, // 40: antimage.node.v1.NodeRuntimeService.UpdateGeo:input_type -> antimage.node.v1.GeoUpdateRequest
-	28, // 41: antimage.node.v1.NodeRuntimeService.RestartService:input_type -> antimage.node.v1.ServiceRestartRequest
-	29, // 42: antimage.node.v1.NodeRuntimeService.UpdateService:input_type -> antimage.node.v1.ServiceUpdateRequest
-	30, // 43: antimage.node.v1.NodeRuntimeService.RebootHost:input_type -> antimage.node.v1.HostRebootRequest
-	31, // 44: antimage.node.v1.NodeRuntimeService.ApplyIPBlocks:input_type -> antimage.node.v1.IPBlockRequest
-	33, // 45: antimage.node.v1.NodeRuntimeService.ApplyTorProxy:input_type -> antimage.node.v1.TorProxyRequest
-	34, // 46: antimage.node.v1.NodeRuntimeService.ConfigureWindscribe:input_type -> antimage.node.v1.WindscribeProxyRequest
-	37, // 47: antimage.node.v1.NodeRuntimeService.ConfigurePsiphon:input_type -> antimage.node.v1.PsiphonProxyRequest
-	0,  // 48: antimage.node.v1.NodeUsageService.CollectOnlineUsers:input_type -> antimage.node.v1.Empty
-	42, // 49: antimage.node.v1.NodeUsageService.CollectUserUsage:input_type -> antimage.node.v1.CollectUsageRequest
-	51, // 50: antimage.node.v1.NodeUsageService.AckUserUsage:input_type -> antimage.node.v1.AckUsageRequest
-	42, // 51: antimage.node.v1.NodeUsageService.CollectOutboundUsage:input_type -> antimage.node.v1.CollectUsageRequest
-	51, // 52: antimage.node.v1.NodeUsageService.AckOutboundUsage:input_type -> antimage.node.v1.AckUsageRequest
-	53, // 53: antimage.node.v1.NodeLogsService.StreamLogs:input_type -> antimage.node.v1.StreamLogsRequest
-	2,  // 54: antimage.node.v1.NodeControlService.Hello:output_type -> antimage.node.v1.HelloResponse
-	4,  // 55: antimage.node.v1.NodeControlService.Connect:output_type -> antimage.node.v1.ConnectResponse
-	6,  // 56: antimage.node.v1.NodeControlService.Health:output_type -> antimage.node.v1.HealthResponse
-	10, // 57: antimage.node.v1.NodeRuntimeService.StartRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
-	10, // 58: antimage.node.v1.NodeRuntimeService.RestartRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
-	10, // 59: antimage.node.v1.NodeRuntimeService.StopRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
-	10, // 60: antimage.node.v1.NodeRuntimeService.SyncConfig:output_type -> antimage.node.v1.RuntimeActionResponse
-	10, // 61: antimage.node.v1.NodeRuntimeService.AddUser:output_type -> antimage.node.v1.RuntimeActionResponse
-	10, // 62: antimage.node.v1.NodeRuntimeService.UpdateUser:output_type -> antimage.node.v1.RuntimeActionResponse
-	10, // 63: antimage.node.v1.NodeRuntimeService.RemoveUser:output_type -> antimage.node.v1.RuntimeActionResponse
-	15, // 64: antimage.node.v1.NodeRuntimeService.Metrics:output_type -> antimage.node.v1.MetricsResponse
-	19, // 65: antimage.node.v1.NodeRuntimeService.PublicIPs:output_type -> antimage.node.v1.PublicIPsResponse
-	21, // 66: antimage.node.v1.NodeRuntimeService.TestOutbound:output_type -> antimage.node.v1.OutboundTestResponse
-	23, // 67: antimage.node.v1.NodeRuntimeService.TestRoute:output_type -> antimage.node.v1.RouteTestResponse
-	10, // 68: antimage.node.v1.NodeRuntimeService.UpdateRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
-	10, // 69: antimage.node.v1.NodeRuntimeService.UpdateGeo:output_type -> antimage.node.v1.RuntimeActionResponse
-	10, // 70: antimage.node.v1.NodeRuntimeService.RestartService:output_type -> antimage.node.v1.RuntimeActionResponse
-	10, // 71: antimage.node.v1.NodeRuntimeService.UpdateService:output_type -> antimage.node.v1.RuntimeActionResponse
-	10, // 72: antimage.node.v1.NodeRuntimeService.RebootHost:output_type -> antimage.node.v1.RuntimeActionResponse
-	10, // 73: antimage.node.v1.NodeRuntimeService.ApplyIPBlocks:output_type -> antimage.node.v1.RuntimeActionResponse
-	10, // 74: antimage.node.v1.NodeRuntimeService.ApplyTorProxy:output_type -> antimage.node.v1.RuntimeActionResponse
-	36, // 75: antimage.node.v1.NodeRuntimeService.ConfigureWindscribe:output_type -> antimage.node.v1.WindscribeProxyResponse
-	39, // 76: antimage.node.v1.NodeRuntimeService.ConfigurePsiphon:output_type -> antimage.node.v1.PsiphonProxyResponse
-	55, // 77: antimage.node.v1.NodeUsageService.CollectOnlineUsers:output_type -> antimage.node.v1.OnlineUsersResponse
-	43, // 78: antimage.node.v1.NodeUsageService.CollectUserUsage:output_type -> antimage.node.v1.UserUsageBatch
-	52, // 79: antimage.node.v1.NodeUsageService.AckUserUsage:output_type -> antimage.node.v1.AckUsageResponse
-	48, // 80: antimage.node.v1.NodeUsageService.CollectOutboundUsage:output_type -> antimage.node.v1.OutboundUsageBatch
-	52, // 81: antimage.node.v1.NodeUsageService.AckOutboundUsage:output_type -> antimage.node.v1.AckUsageResponse
-	54, // 82: antimage.node.v1.NodeLogsService.StreamLogs:output_type -> antimage.node.v1.LogLine
-	54, // [54:83] is the sub-list for method output_type
-	25, // [25:54] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	43, // 19: antimage.node.v1.CollectUsageRequest.accounting_reflections:type_name -> antimage.node.v1.AccountingReflection
+	46, // 20: antimage.node.v1.UserUsageBatch.stats:type_name -> antimage.node.v1.UserUsageSample
+	47, // 21: antimage.node.v1.UserUsageBatch.online_ips:type_name -> antimage.node.v1.OnlineUserIP
+	45, // 22: antimage.node.v1.UserUsageBatch.speeds:type_name -> antimage.node.v1.UserTrafficSpeed
+	48, // 23: antimage.node.v1.OnlineUserIP.ips:type_name -> antimage.node.v1.OnlineIP
+	50, // 24: antimage.node.v1.OutboundUsageBatch.stats:type_name -> antimage.node.v1.OutboundUsageSample
+	51, // 25: antimage.node.v1.OutboundUsageBatch.inbound_stats:type_name -> antimage.node.v1.InboundUsageSample
+	1,  // 26: antimage.node.v1.NodeControlService.Hello:input_type -> antimage.node.v1.HelloRequest
+	3,  // 27: antimage.node.v1.NodeControlService.Connect:input_type -> antimage.node.v1.ConnectRequest
+	5,  // 28: antimage.node.v1.NodeControlService.Health:input_type -> antimage.node.v1.HealthRequest
+	8,  // 29: antimage.node.v1.NodeRuntimeService.StartRuntime:input_type -> antimage.node.v1.RuntimeConfigRequest
+	8,  // 30: antimage.node.v1.NodeRuntimeService.RestartRuntime:input_type -> antimage.node.v1.RuntimeConfigRequest
+	9,  // 31: antimage.node.v1.NodeRuntimeService.StopRuntime:input_type -> antimage.node.v1.StopRuntimeRequest
+	8,  // 32: antimage.node.v1.NodeRuntimeService.SyncConfig:input_type -> antimage.node.v1.RuntimeConfigRequest
+	11, // 33: antimage.node.v1.NodeRuntimeService.AddUser:input_type -> antimage.node.v1.InboundUserRequest
+	11, // 34: antimage.node.v1.NodeRuntimeService.UpdateUser:input_type -> antimage.node.v1.InboundUserRequest
+	12, // 35: antimage.node.v1.NodeRuntimeService.RemoveUser:input_type -> antimage.node.v1.RemoveInboundUserRequest
+	14, // 36: antimage.node.v1.NodeRuntimeService.Metrics:input_type -> antimage.node.v1.MetricsRequest
+	18, // 37: antimage.node.v1.NodeRuntimeService.PublicIPs:input_type -> antimage.node.v1.PublicIPsRequest
+	20, // 38: antimage.node.v1.NodeRuntimeService.TestOutbound:input_type -> antimage.node.v1.OutboundTestRequest
+	22, // 39: antimage.node.v1.NodeRuntimeService.TestRoute:input_type -> antimage.node.v1.RouteTestRequest
+	25, // 40: antimage.node.v1.NodeRuntimeService.UpdateRuntime:input_type -> antimage.node.v1.RuntimeUpdateRequest
+	26, // 41: antimage.node.v1.NodeRuntimeService.UpdateGeo:input_type -> antimage.node.v1.GeoUpdateRequest
+	28, // 42: antimage.node.v1.NodeRuntimeService.RestartService:input_type -> antimage.node.v1.ServiceRestartRequest
+	29, // 43: antimage.node.v1.NodeRuntimeService.UpdateService:input_type -> antimage.node.v1.ServiceUpdateRequest
+	30, // 44: antimage.node.v1.NodeRuntimeService.RebootHost:input_type -> antimage.node.v1.HostRebootRequest
+	31, // 45: antimage.node.v1.NodeRuntimeService.ApplyIPBlocks:input_type -> antimage.node.v1.IPBlockRequest
+	33, // 46: antimage.node.v1.NodeRuntimeService.ApplyTorProxy:input_type -> antimage.node.v1.TorProxyRequest
+	34, // 47: antimage.node.v1.NodeRuntimeService.ConfigureWindscribe:input_type -> antimage.node.v1.WindscribeProxyRequest
+	37, // 48: antimage.node.v1.NodeRuntimeService.ConfigurePsiphon:input_type -> antimage.node.v1.PsiphonProxyRequest
+	0,  // 49: antimage.node.v1.NodeUsageService.CollectOnlineUsers:input_type -> antimage.node.v1.Empty
+	42, // 50: antimage.node.v1.NodeUsageService.CollectUserUsage:input_type -> antimage.node.v1.CollectUsageRequest
+	52, // 51: antimage.node.v1.NodeUsageService.AckUserUsage:input_type -> antimage.node.v1.AckUsageRequest
+	42, // 52: antimage.node.v1.NodeUsageService.CollectOutboundUsage:input_type -> antimage.node.v1.CollectUsageRequest
+	52, // 53: antimage.node.v1.NodeUsageService.AckOutboundUsage:input_type -> antimage.node.v1.AckUsageRequest
+	54, // 54: antimage.node.v1.NodeLogsService.StreamLogs:input_type -> antimage.node.v1.StreamLogsRequest
+	2,  // 55: antimage.node.v1.NodeControlService.Hello:output_type -> antimage.node.v1.HelloResponse
+	4,  // 56: antimage.node.v1.NodeControlService.Connect:output_type -> antimage.node.v1.ConnectResponse
+	6,  // 57: antimage.node.v1.NodeControlService.Health:output_type -> antimage.node.v1.HealthResponse
+	10, // 58: antimage.node.v1.NodeRuntimeService.StartRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 59: antimage.node.v1.NodeRuntimeService.RestartRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 60: antimage.node.v1.NodeRuntimeService.StopRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 61: antimage.node.v1.NodeRuntimeService.SyncConfig:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 62: antimage.node.v1.NodeRuntimeService.AddUser:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 63: antimage.node.v1.NodeRuntimeService.UpdateUser:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 64: antimage.node.v1.NodeRuntimeService.RemoveUser:output_type -> antimage.node.v1.RuntimeActionResponse
+	15, // 65: antimage.node.v1.NodeRuntimeService.Metrics:output_type -> antimage.node.v1.MetricsResponse
+	19, // 66: antimage.node.v1.NodeRuntimeService.PublicIPs:output_type -> antimage.node.v1.PublicIPsResponse
+	21, // 67: antimage.node.v1.NodeRuntimeService.TestOutbound:output_type -> antimage.node.v1.OutboundTestResponse
+	23, // 68: antimage.node.v1.NodeRuntimeService.TestRoute:output_type -> antimage.node.v1.RouteTestResponse
+	10, // 69: antimage.node.v1.NodeRuntimeService.UpdateRuntime:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 70: antimage.node.v1.NodeRuntimeService.UpdateGeo:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 71: antimage.node.v1.NodeRuntimeService.RestartService:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 72: antimage.node.v1.NodeRuntimeService.UpdateService:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 73: antimage.node.v1.NodeRuntimeService.RebootHost:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 74: antimage.node.v1.NodeRuntimeService.ApplyIPBlocks:output_type -> antimage.node.v1.RuntimeActionResponse
+	10, // 75: antimage.node.v1.NodeRuntimeService.ApplyTorProxy:output_type -> antimage.node.v1.RuntimeActionResponse
+	36, // 76: antimage.node.v1.NodeRuntimeService.ConfigureWindscribe:output_type -> antimage.node.v1.WindscribeProxyResponse
+	39, // 77: antimage.node.v1.NodeRuntimeService.ConfigurePsiphon:output_type -> antimage.node.v1.PsiphonProxyResponse
+	56, // 78: antimage.node.v1.NodeUsageService.CollectOnlineUsers:output_type -> antimage.node.v1.OnlineUsersResponse
+	44, // 79: antimage.node.v1.NodeUsageService.CollectUserUsage:output_type -> antimage.node.v1.UserUsageBatch
+	53, // 80: antimage.node.v1.NodeUsageService.AckUserUsage:output_type -> antimage.node.v1.AckUsageResponse
+	49, // 81: antimage.node.v1.NodeUsageService.CollectOutboundUsage:output_type -> antimage.node.v1.OutboundUsageBatch
+	53, // 82: antimage.node.v1.NodeUsageService.AckOutboundUsage:output_type -> antimage.node.v1.AckUsageResponse
+	55, // 83: antimage.node.v1.NodeLogsService.StreamLogs:output_type -> antimage.node.v1.LogLine
+	55, // [55:84] is the sub-list for method output_type
+	26, // [26:55] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_antimage_node_v1_node_proto_init() }
@@ -4135,7 +4220,7 @@ func file_antimage_node_v1_node_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_antimage_node_v1_node_proto_rawDesc), len(file_antimage_node_v1_node_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   57,
+			NumMessages:   58,
 			NumExtensions: 0,
 			NumServices:   4,
 		},
