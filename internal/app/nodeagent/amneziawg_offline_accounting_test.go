@@ -194,9 +194,9 @@ func TestAmneziaWGRootDeliveryCreditPendingACKReflectionReload(t *testing.T) {
 	if *removed != 0 {
 		t.Fatal("reflected ACK bytes charged again")
 	}
-	credit, err = s.localAwaitingReflectionUsage("amneziawg", 7, "awg", "", "")
+	credit, err = s.localAwaitingReflectionUsage("amneziawg", 7, "awg", "", policy.ReflectedUsageBatchID)
 	if err != nil || credit != 0 {
-		t.Fatalf("credit not pruned %d %v", credit, err)
+		t.Fatalf("reflected credit not excluded %d %v", credit, err)
 	}
 	*value = 150_000_000
 	if err := s.quotaCheckAmneziaWGOffline(context.Background()); err != nil {

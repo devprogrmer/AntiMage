@@ -19,14 +19,17 @@ type nativeRuntimePayload struct {
 	Target          string                       `json:"target"`
 	SessionCallback nativeRuntimeSessionCallback `json:"session_callback,omitempty"`
 
-	OpenVPNInbounds    []openVPNRuntimeInbound    `json:"inbounds"`
-	L2TPInbounds       []l2TPRuntimeInbound       `json:"l2tp_inbounds"`
-	PPTPInbounds       []pptpRuntimeInbound       `json:"pptp_inbounds"`
-	WireGuardInbounds  []wireGuardRuntimeInbound  `json:"wg_inbounds"`
-	AmneziaWGInbounds  []amneziaWGRuntimeInbound  `json:"awg_inbounds"`
-	IKEv2Inbounds      []ikev2RuntimeInbound      `json:"ikev2_inbounds"`
-	AnyConnectInbounds []anyConnectRuntimeInbound `json:"anyconnect_inbounds"`
-	XrayPolicies       []xrayLocalUserPolicy      `json:"xray_policies,omitempty"`
+	OpenVPNInbounds              []openVPNRuntimeInbound    `json:"inbounds"`
+	L2TPInbounds                 []l2TPRuntimeInbound       `json:"l2tp_inbounds"`
+	PPTPInbounds                 []pptpRuntimeInbound       `json:"pptp_inbounds"`
+	WireGuardInbounds            []wireGuardRuntimeInbound  `json:"wg_inbounds"`
+	AmneziaWGInbounds            []amneziaWGRuntimeInbound  `json:"awg_inbounds"`
+	IKEv2Inbounds                []ikev2RuntimeInbound      `json:"ikev2_inbounds"`
+	AnyConnectInbounds           []anyConnectRuntimeInbound `json:"anyconnect_inbounds"`
+	XrayPolicies                 []xrayLocalUserPolicy      `json:"xray_policies,omitempty"`
+	WireGuardAccountingRefreshed map[int64]string           `json:"wg_accounting_refreshed,omitempty"`
+
+	NativeAccountingRefreshed map[int64]*nativeAccountingReceipt `json:"accounting_refreshed,omitempty"`
 
 	HAProxy json.RawMessage `json:"haproxy"`
 }
@@ -98,6 +101,7 @@ func parseNativeRuntimePayload(raw string) (nativeRuntimePayload, error) {
 			err,
 		)
 	}
+	payload.indexAccountingReceipts()
 	return payload, nil
 }
 

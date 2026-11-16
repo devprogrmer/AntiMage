@@ -46,6 +46,7 @@ type Server struct {
 	xrayStatsClient                  *xrayStatsClient
 	localAccountingFailures          map[string]string
 	accountingLastCheckpoint         map[string]int64
+	nativeAccountingPolicyMu         sync.RWMutex
 	localUsageMu                     sync.Mutex
 	localUsageLoaded                 bool
 	localUsageDeliveries             []localUsageDelivery
@@ -493,12 +494,27 @@ func (s *Server) CollectUserUsage(
 	ctx context.Context,
 	req *nodev1.CollectUsageRequest,
 ) (*nodev1.UserUsageBatch, error) {
+	if req.GetCanRefreshAccounting() {
+		needed, err := s.accountingReflectionRefreshNeeded()
+		if err != nil {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		if needed {
+			return nil, status.Error(codes.ResourceExhausted, errLocalUsageDeliveryCapacity.Error())
+		}
+	}
+	if err := s.applyAccountingReflections(req.GetAccountingReflections()); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, "refresh accounting reflection: "+err.Error())
+	}
 	batch, err := s.collectUserUsageWithWireGuard(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.recordLocalUsageDelivery(batch.GetBatchId()); err != nil {
 		s.recordLocalAccountingHealth("delivery", err)
+		if errors.Is(err, errLocalUsageDeliveryCapacity) {
+			return nil, status.Error(codes.ResourceExhausted, err.Error())
+		}
 		return nil, err
 	}
 	s.recordLocalAccountingHealth("delivery", nil)

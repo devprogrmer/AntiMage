@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -113,8 +114,13 @@ func (s *Server) quotaCheckOpenVPNOffline(ctx context.Context) error {
 
 func (s *Server) openVPNOfflinePolicySnapshot(cfg nativeSessionHelperConfig, preview *offlineAccountingPreview) (nativeSessionHelperConfig, error) {
 	cfg.OfflineRawUsage = make(map[int64]uint64)
+	cfg.Policies = maps.Clone(cfg.Policies)
 	for username, uid := range cfg.Users {
-		policy := cfg.Policies[username]
+		policy, err := s.currentNativeAccountingPolicy("openvpn", uid, cfg.InboundTag, cfg.Policies[username])
+		if err != nil {
+			return cfg, err
+		}
+		cfg.Policies[username] = policy
 		pendingRaw, err := offlinePreviewPendingRaw(preview, uid, cfg.InboundTag)
 		if err != nil {
 			return cfg, err

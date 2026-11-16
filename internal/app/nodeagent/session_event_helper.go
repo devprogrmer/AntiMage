@@ -34,17 +34,18 @@ type nativeSessionHelperConfig struct {
 }
 
 type nativeSessionUserPolicy struct {
-	DeviceLimit           int64   `json:"device_limit,omitempty"`
-	IPLimit               int64   `json:"ip_limit,omitempty"`
-	Status                string  `json:"status"`
-	UsedTraffic           int64   `json:"used_traffic"`
-	DataLimit             int64   `json:"data_limit"`
-	Expire                int64   `json:"expire"`
-	ReflectedUsageBatchID string  `json:"reflected_usage_batch_id,omitempty"`
-	UploadSpeedLimit      int64   `json:"upload_speed_limit,omitempty"`
-	DownloadSpeedLimit    int64   `json:"download_speed_limit,omitempty"`
-	UsageCoefficient      float64 `json:"usage_coefficient,omitempty"`
-	InboundCoefficient    float64 `json:"inbound_coefficient,omitempty"`
+	wireGuardReflectionThrough string
+	DeviceLimit                int64   `json:"device_limit,omitempty"`
+	IPLimit                    int64   `json:"ip_limit,omitempty"`
+	Status                     string  `json:"status"`
+	UsedTraffic                int64   `json:"used_traffic"`
+	DataLimit                  int64   `json:"data_limit"`
+	Expire                     int64   `json:"expire"`
+	ReflectedUsageBatchID      string  `json:"reflected_usage_batch_id,omitempty"`
+	UploadSpeedLimit           int64   `json:"upload_speed_limit,omitempty"`
+	DownloadSpeedLimit         int64   `json:"download_speed_limit,omitempty"`
+	UsageCoefficient           float64 `json:"usage_coefficient,omitempty"`
+	InboundCoefficient         float64 `json:"inbound_coefficient,omitempty"`
 }
 
 var nativePPPProcessSignal = pppOfflineSignalSession
@@ -201,12 +202,21 @@ func RunNativeSessionEventHelper(args []string) error {
 		if protocol == "anyconnect" {
 			accountingProtocol = "anyconnect"
 		}
-		raw, err := node.durablePolicyRaw(accountingProtocol, userID, cfg.InboundTag, policy.ReflectedUsageBatchID)
-		if err != nil {
-			return fmt.Errorf("%s admission accounting: %w", accountingProtocol, err)
-		}
-		if allowed, reason := nativeSessionUserPolicyAllowedWithLiveUsage(policy, raw, time.Now()); !allowed {
-			return fmt.Errorf("%s admission denied: %s", accountingProtocol, reason)
+		if err := withPPPAdmissionLock(dataDir, func() error {
+			policy, err := node.currentNativeAccountingPolicy(accountingProtocol, userID, cfg.InboundTag, policy)
+			if err != nil {
+				return err
+			}
+			raw, err := node.durablePolicyRaw(accountingProtocol, userID, cfg.InboundTag, policy.ReflectedUsageBatchID)
+			if err != nil {
+				return fmt.Errorf("%s admission accounting: %w", accountingProtocol, err)
+			}
+			if allowed, reason := nativeSessionUserPolicyAllowedWithLiveUsage(policy, raw, time.Now()); !allowed {
+				return fmt.Errorf("%s admission denied: %s", accountingProtocol, reason)
+			}
+			return nil
+		}); err != nil {
+			return err
 		}
 	}
 
@@ -409,7 +419,10 @@ func rejectNativePPPAdmission(
 	root := filepath.Dir(configPath)
 	return withPPPAdmissionLock(dataDir, func() error {
 		node := New(Config{DataDir: dataDir})
-		policy := cfg.Policies[username]
+		policy, err := node.currentNativeAccountingPolicy(protocol, userID, cfg.InboundTag, cfg.Policies[username])
+		if err != nil {
+			return err
+		}
 		raw, err := node.durablePolicyRaw(protocol, userID, cfg.InboundTag, policy.ReflectedUsageBatchID)
 		if err != nil {
 			return fmt.Errorf("%s admission accounting: %w", protocol, err)

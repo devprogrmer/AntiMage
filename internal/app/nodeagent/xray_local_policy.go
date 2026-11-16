@@ -220,7 +220,7 @@ func (s *Server) quotaCheckXrayOfflineWithStats(ctx context.Context, snapshot *r
 		return err
 	}
 	s.mu.Lock()
-	unchanged := generation == s.xrayRuntimeGeneration
+	unchanged := generation == s.xrayRuntimeGeneration && (s.runtimePolicy == nil || s.runtimePolicy == snapshot)
 	s.mu.Unlock()
 	if !unchanged {
 		return fmt.Errorf("xray changed during quota snapshot")

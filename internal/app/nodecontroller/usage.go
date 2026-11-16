@@ -13,6 +13,8 @@ import (
 
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	mysqlDriver "github.com/go-sql-driver/mysql"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const usageCollectionConcurrency = 8
@@ -99,6 +101,44 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 	return result, nil
 }
 
+func (c Controller) collectUserUsageWithReflection(ctx context.Context, client nodev1.NodeUsageServiceClient, nodeID int64, req *nodev1.CollectUsageRequest) (*nodev1.UserUsageBatch, error) {
+	batch, err := client.CollectUserUsage(ctx, &nodev1.CollectUsageRequest{
+		CollectorId:          req.GetCollectorId(),
+		Reset_:               req.GetReset_(),
+		CanRefreshAccounting: true,
+	})
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.ResourceExhausted || st.Message() != "unreflected accounting delivery capacity exceeded" {
+		return batch, err
+	}
+
+	// An older node never asks for these proofs. The normal collection path
+	// incurs no additional queries and keeps its existing ACK ordering.
+	const maxProofs = 4096
+	var proofs []*nodev1.AccountingReflection
+	var afterUserID int64
+	for {
+		page, readErr := c.repo.accountingReflectionPage(ctx, nodeID, afterUserID)
+		if readErr != nil {
+			return nil, fmt.Errorf("recover full accounting ledger: %w", readErr)
+		}
+		if len(proofs)+len(page) > maxProofs {
+			return nil, fmt.Errorf("accounting reflection recovery exceeds %d users", maxProofs)
+		}
+		proofs = append(proofs, page...)
+		if len(page) < accountingReflectionPageSize {
+			break
+		}
+		afterUserID = page[len(page)-1].GetUserId()
+	}
+
+	return client.CollectUserUsage(ctx, &nodev1.CollectUsageRequest{
+		CollectorId:           req.GetCollectorId(),
+		Reset_:                req.GetReset_(),
+		AccountingReflections: proofs,
+	})
+}
+
 func (c Controller) collectUsageForNode(
 	ctx context.Context,
 	node NodeRow,
@@ -132,7 +172,7 @@ func (c Controller) collectUsageForNode(
 	var inboundDeltas []InboundUsageDelta
 
 	if collectUsers {
-		userBatch, err = client.Usage().CollectUserUsage(nodeCtx, &nodev1.CollectUsageRequest{
+		userBatch, err = c.collectUserUsageWithReflection(nodeCtx, client.Usage(), node.ID, &nodev1.CollectUsageRequest{
 			CollectorId: collectorID,
 			Reset_:      reset,
 		})

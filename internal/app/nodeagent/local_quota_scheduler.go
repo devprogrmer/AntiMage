@@ -173,7 +173,13 @@ func (s *Server) runLocalAccountingWorker(ctx context.Context, name string, quot
 					err = checkpointFn(sampleCtx)
 				}
 				if enforce && err == nil {
-					err = quotaFn(sampleCtx)
+					if name != "xray" && name != "wireguard" {
+						s.nativeAccountingPolicyMu.RLock()
+						err = quotaFn(sampleCtx)
+						s.nativeAccountingPolicyMu.RUnlock()
+					} else {
+						err = quotaFn(sampleCtx)
+					}
 				}
 			}
 			cancel()

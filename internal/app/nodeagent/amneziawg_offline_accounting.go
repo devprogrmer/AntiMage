@@ -273,6 +273,10 @@ func (s *Server) amneziaWGOfflineLocked(ctx context.Context, enforce, checkpoint
 				if !ok {
 					continue
 				}
+				policy, err := s.currentNativeAccountingPolicy("amneziawg", uid, cfg.InboundTag, policy)
+				if err != nil {
+					return state, err
+				}
 				total, err := s.amneziaWGUnreflectedRawLocked(state, uid, cfg.InboundTag)
 				if err != nil {
 					return state, err
