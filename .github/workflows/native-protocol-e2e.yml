@@ -23,8 +23,8 @@ jobs:
     name: native-${{ matrix.protocol }}
     # The latest Azure kernel lacks a matching L2TP extra-modules package and
     # is outside the pinned AWG module's supported build environment.
-    # The IKEv2 driver uses the strongSwan starter layout shipped by Ubuntu 24.04.
-    runs-on: ${{ (matrix.protocol == 'pptp' || matrix.protocol == 'l2tp' || matrix.protocol == 'amneziawg') && 'ubuntu-22.04' || (matrix.protocol == 'ikev2' && 'ubuntu-24.04') || 'ubuntu-latest' }}
+    # Keep the strongSwan starter layout and OpenVPN version used by these fixtures on Ubuntu 24.04.
+    runs-on: ${{ (matrix.protocol == 'pptp' || matrix.protocol == 'l2tp' || matrix.protocol == 'amneziawg') && 'ubuntu-22.04' || ((matrix.protocol == 'ikev2' || matrix.protocol == 'openvpn') && 'ubuntu-24.04') || 'ubuntu-latest' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
