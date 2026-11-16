@@ -1,9 +1,12 @@
 package nodeagent
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+
+	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 )
 
 func TestLocalDeliveryReflectionLostACKRestartAndCompaction(t *testing.T) {
@@ -60,5 +63,68 @@ func TestLocalDeliveryCorruptionPreserved(t *testing.T) {
 	raw, _ := os.ReadFile(path)
 	if string(raw) != "corrupt" {
 		t.Fatal("corrupt evidence overwritten")
+	}
+}
+
+func TestFullLocalDeliveryRecoversFromPersistedReflection(t *testing.T) {
+	cfg := Config{DataDir: t.TempDir()}
+	s := &Server{cfg: cfg}
+	deliveries := make([]localUsageDelivery, 0, maxLocalUsageDeliveries)
+	for i := 0; i < maxLocalUsageDeliveries-2; i++ {
+		id := fmt.Sprintf("xray-old-%d", i)
+		deliveries = append(deliveries, localUsageDelivery{BatchID: id, Rows: []localUsageDeliveryRow{
+			{Protocol: "xray", ChildID: id, UserID: 10, InboundTag: "a", Raw: 100},
+		}})
+	}
+	// This batch contains unconfirmed usage, so the whole batch must survive.
+	deliveries = append(deliveries, localUsageDelivery{BatchID: "xray-unconfirmed", Rows: []localUsageDeliveryRow{
+		{Protocol: "xray", ChildID: "xray-unconfirmed", UserID: 11, InboundTag: "b", Raw: 200},
+	}})
+	deliveries = append(deliveries, localUsageDelivery{BatchID: "xray-marker", Rows: []localUsageDeliveryRow{
+		{Protocol: "xray", ChildID: "xray-marker", UserID: 10, InboundTag: "a", Raw: 50},
+	}})
+	if err := s.persistLocalUsageDeliveriesLocked(deliveries); err != nil {
+		t.Fatal(err)
+	}
+	s.xrayUsagePending = &xrayUsagePendingBatch{
+		BatchID: "xray-pending",
+		Samples: []xrayUsageSample{{UserID: 10, InboundTag: "a", Value: 75}},
+	}
+	if err := s.persistXrayUsageStateLocked(); err != nil {
+		t.Fatal(err)
+	}
+
+	s = &Server{cfg: cfg}
+	if err := s.recordLocalUsageDelivery("xray-pending"); err == nil {
+		t.Fatal("accepted another delivery without proof of reflection")
+	}
+	if len(s.localUsageDeliveries) != maxLocalUsageDeliveries {
+		t.Fatal("changed the ledger without proof of reflection")
+	}
+	if err := s.persistRuntimePolicy(&nodev1.RuntimeConfigRequest{
+		ConfigJson:    "{}",
+		OvRuntimeJson: `{"xray_policies":[{"user_id":10,"email":"10.a","reflected_usage_batch_id":"xray-marker"}]}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	s = &Server{cfg: cfg}
+	if err := s.recordLocalUsageDelivery("xray-pending"); err != nil {
+		t.Fatal(err)
+	}
+	s = &Server{cfg: cfg}
+	if err := s.recordLocalUsageDelivery("xray-pending"); err != nil {
+		t.Fatal(err)
+	}
+	got := s.localUsageDeliveries
+	if len(got) != 3 || got[0].BatchID != "xray-unconfirmed" ||
+		got[1].BatchID != "xray-marker" || got[2].BatchID != "xray-pending" {
+		t.Fatalf("incorrect ledger after restart and retry: %+v", got)
+	}
+	if reflected, err := s.localPendingUsageReflected("xray", 10, "xray-marker", "xray-marker"); !reflected || err != nil {
+		t.Fatalf("lost the retained ACK identity: reflected=%v err=%v", reflected, err)
+	}
+	if usage, err := s.localAwaitingReflectionUsage("xray", 11, "b", "", ""); usage != 200 || err != nil {
+		t.Fatalf("unconfirmed usage=%d err=%v", usage, err)
 	}
 }
