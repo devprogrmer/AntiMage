@@ -46,40 +46,62 @@ func (s *Server) runNodeUsageFlushWorker(ctx context.Context) {
 	if interval <= 0 {
 		return
 	}
-	nextHistory := time.Now()
-	nextCleanup := time.Now()
+	go s.runNodeUsageHistoryWorker(ctx)
+	timer := time.NewTimer(0)
+	defer timer.Stop()
 	for {
-		s.flushNodeUsage(ctx)
-		if !time.Now().Before(nextHistory) {
-			s.flushNodeUsageHistory(ctx)
-			nextHistory = time.Now().Add(nodeUsageHistoryFlushInterval)
-		}
-		if !time.Now().Before(nextCleanup) {
-			workerCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			var err error
-			for batch := 0; batch < 3; batch++ {
-				var deleted int
-				deleted, err = s.nodeController.PruneProcessedUsageQueue(workerCtx, time.Now().UTC().Add(-nodeUsageQueueRetention), nodeUsageHistoryBatchSize)
-				if err != nil || deleted < nodeUsageHistoryBatchSize {
-					break
-				}
-			}
-			cancel()
-			if err != nil && ctx.Err() == nil {
-				logging.Warnf(logging.ComponentNode, "usage queue cleanup failed: %v", err)
-			}
-			nextCleanup = time.Now().Add(nodeUsageQueueCleanupInterval)
-		}
-		if ctx.Err() != nil {
-			return
-		}
-		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
-			timer.Stop()
 			return
 		case <-timer.C:
+		case <-s.nodeUsageFlushKick:
 		}
+		s.flushNodeUsage(ctx)
+		timer.Reset(interval)
+	}
+}
+
+func (s *Server) runNodeUsageHistoryWorker(ctx context.Context) {
+	history := time.NewTicker(nodeUsageHistoryFlushInterval)
+	cleanup := time.NewTicker(nodeUsageQueueCleanupInterval)
+	defer history.Stop()
+	defer cleanup.Stop()
+	s.flushNodeUsageHistory(ctx)
+	s.pruneNodeUsageQueue(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-history.C:
+			s.flushNodeUsageHistory(ctx)
+		case <-cleanup.C:
+			s.pruneNodeUsageQueue(ctx)
+		}
+	}
+}
+
+func (s *Server) pruneNodeUsageQueue(ctx context.Context) {
+	workerCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	cutoff := time.Now().UTC().Add(-nodeUsageQueueRetention)
+	for batch := 0; batch < 3; batch++ {
+		deleted, err := s.nodeController.PruneProcessedUsageQueue(workerCtx, cutoff, nodeUsageHistoryBatchSize)
+		if err != nil {
+			if ctx.Err() == nil {
+				logging.Warnf(logging.ComponentNode, "usage queue cleanup failed: %v", err)
+			}
+			return
+		}
+		if deleted < nodeUsageHistoryBatchSize {
+			return
+		}
+	}
+}
+
+func (s *Server) kickNodeUsageFlush() {
+	select {
+	case s.nodeUsageFlushKick <- struct{}{}:
+	default:
 	}
 }
 
@@ -173,7 +195,14 @@ func (s *Server) collectNodeUsage(ctx context.Context) {
 		runtimeSettings.RecordNodeUsage = s.cfg.RecordNodeUsage
 		runtimeSettings.RecordNodeUserUsages = s.cfg.RecordNodeUserUsages
 	}
+	flushWorkerEnabled := s.nodeUsageFlushKick != nil &&
+		parseWorkerInterval(s.cfg.NodeUsageFlushInterval, defaultNodeUsageFlushInterval) > 0
+	var onUsageStored func()
+	if flushWorkerEnabled {
+		onUsageStored = s.kickNodeUsageFlush
+	}
 	result, err := s.nodeController.CollectUsage(workerCtx, nodecontroller.CollectUsageRequest{
+		OnUsageStored:            onUsageStored,
 		Limit:                    s.cfg.NodeUsageCollectionLimit,
 		Users:                    true,
 		Outbound:                 true,
@@ -191,7 +220,7 @@ func (s *Server) collectNodeUsage(ctx context.Context) {
 	}
 	s.setLiveUserSpeeds(result.Speeds)
 	s.setLiveInboundSpeeds(result.InboundSpeeds, parseNodeUsageCollectionInterval(s.cfg.NodeUsageCollectionInterval))
-	if result.UserSamples > 0 || result.OutboundSamples > 0 || result.InboundSamples > 0 {
+	if !flushWorkerEnabled && (result.UserSamples > 0 || result.OutboundSamples > 0 || result.InboundSamples > 0) {
 		s.flushNodeUsage(ctx)
 	}
 	if result.UserSamples > 0 || result.OutboundSamples > 0 || result.InboundSamples > 0 || len(result.Errors) > 0 {

@@ -58,6 +58,10 @@ type OnlineUsersResponse =
 	| {
 			users: string[];
 			speeds: Record<string, { upload_speed: number; download_speed: number }>;
+			usage?: Record<
+				string,
+				{ used_traffic: number; lifetime_used_traffic: number }
+			>;
 	  };
 
 const ResetIcon = chakra(ArrowPathIcon, {
@@ -207,21 +211,26 @@ export const UsersPage: FC = () => {
 		onlineRefreshInFlightRef.current = true;
 		try {
 			const dashboard = useDashboard.getState();
-			const needsGlobalSpeeds = dashboard.filters.advancedFilters?.includes(
-				"top_speed",
+			const needsGlobalSpeeds =
+				dashboard.filters.advancedFilters?.includes("top_speed");
+			const visibleUsers = new Map(
+				dashboard.users.users.map((user) => [user.username, user]),
 			);
-			const visibleUsernames = dashboard.users.users.map(
-				(user) => user.username,
-			);
+			const visibleUsernames = Array.from(visibleUsers.keys());
 			if (!needsGlobalSpeeds && visibleUsernames.length === 0) return;
 			const response = await fetch<OnlineUsersResponse>("/users/onlines", {
 				query: {
 					details: true,
 					usernames: needsGlobalSpeeds ? undefined : visibleUsernames.join(","),
+					include_usage: needsGlobalSpeeds ? undefined : true,
+					usage_usernames: needsGlobalSpeeds
+						? visibleUsernames.join(",")
+						: undefined,
 				},
 			});
 			const usernames = Array.isArray(response) ? response : response.users;
 			const speeds = Array.isArray(response) ? {} : response.speeds;
+			const usage = Array.isArray(response) ? undefined : response.usage;
 			const online = new Set(usernames);
 			let topSpeedUsername = "";
 			let topSpeed = 0;
@@ -248,7 +257,27 @@ export const UsersPage: FC = () => {
 						];
 					}),
 				);
-				return { liveUserStats };
+				let trafficChanged = false;
+				const users = state.users.users.map((user) => {
+					const traffic = usage?.[user.username];
+					if (
+						!traffic ||
+						visibleUsers.get(user.username) !== user ||
+						(traffic.used_traffic === user.used_traffic &&
+							traffic.lifetime_used_traffic === user.lifetime_used_traffic)
+					) {
+						return user;
+					}
+					trafficChanged = true;
+					return {
+						...user,
+						used_traffic: traffic.used_traffic,
+						lifetime_used_traffic: traffic.lifetime_used_traffic,
+					};
+				});
+				return trafficChanged
+					? { liveUserStats, users: { ...state.users, users } }
+					: { liveUserStats };
 			});
 			const state = useDashboard.getState();
 			if (

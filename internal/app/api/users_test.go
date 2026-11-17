@@ -270,6 +270,29 @@ func TestOnlineUsersRouteUsesLiveSetAndAdminScope(t *testing.T) {
 	if strings.Join(details.Users, ",") != "alice" || len(details.Speeds) != 1 || details.Speeds["alice"].UploadSpeed != 100 {
 		t.Fatalf("unexpected scoped online details: %#v", details)
 	}
+
+	if _, err := db.Exec(`UPDATE users SET used_traffic = 8192 WHERE username IN ('stale', 'bob')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO user_usage_logs (user_id, used_traffic_at_reset) VALUES (12, 8192)`); err != nil {
+		t.Fatal(err)
+	}
+	rec = userReadRequest(t, server, http.MethodGet, "/api/users/onlines?details=true&usernames=alice&usage_usernames=stale,bob", adminBearerToken(t, server, "seller", "pass123"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("usage snapshot status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var snapshot struct {
+		Usage map[string]struct {
+			Used     int64 `json:"used_traffic"`
+			Lifetime int64 `json:"lifetime_used_traffic"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Usage) != 1 || snapshot.Usage["stale"].Used != 8192 || snapshot.Usage["stale"].Lifetime != 16384 {
+		t.Fatalf("expected only the requested in-scope user, even while offline: %+v", snapshot.Usage)
+	}
 }
 
 func userReadRequest(t *testing.T, server *Server, method string, path string, token string) *httptest.ResponseRecorder {

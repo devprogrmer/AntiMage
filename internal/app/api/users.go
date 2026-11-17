@@ -84,23 +84,8 @@ func (s *Server) handleOnlineUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := userapp.UsersListRequest{Admin: s.userAdminContext(principal, nil)}
-	if raw := strings.TrimSpace(r.URL.Query().Get("usernames")); raw != "" {
-		seen := make(map[string]struct{})
-		for _, value := range strings.Split(raw, ",") {
-			username := strings.TrimSpace(value)
-			if username == "" {
-				continue
-			}
-			if _, exists := seen[username]; exists {
-				continue
-			}
-			seen[username] = struct{}{}
-			req.Usernames = append(req.Usernames, username)
-			if len(req.Usernames) == 500 {
-				break
-			}
-		}
-	}
+	query := r.URL.Query()
+	req.Usernames = pollUsernames(query.Get("usernames"))
 	users, err := s.userService.OnlineUsernames(r.Context(), req)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
@@ -116,10 +101,49 @@ func (s *Server) handleOnlineUsers(w http.ResponseWriter, r *http.Request) {
 			delete(speeds, username)
 		}
 	}
+	if raw := query.Get("usage_usernames"); raw != "" {
+		req.Usernames = pollUsernames(raw)
+	} else if query.Get("include_usage") != "true" {
+		req.Usernames = nil
+	}
+	var usage map[string]userapp.UserTrafficSnapshot
+	if len(req.Usernames) > 0 {
+		usage, err = s.userService.UserTrafficSnapshots(r.Context(), req)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		for username, snapshot := range usage {
+			if !canViewUserTraffic(principal.Context.Admin, snapshot.ServiceID) {
+				delete(usage, username)
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, struct {
-		Users  []string                 `json:"users"`
-		Speeds map[string]liveUserSpeed `json:"speeds"`
-	}{Users: users, Speeds: speeds})
+		Users  []string                               `json:"users"`
+		Speeds map[string]liveUserSpeed               `json:"speeds"`
+		Usage  map[string]userapp.UserTrafficSnapshot `json:"usage,omitempty"`
+	}{Users: users, Speeds: speeds, Usage: usage})
+}
+
+func pollUsernames(raw string) []string {
+	var usernames []string
+	seen := make(map[string]struct{})
+	for _, value := range strings.Split(raw, ",") {
+		username := strings.TrimSpace(value)
+		if username == "" {
+			continue
+		}
+		if _, exists := seen[username]; exists {
+			continue
+		}
+		seen[username] = struct{}{}
+		usernames = append(usernames, username)
+		if len(usernames) == 500 {
+			break
+		}
+	}
+	return usernames
 }
 
 func (s *Server) handleUserPath(w http.ResponseWriter, r *http.Request) {

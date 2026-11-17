@@ -95,6 +95,9 @@ type CollectUsageRequest struct {
 	NoReset                  bool  `json:"no_reset,omitempty"`
 	SkipNodeUsageHistory     bool  `json:"skip_node_usage_history,omitempty"`
 	SkipNodeUserUsageHistory bool  `json:"skip_node_user_usage_history,omitempty"`
+	// Called after a node's usage commits. It must return promptly and can
+	// be called concurrently for different nodes.
+	OnUsageStored func() `json:"-"`
 }
 
 type CollectUsageResult struct {

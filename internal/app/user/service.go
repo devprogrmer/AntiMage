@@ -114,6 +114,10 @@ func (s Service) UsersList(ctx context.Context, req UsersListRequest) (UsersResp
 	return s.repo.UsersList(ctx, req)
 }
 
+func (s Service) UserTrafficSnapshots(ctx context.Context, req UsersListRequest) (map[string]UserTrafficSnapshot, error) {
+	return s.repo.UserTrafficSnapshots(ctx, req)
+}
+
 func (s Service) OnlineUsernames(ctx context.Context, req UsersListRequest) ([]string, error) {
 	return s.repo.OnlineUsernames(ctx, req)
 }

@@ -217,3 +217,28 @@ func TestUsersListKeepsRowsWhenConfigLinkGenerationFails(t *testing.T) {
 		t.Fatalf("expected link error to be preserved, got %#v", result.Users[0])
 	}
 }
+
+func TestUserTrafficSnapshotsUsesCurrentAndResetUsage(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, used_traffic BIGINT, status TEXT, service_id BIGINT);
+CREATE TABLE user_usage_logs (user_id BIGINT, used_traffic_at_reset BIGINT);
+INSERT INTO users VALUES (1, 'visible', 8192, 'active', NULL), (2, 'other', 4096, 'active', NULL);
+INSERT INTO user_usage_logs VALUES (1, 8192);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshots, err := NewRepository(db, "sqlite").UserTrafficSnapshots(ctx, UsersListRequest{Usernames: []string{"visible"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshots) != 1 || snapshots["visible"].UsedTraffic != 8192 || snapshots["visible"].LifetimeUsedTraffic != 16384 {
+		t.Fatalf("unexpected traffic snapshots: %+v", snapshots)
+	}
+}

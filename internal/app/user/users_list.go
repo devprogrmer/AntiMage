@@ -330,6 +330,12 @@ func (r Repository) queryUsersSummary(ctx context.Context, filter usersFilter) (
 	return result, rows.Err()
 }
 
+const userLifetimeUsageSQL = `COALESCE(u.used_traffic, 0) + COALESCE((
+		SELECT SUM(uul.used_traffic_at_reset)
+		FROM user_usage_logs uul
+		WHERE uul.user_id = u.id
+	), 0)`
+
 func (r Repository) usersRows(ctx context.Context, filter usersFilter, req UsersListRequest) ([]usersListRow, error) {
 	cutoff := dbTime(online.Cutoff(time.Now()))
 	query := `SELECT
@@ -337,11 +343,7 @@ func (r Repository) usersRows(ctx context.Context, filter usersFilter, req Users
 	u.username,
 	u.status,
 	COALESCE(u.used_traffic, 0),
-	COALESCE(u.used_traffic, 0) + COALESCE((
-		SELECT SUM(uul.used_traffic_at_reset)
-		FROM user_usage_logs uul
-		WHERE uul.user_id = u.id
-	), 0),
+	` + userLifetimeUsageSQL + `,
 	u.created_at,
 	u.expire,
 	u.data_limit,
@@ -455,6 +457,37 @@ func (r Repository) OnlineUsernames(ctx context.Context, req UsersListRequest) (
 			return nil, err
 		}
 		result = append(result, username)
+	}
+	return result, rows.Err()
+}
+
+type UserTrafficSnapshot struct {
+	UsedTraffic         int64  `json:"used_traffic"`
+	LifetimeUsedTraffic int64  `json:"lifetime_used_traffic"`
+	ServiceID           *int64 `json:"-"`
+}
+
+func (r Repository) UserTrafficSnapshots(ctx context.Context, req UsersListRequest) (map[string]UserTrafficSnapshot, error) {
+	if len(req.Usernames) == 0 {
+		return nil, nil
+	}
+	filter, err := r.usersFilter(req)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT u.username, COALESCE(u.used_traffic, 0), `+userLifetimeUsageSQL+`, u.service_id FROM users u`+filter.whereSQL(), filter.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]UserTrafficSnapshot, len(req.Usernames))
+	for rows.Next() {
+		var username string
+		var snapshot UserTrafficSnapshot
+		if err := rows.Scan(&username, &snapshot.UsedTraffic, &snapshot.LifetimeUsedTraffic, &snapshot.ServiceID); err != nil {
+			return nil, err
+		}
+		result[username] = snapshot
 	}
 	return result, rows.Err()
 }

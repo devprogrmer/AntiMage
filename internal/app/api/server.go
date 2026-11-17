@@ -69,6 +69,7 @@ type Server struct {
 	externalApps         *externalapps.Manager
 	backgroundOnce       sync.Once
 	nodeOperationsKick   chan struct{}
+	nodeUsageFlushKick   chan struct{}
 	userOpsKickMu        sync.Mutex
 	userOpsKicking       bool
 	userOpsKickUserIDs   map[int64]struct{}
@@ -172,6 +173,7 @@ func New(cfg Config) (*Server, error) {
 			MySQLRootPassword: cfg.MySQLRootPassword,
 		}, certificateManager),
 		nodeOperationsKick:   make(chan struct{}, 1),
+		nodeUsageFlushKick:   make(chan struct{}, 1),
 		recentActionsEnabled: true,
 	}
 	server.apiDocsEnabled.Store(cfg.APIDocsEnabled)
