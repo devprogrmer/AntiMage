@@ -94,6 +94,9 @@ func (s *Server) handleNodeUpdate(w http.ResponseWriter, r *http.Request, nodeID
 		writeNodeMutationError(w, err)
 		return
 	}
+	if before.UsageCoefficient != node.UsageCoefficient {
+		s.kickNodeOperationsSoon()
+	}
 	if strings.TrimSpace(before.Status) != "" && before.Status != node.Status {
 		s.telegramReports.NodeStatusChanged(r.Context(), telegramNodeReport(node, before.Status, telegramActor(r)))
 	}

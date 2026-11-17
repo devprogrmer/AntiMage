@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/antimage/antimage/internal/app/usagebytes"
 	"math"
 	"sort"
 	"strconv"
@@ -341,6 +342,13 @@ func (r Repository) StoreCollectedUsageWithInbounds(ctx context.Context, node No
 		return nil
 	}
 	now := time.Now().UTC()
+	if userBatchID == "" {
+		for userID, value := range normalizedUsers {
+			if value == 0 {
+				delete(normalizedUsers, userID)
+			}
+		}
+	}
 	directUserWrite := userBatchID == "" && len(normalizedUsers) > 0
 	if directUserWrite {
 		usageUserWriteMu.Lock()
@@ -624,9 +632,8 @@ func aggregateUserUsageForStage(node NodeRow, deltas []UserUsageDelta) (map[int6
 			continue
 		}
 		value := scaleUserUsage(delta.Value, node.UsageCoefficient, delta.InboundCoefficient)
-		if value <= 0 {
-			continue
-		}
+		// A raw sample rounded down to zero still needs a committed
+		// reflection receipt so the node can release its delivery.
 		aggregated[delta.UserID] = addUsageDelta(aggregated[delta.UserID], value)
 		onlineUsers[delta.UserID] = struct{}{}
 	}
@@ -634,31 +641,14 @@ func aggregateUserUsageForStage(node NodeRow, deltas []UserUsageDelta) (map[int6
 }
 
 func normalizeUsageFactor(value float64) float64 {
-	if value <= 0 || math.IsNaN(value) || math.IsInf(value, 0) {
-		return 1
-	}
-	return value
+	return usagebytes.NormalizeFactor(value)
 }
 
-func scaleUserUsage(value int64, factors ...float64) int64 {
+func scaleUserUsage(value int64, nodeFactor, inboundFactor float64) int64 {
 	if value <= 0 {
 		return 0
 	}
-	factor := 1.0
-	for _, item := range factors {
-		factor *= normalizeUsageFactor(item)
-		if math.IsInf(factor, 0) || factor >= float64(math.MaxInt64) {
-			return math.MaxInt64
-		}
-	}
-	scaled := math.Round(float64(value) * factor)
-	if math.IsInf(scaled, 0) || scaled >= float64(math.MaxInt64) {
-		return math.MaxInt64
-	}
-	if scaled <= 0 {
-		return 0
-	}
-	return int64(scaled)
+	return int64(min(usagebytes.Scale(uint64(value), nodeFactor, inboundFactor), uint64(math.MaxInt64)))
 }
 
 func aggregateOutboundUsageForStage(deltas []OutboundUsageDelta) map[string]OutboundUsageDelta {

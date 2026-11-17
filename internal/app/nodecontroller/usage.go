@@ -72,7 +72,7 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 				return
 			}
 
-			nodeResult := c.collectUsageForNode(ctx, node, collectUsers, collectOutbound, reset, collectorID, inboundCoefficients, persistOptions)
+			nodeResult := c.collectUsageForNode(ctx, node, collectUsers, collectOutbound, reset, collectorID, inboundCoefficients, persistOptions, req.OnUsageStored)
 			mu.Lock()
 			mergeCollectUsageResult(&result, nodeResult)
 			mu.Unlock()
@@ -148,6 +148,7 @@ func (c Controller) collectUsageForNode(
 	collectorID string,
 	inboundCoefficients map[string]float64,
 	persistOptions UsagePersistOptions,
+	onUsageStored func(),
 ) CollectUsageResult {
 	result := CollectUsageResult{Nodes: 1}
 	communicationFailed := false
@@ -270,6 +271,9 @@ func (c Controller) collectUsageForNode(
 	if err := c.storeCollectedUsageWithRetry(ctx, node, userBatchID, userDeltas, outboundBatchID, outboundDeltas, inboundDeltas, persistOptions); err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("node %d DB write: %s", node.ID, err.Error()))
 		return result
+	}
+	if onUsageStored != nil && (len(userDeltas) > 0 || len(outboundDeltas) > 0 || len(inboundDeltas) > 0) {
+		onUsageStored()
 	}
 	if collectUsers {
 		if err := c.applyIPLimitBlocksForNode(nodeCtx, client, node); err != nil {

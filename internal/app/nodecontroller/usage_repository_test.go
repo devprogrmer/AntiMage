@@ -1235,6 +1235,40 @@ func TestUsageUint64ToInt64RejectsOverflow(t *testing.T) {
 	}
 }
 
+func TestRoundedZeroTrafficStillProducesDurableReflection(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "zero-reflection.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+	if _, err := db.ExecContext(ctx, `INSERT INTO users (id, status, used_traffic) VALUES (10, 'active', 100)`); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewRepository(db, "sqlite")
+	node := NodeRow{ID: 7, UsageCoefficient: 0.5}
+	deltas := []UserUsageDelta{
+		{UserID: 10, Value: 1, InboundCoefficient: 0.5},
+		{UserID: 20, Online: true},
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := repo.StoreCollectedUsage(ctx, node, "combined-rounded-zero", deltas, "", nil); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := repo.FlushStagedUsage(ctx, 100); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_user_queue WHERE processed_at IS NOT NULL`, 1)
+	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id = 10`, 100)
+	proofs, err := repo.accountingReflectionPage(ctx, 7, 0)
+	if err != nil || len(proofs) != 1 || proofs[0].GetUserId() != 10 ||
+		proofs[0].GetBatchId() != "combined-rounded-zero" || proofs[0].GetUsedTraffic() != 100 {
+		t.Fatalf("expected committed receipt with unchanged usage, got %v, %v", proofs, err)
+	}
+}
+
 func TestScaleUserUsageCombinesFactorsAndSaturates(t *testing.T) {
 	if got := scaleUserUsage(100, 1.5, 2); got != 300 {
 		t.Fatalf("combined usage=%d want=300", got)
@@ -1244,6 +1278,16 @@ func TestScaleUserUsageCombinesFactorsAndSaturates(t *testing.T) {
 	}
 	if got := scaleUserUsage(100, 0, 2); got != 200 {
 		t.Fatalf("invalid factor should fall back to one: %d", got)
+	}
+	if got := scaleUserUsage(180, 0.35, 0.5); got != 32 {
+		t.Fatalf("decimal half-byte rounded incorrectly: %d", got)
+	}
+	const exact = int64(1<<53) + 1
+	if got := scaleUserUsage(exact, 0.5, 2); got != exact {
+		t.Fatalf("unit factor lost a byte: %d", got)
+	}
+	if got := scaleUserUsage(5, 1e20, 1e-20); got != 5 {
+		t.Fatalf("finite combined factor saturated prematurely: %d", got)
 	}
 }
 

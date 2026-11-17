@@ -1,12 +1,13 @@
 package nodeagent
 
 import (
-	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/antimage/antimage/internal/app/usagebytes"
 )
 
 func buildNativeSessionUserPolicies(
@@ -92,29 +93,7 @@ func nativeSessionEffectiveLiveUsage(
 	policy nativeSessionUserPolicy,
 	rawLiveBytes uint64,
 ) uint64 {
-	if rawLiveBytes == 0 {
-		return 0
-	}
-	factor := nativeSessionUsageFactor(policy.UsageCoefficient) *
-		nativeSessionUsageFactor(policy.InboundCoefficient)
-	if factor == 1 {
-		return rawLiveBytes
-	}
-	scaled := math.Round(float64(rawLiveBytes) * factor)
-	if scaled <= 0 {
-		return 0
-	}
-	if scaled >= float64(^uint64(0)) {
-		return ^uint64(0)
-	}
-	return uint64(scaled)
-}
-
-func nativeSessionUsageFactor(value float64) float64 {
-	if value <= 0 || math.IsNaN(value) || math.IsInf(value, 0) {
-		return 1
-	}
-	return value
+	return usagebytes.Scale(rawLiveBytes, policy.UsageCoefficient, policy.InboundCoefficient)
 }
 
 func nativeSessionPolicyWouldExceedDataLimit(

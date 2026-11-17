@@ -51,6 +51,33 @@ func TestPendingCertificateCreateConsumeAndExpiry(t *testing.T) {
 	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM pending_node_certificates WHERE token = ?`, 0, expired.Token)
 }
 
+func TestNodeCoefficientChangeQueuesPolicyWithoutDisconnecting(t *testing.T) {
+	db := newNodeTestDB(t)
+	repo := NewRepository(db, "sqlite").WithNow(fixedNow())
+	ctx := context.Background()
+	node, err := repo.CreateNode(ctx, baseNodeCreate("accounting-node"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE nodes SET status = 'connected' WHERE id = ?`, node.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM node_operations`); err != nil {
+		t.Fatal(err)
+	}
+	coefficient := 0.35
+	for i := 0; i < 2; i++ {
+		updated, err := repo.UpdateNode(ctx, node.ID, NodeModify{UsageCoefficient: &coefficient})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if updated.Status != StatusConnected || updated.UsageCoefficient != coefficient {
+			t.Fatalf("unexpected node state after coefficient change: %+v", updated)
+		}
+	}
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
+}
+
 func TestNodeRepositoryCreateUpdateResetDeleteAndRegenerate(t *testing.T) {
 	db := newNodeTestDB(t)
 	repo := NewRepository(db, "sqlite").WithNow(fixedNow())

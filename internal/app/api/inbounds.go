@@ -122,6 +122,7 @@ func (s *Server) handleInboundPath(w http.ResponseWriter, r *http.Request) {
 			writeInboundError(w, err)
 			return
 		}
+		s.kickNodeOperationsSoon()
 		writeJSON(w, http.StatusOK, result.Inbound)
 	case http.MethodDelete:
 		result, err := s.configRepo.DeleteInbound(r.Context(), tag)

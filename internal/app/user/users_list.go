@@ -459,6 +459,37 @@ func (r Repository) OnlineUsernames(ctx context.Context, req UsersListRequest) (
 	return result, rows.Err()
 }
 
+type UserTrafficSnapshot struct {
+	UsedTraffic         int64  `json:"used_traffic"`
+	LifetimeUsedTraffic int64  `json:"lifetime_used_traffic"`
+	ServiceID           *int64 `json:"-"`
+}
+
+func (r Repository) UserTrafficSnapshots(ctx context.Context, req UsersListRequest) (map[string]UserTrafficSnapshot, error) {
+	if len(req.Usernames) == 0 {
+		return nil, nil
+	}
+	filter, err := r.usersFilter(req)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT u.username, COALESCE(u.used_traffic, 0), COALESCE(u.lifetime_used_traffic, 0), u.service_id FROM users u`+filter.whereSQL(), filter.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]UserTrafficSnapshot, len(req.Usernames))
+	for rows.Next() {
+		var username string
+		var snapshot UserTrafficSnapshot
+		if err := rows.Scan(&username, &snapshot.UsedTraffic, &snapshot.LifetimeUsedTraffic, &snapshot.ServiceID); err != nil {
+			return nil, err
+		}
+		result[username] = snapshot
+	}
+	return result, rows.Err()
+}
+
 func usersOrderSQL(sortOptions []SortOption) string {
 	columns := map[string]string{
 		"username":     "u.username",

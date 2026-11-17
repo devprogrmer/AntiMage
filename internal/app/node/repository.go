@@ -272,11 +272,13 @@ func (r Repository) UpdateNode(ctx context.Context, nodeID int64, payload NodeMo
 			return NodeResponse{}, wrapInvalid("invalid node status")
 		}
 	}
+	coefficientChanged := false
 	if payload.UsageCoefficient != nil {
 		if *payload.UsageCoefficient <= 0 {
 			return NodeResponse{}, wrapInvalid("usage_coefficient must be greater than zero")
 		}
 		add("usage_coefficient", *payload.UsageCoefficient)
+		coefficientChanged = *payload.UsageCoefficient != current.UsageCoefficient
 	}
 	if payload.GeoMode != nil {
 		add("geo_mode", defaultString(*payload.GeoMode, GeoModeDefault))
@@ -374,7 +376,7 @@ func (r Repository) UpdateNode(ctx context.Context, nodeID int64, payload NodeMo
 			return NodeResponse{}, err
 		}
 	}
-	if (connectionChanged || statusReconnectRequested) && finalStatus != StatusDisabled && finalStatus != StatusLimited {
+	if (connectionChanged || statusReconnectRequested || coefficientChanged) && finalStatus != StatusDisabled && finalStatus != StatusLimited {
 		if err := r.enqueueNodeOperationTx(ctx, tx, NodeOperationSyncConfig, &nodeID, nil, map[string]any{"node_id": nodeID}, r.now().UTC()); err != nil {
 			return NodeResponse{}, err
 		}
