@@ -182,13 +182,11 @@ func TestNodeRepositoryDoesNotSyncForNonConnectionEdits(t *testing.T) {
 
 	name := "quiet-node-renamed"
 	note := "does not reconnect"
-	coefficient := 2.0
 	limit := int64(2048)
 	updated, err := repo.UpdateNode(ctx, created.ID, NodeModify{
-		Name:             &name,
-		Note:             &note,
-		UsageCoefficient: &coefficient,
-		DataLimit:        &limit,
+		Name:      &name,
+		Note:      &note,
+		DataLimit: &limit,
 	})
 	if err != nil {
 		t.Fatalf("UpdateNode non-connection fields error: %v", err)

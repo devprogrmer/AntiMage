@@ -271,7 +271,10 @@ func TestOnlineUsersRouteUsesLiveSetAndAdminScope(t *testing.T) {
 		t.Fatalf("unexpected scoped online details: %#v", details)
 	}
 
-	if _, err := db.Exec(`UPDATE users SET used_traffic = 8192, lifetime_used_traffic = 16384 WHERE username IN ('stale', 'bob')`); err != nil {
+	if _, err := db.Exec(`UPDATE users SET used_traffic = 8192 WHERE username IN ('stale', 'bob')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO user_usage_logs (user_id, used_traffic_at_reset) VALUES (12, 8192)`); err != nil {
 		t.Fatal(err)
 	}
 	rec = userReadRequest(t, server, http.MethodGet, "/api/users/onlines?details=true&usernames=alice&usage_usernames=stale,bob", adminBearerToken(t, server, "seller", "pass123"))

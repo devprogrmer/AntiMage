@@ -330,6 +330,12 @@ func (r Repository) queryUsersSummary(ctx context.Context, filter usersFilter) (
 	return result, rows.Err()
 }
 
+const userLifetimeUsageSQL = `COALESCE(u.used_traffic, 0) + COALESCE((
+		SELECT SUM(uul.used_traffic_at_reset)
+		FROM user_usage_logs uul
+		WHERE uul.user_id = u.id
+	), 0)`
+
 func (r Repository) usersRows(ctx context.Context, filter usersFilter, req UsersListRequest) ([]usersListRow, error) {
 	cutoff := dbTime(online.Cutoff(time.Now()))
 	query := `SELECT
@@ -337,11 +343,7 @@ func (r Repository) usersRows(ctx context.Context, filter usersFilter, req Users
 	u.username,
 	u.status,
 	COALESCE(u.used_traffic, 0),
-	COALESCE(u.used_traffic, 0) + COALESCE((
-		SELECT SUM(uul.used_traffic_at_reset)
-		FROM user_usage_logs uul
-		WHERE uul.user_id = u.id
-	), 0),
+	` + userLifetimeUsageSQL + `,
 	u.created_at,
 	u.expire,
 	u.data_limit,
@@ -473,7 +475,7 @@ func (r Repository) UserTrafficSnapshots(ctx context.Context, req UsersListReque
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT u.username, COALESCE(u.used_traffic, 0), COALESCE(u.lifetime_used_traffic, 0), u.service_id FROM users u`+filter.whereSQL(), filter.args...)
+	rows, err := r.db.QueryContext(ctx, `SELECT u.username, COALESCE(u.used_traffic, 0), `+userLifetimeUsageSQL+`, u.service_id FROM users u`+filter.whereSQL(), filter.args...)
 	if err != nil {
 		return nil, err
 	}
