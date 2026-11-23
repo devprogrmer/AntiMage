@@ -304,3 +304,108 @@ func TestAccountingRefreshRecoversFullLedgerForAllProtocols(t *testing.T) {
 		}
 	}
 }
+
+func TestAccountingRefreshRecoversMissingLegacyAnchorAndRetiredOwner(t *testing.T) {
+	cfg := Config{DataDir: t.TempDir()}
+	s := New(cfg)
+	deliveries := make([]localUsageDelivery, 3893)
+	for i := range deliveries {
+		deliveries[i] = localUsageDelivery{
+			BatchID: fmt.Sprintf("combined-legacy-%d", i),
+			Rows: []localUsageDeliveryRow{
+				{Protocol: "xray", UserID: 10, InboundTag: "x", ChildID: fmt.Sprintf("xray-a-%d", i), Raw: 10},
+				{Protocol: "l2tp", UserID: 11, InboundTag: "retired", ChildID: fmt.Sprintf("l2tp-b-%d", i), Raw: 20},
+			},
+		}
+	}
+	deliveries[0].Rows = append(deliveries[0].Rows, localUsageDeliveryRow{
+		Protocol: "xray", UserID: 12, InboundTag: "unconfirmed", ChildID: "xray-unconfirmed", Raw: 99,
+	})
+	if err := s.persistLocalUsageDeliveriesLocked(deliveries); err != nil {
+		t.Fatal(err)
+	}
+	latest := deliveries[len(deliveries)-1].BatchID
+	if err := s.persistRuntimePolicy(&nodev1.RuntimeConfigRequest{
+		ConfigJson: "{}", DesiredRevision: 954,
+		OvRuntimeJson: `{"xray_policies":[{"user_id":10,"used_traffic":100,"reflected_usage_batch_id":"xray-removed-by-legacy-pruning"}]}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	proofs := []*nodev1.AccountingReflection{
+		{UserId: 10, BatchId: latest, UsedTraffic: 50000},
+		{UserId: 11, BatchId: latest, UsedTraffic: 80000},
+		{UserId: 999, BatchId: latest, UsedTraffic: 100000},
+	}
+	if err := s.applyAccountingReflections(proofs); err != nil {
+		t.Fatal(err)
+	}
+	restarted := New(cfg)
+	snapshot, err := restarted.currentRuntimePolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := snapshot.nativePayload()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.XrayPolicies[0].UsedTraffic != 50000 || payload.XrayPolicies[0].ReflectedUsageBatchID != latest {
+		t.Fatal("missing legacy anchor permanently blocked a newer committed receipt")
+	}
+	if len(payload.XrayPolicies) != 1 || payload.NativeAccountingRefreshed[11] == nil ||
+		len(payload.NativeAccountingRefreshed[11].Inbounds) != 0 || payload.NativeAccountingRefreshed[999] != nil {
+		t.Fatal("retired owner receipt lost or foreign owner accepted")
+	}
+	if snapshot.Revision != 954 || snapshot.ConfigJSON != "{}" {
+		t.Fatal("accounting recovery changed the runtime")
+	}
+	if err := restarted.ensureLocalUsageDeliveriesLocked(); err != nil {
+		t.Fatal(err)
+	}
+	if len(restarted.localUsageDeliveries) != 2 {
+		t.Fatalf("legacy backlog retained %d batches, want only latest receipt and unconfirmed batch", len(restarted.localUsageDeliveries))
+	}
+	unconfirmed, err := restarted.localAwaitingReflectionUsage("xray", 12, "unconfirmed", "", "")
+	if err != nil || unconfirmed != 99 {
+		t.Fatalf("unconfirmed bytes changed: %d, %v", unconfirmed, err)
+	}
+	// A repeated confirmed receipt must still repair a ledger after the policy
+	// persisted successfully but a crash interrupted its subsequent rewrite.
+	if err := restarted.persistLocalUsageDeliveriesLocked(deliveries); err != nil {
+		t.Fatal(err)
+	}
+	restarted = New(cfg)
+	if err := restarted.applyAccountingReflections(proofs); err != nil {
+		t.Fatal(err)
+	}
+	if len(restarted.localUsageDeliveries) != 2 {
+		t.Fatalf("equal receipt did not recover interrupted compaction: %d", len(restarted.localUsageDeliveries))
+	}
+}
+
+func TestAccountingRefreshRejectsRegressingAndForeignProofs(t *testing.T) {
+	for _, proof := range []*nodev1.AccountingReflection{
+		{UserId: 10, BatchId: "combined-latest", UsedTraffic: 99},
+		{UserId: 10, BatchId: "combined-unknown", UsedTraffic: 200},
+		{UserId: 11, BatchId: "combined-latest", UsedTraffic: 200},
+	} {
+		t.Run(fmt.Sprintf("%d-%s", proof.GetUserId(), proof.GetBatchId()), func(t *testing.T) {
+			s := New(Config{DataDir: t.TempDir()})
+			if err := s.persistLocalUsageDeliveriesLocked([]localUsageDelivery{
+				{BatchID: "combined-latest", Rows: []localUsageDeliveryRow{{Protocol: "xray", UserID: 10, InboundTag: "x", ChildID: "xray-latest", Raw: 10}}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.persistRuntimePolicy(&nodev1.RuntimeConfigRequest{
+				ConfigJson: "{}", OvRuntimeJson: `{"xray_policies":[{"user_id":10,"used_traffic":100,"reflected_usage_batch_id":"legacy-missing"}]}`,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.applyAccountingReflections([]*nodev1.AccountingReflection{proof}); err != nil {
+				t.Fatal(err)
+			}
+			if s.runtimePolicy.native.XrayPolicies[0].UsedTraffic != 100 {
+				t.Fatal("invalid proof changed quota")
+			}
+		})
+	}
+}

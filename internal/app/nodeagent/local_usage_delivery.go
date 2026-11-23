@@ -379,6 +379,17 @@ func (s *Server) reclaimReflectedDeliveriesLocked(payload nativeRuntimePayload) 
 		}
 	}
 
+	// Archived owners no longer have a runtime policy. Their committed
+	// receipts authorize pruning without reintroducing runtime credentials.
+	for userID, receipt := range payload.NativeAccountingRefreshed {
+		if receipt == nil {
+			continue
+		}
+		if _, active := through[userID]; !active {
+			add(userID, receipt.BatchID)
+		}
+	}
+
 	type protocolOwner struct {
 		protocol string
 		userID   int64
