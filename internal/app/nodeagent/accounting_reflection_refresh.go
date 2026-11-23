@@ -59,7 +59,7 @@ func (s *Server) applyAccountingReflections(proofs []*nodev1.AccountingReflectio
 }
 
 func (s *Server) persistAccountingReflections(snapshot *runtimePolicySnapshot, payload nativeRuntimePayload, native map[string]json.RawMessage, views []accountingPolicyGroup, proofs []*nodev1.AccountingReflection) error {
-	updates, wgThrough, err := s.selectAccountingReflections(views, proofs)
+	updates, wgThrough, err := s.selectAccountingReflections(payload, views, proofs)
 	if err != nil || len(updates) == 0 {
 		return err
 	}
@@ -146,7 +146,7 @@ func (s *Server) persistAccountingReflections(snapshot *runtimePolicySnapshot, p
 	return nil
 }
 
-func (s *Server) selectAccountingReflections(views []accountingPolicyGroup, proofs []*nodev1.AccountingReflection) (map[int64]*nodev1.AccountingReflection, map[int64]string, error) {
+func (s *Server) selectAccountingReflections(payload nativeRuntimePayload, views []accountingPolicyGroup, proofs []*nodev1.AccountingReflection) (map[int64]*nodev1.AccountingReflection, map[int64]string, error) {
 	s.localUsageMu.Lock()
 	defer s.localUsageMu.Unlock()
 	if err := s.ensureLocalUsageDeliveriesLocked(); err != nil {
@@ -173,22 +173,29 @@ func (s *Server) selectAccountingReflections(views []accountingPolicyGroup, proo
 	}
 	// Every enabled policy for this owner must advance together. For WireGuard
 	// the separate ACK history must identify the reflected prefix as well.
-	seen := make(map[int64]bool)
 	check := func(id int64, currentMarker string, currentUsed int64) {
-		seen[id] = true
 		proof := accepted[id]
 		if proof == nil {
 			return
 		}
+		// The authenticated controller supplies its latest committed total and
+		// receipt together. Older nodes could prune a policy's marker while
+		// reading quota. Its absence cannot permanently veto a valid, owned
+		// receipt. A known later marker and a lower total still veto rollback.
 		current, known := index.Batches[currentMarker]
 		if proof.GetUsedTraffic() < currentUsed ||
-			(currentMarker != "" && (!known || current >= index.Batches[proof.GetBatchId()])) {
+			(currentMarker != "" && known && current > index.Batches[proof.GetBatchId()]) {
 			delete(accepted, id)
 		}
 	}
 	for _, group := range views {
 		for _, entry := range group.entries {
 			check(entry.UserID, entry.ReflectedUsageBatchID, entry.UsedTraffic)
+		}
+	}
+	for id, receipt := range payload.NativeAccountingRefreshed {
+		if receipt != nil {
+			check(id, receipt.BatchID, receipt.UsedTraffic)
 		}
 	}
 	wgThrough := make(map[int64]string)
@@ -236,11 +243,6 @@ func (s *Server) selectAccountingReflections(views []accountingPolicyGroup, proo
 	}
 	for id := range unproven {
 		delete(accepted, id)
-	}
-	for id := range accepted {
-		if !seen[id] {
-			delete(accepted, id)
-		}
 	}
 	return accepted, wgThrough, nil
 }
