@@ -32,30 +32,18 @@ func (s *Server) wireGuardAwaitingReflectionUsageLocked(
 			len(s.wireGuardUsageAwaitingReflection) - 1
 	}
 
-	next := make(
-		[]wireGuardUsageAwaitingReflectionBatch,
-		0,
-		len(s.wireGuardUsageAwaitingReflection),
-	)
 	changed := false
 
 	for index, batch := range s.wireGuardUsageAwaitingReflection {
-		kept := make(
-			[]wireGuardUsageSample,
-			0,
-			len(batch.Samples),
-		)
-
 		for _, sample := range batch.Samples {
+			if sample.UserID != userID {
+				continue
+			}
 			if index <= reflectedThrough && sample.UserID == userID {
 				changed = true
 				continue
 			}
-
-			kept = append(kept, sample)
-
-			if sample.UserID != userID ||
-				strings.TrimSpace(sample.InboundTag) != inboundTag {
+			if strings.TrimSpace(sample.InboundTag) != inboundTag {
 				continue
 			}
 
@@ -67,15 +55,37 @@ func (s *Server) wireGuardAwaitingReflectionUsageLocked(
 			}
 			total += sample.Value
 		}
-
-		if len(kept) != 0 {
-			batch.Samples = kept
-			next = append(next, batch)
-		}
 	}
 
 	if !changed {
 		return total, nil
+	}
+
+	// Quota reads run for every peer on each tick. Allocate only when a
+	// committed receipt actually removes this owner's rows. Preserve the
+	// original slices so a failed durable write can roll back unchanged.
+	next := make([]wireGuardUsageAwaitingReflectionBatch, 0, len(s.wireGuardUsageAwaitingReflection))
+	for index, batch := range s.wireGuardUsageAwaitingReflection {
+		if index <= reflectedThrough {
+			remove := 0
+			for _, sample := range batch.Samples {
+				if sample.UserID == userID {
+					remove++
+				}
+			}
+			if remove > 0 {
+				kept := make([]wireGuardUsageSample, 0, len(batch.Samples)-remove)
+				for _, sample := range batch.Samples {
+					if sample.UserID != userID {
+						kept = append(kept, sample)
+					}
+				}
+				batch.Samples = kept
+			}
+		}
+		if len(batch.Samples) != 0 {
+			next = append(next, batch)
+		}
 	}
 
 	previous := s.wireGuardUsageAwaitingReflection
