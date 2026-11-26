@@ -74,6 +74,75 @@ func TestSessionCaptureStartReportsStartupFailure(t *testing.T) {
 	}
 }
 
+func TestSessionCaptureGapInvalidatesOutstandingTCPAndSummaries(t *testing.T) {
+	now := time.Now().UTC().Add(-time.Second)
+	tracker, _ := New(8, time.Minute)
+	b := Binding{NodeID: 1, Interface: "wg-test", Address: netip.MustParseAddr("10.0.0.2"), UserID: 42, Session: "peer", Generation: 1, Since: now.Add(-time.Second)}
+	if err := tracker.Bind(b); err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewSessionCapture(tracker, []Binding{b}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tuple := Tuple{netip.MustParseAddrPort("10.0.0.2:45000"), netip.MustParseAddrPort("192.0.2.7:3724"), "tcp"}
+	upload := CapturedPacket{Metadata: PacketMetadata{Tuple: tuple, WireLength: 50, TCPSequence: 100, TransportPayloadLength: 10}, At: now}
+	ack := CapturedPacket{Metadata: PacketMetadata{Tuple: Tuple{tuple.Destination, tuple.Source, "tcp"}, WireLength: 40, TCPFlags: 0x10, TCPAcknowledgment: 110}, Outgoing: true, At: now.Add(10 * time.Millisecond)}
+	if !c.Consume(upload) || !c.Consume(ack) {
+		t.Fatal("first sample rejected")
+	}
+	upload.Metadata.TCPSequence = 110
+	upload.At = now.Add(20 * time.Millisecond)
+	if !c.Consume(upload) {
+		t.Fatal("outstanding segment rejected")
+	}
+	c.observeStatistics(CaptureStatistics{KernelStatisticsAvailable: true, KernelDrops: 1})
+	if tracker.Snapshot(upload.At)[0].TCPQuality != nil {
+		t.Fatal("gap left published quality valid")
+	}
+	ack.Metadata.TCPAcknowledgment = 120
+	ack.At = now.Add(30 * time.Millisecond)
+	if !c.Consume(ack) {
+		t.Fatal("post-gap ACK rejected")
+	}
+	q := tracker.Snapshot(ack.At)[0].TCPQuality
+	if q.UploadACK.Samples != 0 {
+		t.Fatal("RTT measured across capture gap")
+	}
+	upload.Metadata.TCPSequence = 120
+	upload.At = now.Add(40 * time.Millisecond)
+	ack.Metadata.TCPAcknowledgment = 130
+	ack.At = now.Add(50 * time.Millisecond)
+	if !c.Consume(upload) || !c.Consume(ack) {
+		t.Fatal("fresh timing rejected")
+	}
+	q = tracker.Snapshot(ack.At)[0].TCPQuality
+	if q.UploadACK.Samples != 1 || *q.UploadACK.Mean != 10 {
+		t.Fatalf("fresh quality=%+v", q)
+	}
+	c.observeStatistics(CaptureStatistics{KernelStatisticsAvailable: true, KernelDrops: 1})
+	if tracker.Snapshot(ack.At)[0].TCPQuality == nil {
+		t.Fatal("unchanged cumulative counters reset timing")
+	}
+	callbackDone := make(chan struct{})
+	go func() {
+		c.captureStatisticsCallback(func(s CaptureStatistics) {
+			// Reentering the consumer from the caller callback must not hold c.mu.
+			c.Consume(CapturedPacket{})
+			tracker.Snapshot(ack.At)
+			if s.KernelDrops != 2 {
+				t.Error("statistics callback value lost")
+			}
+		})(CaptureStatistics{KernelStatisticsAvailable: true, KernelDrops: 2})
+		close(callbackDone)
+	}()
+	select {
+	case <-callbackDone:
+	case <-time.After(time.Second):
+		t.Fatal("statistics callback deadlocked")
+	}
+}
+
 func TestSessionCaptureDirectionOwnershipAndStop(t *testing.T) {
 	now := time.Now().UTC().Add(-time.Second)
 	tracker, _ := New(8, time.Minute)

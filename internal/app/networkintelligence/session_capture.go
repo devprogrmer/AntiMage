@@ -13,16 +13,17 @@ import (
 // verified binding snapshot. The caller must close and join the old capture
 // before changing kernel ownership. This adapter cannot verify that contract.
 type SessionCapture struct {
-	mu       sync.Mutex
-	tracker  *Tracker
-	bindings map[netip.Addr]Binding
-	flows    map[Tuple]Observation
-	quality  map[Tuple]*capturedTCPQuality
-	capacity int
-	cancel   context.CancelFunc
-	done     chan struct{}
-	err      error
-	stopped  bool
+	mu         sync.Mutex
+	tracker    *Tracker
+	bindings   map[netip.Addr]Binding
+	flows      map[Tuple]Observation
+	quality    map[Tuple]*capturedTCPQuality
+	statistics CaptureStatistics
+	capacity   int
+	cancel     context.CancelFunc
+	done       chan struct{}
+	err        error
+	stopped    bool
 }
 
 type capturedTCPQuality struct {
@@ -158,6 +159,7 @@ func (c *SessionCapture) Start(ctx context.Context, cfg CaptureConfig) error {
 		}
 	}
 	ctx, c.cancel = context.WithCancel(ctx)
+	cfg.Statistics = c.captureStatisticsCallback(cfg.Statistics)
 	c.done = make(chan struct{})
 	done := c.done
 	ready := make(chan struct{})
@@ -180,6 +182,43 @@ func (c *SessionCapture) Start(ctx context.Context, cfg CaptureConfig) error {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		return c.err
+	}
+}
+
+func (c *SessionCapture) captureStatisticsCallback(next func(CaptureStatistics)) func(CaptureStatistics) {
+	return func(s CaptureStatistics) {
+		c.observeStatistics(s)
+		if next != nil {
+			next(s)
+		}
+	}
+}
+
+// A reported capture gap invalidates outstanding timing and prior summaries.
+// Transport byte counters remain cumulative and cannot establish packet loss.
+func (c *SessionCapture) observeStatistics(s CaptureStatistics) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	gap := s.KernelDrops != c.statistics.KernelDrops || s.RejectedPackets != c.statistics.RejectedPackets
+	c.statistics = s
+	if !gap {
+		return
+	}
+	clear(c.quality)
+	c.tracker.mu.Lock()
+	defer c.tracker.mu.Unlock()
+	for tuple, observation := range c.flows {
+		observation.TCPQuality = nil
+		c.flows[tuple] = observation
+		key := flowKey{key(observation.Binding), observation.Binding.Generation, tuple}
+		if flow, ok := c.tracker.flows[key]; ok && flow.Binding == observation.Binding {
+			flow.TCPQuality = nil
+			c.tracker.flows[key] = flow
+		}
+		if highWater, ok := c.tracker.highWater[key]; ok && highWater.Binding == observation.Binding {
+			highWater.TCPQuality = nil
+			c.tracker.highWater[key] = highWater
+		}
 	}
 }
 
