@@ -29,8 +29,9 @@ func TestCaptureLoopbackRealTCPUDP(t *testing.T) {
 	defer cancel()
 	seen := make(chan string, 64)
 	done := make(chan error, 1)
+	var statistics CaptureStatistics
 	go func() {
-		done <- RunCapture(ctx, CaptureConfig{Interface: "lo"}, func(p CapturedPacket) {
+		done <- RunCapture(ctx, CaptureConfig{Interface: "lo", Statistics: func(s CaptureStatistics) { statistics = s }}, func(p CapturedPacket) {
 			port := int(p.Metadata.Tuple.Destination.Port())
 			if port == udp.LocalAddr().(*net.UDPAddr).Port || port == tcp.Addr().(*net.TCPAddr).Port {
 				select {
@@ -80,6 +81,9 @@ func TestCaptureLoopbackRealTCPUDP(t *testing.T) {
 	case err := <-done:
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("cancel: %v", err)
+		}
+		if statistics.DecodedPackets < 2 || statistics.ReceivedPackets != statistics.DecodedPackets+statistics.RejectedPackets || !statistics.KernelStatisticsAvailable || statistics.KernelPackets < statistics.ReceivedPackets || statistics.ReceiveBufferBytes <= 0 {
+			t.Fatalf("invalid capture statistics: %+v", statistics)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("capture did not stop after cancellation")

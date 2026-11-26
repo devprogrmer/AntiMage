@@ -38,6 +38,32 @@ func RunCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 		return fmt.Errorf("open metadata socket: %w", err)
 	}
 	defer unix.Close(fd)
+	receiveBuffer := cfg.ReceiveBufferBytes
+	if receiveBuffer == 0 {
+		receiveBuffer = 256 * 1024
+	}
+	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_RCVBUF, receiveBuffer); err != nil {
+		return fmt.Errorf("set metadata receive buffer: %w", err)
+	}
+	actualBuffer, err := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_RCVBUF)
+	if err != nil {
+		return fmt.Errorf("read metadata receive buffer: %w", err)
+	}
+	statistics := CaptureStatistics{ReceiveBufferBytes: actualBuffer}
+	report := func() {
+		kernel, err := unix.GetsockoptTpacketStats(fd, unix.SOL_PACKET, unix.PACKET_STATISTICS)
+		statistics.KernelStatisticsAvailable = err == nil
+		if err == nil {
+			// PACKET_STATISTICS resets kernel counters on every read.
+			statistics.KernelPackets += uint64(kernel.Packets)
+			statistics.KernelDrops += uint64(kernel.Drops)
+		}
+		if cfg.Statistics != nil {
+			cfg.Statistics(statistics)
+		}
+	}
+	defer report()
+	nextReport := time.Now().Add(time.Second)
 	if err := unix.Bind(fd, &unix.SockaddrLinklayer{Protocol: uint16(protocol), Ifindex: iface.Index}); err != nil {
 		return fmt.Errorf("bind metadata socket: %w", err)
 	}
@@ -47,6 +73,10 @@ func RunCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 	buffer := make([]byte, 65535)
 	defer clear(buffer)
 	for {
+		if time.Now().After(nextReport) {
+			report()
+			nextReport = time.Now().Add(time.Second)
+		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -57,18 +87,25 @@ func RunCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 		if err != nil {
 			return fmt.Errorf("receive metadata: %w", err)
 		}
+		statistics.ReceivedPackets++
 		if flags&unix.MSG_TRUNC != 0 || n == 0 {
+			statistics.RejectedPackets++
+			clear(buffer)
 			continue
 		}
 		link, ok := source.(*unix.SockaddrLinklayer)
 		if !ok || link.Ifindex != iface.Index {
+			statistics.RejectedPackets++
+			clear(buffer[:n])
 			continue
 		}
 		metadata, err := DecodePacket(buffer[:n])
 		clear(buffer[:n])
 		if err != nil {
+			statistics.RejectedPackets++
 			continue
 		}
+		statistics.DecodedPackets++
 		consume(CapturedPacket{Metadata: metadata, At: time.Now().UTC(), Outgoing: link.Pkttype == unix.PACKET_OUTGOING})
 	}
 }
