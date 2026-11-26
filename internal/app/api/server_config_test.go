@@ -2,6 +2,24 @@ package api
 
 import "testing"
 
+func TestLoadConfigNetworkIntelligenceOptInPreservesProxyConfiguration(t *testing.T) {
+	t.Setenv("SQLALCHEMY_DATABASE_URL", "sqlite:///config-test.db")
+	t.Setenv("ANTIMAGE_TRUSTED_PROXY_CIDRS", "127.0.0.1/32, ::1/128")
+	for _, enabled := range []string{"", "true", "false", "invalid"} {
+		t.Setenv("ANTIMAGE_NETWORK_INTELLIGENCE_ENABLED", enabled)
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.NetworkIntelligenceEnabled != (enabled == "true") {
+			t.Fatalf("flag %q produced %t", enabled, cfg.NetworkIntelligenceEnabled)
+		}
+		if len(cfg.TrustedProxyCIDRs) != 2 || cfg.TrustedProxyCIDRs[0] != "127.0.0.1/32" || cfg.TrustedProxyCIDRs[1] != "::1/128" {
+			t.Fatalf("proxy configuration=%v", cfg.TrustedProxyCIDRs)
+		}
+	}
+}
+
 func TestLoadConfigPrefersSQLAlchemyDatabaseURL(t *testing.T) {
 	t.Setenv("SQLALCHEMY_DATABASE_URL", "sqlite:///legacy.db")
 	t.Setenv("DATABASE_URL", "sqlite:///new.db")
