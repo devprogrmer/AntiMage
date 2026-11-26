@@ -33,6 +33,7 @@ type Server struct {
 	networkIntelligenceTracker    *ni.Tracker
 	networkIntelligenceMu         sync.Mutex
 	networkIntelligenceGeneration uint64
+	networkIntelligenceDetector   *ni.ApplicationDetector
 	nodev1.UnimplementedNodeControlServiceServer
 	nodev1.UnimplementedNodeRuntimeServiceServer
 	nodev1.UnimplementedNodeUsageServiceServer

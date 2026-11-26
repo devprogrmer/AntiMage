@@ -32,6 +32,8 @@ func (s *Server) initializeNetworkIntelligence() {
 		return
 	}
 	s.networkIntelligenceTracker = tracker
+	// Invalid or unavailable signatures leave classification Unknown.
+	s.networkIntelligenceDetector, _ = loadNetworkApplicationDetector(s.cfg.NetworkIntelligenceSignatures)
 	s.networkIntelligenceLifecycle = lifecycle
 	lifecycle.SetEnabled(true)
 }
@@ -106,7 +108,7 @@ func (s *Server) networkIntelligenceSnapshot() string {
 	// Binding session identities remain local to the collector.
 	rows := make([]map[string]any, 0, len(flows))
 	for _, flow := range flows {
-		rows = append(rows, map[string]any{"user_id": flow.Binding.UserID, "node_id": flow.Binding.NodeID, "interface": flow.Binding.Interface, "source": flow.Tuple.Source.String(), "destination": flow.Tuple.Destination.String(), "protocol": flow.Tuple.Protocol, "upload_packets": flow.UploadPackets, "download_packets": flow.DownloadPackets, "upload_bytes": flow.UploadBytes, "download_bytes": flow.DownloadBytes, "observed_at": flow.At, "tcp_quality": flow.TCPQuality})
+		rows = append(rows, map[string]any{"user_id": flow.Binding.UserID, "node_id": flow.Binding.NodeID, "interface": flow.Binding.Interface, "source": flow.Tuple.Source.String(), "destination": flow.Tuple.Destination.String(), "protocol": flow.Tuple.Protocol, "upload_packets": flow.UploadPackets, "download_packets": flow.DownloadPackets, "upload_bytes": flow.UploadBytes, "download_bytes": flow.DownloadBytes, "observed_at": flow.At, "tcp_quality": flow.TCPQuality, "application": s.networkIntelligenceDetector.Detect(flow.Tuple, time.Now().UTC())})
 	}
 	raw, err := json.Marshal(map[string]any{"version": 1, "observed_at": time.Now().UTC(), "truncated": truncated, "flows": rows})
 	if err != nil {
