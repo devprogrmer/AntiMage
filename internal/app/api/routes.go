@@ -46,6 +46,7 @@ func withAPIRequestBodyLimit(next http.Handler) http.Handler {
 
 func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
+	r.Use(s.trustedProxyHeaders)
 
 	r.HandleFunc("/__antimage_api/healthz", s.handleHealth)
 	r.HandleFunc("/metrics", s.handlePrometheusMetrics)
