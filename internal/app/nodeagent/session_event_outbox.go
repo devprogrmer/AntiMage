@@ -45,6 +45,9 @@ func nativeSessionCallbackRetryable(err error) bool {
 	if err == nil {
 		return false
 	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
 	message := err.Error()
 	return strings.Contains(message, "send native session event:") || strings.Contains(message, "callback returned 5")
 }

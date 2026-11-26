@@ -73,6 +73,23 @@ func (s *Server) sendNativeSessionEvent(
 		return fmt.Errorf("native session protocol is required")
 	}
 
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("send native session event: %w", err)
+	}
+	receipt := s.nativeSessionReceiptFor(callback, event)
+	if receipt != nil {
+		select {
+		case receipt.gate <- struct{}{}:
+			defer func() { <-receipt.gate }()
+		case <-ctx.Done():
+			return fmt.Errorf("send native session event: %w", ctx.Err())
+		}
+		if event.Event == "stop" && receipt.lastEvent == event &&
+			!receipt.lastSuccess.IsZero() && time.Since(receipt.lastSuccess) < nativeSessionStopRefresh {
+			return nil
+		}
+	}
+
 	raw, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal native session event: %w", err)
@@ -106,6 +123,9 @@ func (s *Server) sendNativeSessionEvent(
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if receipt != nil {
+			receipt.lastEvent, receipt.lastSuccess = event, time.Now()
+		}
 		return nil
 	}
 

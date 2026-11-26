@@ -37,6 +37,8 @@ type Server struct {
 	xrayAPIPortFallback              int
 	mu                               sync.Mutex
 	maintenanceMu                    sync.Mutex
+	nativeSessionReceiptMu           sync.Mutex
+	nativeSessionReceipts            map[nativeSessionReceiptKey]*nativeSessionReceipt
 	xrayTransitionMu                 sync.Mutex
 	startedAt                        time.Time
 	lastConfig                       string
