@@ -40,11 +40,13 @@ type Config struct {
 	ShopZarinpalSandbox          bool
 	ShopPaymentCallbackURL       string
 	APIDocsEnabled               bool
+	NetworkIntelligenceEnabled   bool
 	WebhookAddresses             []string
 	WebhookSecret                string
 	WebhookSendInterval          string
 	WebhookMaxRetries            int
 	WebhookRetryInterval         string
+	TrustedProxyCIDRs            []string
 }
 
 func LoadConfig() (Config, error) {
@@ -95,6 +97,8 @@ func LoadConfig() (Config, error) {
 		WebhookSendInterval:          firstNonEmpty(lookup("ANTIMAGE_WEBHOOK_SEND_INTERVAL"), secondsEnv(lookup("JOB_SEND_NOTIFICATIONS_INTERVAL"))),
 		WebhookMaxRetries:            parseIntDefault(lookup("NUMBER_OF_RECURRENT_NOTIFICATIONS"), 3),
 		WebhookRetryInterval:         firstNonEmpty(lookup("ANTIMAGE_WEBHOOK_RETRY_INTERVAL"), secondsEnv(lookup("RECURRENT_NOTIFICATIONS_TIMEOUT"))),
+		TrustedProxyCIDRs:            splitWebhookAddresses(lookup("ANTIMAGE_TRUSTED_PROXY_CIDRS")),
+		NetworkIntelligenceEnabled:   parseBoolDefault(lookup("ANTIMAGE_NETWORK_INTELLIGENCE_ENABLED"), false),
 	}
 	if cfg.Database == "" {
 		return Config{}, fmt.Errorf("SQLALCHEMY_DATABASE_URL is required")
