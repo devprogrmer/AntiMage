@@ -145,6 +145,12 @@ func (s *Server) disconnectWireGuardPeerAccountingSafeLocked(
 	peer wireGuardPeerCounters,
 	userID int64,
 ) error {
+	return s.withNetworkIntelligenceMutation(interfaceName, func() error {
+		return s.disconnectWireGuardPeerAccountingSafeUnobservedLocked(cfg, interfaceName, peer, userID)
+	})
+}
+
+func (s *Server) disconnectWireGuardPeerAccountingSafeUnobservedLocked(cfg wireGuardUsageRuntimeConfig, interfaceName string, peer wireGuardPeerCounters, userID int64) error {
 	publicKey := strings.TrimSpace(peer.PublicKey)
 
 	if wireGuardUsageAccountingEnabled(cfg) {

@@ -219,6 +219,10 @@ func (s *Server) preflightWireGuardRuntimes(
 func (s *Server) applyWireGuardRuntime(
 	prepared preparedWireGuardRuntime,
 ) error {
+	return s.withNetworkIntelligenceMutation(prepared.InterfaceName, func() error { return s.applyWireGuardRuntimeUnobserved(prepared) })
+}
+
+func (s *Server) applyWireGuardRuntimeUnobserved(prepared preparedWireGuardRuntime) error {
 	if wireGuardRuntimeGOOS != "linux" {
 		return fmt.Errorf(
 			"wireguard %q: native runtime is supported only on linux",
@@ -522,6 +526,16 @@ func removeWireGuardInterface(interfaceName string) error {
 func (s *Server) removeWireGuardRuntimeInterface(
 	state wireGuardRuntimeState,
 ) (bool, error) {
+	var removed bool
+	err := s.withNetworkIntelligenceMutation(state.InterfaceName, func() error {
+		var err error
+		removed, err = s.removeWireGuardRuntimeInterfaceUnobserved(state)
+		return err
+	})
+	return removed, err
+}
+
+func (s *Server) removeWireGuardRuntimeInterfaceUnobserved(state wireGuardRuntimeState) (bool, error) {
 	if err := s.checkpointWireGuardOfflineGeneration(context.Background(), state.InterfaceName); err != nil {
 		return false, err
 	}

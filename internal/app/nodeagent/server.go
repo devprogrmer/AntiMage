@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	ni "github.com/antimage/antimage/internal/app/networkintelligence"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/host"
@@ -28,6 +29,7 @@ import (
 )
 
 type Server struct {
+	networkIntelligenceLifecycle *ni.Lifecycle
 	nodev1.UnimplementedNodeControlServiceServer
 	nodev1.UnimplementedNodeRuntimeServiceServer
 	nodev1.UnimplementedNodeUsageServiceServer
