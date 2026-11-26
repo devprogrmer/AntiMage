@@ -2,10 +2,57 @@ package networkintelligence
 
 import (
 	"context"
+	"encoding/json"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestSessionCapturePublishesSeparateTCPQualityLegs(t *testing.T) {
+	now := time.Now().UTC().Add(-time.Second)
+	tracker, _ := New(8, time.Minute)
+	b := Binding{NodeID: 1, Interface: "wg-test", Address: netip.MustParseAddr("10.0.0.2"), UserID: 42, Session: "peer", Generation: 1, Since: now.Add(-time.Second)}
+	if err := tracker.Bind(b); err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewSessionCapture(tracker, []Binding{b}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tuple := Tuple{netip.MustParseAddrPort("10.0.0.2:45000"), netip.MustParseAddrPort("192.0.2.7:3724"), "tcp"}
+	upload := CapturedPacket{Metadata: PacketMetadata{Tuple: tuple, WireLength: 50, TCPSequence: 100, TransportPayloadLength: 10}, At: now}
+	ack := CapturedPacket{Metadata: PacketMetadata{Tuple: Tuple{tuple.Destination, tuple.Source, "tcp"}, WireLength: 40, TCPFlags: 0x10, TCPAcknowledgment: 110}, Outgoing: true, At: now.Add(20 * time.Millisecond)}
+	if !c.Consume(upload) || !c.Consume(ack) {
+		t.Fatal("capture rejected")
+	}
+	flows := tracker.Snapshot(ack.At)
+	q := flows[0].TCPQuality
+	if q == nil || q.Method != "tcp_ack_observation" || q.UploadACK.Samples != 1 || q.UploadACK.Mean == nil || *q.UploadACK.Mean != 20 || q.DownloadACK.Mean != nil || q.PacketLoss != nil {
+		t.Fatalf("quality=%+v", q)
+	}
+	raw, err := json.Marshal(q)
+	if err != nil || !strings.Contains(string(raw), `"packet_loss":null`) || !strings.Contains(string(raw), `"mean_ms":20`) {
+		t.Fatalf("quality JSON=%s err=%v", raw, err)
+	}
+	// Rejected future telemetry must not poison the timing estimator.
+	gap := upload
+	gap.At = now.Add(2 * time.Minute)
+	if c.Consume(gap) {
+		t.Fatal("future packet accepted")
+	}
+	upload.Metadata.TCPSequence = 110
+	upload.At = now.Add(30 * time.Millisecond)
+	ack.Metadata.TCPAcknowledgment = 120
+	ack.At = now.Add(40 * time.Millisecond)
+	if !c.Consume(upload) || !c.Consume(ack) {
+		t.Fatal("valid packet after future telemetry rejected")
+	}
+	q = tracker.Snapshot(ack.At)[0].TCPQuality
+	if q.UploadACK.Samples != 2 || *q.UploadACK.Mean != 15 {
+		t.Fatalf("future telemetry poisoned timing: %+v", q)
+	}
+}
 
 func TestSessionCaptureStartReportsStartupFailure(t *testing.T) {
 	tracker, _ := New(4, time.Minute)

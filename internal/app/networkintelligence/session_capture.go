@@ -17,6 +17,7 @@ type SessionCapture struct {
 	tracker  *Tracker
 	bindings map[netip.Addr]Binding
 	flows    map[Tuple]Observation
+	quality  map[Tuple]*capturedTCPQuality
 	capacity int
 	cancel   context.CancelFunc
 	done     chan struct{}
@@ -24,11 +25,16 @@ type SessionCapture struct {
 	stopped  bool
 }
 
+type capturedTCPQuality struct {
+	estimator *TCPQuality
+	windows   [2]*QualityWindow
+}
+
 func NewSessionCapture(tracker *Tracker, bindings []Binding, capacity int) (*SessionCapture, error) {
 	if tracker == nil || capacity < 1 || len(bindings) == 0 || len(bindings) > capacity {
 		return nil, errors.New("tracker, bounded capacity and bindings required")
 	}
-	c := &SessionCapture{tracker: tracker, bindings: make(map[netip.Addr]Binding), flows: make(map[Tuple]Observation), capacity: capacity}
+	c := &SessionCapture{tracker: tracker, bindings: make(map[netip.Addr]Binding), flows: make(map[Tuple]Observation), quality: make(map[Tuple]*capturedTCPQuality), capacity: capacity}
 	first := bindings[0]
 	for _, b := range bindings {
 		if b.NodeID != first.NodeID || b.Interface != first.Interface {
@@ -55,7 +61,8 @@ func NewSessionCapture(tracker *Tracker, bindings []Binding, capacity int) (*Ses
 func (c *SessionCapture) Consume(p CapturedPacket) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.stopped || p.Metadata.WireLength == 0 || p.At.IsZero() {
+	now := time.Now().UTC()
+	if c.stopped || p.Metadata.WireLength == 0 || p.At.IsZero() || p.At.After(now) || !p.At.After(now.Add(-c.tracker.timeout)) {
 		return false
 	}
 	tuple := p.Metadata.Tuple
@@ -94,11 +101,47 @@ func (c *SessionCapture) Consume(p CapturedPacket) bool {
 	}
 	o.Sequence++
 	o.At = p.At
-	if !c.tracker.Observe(o, time.Now().UTC()) {
+	if tuple.Protocol == "tcp" {
+		o.TCPQuality = c.observeTCP(tuple, p)
+	}
+	if !c.tracker.Observe(o, now) {
 		return false
 	}
 	c.flows[tuple] = o
 	return true
+}
+
+func milliseconds(s QualitySummary) LatencyMilliseconds {
+	convert := func(d *time.Duration) *float64 {
+		if d == nil {
+			return nil
+		}
+		v := float64(*d) / float64(time.Millisecond)
+		return &v
+	}
+	return LatencyMilliseconds{s.Samples, convert(s.Min), convert(s.Mean), convert(s.Max), convert(s.P50), convert(s.P95), convert(s.P99), convert(s.Jitter)}
+}
+
+func (c *SessionCapture) observeTCP(tuple Tuple, packet CapturedPacket) *TCPFlowQuality {
+	q := c.quality[tuple]
+	previous := c.flows[tuple]
+	if q == nil || packet.At.Sub(previous.At) >= c.tracker.timeout {
+		estimator, _ := NewTCPQuality(32)
+		up, _ := NewQualityWindow(32, time.Minute)
+		down, _ := NewQualityWindow(32, time.Minute)
+		q = &capturedTCPQuality{estimator, [2]*QualityWindow{up, down}}
+		c.quality[tuple] = q
+	}
+	direction := 0
+	if packet.Outgoing {
+		direction = 1
+	}
+	result := q.estimator.Observe(packet.Metadata, direction, packet.At)
+	// ACKs in one direction measure segments transmitted in the opposite leg.
+	for _, rtt := range result.ACKRTT {
+		q.windows[1-direction].Add(rtt, packet.At, packet.At)
+	}
+	return &TCPFlowQuality{Method: "tcp_ack_observation", UploadACK: milliseconds(q.windows[0].Snapshot(packet.At)), DownloadACK: milliseconds(q.windows[1].Snapshot(packet.At)), Retransmissions: result.ObservedRetransmissions, DuplicateACKs: result.ObservedDuplicateACKs, DiscardedSegments: result.DiscardedSegments}
 }
 
 // Start starts a single socket. Stop cancels and joins it before returning.

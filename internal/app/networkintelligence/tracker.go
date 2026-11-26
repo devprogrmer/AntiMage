@@ -38,6 +38,30 @@ type Observation struct {
 	At                             time.Time
 	UploadPackets, DownloadPackets uint64
 	UploadBytes, DownloadBytes     uint64
+	TCPQuality                     *TCPFlowQuality
+}
+
+// TCPFlowQuality keeps the two observation legs separate. Durations are in
+// milliseconds and packet loss stays unavailable without protocol evidence.
+type TCPFlowQuality struct {
+	Method            string              `json:"method"`
+	UploadACK         LatencyMilliseconds `json:"upload_ack"`
+	DownloadACK       LatencyMilliseconds `json:"download_ack"`
+	Retransmissions   uint64              `json:"observed_retransmissions"`
+	DuplicateACKs     uint64              `json:"observed_duplicate_acks"`
+	DiscardedSegments uint64              `json:"discarded_segments"`
+	PacketLoss        *float64            `json:"packet_loss"`
+}
+
+type LatencyMilliseconds struct {
+	Samples int      `json:"samples"`
+	Min     *float64 `json:"min_ms"`
+	Mean    *float64 `json:"mean_ms"`
+	Max     *float64 `json:"max_ms"`
+	P50     *float64 `json:"p50_ms"`
+	P95     *float64 `json:"p95_ms"`
+	P99     *float64 `json:"p99_ms"`
+	Jitter  *float64 `json:"jitter_ms"`
 }
 
 type Flow struct{ Observation }
