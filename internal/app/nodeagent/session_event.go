@@ -74,7 +74,7 @@ func (s *Server) sendNativeSessionEvent(
 	}
 
 	if err := ctx.Err(); err != nil {
-		return err
+		return fmt.Errorf("send native session event: %w", err)
 	}
 	receipt := s.nativeSessionReceiptFor(callback, event)
 	if receipt != nil {
@@ -82,7 +82,7 @@ func (s *Server) sendNativeSessionEvent(
 		case receipt.gate <- struct{}{}:
 			defer func() { <-receipt.gate }()
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("send native session event: %w", ctx.Err())
 		}
 		if event.Event == "stop" && receipt.lastEvent == event &&
 			!receipt.lastSuccess.IsZero() && time.Since(receipt.lastSuccess) < nativeSessionStopRefresh {

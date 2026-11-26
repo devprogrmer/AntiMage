@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -138,5 +139,28 @@ func TestNativeSessionReceiptCapacityFallsBackWithoutDroppingEvents(t *testing.T
 	event.UserID = 1
 	if s.nativeSessionReceiptFor(cb, event) == nil {
 		t.Fatal("existing receipt unavailable at capacity")
+	}
+}
+
+func TestCanceledNativeSessionSendRemainsDurablyRetryable(t *testing.T) {
+	s := New(Config{DataDir: t.TempDir()})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	cb := nativeRuntimeSessionCallback{URL: "http://127.0.0.1:1", NodeID: 1}
+	event := nativeSessionEvent{UserID: 1, Protocol: "wg", SessionID: "one", Event: "stop"}
+	if err := s.sendNativeSessionEventOfflineSafe(ctx, cb, event); err != nil {
+		t.Fatalf("expired callback was not safely queued: %v", err)
+	}
+	entries, err := os.ReadDir(s.nativeSessionOutboxDir())
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("expired callback missing from durable outbox: %v %v", entries, err)
+	}
+	event.SessionID = "two"
+	if err := s.sendNativeSessionEventOfflineSafe(ctx, cb, event); err != nil {
+		t.Fatalf("expired replay blocked persisting the next callback: %v", err)
+	}
+	entries, err = os.ReadDir(s.nativeSessionOutboxDir())
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("next expired callback missing: %v %v", entries, err)
 	}
 }
