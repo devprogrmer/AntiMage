@@ -2,6 +2,8 @@
 package networkintelligence
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"net/netip"
 	"sync"
@@ -29,6 +31,7 @@ type Tuple struct {
 // Observation uses cumulative directional counters from one collector epoch.
 // Sequence must increase for every observation within a binding generation.
 type Observation struct {
+	CollectorEpoch                 string
 	Binding                        Binding
 	Tuple                          Tuple
 	Sequence                       uint64
@@ -50,19 +53,29 @@ type flowKey struct {
 }
 
 type Tracker struct {
-	mu       sync.Mutex
-	capacity int
-	timeout  time.Duration
-	bindings map[leaseKey]Binding
-	flows    map[flowKey]Flow
+	epoch     string
+	mu        sync.Mutex
+	capacity  int
+	timeout   time.Duration
+	bindings  map[leaseKey]Binding
+	flows     map[flowKey]Flow
+	highWater map[flowKey]Observation
 }
 
 func New(capacity int, timeout time.Duration) (*Tracker, error) {
 	if capacity < 1 || timeout <= 0 {
 		return nil, errors.New("positive capacity and timeout required")
 	}
-	return &Tracker{capacity: capacity, timeout: timeout, bindings: make(map[leaseKey]Binding), flows: make(map[flowKey]Flow)}, nil
+	var epoch [16]byte
+	if _, err := rand.Read(epoch[:]); err != nil {
+		return nil, err
+	}
+	return &Tracker{epoch: hex.EncodeToString(epoch[:]), capacity: capacity, timeout: timeout, bindings: make(map[leaseKey]Binding), flows: make(map[flowKey]Flow), highWater: make(map[flowKey]Observation)}, nil
 }
+
+// Epoch is negotiated with collectors before accepting their observations.
+// A new Tracker rejects all telemetry captured for a previous instance.
+func (t *Tracker) Epoch() string { return t.epoch }
 
 func key(b Binding) leaseKey { return leaseKey{b.NodeID, b.Interface, b.Address} }
 
@@ -91,12 +104,20 @@ func (t *Tracker) Bind(b Binding) error {
 		}
 	}
 	t.bindings[k] = b
+	for fk := range t.highWater {
+		if fk.lease == k {
+			delete(t.highWater, fk)
+		}
+	}
 	return nil
 }
 
 // Observe returns false for unattributed, stale, duplicate or over-capacity data.
 // It never infers a session from an address. A missing generation is rejected.
 func (t *Tracker) Observe(o Observation, now time.Time) bool {
+	if o.CollectorEpoch != t.epoch {
+		return false
+	}
 	if o.Tuple.Protocol != "tcp" && o.Tuple.Protocol != "udp" {
 		return false
 	}
@@ -112,14 +133,15 @@ func (t *Tracker) Observe(o Observation, now time.Time) bool {
 		return false
 	}
 	fk := flowKey{k, b.Generation, o.Tuple}
-	if old, ok := t.flows[fk]; ok {
+	if old, ok := t.highWater[fk]; ok {
 		if o.Sequence <= old.Sequence || o.At.Before(old.At) || o.UploadPackets < old.UploadPackets || o.DownloadPackets < old.DownloadPackets || o.UploadBytes < old.UploadBytes || o.DownloadBytes < old.DownloadBytes {
 			return false
 		}
-	} else if len(t.flows) >= t.capacity {
+	} else if len(t.highWater) >= t.capacity {
 		return false
 	}
 	t.flows[fk] = Flow{o}
+	t.highWater[fk] = o
 	return true
 }
 
