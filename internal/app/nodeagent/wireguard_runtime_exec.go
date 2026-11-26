@@ -219,7 +219,17 @@ func (s *Server) preflightWireGuardRuntimes(
 func (s *Server) applyWireGuardRuntime(
 	prepared preparedWireGuardRuntime,
 ) error {
-	return s.withNetworkIntelligenceMutation(prepared.InterfaceName, func() error { return s.applyWireGuardRuntimeUnobserved(prepared) })
+	if s.networkIntelligenceLifecycle == nil {
+		return s.applyWireGuardRuntimeUnobserved(prepared)
+	}
+	s.networkIntelligenceMu.Lock()
+	defer s.networkIntelligenceMu.Unlock()
+	err := s.networkIntelligenceLifecycle.Mutate(prepared.InterfaceName, func() error { return s.applyWireGuardRuntimeUnobserved(prepared) })
+	if err == nil {
+		// Monitoring failure never changes the VPN operation result.
+		_ = s.publishNetworkIntelligence(prepared)
+	}
+	return err
 }
 
 func (s *Server) applyWireGuardRuntimeUnobserved(prepared preparedWireGuardRuntime) error {

@@ -936,8 +936,10 @@ type MetricsResponse struct {
 	Transfer      *TransferMetrics       `protobuf:"bytes,3,opt,name=transfer,proto3" json:"transfer,omitempty"`
 	SampledAtUnix int64                  `protobuf:"varint,4,opt,name=sampled_at_unix,json=sampledAtUnix,proto3" json:"sampled_at_unix,omitempty"`
 	Accounting    *AccountingHealth      `protobuf:"bytes,5,opt,name=accounting,proto3" json:"accounting,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Versioned, bounded metadata snapshot. Empty when monitoring is disabled.
+	NetworkIntelligenceJson string `protobuf:"bytes,6,opt,name=network_intelligence_json,json=networkIntelligenceJson,proto3" json:"network_intelligence_json,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *MetricsResponse) Reset() {
@@ -1003,6 +1005,13 @@ func (x *MetricsResponse) GetAccounting() *AccountingHealth {
 		return x.Accounting
 	}
 	return nil
+}
+
+func (x *MetricsResponse) GetNetworkIntelligenceJson() string {
+	if x != nil {
+		return x.NetworkIntelligenceJson
+	}
+	return ""
 }
 
 type AccountingHealth struct {
@@ -3785,7 +3794,7 @@ const file_antimage_node_v1_node_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"9\n" +
 	"\x0eMetricsRequest\x12'\n" +
-	"\x0finclude_runtime\x18\x01 \x01(\bR\x0eincludeRuntime\"\xaf\x02\n" +
+	"\x0finclude_runtime\x18\x01 \x01(\bR\x0eincludeRuntime\"\xeb\x02\n" +
 	"\x0fMetricsResponse\x128\n" +
 	"\aruntime\x18\x01 \x01(\v2\x1e.antimage.node.v1.RuntimeStateR\aruntime\x127\n" +
 	"\x06system\x18\x02 \x01(\v2\x1f.antimage.node.v1.SystemMetricsR\x06system\x12=\n" +
@@ -3793,7 +3802,8 @@ const file_antimage_node_v1_node_proto_rawDesc = "" +
 	"\x0fsampled_at_unix\x18\x04 \x01(\x03R\rsampledAtUnix\x12B\n" +
 	"\n" +
 	"accounting\x18\x05 \x01(\v2\".antimage.node.v1.AccountingHealthR\n" +
-	"accounting\"\x8f\x03\n" +
+	"accounting\x12:\n" +
+	"\x19network_intelligence_json\x18\x06 \x01(\tR\x17networkIntelligenceJson\"\x8f\x03\n" +
 	"\x10AccountingHealth\x12H\n" +
 	"\tprotocols\x18\x01 \x03(\v2*.antimage.node.v1.AccountingProtocolStatusR\tprotocols\x128\n" +
 	"\x18reflection_ledger_loaded\x18\x02 \x01(\bR\x16reflectionLedgerLoaded\x12>\n" +

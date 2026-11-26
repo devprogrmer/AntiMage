@@ -29,7 +29,10 @@ import (
 )
 
 type Server struct {
-	networkIntelligenceLifecycle *ni.Lifecycle
+	networkIntelligenceLifecycle  *ni.Lifecycle
+	networkIntelligenceTracker    *ni.Tracker
+	networkIntelligenceMu         sync.Mutex
+	networkIntelligenceGeneration uint64
 	nodev1.UnimplementedNodeControlServiceServer
 	nodev1.UnimplementedNodeRuntimeServiceServer
 	nodev1.UnimplementedNodeUsageServiceServer
@@ -180,7 +183,7 @@ var (
 )
 
 func New(cfg Config) *Server {
-	return &Server{
+	s := &Server{
 		cfg:                             cfg,
 		xrayAPIPortFallback:             cfg.XrayAPIPort,
 		startedAt:                       time.Now(),
@@ -212,9 +215,12 @@ func New(cfg Config) *Server {
 		torProxies:                      make(map[uint32]*exec.Cmd),
 		logs:                            []string{"AntiMage-node agent initialized"},
 	}
+	s.initializeNetworkIntelligence()
+	return s
 }
 
 func (s *Server) Run(ctx context.Context) error {
+	defer s.stopNetworkIntelligence()
 	checkpointInterval, err := nodeAccountingCheckpointInterval()
 	if err != nil {
 		return err
@@ -1060,7 +1066,7 @@ func (s *Server) metrics(includeRuntime bool) *nodev1.MetricsResponse {
 	if uptime, err := host.Uptime(); err == nil {
 		system.UptimeSeconds = uptime
 	}
-	res := &nodev1.MetricsResponse{System: system, Transfer: s.transferMetrics(), SampledAtUnix: time.Now().Unix(), Accounting: s.accountingHealth()}
+	res := &nodev1.MetricsResponse{System: system, Transfer: s.transferMetrics(), SampledAtUnix: time.Now().Unix(), Accounting: s.accountingHealth(), NetworkIntelligenceJson: s.networkIntelligenceSnapshot()}
 	if includeRuntime {
 		res.Runtime = s.runtimeState("metrics collected")
 	}
