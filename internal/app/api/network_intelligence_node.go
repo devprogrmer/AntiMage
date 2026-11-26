@@ -2,11 +2,14 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
 
 	adminapp "github.com/antimage/antimage/internal/app/admin"
+	ni "github.com/antimage/antimage/internal/app/networkintelligence"
 )
 
 func (s *Server) handleNetworkIntelligenceNode(w http.ResponseWriter, r *http.Request) {
@@ -28,5 +31,40 @@ func (s *Server) handleNetworkIntelligenceNode(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusServiceUnavailable, "Network telemetry unavailable")
 		return
 	}
+	if r.URL.Query().Get("diagnose") == "true" {
+		var telemetry struct {
+			ObservedAt time.Time `json:"observed_at"`
+			Flows      []struct {
+				UserID      int64              `json:"user_id"`
+				Destination string             `json:"destination"`
+				ObservedAt  time.Time          `json:"observed_at"`
+				Quality     *ni.TCPFlowQuality `json:"tcp_quality"`
+			} `json:"flows"`
+		}
+		if err := json.Unmarshal(snapshot, &telemetry); err != nil {
+			writeError(w, http.StatusBadGateway, "Invalid network telemetry")
+			return
+		}
+		results := make([]map[string]any, 0, len(telemetry.Flows))
+		for _, flow := range telemetry.Flows {
+			input := ni.DiagnosticInput{ObservedAt: flow.ObservedAt}
+			if flow.Quality != nil {
+				input.Retransmissions = flow.Quality.Retransmissions
+				input.ACKRTT = millisecondsDuration(flow.Quality.UploadACK.Mean)
+				input.Jitter = millisecondsDuration(flow.Quality.UploadACK.Jitter)
+			}
+			results = append(results, map[string]any{"user_id": flow.UserID, "destination": flow.Destination, "findings": ni.Diagnose(input, time.Now().UTC())})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"node_id": id, "observed_at": telemetry.ObservedAt, "results": results})
+		return
+	}
 	writeJSON(w, http.StatusOK, snapshot)
+}
+
+func millisecondsDuration(value *float64) *time.Duration {
+	if value == nil || math.IsNaN(*value) || math.IsInf(*value, 0) || *value <= 0 || *value > 600000 {
+		return nil
+	}
+	duration := time.Duration(*value * float64(time.Millisecond))
+	return &duration
 }
