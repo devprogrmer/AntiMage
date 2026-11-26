@@ -1,0 +1,22 @@
+name: Network Intelligence Isolation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'internal/app/networkintelligence/**'
+      - 'internal/app/nodeagent/network_intelligence*'
+      - 'scripts/ci/network-intelligence-e2e.sh'
+      - '.github/workflows/network-intelligence.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-wireguard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - name: Real WireGuard reassignment and race tests in isolated container
+        run: bash scripts/ci/network-intelligence-e2e.sh
