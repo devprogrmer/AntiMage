@@ -104,25 +104,40 @@ func (c *SessionCapture) Consume(p CapturedPacket) bool {
 // Start starts a single socket. Stop cancels and joins it before returning.
 func (c *SessionCapture) Start(ctx context.Context, cfg CaptureConfig) error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.done != nil || c.stopped {
+		c.mu.Unlock()
 		return errors.New("capture already started or stopped")
 	}
 	for _, b := range c.bindings {
 		if cfg.Interface != b.Interface {
+			c.mu.Unlock()
 			return errors.New("capture interface does not match binding")
 		}
 	}
 	ctx, c.cancel = context.WithCancel(ctx)
 	c.done = make(chan struct{})
+	done := c.done
+	ready := make(chan struct{})
 	go func() {
-		err := RunCapture(ctx, cfg, func(p CapturedPacket) { c.Consume(p) })
+		err := runCapture(ctx, cfg, func(p CapturedPacket) { c.Consume(p) }, func() { close(ready) })
 		c.mu.Lock()
 		c.err = err
 		c.mu.Unlock()
-		close(c.done)
+		close(done)
 	}()
-	return nil
+	c.mu.Unlock()
+	select {
+	case <-ready:
+		if err := ctx.Err(); err != nil {
+			c.Stop()
+			return err
+		}
+		return nil
+	case <-done:
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.err
+	}
 }
 
 func (c *SessionCapture) Stop() error {

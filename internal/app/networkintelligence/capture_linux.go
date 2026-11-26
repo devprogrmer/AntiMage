@@ -18,6 +18,10 @@ import (
 // this function. Receive truncation, non-IP traffic and undecodable packets are
 // discarded. Socket drops make this unsuitable as an accounting source.
 func RunCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPacket)) error {
+	return runCapture(ctx, cfg, consume, nil)
+}
+
+func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPacket), ready func()) error {
 	if err := cfg.validate(); err != nil {
 		return err
 	}
@@ -72,6 +76,12 @@ func RunCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 	}
 	buffer := make([]byte, 65535)
 	defer clear(buffer)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if ready != nil {
+		ready()
+	}
 	for {
 		if time.Now().After(nextReport) {
 			report()

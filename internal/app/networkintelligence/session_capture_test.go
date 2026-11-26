@@ -1,10 +1,31 @@
 package networkintelligence
 
 import (
+	"context"
 	"net/netip"
 	"testing"
 	"time"
 )
+
+func TestSessionCaptureStartReportsStartupFailure(t *testing.T) {
+	tracker, _ := New(4, time.Minute)
+	b := Binding{NodeID: 1, Interface: "ni-no-such-if", Address: netip.MustParseAddr("10.0.0.2"), UserID: 42, Session: "peer", Generation: 1, Since: time.Now()}
+	if err := tracker.Bind(b); err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewSessionCapture(tracker, []Binding{b}, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := c.Start(ctx, CaptureConfig{Interface: b.Interface}); err == nil {
+		t.Fatal("Start reported success before opening capture socket")
+	}
+	if err := c.Stop(); err == nil {
+		t.Fatal("Stop lost startup error")
+	}
+}
 
 func TestSessionCaptureDirectionOwnershipAndStop(t *testing.T) {
 	now := time.Now().UTC().Add(-time.Second)
