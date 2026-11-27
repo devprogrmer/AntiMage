@@ -2,14 +2,19 @@
 # Run real kernel VPN tests in a disposable Linux guest, retaining its serial
 # console even if the guest kernel stalls. Never touch production services.
 set -euo pipefail
-mode="${1:?expected l2tp or combined}"
-case "$mode" in l2tp|combined) ;; *) exit 2 ;; esac
+mode="${1:?expected l2tp, combined or network-intelligence}"
+case "$mode" in l2tp|combined|network-intelligence) ;; *) exit 2 ;; esac
 [ "$(id -u)" -eq 0 ] || { echo 'Run as root' >&2; exit 2; }
 : "${RUNNER_TEMP:?}"
-: "${ANTIMAGE_L2TP_TEST_BINARY:?}"
-: "${ANTIMAGE_L2TP_PANEL_TEST_BINARY:?}"
-: "${ANTIMAGE_L2TP_API_TEST_BINARY:?}"
-: "${ANTIMAGE_NODE_HELPER_BINARY:?}"
+if [ "$mode" = network-intelligence ]; then
+  : "${ANTIMAGE_NI_TEST_BINARY:?}"
+  : "${ANTIMAGE_NI_NODE_TEST_BINARY:?}"
+else
+  : "${ANTIMAGE_L2TP_TEST_BINARY:?}"
+  : "${ANTIMAGE_L2TP_PANEL_TEST_BINARY:?}"
+  : "${ANTIMAGE_L2TP_API_TEST_BINARY:?}"
+  : "${ANTIMAGE_NODE_HELPER_BINARY:?}"
+fi
 test -c /dev/kvm || { echo 'KVM is required for the native Linux guest' >&2; exit 1; }
 root="$(mktemp -d "$RUNNER_TEMP/native-linux-guest.XXXXXX")"
 evidence="$RUNNER_TEMP/antimage-guest-failure"
@@ -60,7 +65,9 @@ EOF
 printf 'instance-id: antimage-native\nlocal-hostname: antimage-native\n' >"$root/meta-data"
 cloud-localds "$root/seed.img" "$root/user-data" "$root/meta-data"
 port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-qemu-system-x86_64 -enable-kvm -cpu host -smp 2 -m 3072 -display none -no-reboot \
+memory=3072
+if [ "$mode" = network-intelligence ]; then memory=2048; fi
+qemu-system-x86_64 -enable-kvm -cpu host -smp 2 -m "$memory" -display none -no-reboot \
   -serial "file:$evidence/serial.log" \
   -drive "file=$root/disk.qcow2,format=qcow2,if=virtio" \
   -drive "file=$root/seed.img,format=raw,if=virtio" \
@@ -82,16 +89,29 @@ done
 ssh "${ssh_args[@]}" root@127.0.0.1 'set -eu; uname -a; apt-get update; DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends iproute2 iptables nftables iputils-ping tcpdump ppp xl2tpd strongswan pptp-linux pptpd wireguard-tools openvpn openssl netcat-openbsd python3 "linux-modules-extra-$(uname -r)"' \
   2>&1 | tee "$evidence/provision.log"
 cp -a scripts/ci "$root/package/scripts/"
-install -m 0755 "$ANTIMAGE_L2TP_TEST_BINARY" "$root/package/bin/nodeagent.test"
-install -m 0755 "$ANTIMAGE_L2TP_PANEL_TEST_BINARY" "$root/package/bin/nodecontroller.test"
-install -m 0755 "$ANTIMAGE_L2TP_API_TEST_BINARY" "$root/package/bin/api.test"
-install -m 0755 "$ANTIMAGE_NODE_HELPER_BINARY" "$root/package/bin/node-helper"
+if [ "$mode" = network-intelligence ]; then
+  install -m 0755 "$ANTIMAGE_NI_TEST_BINARY" "$root/package/bin/networkintelligence.test"
+  install -m 0755 "$ANTIMAGE_NI_NODE_TEST_BINARY" "$root/package/bin/nodeagent.test"
+else
+  install -m 0755 "$ANTIMAGE_L2TP_TEST_BINARY" "$root/package/bin/nodeagent.test"
+  install -m 0755 "$ANTIMAGE_L2TP_PANEL_TEST_BINARY" "$root/package/bin/nodecontroller.test"
+  install -m 0755 "$ANTIMAGE_L2TP_API_TEST_BINARY" "$root/package/bin/api.test"
+  install -m 0755 "$ANTIMAGE_NODE_HELPER_BINARY" "$root/package/bin/node-helper"
+fi
 cat >"$root/package/run.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 cd /root/antimage-native
 export RUNNER_TEMP="$PWD/evidence"
 mkdir -p "$RUNNER_TEMP"
+if [ "$1" = network-intelligence ]; then
+  # This marker exists only in the fresh disposable VM created above.
+  touch /run/antimage-disposable-network-lab
+  export ANTIMAGE_WIREGUARD_NI_E2E=1 ANTIMAGE_CAPTURE_E2E=1
+  bin/networkintelligence.test -test.v
+  bin/nodeagent.test -test.v -test.run 'TestNetworkIntelligence|TestNetworkInfrastructure'
+  exit
+fi
 export ANTIMAGE_L2TP_TEST_BINARY="$PWD/bin/nodeagent.test"
 export ANTIMAGE_L2TP_PANEL_TEST_BINARY="$PWD/bin/nodecontroller.test"
 export ANTIMAGE_L2TP_API_TEST_BINARY="$PWD/bin/api.test"

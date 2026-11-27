@@ -15,8 +15,30 @@ permissions:
 jobs:
   isolated-wireguard:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
-      - name: Real WireGuard reassignment and race tests in isolated container
-        run: bash scripts/ci/network-intelligence-e2e.sh
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Install disposable guest tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils cloud-image-utils
+      - name: Build race test binaries and validate guest cleanup
+        run: |
+          python3 scripts/ci/test-native-linux-guest.py
+          go test -race -c -o "$RUNNER_TEMP/networkintelligence.test" ./internal/app/networkintelligence
+          go test -race -c -o "$RUNNER_TEMP/nodeagent.test" ./internal/app/nodeagent
+      - name: Real WireGuard reassignment in disposable Linux guest
+        run: |
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" \
+            ANTIMAGE_NI_TEST_BINARY="$RUNNER_TEMP/networkintelligence.test" \
+            ANTIMAGE_NI_NODE_TEST_BINARY="$RUNNER_TEMP/nodeagent.test" \
+            bash scripts/ci/native-linux-guest.sh network-intelligence
+      - name: Retain isolated guest evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: network-intelligence-guest-failure
+          path: ${{ runner.temp }}/antimage-guest-failure/

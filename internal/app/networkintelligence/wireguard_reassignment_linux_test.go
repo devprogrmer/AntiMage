@@ -20,7 +20,9 @@ func TestWireGuardRealPeerReassignment(t *testing.T) {
 		t.Skip("requires disposable Linux namespace fixture")
 	}
 	if _, err := os.Stat("/.dockerenv"); err != nil {
-		t.Fatal("fixture requires a disposable Docker container")
+		if _, guestErr := os.Stat("/run/antimage-disposable-network-lab"); guestErr != nil {
+			t.Fatal("fixture requires a disposable Docker container or explicit disposable guest")
+		}
 	}
 	for _, name := range []string{"ni-root", "ni-server"} {
 		if _, err := net.InterfaceByName(name); err == nil {
