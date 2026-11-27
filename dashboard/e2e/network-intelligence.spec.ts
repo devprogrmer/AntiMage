@@ -32,6 +32,34 @@ test("disabled panel reports feature flag status", async ({ page }) => {
 	await expect(page.getByText("Network Intelligence is disabled on the panel.")).toBeVisible();
 });
 
+test("keeps selected history readable after presence disappears", async ({ page }) => {
+	await setup(page);
+	let online = true;
+	await page.route("**/api/network-intelligence/presence", (route) =>
+		route.fulfill({ json: { observations: online ? [
+			{ user_id: 42, username: "traffic-user", node_id: 7, node_name: "isolated-node", vpn_protocol: "wireguard", last_seen_at: new Date().toISOString() },
+		] : [], limit: 250 } }),
+	);
+	await page.route("**/api/network-intelligence/history?**", (route) =>
+		route.fulfill({ json: { available: true, storage: "durable", collection: "background", truncated: false, points: [
+			{ node_id: 7, user_id: 42, at: "2026-11-27T06:00:00Z", method: "tcp_ack_upload_observation", ack_rtt_ms: 42.5, jitter_ms: null, retransmission_delta: null, findings: [] },
+		] } }),
+	);
+	await page.goto("/dashboard/network-intelligence/");
+	const node = page.getByLabel("Node", { exact: true });
+	const account = page.getByLabel("History account", { exact: true });
+	await node.selectOption("7");
+	await account.selectOption("42");
+	await expect(page.getByText("Observed samples", { exact: true })).toBeVisible();
+	online = false;
+	await page.getByRole("button", { name: "Refresh", exact: true }).click();
+	await expect(account.locator("option:checked")).toHaveText("Account 42 (no recent presence)");
+	await expect(node).toHaveValue("7");
+	await expect(account).toHaveValue("42");
+	await page.getByText("Observed samples", { exact: true }).click();
+	await expect(page.getByRole("cell", { name: "42.5", exact: true })).toBeVisible();
+});
+
 test("renders node MTU and interval counter telemetry", async ({ page }) => {
 	await setup(page);
 	await page.route("**/api/network-intelligence/node?**", (route) =>

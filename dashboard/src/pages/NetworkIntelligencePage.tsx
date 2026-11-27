@@ -216,6 +216,11 @@ export default function NetworkIntelligencePage() {
 						<option value="">
 							{label("selectNode", "Select a node to inspect flows")}
 						</option>
+						{node && !nodes.some(([id]) => String(id) === node) && (
+							<option value={node}>
+								{label("node", "Node")} {node}
+							</option>
+						)}
 						{nodes.map(([id, name]) => (
 							<option key={id} value={id}>
 								{name || id}
@@ -456,7 +461,9 @@ export default function NetworkIntelligencePage() {
 						.length && <Text>N/A</Text>}
 				</Stack>
 			)}
-			{node && <NetworkQualityHistory nodeID={Number(node)} users={presence} />}
+			{node && (
+				<NetworkQualityHistory key={node} nodeID={Number(node)} users={presence} />
+			)}
 			<Text fontSize="sm" color="panel.textMuted">
 				{label(
 					"measurement",

@@ -54,9 +54,8 @@ export default function NetworkQualityHistory({
 			),
 		[users, nodeID],
 	);
-	const selected = accounts.some(([id]) => String(id) === userID)
-		? Number(userID)
-		: 0;
+	const selected = Number(userID);
+	const selectedAccountPresent = accounts.some(([id]) => id === selected);
 	useEffect(() => {
 		setHistory(null);
 		setFailed(false);
@@ -158,6 +157,14 @@ export default function NetworkQualityHistory({
 							defaultValue: "Select an account",
 						})}
 					</option>
+					{selected > 0 && !selectedAccountPresent && (
+						<option value={userID}>
+							{t("networkIntelligence.historyOfflineAccount", {
+								defaultValue: "Account {{id}} (no recent presence)",
+								id: selected,
+							})}
+						</option>
+					)}
 					{accounts.map(([id, name]) => (
 						<option key={id} value={id}>
 							{name || id}

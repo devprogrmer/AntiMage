@@ -151,3 +151,13 @@ NEXT_ACTION: check the live browser guest retry, then validate interface evidenc
 One-click diagnostics now report missing or stale node telemetry even when the node supplies no flows. The loopback mTLS integration verifies the node-scope finding. The live guest retry was still queued at inspection.
 
 NEXT_ACTION: read guest run 46031543178 and resolve any issues in the combined scenario, then proceed with induced-fault staging and the remaining release gates.
+
+Local batch begins with preserving the selected node and account when presence expires so an administrator can continue reading already-selected durable history. Selecting another node clears the old account selection. All seven dashboard Playwright fixture tests and TypeScript passed. Lint passed with two existing warnings. This does not add discovery of accounts that were offline before the page was opened.
+
+NEXT_ACTION: leave this batch uncommitted until the remaining work is ready to commit together. Check guest run 46031543178 (dashboard-browser passed, isolated-wireguard was queued), then continue the combined staging, UDP/tunnel measurements, optimization with tested rollback, benchmarks and release acceptance from the table. Keep PR Draft.
+
+Additional debugging found Windows loopback contention caused the targeted mTLS API fixture to intermittently fail with gRPC dial timeout. The disposable QEMU guest previously forwarded the RPC server on its sole reachable guest address, so its local client could not connect independently. The isolated guest now uses a dedicated 127.31.0.0/24 QEMU user network and reaches the test RPC server at 127.31.0.2 while the host dashboard remains forwarded on 127.0.0.1. Windows targeted test passed after the test fixture selects loopback per environment.
+
+NEXT_ACTION: commit this batch only after revalidating the guest mTLS+browser flow, and inspect workflow results for missing regressions. The guest network adjustment is currently uncommitted.
+
+Grouped pending batch verification: preserved selected durable history after user presence disappears, isolated the live mTLS RPC test address inside the disposable guest network, and retained the selected node option when presence records expire. The focused Chrome history test and TypeScript passed. API history mTLS test passed on Windows. Production shaping, full CI and live guest execution remain pending.
