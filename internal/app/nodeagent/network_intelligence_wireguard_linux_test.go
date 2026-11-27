@@ -268,7 +268,6 @@ func TestNetworkIntelligenceRealWireGuardPublication(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	rpcServer.Stop()
 	reopened, err := sql.Open("sqlite", historyPath)
 	if err != nil {
 		t.Fatal(err)
