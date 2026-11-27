@@ -41,8 +41,11 @@ const bytes = (value: number) => new Intl.NumberFormat().format(value);
 
 export default function NetworkIntelligencePage() {
 	const { t } = useTranslation();
-	const label = useCallback((key: string, fallback: string) =>
-		t(`networkIntelligence.${key}`, { defaultValue: fallback }), [t]);
+	const label = useCallback(
+		(key: string, fallback: string) =>
+			t(`networkIntelligence.${key}`, { defaultValue: fallback }),
+		[t],
+	);
 	const { userData, getUserIsSuccess } = useGetUser();
 	const allowed = getUserIsSuccess && userData.role === AdminRole.FullAccess;
 	const [presence, setPresence] = useState<NetworkPresence[]>([]);
@@ -382,6 +385,59 @@ export default function NetworkIntelligencePage() {
 						"The node snapshot reached its flow limit. Some flows are omitted.",
 					)}
 				</Alert>
+			)}
+			{snapshot?.infrastructure && (
+				<Stack spacing={3}>
+					<Heading size="md">
+						{label("infrastructure", "Node network interfaces")}
+					</Heading>
+					<Text fontSize="sm">
+						{label("infrastructureSample", "Sample time")}{" "}
+						{new Date(snapshot.infrastructure.sampled_at).toLocaleString()}
+					</Text>
+					<TableContainer>
+						<Table size="sm">
+							<Thead>
+								<Tr>
+									<Th>{label("interface", "Interface")}</Th>
+									<Th>MTU</Th>
+								</Tr>
+							</Thead>
+							<Tbody>
+								{snapshot.infrastructure.interfaces.map((item) => (
+									<Tr key={item.name}>
+										<Td>{item.name}</Td>
+										<Td>{item.mtu}</Td>
+									</Tr>
+								))}
+							</Tbody>
+						</Table>
+					</TableContainer>
+					<TableContainer>
+						<Table size="sm">
+							<Thead>
+								<Tr>
+									<Th>{label("counter", "Counter")}</Th>
+									<Th>{label("ratePerSecond", "Rate per second")}</Th>
+								</Tr>
+							</Thead>
+							<Tbody>
+								{Object.entries(
+									snapshot.infrastructure.counter_rates_per_second ?? {},
+								)
+									.sort(([a], [b]) => a.localeCompare(b))
+									.map(([name, rate]) => (
+										<Tr key={name}>
+											<Td>{name}</Td>
+											<Td>{rate.toFixed(2)}</Td>
+										</Tr>
+									))}
+							</Tbody>
+						</Table>
+					</TableContainer>
+					{!Object.keys(snapshot.infrastructure.counter_rates_per_second ?? {})
+						.length && <Text>N/A</Text>}
+				</Stack>
 			)}
 			{node && <NetworkQualityHistory nodeID={Number(node)} users={presence} />}
 			<Text fontSize="sm" color="panel.textMuted">

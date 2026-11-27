@@ -32,6 +32,26 @@ test("disabled panel reports feature flag status", async ({ page }) => {
 	await expect(page.getByText("Network Intelligence is disabled on the panel.")).toBeVisible();
 });
 
+test("renders node MTU and interval counter telemetry", async ({ page }) => {
+	await setup(page);
+	await page.route("**/api/network-intelligence/node?**", (route) =>
+		route.fulfill({ json: {
+			flows: [],
+			infrastructure: {
+				sampled_at: "2026-11-27T06:00:00Z",
+				interval_seconds: 5,
+				interfaces: [{ name: "wg-observed", mtu: 1420 }],
+				counter_rates_per_second: { "softnet.dropped": 0.5 },
+			},
+		} }),
+	);
+	await page.goto("/dashboard/network-intelligence/");
+	await page.getByLabel("Node", { exact: true }).selectOption("7");
+	await expect(page.getByRole("cell", { name: "wg-observed" })).toBeVisible();
+	await expect(page.getByRole("cell", { name: "1420" })).toBeVisible();
+	await expect(page.getByRole("row", { name: "softnet.dropped 0.50" })).toBeVisible();
+});
+
 test("standard admin cannot view telemetry", async ({ page }) => {
 	await setup(page, "standard");
 	await page.goto("/dashboard/network-intelligence/");

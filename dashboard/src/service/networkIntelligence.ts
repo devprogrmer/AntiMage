@@ -36,6 +36,12 @@ export type NetworkFlow = {
 	} | null;
 };
 export type NetworkSnapshot = {
+	infrastructure?: {
+		sampled_at: string;
+		interval_seconds: number;
+		interfaces: { name: string; mtu: number }[];
+		counter_rates_per_second?: Record<string, number>;
+	};
 	available?: boolean;
 	version?: number;
 	observed_at?: string;

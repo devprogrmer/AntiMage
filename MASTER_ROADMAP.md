@@ -2,24 +2,24 @@
 
 Base commit is c1a35e44dd644c2a41bc99a4987d613e4d8b79fc. Development branch is feature/network-intelligence-dev. Previous commits 30541f4d and 008d012e remain on feature/network-intelligence.
 
-| Stage | Status | Acceptance remaining |
+| Stage | Verified progress | Release acceptance still required |
 | --- | --- | --- |
-| 0 Audit | Partial | Refresh audit and baseline on the new base |
-| 1 Presence and flags | Implemented, targeted tests passed | New-base Linux full regression remains |
-| 2 TCP/UDP flow tracking | Attribution core implemented | Real collector, node integration, Linux traffic and resource measurements remain |
-| 3 TCP quality | Pending | Validated ACK RTT, retransmission and duplicate ACK fixtures |
-| 4 Application detection | Pending | Versioned evidence and confidence with Unknown fallback |
-| 5 UDP quality | Pending | Supported protocol measurements and explicit unavailable metrics |
-| 6 Infrastructure | Pending | Counter deltas, tunnel and node telemetry |
-| 7 Live dashboard | Pending | Existing theme, permissions, responsive UI and real telemetry |
-| 8 User details | Pending | Multiple sessions, destinations and valid quality history |
-| 9 Diagnostics | Pending | Bounded read-only operations and evidence |
-| 10 Optimization | Pending | Authorized scoped changes, audit and tested rollback |
-| 11 Alerts/history | Pending | Bounded retention and evidence-backed alerts |
-| 12 Security/regression | Pending | API/gRPC, database, race and failure tests |
-| 13 Performance | Pending | Feature off/on measurements on 2 CPU and 2 GiB with actual flow and packet rates |
-| 14 Staging | Pending | Isolated full-stack traffic and rollback validation |
-| 15 Release | Pending | Verified builds, checksums, update and rollback commands |
+| 0 Audit | Base and existing runtime contracts reviewed | Check current branch against dev and record final production compatibility risks |
+| 1 Presence and flags | Feature-gated API and authorization tests | Verify flags off/on and shutdown in full-stack staging |
+| 2 TCP/UDP tracking | Encrypted WireGuard reassignment and multi-interface fixture passed | Real overlapping nodes, delayed packets, and complete panel telemetry path |
+| 3 TCP quality | ACK estimator and real capture test passed | Validate live panel quality with induced delay, retransmission and capture gaps |
+| 4 Application detection | Signature classifier connected to node telemetry | Verified signature distribution and actual game/application destination scenarios |
+| 5 UDP quality | Real UDP flow counters | Protocol-specific RTT/jitter/loss validation, unavailable where unsupported |
+| 6 Infrastructure | Kernel counter rates and MTU wired through node and panel | Real tunnel health, GRE and path diagnostics with induced faults |
+| 7 Live dashboard | Build and intercepted browser tests passed | Browser with live panel and Node Agent under traffic |
+| 8 User details | Account history chart and live flows available | Live multi-session account and persisted history browser validation |
+| 9 Diagnostics | Read-only evidence findings available | Validate correct findings and safe probe scope in staging |
+| 10 Optimization | Pending | Scoped administrator changes, collision checks, audit and verified rollback |
+| 11 Alerts and history | Durable writer and migration matrix tested | Live worker persistence, expiration, alert delivery and restart in staging |
+| 12 Security and regression | Targeted authorization and race tests passed | Full final-head compatibility, threat review, regression and CI |
+| 13 Performance | Isolated socket-load measurements recorded | Production-shaped forwarding/load comparison including storage, CPU/RAM and loss |
+| 14 Staging | Individual traffic and browser fixtures available | Full-stack staging with live traffic, failure recovery and rollback |
+| 15 Release | Pending | All stage gates, green final CI, panel/node builds, checksums and tested update/rollback commands |
 
 Presence cherry-pick completed as cb205472. Configuration, origin and Presence tests passed. b9395e56 adds explicit opt-in and proxy configuration regression coverage. d5908cad introduces bounded attribution storage. 8fe51d43 adds replay high-water retention and collector epochs. 2b51e248 enforces forwarding header trust at API ingress. Trusted loopback proxies remain supported and must overwrite incoming forwarding headers.
 
@@ -64,3 +64,5 @@ Durable quality history now has a default-off panel worker controlled by ANTIMAG
 Durable history workers now have independent retention, rotated user selection, and SQLite integration coverage for limits, ordering, restart, and concurrent admission. The WireGuard VM CI passed. Expanded migration 95 assertions run on MySQL and MariaDB in Test Database Migrations. See PROJECT_STATE.md for exact coverage and remaining release work.
 
 Database CI 45982997192 passed on e850e185. MySQL and MariaDB verified the migration 95 history table and retention index through a transactional insert, read and rollback. The SQLite job passed the targeted Race suite. Local tests added in 47ce4442 exercise startup retention with both flags and durable ordering after repository recreation. The full live Node Agent-to-panel history path and persistence load remain staging requirements.
+
+The dashboard now renders sampled interface MTU and interval counter rates. Lint, TypeScript and five intercepted Playwright scenarios passed. NEXT_ACTION is a live full-stack check of node history and interface telemetry, followed by the outstanding tunnel and UDP measurement gates.
