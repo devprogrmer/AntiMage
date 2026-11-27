@@ -27,6 +27,7 @@ const UsersPage = lazy(async () => ({
 	default: (await import("./UsersPage")).UsersPage,
 }));
 const AccessInsightsPage = lazy(() => import("./AccessInsightsPage"));
+const NetworkIntelligencePage = lazy(() => import("./NetworkIntelligencePage"));
 const AccountingAlertsPage = lazy(() => import("./AccountingAlertsPage"));
 const AdminsPage = lazy(async () => ({
 	default: (await import("./AdminsPage")).AdminsPage,
@@ -150,6 +151,7 @@ const routeSegments = new Set([
 	"xray-settings",
 	"xray-logs",
 	"access-insights",
+	"network-intelligence",
 	"accounting-alerts",
 	"api-docs",
 	"phpmyadmin",
@@ -294,6 +296,10 @@ export const router = createBrowserRouter(
 				{
 					path: "access-insights",
 					element: <LazyPage Page={AccessInsightsPage} />,
+				},
+				{
+					path: "network-intelligence",
+					element: <LazyPage Page={NetworkIntelligencePage} />,
 				},
 				{
 					path: "recent-actions",

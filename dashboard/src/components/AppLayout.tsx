@@ -239,6 +239,9 @@ export function AppLayout() {
 
 	const settingsMenuItems = useMemo(() => {
 		const items: Array<SettingsMenuItem | null> = [
+			userData.role === AdminRole.FullAccess
+				? { key: "network-intelligence", label: t("networkIntelligence.title", { defaultValue: "Network Intelligence" }), to: "/network-intelligence", icon: InsightsIcon }
+				: null,
 			isPrivilegedAdmin && sectionAccess?.[AdminSection.Services]
 				? {
 						key: "services",
@@ -335,7 +338,7 @@ export function AppLayout() {
 			},
 		];
 		return items.filter(Boolean) as SettingsMenuItem[];
-	}, [canViewRecentActions, isPrivilegedAdmin, sectionAccess, t]);
+	}, [canViewRecentActions, isPrivilegedAdmin, sectionAccess, t, userData.role]);
 
 	const hasSettingsMenu = settingsMenuItems.length > 0;
 

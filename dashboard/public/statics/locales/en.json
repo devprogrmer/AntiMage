@@ -1,4 +1,22 @@
 {
+	"networkIntelligence": {
+		"application": "Application",
+		"source": "Assigned source", "jitter": "ACK RTT variation", "retransmissions": "Observed retransmissions / duplicate ACKs",
+		"title": "Network Intelligence", "refresh": "Refresh", "user": "User", "node": "Node",
+		"search": "Search username or ID", "selectNode": "Select a node to inspect flows",
+		"lastSeen": "Last observed", "destination": "Destination", "interface": "Interface",
+		"traffic": "Upload / download bytes", "packets": "Upload / download packets",
+		"serverRTT": "Node → destination ACK RTT", "clientRTT": "Node → client ACK RTT", "loss": "Packet loss",
+		"disabled": "Network Intelligence is disabled on the panel.",
+		"unavailable": "Network telemetry is unavailable. Retry to check the connection.",
+		"permission": "Full-access administrator permission is required.",
+		"noPresence": "No recent presence observations.", "noFlows": "No attributed active flows in this snapshot.",
+		"nodeUnavailable": "This node has no Network Intelligence snapshot. Check the node feature flag and supported agent version.",
+		"diagnose": "Run network diagnostics", "diagnosticError": "Network diagnostics are unavailable.",
+		"noFindings": "No findings from the available measurements.",
+		"truncated": "The node snapshot reached its flow limit. Some flows are omitted.",
+		"measurement": "ACK RTT measures timing from the node observation point. In-game latency and UDP packet loss are N/A without a validated measurement source."
+	},
 	",": ",",
 	"DNS": "DNS",
 	"clear": "Clear",
