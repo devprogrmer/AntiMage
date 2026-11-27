@@ -15,7 +15,7 @@ func (c Controller) NetworkIntelligence(ctx context.Context, nodeID int64) (json
 	if err != nil {
 		return nil, err
 	}
-	res, err := client.Runtime().Metrics(ctx, &nodev1.MetricsRequest{})
+	res, err := client.Runtime().Metrics(ctx, &nodev1.MetricsRequest{IncludeNetworkIntelligence: true})
 	if err != nil {
 		return nil, err
 	}

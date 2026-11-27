@@ -66,3 +66,5 @@ Durable history workers now have independent retention, rotated user selection, 
 Database CI 45982997192 passed on e850e185. MySQL and MariaDB verified the migration 95 history table and retention index through a transactional insert, read and rollback. The SQLite job passed the targeted Race suite. Local tests added in 47ce4442 exercise startup retention with both flags and durable ordering after repository recreation. The full live Node Agent-to-panel history path and persistence load remain staging requirements.
 
 The dashboard now renders sampled interface MTU and interval counter rates. Lint, TypeScript and five intercepted Playwright scenarios passed. NEXT_ACTION is a live full-stack check of node history and interface telemetry, followed by the outstanding tunnel and UDP measurement gates.
+
+Dedicated gRPC Metrics requests now explicitly opt into sensitive Network Intelligence snapshots. Health and ordinary Metrics preserve the existing runtime response and avoid collecting or serializing flow metadata. The real gRPC handler passed the in-memory transport regression. Full live browser-to-node staging and final CI remain acceptance gates.

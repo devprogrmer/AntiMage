@@ -7,3 +7,5 @@ Local tests passed for the collector loop against SQLite with a simulated node t
 CI run 45982003811 passed the isolated WireGuard VM. Database run 45982997192 passed all three jobs at e850e185. MySQL and MariaDB ran the migration 95 table/index and transactional insert/read/rollback checks. SQLite ran the worker, API and repository tests under the race detector. The later startup-retention and restart-ordering tests passed locally at 47ce4442. Their follow-up database run 45983224308 was queued when checked.
 
 NEXT_ACTION is to verify the final-head database matrix, run a full worker-to-node staging test and measure persistence load at the configured bounds.
+
+The dashboard renders measured MTU and counter rates, and the roadmap defines evidence gates for every stage. Dedicated gRPC requests opt into Network Intelligence metadata. The targeted API/node tests and the in-memory gRPC transport regression passed. Five browser scenarios passed with API fixtures. Latest full CI was pending at inspection.

@@ -133,6 +133,7 @@ message InboundUser {
 
 message MetricsRequest {
   bool include_runtime = 1;
+  bool include_network_intelligence = 2;
 }
 
 message MetricsResponse {

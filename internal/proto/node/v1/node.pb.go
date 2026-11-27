@@ -886,10 +886,11 @@ func (x *InboundUser) GetFields() map[string]string {
 }
 
 type MetricsRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	IncludeRuntime bool                   `protobuf:"varint,1,opt,name=include_runtime,json=includeRuntime,proto3" json:"include_runtime,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state                      protoimpl.MessageState `protogen:"open.v1"`
+	IncludeRuntime             bool                   `protobuf:"varint,1,opt,name=include_runtime,json=includeRuntime,proto3" json:"include_runtime,omitempty"`
+	IncludeNetworkIntelligence bool                   `protobuf:"varint,2,opt,name=include_network_intelligence,json=includeNetworkIntelligence,proto3" json:"include_network_intelligence,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *MetricsRequest) Reset() {
@@ -925,6 +926,13 @@ func (*MetricsRequest) Descriptor() ([]byte, []int) {
 func (x *MetricsRequest) GetIncludeRuntime() bool {
 	if x != nil {
 		return x.IncludeRuntime
+	}
+	return false
+}
+
+func (x *MetricsRequest) GetIncludeNetworkIntelligence() bool {
+	if x != nil {
+		return x.IncludeNetworkIntelligence
 	}
 	return false
 }
@@ -3792,9 +3800,10 @@ const file_antimage_node_v1_node_proto_rawDesc = "" +
 	"\x06fields\x18\x03 \x03(\v2).antimage.node.v1.InboundUser.FieldsEntryR\x06fields\x1a9\n" +
 	"\vFieldsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"9\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"{\n" +
 	"\x0eMetricsRequest\x12'\n" +
-	"\x0finclude_runtime\x18\x01 \x01(\bR\x0eincludeRuntime\"\xeb\x02\n" +
+	"\x0finclude_runtime\x18\x01 \x01(\bR\x0eincludeRuntime\x12@\n" +
+	"\x1cinclude_network_intelligence\x18\x02 \x01(\bR\x1aincludeNetworkIntelligence\"\xeb\x02\n" +
 	"\x0fMetricsResponse\x128\n" +
 	"\aruntime\x18\x01 \x01(\v2\x1e.antimage.node.v1.RuntimeStateR\aruntime\x127\n" +
 	"\x06system\x18\x02 \x01(\v2\x1f.antimage.node.v1.SystemMetricsR\x06system\x12=\n" +

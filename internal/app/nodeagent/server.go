@@ -420,8 +420,12 @@ func (s *Server) RemoveUser(context.Context, *nodev1.RemoveInboundUserRequest) (
 	return nil, status.Error(codes.Unimplemented, "user mutations require durable config sync")
 }
 
-func (s *Server) Metrics(context.Context, *nodev1.MetricsRequest) (*nodev1.MetricsResponse, error) {
-	return s.metrics(true), nil
+func (s *Server) Metrics(_ context.Context, request *nodev1.MetricsRequest) (*nodev1.MetricsResponse, error) {
+	result := s.metrics(true)
+	if request.GetIncludeNetworkIntelligence() {
+		result.NetworkIntelligenceJson = s.networkIntelligenceSnapshot()
+	}
+	return result, nil
 }
 
 func (s *Server) PublicIPs(context.Context, *nodev1.PublicIPsRequest) (*nodev1.PublicIPsResponse, error) {
@@ -1069,7 +1073,7 @@ func (s *Server) metrics(includeRuntime bool) *nodev1.MetricsResponse {
 	if uptime, err := host.Uptime(); err == nil {
 		system.UptimeSeconds = uptime
 	}
-	res := &nodev1.MetricsResponse{System: system, Transfer: s.transferMetrics(), SampledAtUnix: time.Now().Unix(), Accounting: s.accountingHealth(), NetworkIntelligenceJson: s.networkIntelligenceSnapshot()}
+	res := &nodev1.MetricsResponse{System: system, Transfer: s.transferMetrics(), SampledAtUnix: time.Now().Unix(), Accounting: s.accountingHealth()}
 	if includeRuntime {
 		res.Runtime = s.runtimeState("metrics collected")
 	}
