@@ -31,3 +31,5 @@ The history integration suite now validates duplicate suppression and durable re
 The isolated Linux WireGuard race fixture verified live capture through mTLS, the production collector and reopened SQLite. Browser validation with real admin authentication remains outstanding.
 
 The history transport integration now exercises panel startup after database reopen, real administrator session login and the protected history HTTP route. A combined real-traffic browser run is still required.
+
+The built dashboard passed a real authenticated Playwright history read on loopback with a controlled mTLS fixture. The combined browser run with live WireGuard traffic remains open.

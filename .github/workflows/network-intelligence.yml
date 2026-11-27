@@ -13,6 +13,7 @@ on:
       - 'dashboard/src/**/Network*'
       - 'dashboard/src/service/networkIntelligence*'
       - 'dashboard/e2e/network-intelligence.spec.ts'
+      - 'dashboard/e2e/network-intelligence-live.mjs'
       - 'dashboard/playwright.config.ts'
       - 'dashboard/package*.json'
       - 'scripts/ci/network-intelligence-e2e.sh'
@@ -35,9 +36,18 @@ jobs:
           node-version: '20'
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - run: npm run build
+      - name: Browser reads durable history from authenticated panel
+        working-directory: .
+        env:
+          ANTIMAGE_NI_BROWSER_DASHBOARD: ${{ github.workspace }}/dashboard
+        run: go test ./internal/app/api -run '^TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen$' -count=1
 
   isolated-wireguard:
     runs-on: ubuntu-24.04

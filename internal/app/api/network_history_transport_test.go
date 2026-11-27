@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -132,7 +134,23 @@ func TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen(t *testing.T) 
 	) VALUES ('history-admin', ?, 'full_access', ?, 'active', '{}', 0, 0, 0, 0)`, hash, string(perms)); err != nil {
 		t.Fatal(err)
 	}
-	panel := httptest.NewServer(s.Handler())
+	handler := s.Handler()
+	browserDashboard := os.Getenv("ANTIMAGE_NI_BROWSER_DASHBOARD")
+	if browserDashboard != "" {
+		if _, err := s.db.Exec(`INSERT INTO users (id, username) VALUES (42, 'history-user');
+			INSERT INTO user_online_ips (node_id, user_id, protocol, ip, last_seen_at)
+			VALUES (7, 42, 'wireguard', '192.0.2.42', CURRENT_TIMESTAMP)`); err != nil {
+			t.Fatal(err)
+		}
+		mux := http.NewServeMux()
+		mux.Handle("/api/", handler)
+		mux.Handle("/statics/", http.FileServer(http.Dir(filepath.Join(browserDashboard, "build"))))
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFile(w, r, filepath.Join(browserDashboard, "build", "index.html"))
+		})
+		handler = mux
+	}
+	panel := httptest.NewServer(handler)
 	defer panel.Close()
 	client := panel.Client()
 	client.Timeout = 5 * time.Second
@@ -175,5 +193,14 @@ func TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen(t *testing.T) 
 	var point nodecontroller.NetworkHistoryPoint
 	if err := json.Unmarshal(history.Points[0], &point); err != nil || point.NodeID != 7 || point.UserID != 42 || !point.At.Equal(at) || point.RTT == nil || *point.RTT != rtt {
 		t.Fatalf("wrong persisted point: %s, error=%v", history.Points[0], err)
+	}
+	if browserDashboard != "" {
+		browserCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		browser := exec.CommandContext(browserCtx, "node", "e2e/network-intelligence-live.mjs", panel.URL)
+		browser.Dir = browserDashboard
+		if output, err := browser.CombinedOutput(); err != nil {
+			t.Fatalf("real dashboard browser test failed: %v\n%s", err, output)
+		}
 	}
 }
