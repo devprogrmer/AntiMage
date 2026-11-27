@@ -19,6 +19,10 @@ type CapturedPacket struct {
 // explicit RunCapture call, independently of the VPN forwarding path.
 type CaptureConfig struct {
 	Interface string
+	// MaxPacketsPerSecond limits received observations in a one-second window.
+	// Zero preserves uncapped explicit capture. Exceeding the limit closes the
+	// observation socket and requires an explicit restart by its owner.
+	MaxPacketsPerSecond int
 	// ReceiveBufferBytes defaults to 256 KiB. Linux may clamp this value.
 	ReceiveBufferBytes int
 	// Statistics receives cumulative collector counters once per second and
@@ -35,9 +39,39 @@ type CaptureStatistics struct {
 	KernelDrops               uint64
 	KernelStatisticsAvailable bool
 	ReceiveBufferBytes        int
+	BudgetExceeded            bool
+}
+
+// ErrCaptureBudget affects the observation socket only, never packet forwarding.
+var ErrCaptureBudget = errors.New("capture observation rate budget exceeded")
+
+type captureBudget struct {
+	limit int
+	count int
+	start time.Time
+}
+
+func (b *captureBudget) allow(now time.Time) bool {
+	if b.limit == 0 {
+		return true
+	}
+	if now.Before(b.start) {
+		return false
+	}
+	if b.start.IsZero() || now.Sub(b.start) >= time.Second {
+		b.start, b.count = now, 0
+	}
+	if b.count == b.limit {
+		return false
+	}
+	b.count++
+	return true
 }
 
 func (c CaptureConfig) validate() error {
+	if c.MaxPacketsPerSecond < 0 || c.MaxPacketsPerSecond > 1000000 {
+		return errors.New("capture packet budget must be between zero and 1000000")
+	}
 	if c.ReceiveBufferBytes < 0 || c.ReceiveBufferBytes > 4*1024*1024 {
 		return errors.New("capture receive buffer must be between zero and 4 MiB")
 	}

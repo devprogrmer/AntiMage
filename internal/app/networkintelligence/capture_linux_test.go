@@ -11,6 +11,49 @@ import (
 	"time"
 )
 
+func TestCaptureStopsObservationAtPacketBudget(t *testing.T) {
+	if os.Getenv("ANTIMAGE_CAPTURE_E2E") != "1" {
+		t.Skip("requires isolated Linux with CAP_NET_RAW")
+	}
+	udp, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer udp.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ready := make(chan struct{})
+	result := make(chan error, 1)
+	var final CaptureStatistics
+	go func() {
+		result <- runCapture(ctx, CaptureConfig{Interface: "lo", MaxPacketsPerSecond: 1, Statistics: func(s CaptureStatistics) { final = s }}, func(CapturedPacket) {}, func() { close(ready) })
+	}()
+	select {
+	case <-ready:
+	case err := <-result:
+		t.Fatalf("capture startup: %v", err)
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	for range 4 {
+		if _, err := udp.WriteTo([]byte("budget-fixture"), udp.LocalAddr()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	select {
+	case err := <-result:
+		if !errors.Is(err, ErrCaptureBudget) || !final.BudgetExceeded || final.ReceivedPackets != 2 {
+			t.Fatalf("budget error=%v statistics=%+v", err, final)
+		}
+	case <-ctx.Done():
+		t.Fatal("packet budget did not close observation socket")
+	}
+	// The application socket remains available after observation stops.
+	if _, err := udp.WriteTo([]byte("vpn-path-still-open"), udp.LocalAddr()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCaptureLoopbackRealTCPUDP(t *testing.T) {
 	if os.Getenv("ANTIMAGE_CAPTURE_E2E") != "1" {
 		t.Skip("requires isolated Linux with CAP_NET_RAW")

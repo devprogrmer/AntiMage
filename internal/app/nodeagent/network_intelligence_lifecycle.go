@@ -91,7 +91,8 @@ func (s *Server) publishNetworkIntelligence(prepared preparedWireGuardRuntime) e
 	if err != nil {
 		return err
 	}
-	return s.networkIntelligenceLifecycle.Publish(context.Background(), ni.CaptureConfig{Interface: prepared.InterfaceName}, bindings, func() (ni.CaptureSession, error) {
+	// Provisional per-interface observation budget, pending forwarding benchmarks.
+	return s.networkIntelligenceLifecycle.Publish(context.Background(), ni.CaptureConfig{Interface: prepared.InterfaceName, MaxPacketsPerSecond: 10000}, bindings, func() (ni.CaptureSession, error) {
 		return ni.NewSessionCapture(s.networkIntelligenceTracker, bindings, 4096)
 	})
 }

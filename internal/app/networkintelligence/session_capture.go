@@ -167,6 +167,14 @@ func (c *SessionCapture) Start(ctx context.Context, cfg CaptureConfig) error {
 		err := runCapture(ctx, cfg, func(p CapturedPacket) { c.Consume(p) }, func() { close(ready) })
 		c.mu.Lock()
 		c.err = err
+		c.stopped = true
+		// Once capture ends, revoke only this generation. Late telemetry and
+		// previously published flows cannot imply continued observation.
+		for _, binding := range c.bindings {
+			c.tracker.Unbind(binding)
+		}
+		clear(c.flows)
+		clear(c.quality)
 		c.mu.Unlock()
 		close(done)
 	}()
@@ -199,7 +207,7 @@ func (c *SessionCapture) captureStatisticsCallback(next func(CaptureStatistics))
 func (c *SessionCapture) observeStatistics(s CaptureStatistics) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	gap := s.KernelDrops != c.statistics.KernelDrops || s.RejectedPackets != c.statistics.RejectedPackets
+	gap := s.BudgetExceeded || s.KernelDrops != c.statistics.KernelDrops || s.RejectedPackets != c.statistics.RejectedPackets
 	c.statistics = s
 	if !gap {
 		return

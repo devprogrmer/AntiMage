@@ -75,6 +75,7 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 		return err
 	}
 	buffer := make([]byte, 65535)
+	budget := captureBudget{limit: cfg.MaxPacketsPerSecond}
 	defer clear(buffer)
 	if err := ctx.Err(); err != nil {
 		return err
@@ -98,6 +99,10 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 			return fmt.Errorf("receive metadata: %w", err)
 		}
 		statistics.ReceivedPackets++
+		if !budget.allow(time.Now()) {
+			statistics.BudgetExceeded = true
+			return ErrCaptureBudget
+		}
 		if flags&unix.MSG_TRUNC != 0 || n == 0 {
 			statistics.RejectedPackets++
 			clear(buffer)
