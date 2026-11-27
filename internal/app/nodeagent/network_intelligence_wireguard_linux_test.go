@@ -22,7 +22,7 @@ func TestNetworkIntelligenceRealWireGuardPublication(t *testing.T) {
 	if _, err := os.Stat("/.dockerenv"); err != nil {
 		t.Fatal("fixture requires a disposable Docker container")
 	}
-	for _, name := range []string{"ni-root", "ni-server"} {
+	for _, name := range []string{"ni-root", "ni-server", "ni-server2"} {
 		if _, err := net.InterfaceByName(name); err == nil {
 			t.Fatal("fixture interface already exists")
 		}
@@ -132,5 +132,49 @@ func TestNetworkIntelligenceRealWireGuardPublication(t *testing.T) {
 			t.Fatal("WireGuard handshake absent")
 		}
 		oldPeer = public
+	}
+	// A second managed interface and peer must resolve to the same account
+	// while retaining separate interface and assigned-address identities.
+	private := run("", "wg", "genkey")
+	public := run(private, "wg", "pubkey")
+	run("", "ip", "link", "add", "ni-server2", "type", "wireguard")
+	t.Cleanup(func() { _ = exec.Command("ip", "link", "del", "ni-server2").Run() })
+	run(serverKey, "wg", "set", "ni-server2", "private-key", "/dev/stdin", "listen-port", "59172", "peer", public, "allowed-ips", "10.124.211.2/32")
+	run("", "ip", "addr", "add", "10.124.211.1/24", "dev", "ni-server2")
+	run("", "ip", "link", "set", "ni-server2", "alias", wireGuardOwnershipAlias("fixture2"))
+	run("", "ip", "link", "set", "ni-server2", "up")
+	run("", "ip", "-n", "ni-client", "link", "add", "ni-wg2", "type", "wireguard")
+	run("", "ip", "-n", "ni-client", "addr", "add", "10.124.211.2/24", "dev", "ni-wg2")
+	run(private, "ip", "netns", "exec", "ni-client", "wg", "set", "ni-wg2", "private-key", "/dev/stdin", "peer", serverPublic, "allowed-ips", "10.124.211.1/32", "endpoint", "172.30.211.1:59172")
+	run("", "ip", "-n", "ni-client", "link", "set", "ni-wg2", "up")
+	secondUDP, err := net.ListenPacket("udp4", "10.124.211.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer secondUDP.Close()
+	prepared := preparedWireGuardRuntime{Tag: "fixture2", InterfaceName: "ni-server2", Inbound: wireGuardRuntimeInbound{Peers: []wireGuardRuntimePeer{{UserID: 42, PublicKey: public, Address: "10.124.211.2"}}}}
+	s.networkIntelligenceMu.Lock()
+	err = s.publishNetworkIntelligence(prepared)
+	s.networkIntelligenceMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	run("", "ip", "netns", "exec", "ni-client", "python3", "-c", "import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.sendto(b'fixture',('10.124.211.1',"+strings.Split(secondUDP.LocalAddr().String(), ":")[1]+"))")
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		interfaces := map[string]bool{}
+		for _, flow := range tracker.Snapshot(time.Now()) {
+			if flow.Binding.UserID != 42 {
+				t.Fatal("multi-interface account identity changed")
+			}
+			interfaces[flow.Binding.Interface] = true
+		}
+		if interfaces["ni-server"] && interfaces["ni-server2"] {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("missing second real WireGuard interface flow")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
