@@ -29,3 +29,5 @@ Live WireGuard flow ownership now passes through the production Node Controller 
 The history integration suite now validates duplicate suppression and durable reads after reopening SQLite over the production collector and mTLS controller path with a test snapshot. Linux Race and Windows loopback passed. The combined live WireGuard-to-browser path remains open.
 
 The isolated Linux WireGuard race fixture verified live capture through mTLS, the production collector and reopened SQLite. Browser validation with real admin authentication remains outstanding.
+
+The history transport integration now exercises panel startup after database reopen, real administrator session login and the protected history HTTP route. A combined real-traffic browser run is still required.

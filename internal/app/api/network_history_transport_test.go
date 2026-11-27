@@ -8,11 +8,14 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	adminapp "github.com/antimage/antimage/internal/app/admin"
 	"github.com/antimage/antimage/internal/app/migrations"
 	ni "github.com/antimage/antimage/internal/app/networkintelligence"
 	nodeapp "github.com/antimage/antimage/internal/app/node"
@@ -109,19 +112,65 @@ func TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	reopened, err := sql.Open("sqlite", path)
+	t.Setenv("ANTIMAGE_DATA_DIR", t.TempDir())
+	s, err := New(Config{Database: "sqlite:///" + filepath.ToSlash(path), NetworkIntelligenceEnabled: true, NetworkHistoryPersistence: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Close()
-	s := &Server{db: reopened, cfg: Config{NetworkIntelligenceEnabled: true, NetworkHistoryPersistence: true}}
-	req := httptest.NewRequest(http.MethodGet, "/api/network-intelligence/history?node_id=7&user_id=42", nil)
-	req = req.WithContext(context.WithValue(req.Context(), adminContextKey, adminPrincipal{Role: "full_access"}))
-	res := httptest.NewRecorder()
-	s.handleNetworkIntelligenceHistory(res, req)
+	defer s.db.Close()
+	hash, err := adminapp.HashPassword("fixture-admin-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	perms, err := json.Marshal(adminapp.RoleDefaultPermissions(adminapp.RoleFullAccess))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO admins (
+		username, hashed_password, role, permissions, status, subscription_settings,
+		users_usage, lifetime_usage, created_traffic, deleted_users_usage
+	) VALUES ('history-admin', ?, 'full_access', ?, 'active', '{}', 0, 0, 0, 0)`, hash, string(perms)); err != nil {
+		t.Fatal(err)
+	}
+	panel := httptest.NewServer(s.Handler())
+	defer panel.Close()
+	client := panel.Client()
+	client.Timeout = 5 * time.Second
+	client.Jar, err = cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	historyURL := panel.URL + "/api/network-intelligence/history?node_id=7&user_id=42"
+	unauthenticated, err := client.Get(historyURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unauthenticated.Body.Close()
+	if unauthenticated.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated history returned %d", unauthenticated.StatusCode)
+	}
+	login, err := http.NewRequest(http.MethodPost, panel.URL+"/api/auth/login", strings.NewReader(`{"username":"history-admin","password":"fixture-admin-password"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	login.Header.Set("Origin", panel.URL)
+	login.Header.Set("Content-Type", "application/json")
+	session, err := client.Do(login)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Body.Close()
+	if session.StatusCode != http.StatusOK || len(session.Cookies()) == 0 {
+		t.Fatalf("login returned %d", session.StatusCode)
+	}
+	res, err := client.Get(historyURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
 	var history networkHistoryResponse
-	if err := json.Unmarshal(res.Body.Bytes(), &history); err != nil || res.Code != http.StatusOK || history.Storage != "durable" || len(history.Points) != 1 {
-		t.Fatalf("history after database reopen: status=%d body=%s error=%v", res.Code, res.Body, err)
+	if err := json.NewDecoder(res.Body).Decode(&history); err != nil || res.StatusCode != http.StatusOK || history.Storage != "durable" || len(history.Points) != 1 {
+		t.Fatalf("history after database reopen: status=%d history=%+v error=%v", res.StatusCode, history, err)
 	}
 	var point nodecontroller.NetworkHistoryPoint
 	if err := json.Unmarshal(history.Points[0], &point); err != nil || point.NodeID != 7 || point.UserID != 42 || !point.At.Equal(at) || point.RTT == nil || *point.RTT != rtt {

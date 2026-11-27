@@ -100,3 +100,7 @@ NEXT_ACTION: feed the existing live WireGuard agent into this history transport 
 The production history collector now runs in the live WireGuard reassignment fixture through the authenticated Node Controller. It saves one deduplicated sample for the new owner, shuts down the Node Agent RPC server, then reads that sample from reopened file SQLite. The same collector loop remains in use by the panel with its existing configuration and scheduling.
 
 NEXT_ACTION: verify the durable data through the real login and HTTP middleware with the running dashboard. Reuse the existing real WireGuard fixture and follow the login setup in internal/app/api/admin_auth_test.go. Confirm the browser reads live flow and history routes without interception. Continue the remaining stage gates and leave PR Draft.
+
+The durable-history integration now reopens the database through the production panel constructor, starts its real HTTP router, verifies anonymous requests are denied, logs in as a full-access administrator and reads the persisted sample using the issued session cookie. This test uses the controlled gRPC snapshot. The separate Linux WireGuard fixture verifies live capture and storage through the same production collector.
+
+NEXT_ACTION: add and execute a Playwright scenario against a single loopback origin serving the built dashboard and the real panel API, with the WireGuard fixture supplying live node data and presence for node 7/account 42. Assert both flow and history requests reach the real server. Continue the remaining stage gates and keep PR Draft.
