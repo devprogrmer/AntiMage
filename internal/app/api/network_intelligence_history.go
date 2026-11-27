@@ -8,6 +8,7 @@ import (
 	"time"
 
 	adminapp "github.com/antimage/antimage/internal/app/admin"
+	ni "github.com/antimage/antimage/internal/app/networkintelligence"
 )
 
 func (s *Server) handleNetworkIntelligenceHistory(w http.ResponseWriter, r *http.Request) {
@@ -25,6 +26,33 @@ func (s *Server) handleNetworkIntelligenceHistory(w http.ResponseWriter, r *http
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
+	if s.cfg.NetworkHistoryPersistence {
+		repo := &ni.HistoryRepository{DB: s.db}
+		points, err := repo.List(ctx, nodeID, userID, time.Now().Add(-7*24*time.Hour))
+		if err != nil {
+			writeError(w, http.StatusServiceUnavailable, "Network history unavailable")
+			return
+		}
+		result := networkHistoryResponse{Storage: "durable", Collection: "background", Available: true, Truncated: len(points) == 500, Points: []json.RawMessage{}}
+		for _, p := range points {
+			row, err := json.Marshal(map[string]any{
+				"node_id": p.NodeID, "user_id": p.UserID, "at": p.ObservedAt,
+				"method": "tcp_ack_upload_observation", "ack_rtt_ms": p.ACKRTTMilliseconds,
+				"jitter_ms": p.JitterMilliseconds, "retransmission_delta": p.RetransmissionDelta,
+				"findings": ni.Diagnose(ni.DiagnosticInput{
+					ObservedAt: p.ObservedAt, ACKRTT: millisecondsDuration(p.ACKRTTMilliseconds),
+					Jitter: millisecondsDuration(p.JitterMilliseconds),
+				}, p.ObservedAt),
+			})
+			if err != nil {
+				writeError(w, http.StatusBadGateway, "Invalid network history")
+				return
+			}
+			result.Points = append(result.Points, row)
+		}
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
 	raw, err := s.nodeController.NetworkIntelligence(ctx, nodeID)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "Network history unavailable")

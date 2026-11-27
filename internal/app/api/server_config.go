@@ -41,6 +41,7 @@ type Config struct {
 	ShopPaymentCallbackURL       string
 	APIDocsEnabled               bool
 	NetworkIntelligenceEnabled   bool
+	NetworkHistoryPersistence    bool
 	WebhookAddresses             []string
 	WebhookSecret                string
 	WebhookSendInterval          string
@@ -99,6 +100,7 @@ func LoadConfig() (Config, error) {
 		WebhookRetryInterval:         firstNonEmpty(lookup("ANTIMAGE_WEBHOOK_RETRY_INTERVAL"), secondsEnv(lookup("RECURRENT_NOTIFICATIONS_TIMEOUT"))),
 		TrustedProxyCIDRs:            splitWebhookAddresses(lookup("ANTIMAGE_TRUSTED_PROXY_CIDRS")),
 		NetworkIntelligenceEnabled:   parseBoolDefault(lookup("ANTIMAGE_NETWORK_INTELLIGENCE_ENABLED"), false),
+		NetworkHistoryPersistence:    parseBoolDefault(lookup("ANTIMAGE_NETWORK_HISTORY_PERSISTENCE"), false),
 	}
 	if cfg.Database == "" {
 		return Config{}, fmt.Errorf("SQLALCHEMY_DATABASE_URL is required")

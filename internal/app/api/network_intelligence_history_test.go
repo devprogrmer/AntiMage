@@ -2,11 +2,38 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
+
+func TestNetworkHistoryReadsDurableSamplesWithoutLiveNode(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`CREATE TABLE network_quality_history(node_id BIGINT,user_id BIGINT,observed_at BIGINT,ack_rtt_ms DOUBLE,jitter_ms DOUBLE,retransmission_delta BIGINT)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec("INSERT INTO network_quality_history VALUES (7,42,?,250,35,NULL),(8,42,?,10,NULL,NULL)", time.Now().UnixMilli(), time.Now().UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodGet, "/api/network-intelligence/history?node_id=7&user_id=42", nil)
+	r = r.WithContext(context.WithValue(r.Context(), adminContextKey, adminPrincipal{Role: "full_access"}))
+	w := httptest.NewRecorder()
+	s := &Server{db: db, cfg: Config{NetworkHistoryPersistence: true}}
+	s.handleNetworkIntelligenceHistory(w, r)
+	var response networkHistoryResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || w.Code != http.StatusOK || response.Storage != "durable" || len(response.Points) != 1 {
+		t.Fatalf("status=%d response=%s err=%v", w.Code, w.Body.String(), err)
+	}
+}
 
 func TestNetworkHistoryScopeFilteringAndOldNode(t *testing.T) {
 	raw := json.RawMessage(`{"history":{"storage":"volatile","collection":"on_telemetry_read","truncated":true,"points":[{"node_id":7,"user_id":42,"ack_rtt_ms":50},{"node_id":8,"user_id":42},{"node_id":7,"user_id":43}]}}`)

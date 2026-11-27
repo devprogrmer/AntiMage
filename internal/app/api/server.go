@@ -217,6 +217,9 @@ func (s *Server) StartBackground(ctx context.Context) {
 		go s.runNodeOperationsWorker(ctx)
 		go s.runNodeRecoveryWorker(ctx)
 		go s.runNodeUsageCollector(ctx)
+		if s.cfg.NetworkIntelligenceEnabled && s.cfg.NetworkHistoryPersistence {
+			go s.runNetworkHistoryCollector(ctx)
+		}
 		go s.runNodeUsageFlushWorker(ctx)
 		go s.runAdminLifecycleWorker(ctx)
 		s.runUserLifecycleWorkers(ctx)
