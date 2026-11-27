@@ -189,3 +189,5 @@ NEXT_ACTION: verify every CI job on `52ef8511`; then run production-shaped WireG
 NEXT_ACTION: run Network Intelligence Isolation CI on the new two-node fixture. Fix any real guest/test issues, then capture the successful two-node evidence. Do not claim two-node acceptance from cross-compilation or unit tests alone.
 
 The first live guest execution (run 46073124864) reached the new two-node test and failed during fixture setup because a veth interface name exceeded Linux's 15-character limit. This was a test-fixture setup failure before any traffic or ownership assertion. Shortened all generated interface names; rerun in the disposable Linux guest is required.
+
+The next isolated run (46073917634) passed interface creation and began sending actual traffic, but the client timed out waiting for the UDP reply. The two simulated nodes share the disposable host network namespace, so overlapping WireGuard AllowedIPs made the return route ambiguous. The fixture now adds per-destination source-policy routing tables so each test service reply returns through its own WireGuard interface. The run did not pass the ownership assertions; rerun is required.

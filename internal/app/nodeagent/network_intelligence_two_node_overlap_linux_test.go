@@ -108,6 +108,12 @@ func TestNetworkIntelligenceRealWireGuardOverlappingAddressAcrossNodes(t *testin
 			"private-key", "/dev/stdin", "peer", serverPublic, "allowed-ips", destination+"/32",
 			"endpoint", underlayPeer+":"+listenPort)
 		run("", "ip", "-n", namespace, "route", "add", destination+"/32", "dev", clientIface)
+		// The fixture places both simulated nodes in the disposable host
+		// namespace. Source-based tables keep each local service reply on the
+		// WireGuard interface that received the overlapping tunnel address.
+		table := map[string]string{"a": "201", "b": "202"}[suffix]
+		run("", "ip", "rule", "add", "from", destination+"/32", "table", table)
+		run("", "ip", "route", "add", "10.99.99.0/24", "dev", iface, "table", table)
 
 		udp, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP(destination), Port: 39111})
 		if err != nil {
