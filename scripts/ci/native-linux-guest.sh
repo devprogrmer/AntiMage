@@ -118,8 +118,8 @@ if [ "$1" = network-intelligence ]; then
   # This marker exists only in the fresh disposable VM created above.
   touch /run/antimage-disposable-network-lab
   export ANTIMAGE_WIREGUARD_NI_E2E=1 ANTIMAGE_CAPTURE_E2E=1
-  export ANTIMAGE_NI_TEST_NODE_ADDRESS="$(ip -o -4 addr show dev eth0 scope global | awk 'NR == 1 { split($4, address, "/"); print address[1] }')"
-  test -n "$ANTIMAGE_NI_TEST_NODE_ADDRESS" || { echo 'Disposable guest has no IPv4 address on eth0' >&2; exit 1; }
+  export ANTIMAGE_NI_TEST_NODE_ADDRESS="$(ip -o -4 addr show scope global | awk '$2 != "lo" { split($4, address, "/"); if (address[1] != "") { print address[1]; exit } }')"
+  test -n "$ANTIMAGE_NI_TEST_NODE_ADDRESS" || { echo 'Disposable guest has no global IPv4 address' >&2; exit 1; }
   if [ -x bin/api.test ]; then
     export PATH="$PWD/bin:$PATH"
     export ANTIMAGE_NI_BROWSER_PANEL_TEST="$PWD/bin/api.test"

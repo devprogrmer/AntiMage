@@ -158,7 +158,9 @@ NEXT_ACTION: leave this batch uncommitted until the remaining work is ready to c
 
 The current isolated-wireguard CI failure occurred before test execution: the QEMU guest had no reachable SSH provisioning path. Its user-mode network was configured inside 127.0.0.0/8, which Linux reserves for loopback. The guest now receives an address from a private 10.31.0.0/24 network; the test discovers the guest interface address and binds its fixture gRPC server on all guest interfaces, while ordinary local tests bind loopback. The current Codex Windows sandbox also blocks local loopback connects (`connectex: ... forbidden by its access permissions`); rerunning the focused API and Node Controller mTLS tests with approved local-network access passed (API 3.383s, Node Controller 1.814s). This Windows sandbox denial is not treated as a product regression.
 
-NEXT_ACTION: run shell and cleanup checks on Linux CI, verify the isolated guest provisions over the private subnet, then execute the live WireGuard-to-panel browser scenario. Continue the remaining acceptance gates and keep PR 147 Draft.
+The private subnet fixed guest SSH provisioning. The next guest attempt then failed immediately because Ubuntu assigned the interface a predictable name rather than `eth0`; the test now selects the first global IPv4 address without assuming an interface name.
+
+NEXT_ACTION: rerun the disposable Linux guest and inspect its actual WireGuard-to-panel results; continue the remaining acceptance gates and keep PR 147 Draft.
 
 Grouped pending batch verification: preserved selected durable history after user presence disappears, isolated the live mTLS RPC test address inside the disposable guest network, and retained the selected node option when presence records expire. The focused Chrome history test and TypeScript passed. API history mTLS test passed on Windows. Production shaping, full CI and live guest execution remain pending.
 
