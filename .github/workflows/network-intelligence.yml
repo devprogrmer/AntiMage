@@ -76,19 +76,21 @@ jobs:
         run: |
           python3 scripts/ci/test-native-linux-guest.py
           go test -race -c -o "$RUNNER_TEMP/networkintelligence.test" ./internal/app/networkintelligence
+          go test -c -o "$RUNNER_TEMP/networkintelligence-resource.test" ./internal/app/networkintelligence
           go test -race -c -o "$RUNNER_TEMP/nodeagent.test" ./internal/app/nodeagent
           go test -race -c -o "$RUNNER_TEMP/api.test" ./internal/app/api
       - name: Real WireGuard reassignment in disposable Linux guest
         run: |
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_NI_TEST_BINARY="$RUNNER_TEMP/networkintelligence.test" \
+            ANTIMAGE_NI_RESOURCE_TEST_BINARY="$RUNNER_TEMP/networkintelligence-resource.test" \
             ANTIMAGE_NI_NODE_TEST_BINARY="$RUNNER_TEMP/nodeagent.test" \
             ANTIMAGE_NI_API_TEST_BINARY="$RUNNER_TEMP/api.test" \
             ANTIMAGE_NI_NODE_BINARY="$(command -v node)" \
             bash scripts/ci/native-linux-guest.sh network-intelligence
-      - name: Retain isolated guest evidence
-        if: failure()
+      - name: Retain isolated guest evidence and resource measurements
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: network-intelligence-guest-failure
+          name: network-intelligence-guest-evidence
           path: ${{ runner.temp }}/antimage-guest-failure/

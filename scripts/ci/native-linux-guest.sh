@@ -8,6 +8,7 @@ case "$mode" in l2tp|combined|network-intelligence) ;; *) exit 2 ;; esac
 : "${RUNNER_TEMP:?}"
 if [ "$mode" = network-intelligence ]; then
   : "${ANTIMAGE_NI_TEST_BINARY:?}"
+  : "${ANTIMAGE_NI_RESOURCE_TEST_BINARY:?}"
   : "${ANTIMAGE_NI_NODE_TEST_BINARY:?}"
 else
   : "${ANTIMAGE_L2TP_TEST_BINARY:?}"
@@ -91,6 +92,7 @@ ssh "${ssh_args[@]}" root@127.0.0.1 'set -eu; uname -a; apt-get update; DEBIAN_F
 cp -a scripts/ci "$root/package/scripts/"
 if [ "$mode" = network-intelligence ]; then
   install -m 0755 "$ANTIMAGE_NI_TEST_BINARY" "$root/package/bin/networkintelligence.test"
+  install -m 0755 "$ANTIMAGE_NI_RESOURCE_TEST_BINARY" "$root/package/bin/networkintelligence-resource.test"
   install -m 0755 "$ANTIMAGE_NI_NODE_TEST_BINARY" "$root/package/bin/nodeagent.test"
   if [ -n "${ANTIMAGE_NI_API_TEST_BINARY:-}" ]; then
     : "${ANTIMAGE_NI_NODE_BINARY:?}"
@@ -128,6 +130,9 @@ if [ "$1" = network-intelligence ]; then
     node dashboard/node_modules/playwright/cli.js install --with-deps chromium
   fi
   bin/networkintelligence.test -test.v
+  ANTIMAGE_NI_RESOURCE_E2E=1 ANTIMAGE_NI_RESOURCE_PACED=1 \
+    bin/networkintelligence-resource.test -test.run '^TestCaptureResourceComparison$' -test.v \
+    | tee evidence/network-intelligence-resource.log
   bin/nodeagent.test -test.v -test.run 'TestNetworkIntelligence|TestNetworkInfrastructure'
   exit
 fi
