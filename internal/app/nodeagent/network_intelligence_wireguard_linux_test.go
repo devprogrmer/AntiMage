@@ -260,20 +260,32 @@ func TestNetworkIntelligenceRealWireGuardPublication(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	ticks := make(chan time.Time, 2)
+	historySince := time.Now().Add(-time.Minute)
 	ticks <- time.Now()
 	ticks <- time.Now()
 	close(ticks)
 	nodecontroller.RunNetworkHistoryCollector(ctx, ticks, controller, &ni.HistoryRepository{DB: db}, time.Now)
-	rpcServer.Stop()
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if panelTest := os.Getenv("ANTIMAGE_NI_BROWSER_PANEL_TEST"); panelTest != "" {
+		browserCtx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
+		defer cancel()
+		panel := exec.CommandContext(browserCtx, panelTest, "-test.run=^TestNetworkHistoryBrowserAgainstWireGuard$", "-test.v")
+		panel.Env = append(os.Environ(), "ANTIMAGE_NI_BROWSER_WIREGUARD_DB="+historyPath)
+		if output, err := panel.CombinedOutput(); err != nil {
+			t.Fatalf("live WireGuard dashboard test failed: %v\n%s", err, output)
+		}
+	}
+	rpcServer.Stop()
 	reopened, err := sql.Open("sqlite", historyPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	history, err := (&ni.HistoryRepository{DB: reopened}).List(ctx, 7, 42, time.Now().Add(-time.Minute))
+	historyCtx, cancelHistory := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancelHistory()
+	history, err := (&ni.HistoryRepository{DB: reopened}).List(historyCtx, 7, 42, historySince)
 	if err != nil || len(history) != 1 || history[0].ObservedAt.IsZero() {
 		t.Fatalf("wanted one durable sample from real WireGuard traffic after reopening SQLite: %+v, %v", history, err)
 	}

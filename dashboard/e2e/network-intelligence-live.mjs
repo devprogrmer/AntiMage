@@ -1,6 +1,7 @@
 import { chromium, expect } from "@playwright/test";
 
 const origin = process.argv[2];
+const realWireGuard = process.argv[3] === "--real-wireguard";
 if (!origin || new URL(origin).hostname !== "127.0.0.1") {
 	throw new Error("The history browser fixture requires a loopback panel.");
 }
@@ -18,7 +19,26 @@ try {
 	expect(login.ok()).toBe(true);
 	await page.goto(origin + "/dashboard/network-intelligence/");
 	await expect(page.getByRole("heading", { name: "Network Intelligence" })).toBeVisible();
-	await page.getByLabel("Node", { exact: true }).selectOption("7");
+	const node = page.getByLabel("Node", { exact: true });
+	if (realWireGuard) {
+		const [flowResponse] = await Promise.all([
+			page.waitForResponse((res) => {
+				const url = new URL(res.url());
+				return url.origin === origin && url.pathname === "/api/network-intelligence/node"
+					&& url.searchParams.get("node_id") === "7" && !url.searchParams.has("diagnose");
+			}),
+			node.selectOption("7"),
+		]);
+		expect(flowResponse.status()).toBe(200);
+		const { flows } = await flowResponse.json();
+		expect(flows.length).toBeGreaterThan(0);
+		expect(flows.every((flow) => flow.user_id === 42 && flow.node_id === 7)).toBe(true);
+		expect(flows.map((flow) => flow.protocol)).toEqual(expect.arrayContaining(["tcp", "udp"]));
+		await expect(page.getByRole("cell").filter({ hasText: /\btcp\b/ }).first()).toBeVisible();
+		await expect(page.getByRole("cell").filter({ hasText: /\budp\b/ }).first()).toBeVisible();
+	} else {
+		await node.selectOption("7");
+	}
 	const [response] = await Promise.all([
 		page.waitForResponse((res) => {
 			const url = new URL(res.url());
@@ -31,8 +51,14 @@ try {
 	const sample = await response.json();
 	expect(sample.storage).toBe("durable");
 	expect(sample.points).toHaveLength(1);
+	expect(sample.points[0]).toMatchObject({ node_id: 7, user_id: 42 });
 	await page.getByText("Observed samples", { exact: true }).click();
-	await expect(page.getByRole("cell", { name: "42.5", exact: true })).toBeVisible();
+	if (realWireGuard) {
+		const observedAt = await page.evaluate((at) => new Date(at).toLocaleString(), sample.points[0].at);
+		await expect(page.getByRole("cell", { name: observedAt, exact: true })).toBeVisible();
+	} else {
+		await expect(page.getByRole("cell", { name: "42.5", exact: true })).toBeVisible();
+	}
 } finally {
 	await browser.close();
 }

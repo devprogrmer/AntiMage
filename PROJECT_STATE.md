@@ -40,3 +40,5 @@ The migration matrix passed all three engines on c164e01c. The expanded same-mat
 
 Expanded matrix observation on 43809939: MySQL passed, SQLite failed, and MariaDB was running. An absolute workspace SQLite URL correction is in the worktree. CI failure logs and publication remained pending when automatic approval review hit its usage limit.
 Expanded MySQL and MariaDB jobs passed on 43809939. GitHub reproduced the SQLite missing-table error.
+
+Corrected expanded database CI passed SQLite, MySQL 8.4 and MariaDB 10.6 on 1ac0ee2e (run 46029983562). The local WireGuard-to-browser handoff is implemented and awaits an isolated Linux run. The controlled Chrome path passed after refactoring.

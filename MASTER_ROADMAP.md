@@ -121,3 +121,17 @@ Expanded database matrix 46004216171 on 43809939 reported MySQL success, SQLite 
 
 NEXT_ACTION: compare the verified local relative-path failure against the GitHub job log. Commit the workflow correction and checkpoint, push to PR 147, and verify all three expanded matrix jobs on that commit. In parallel, continue the live WireGuard-to-browser staging integration. Keep PR Draft.
 GitHub confirmed both MySQL and MariaDB passed the expanded repository matrix on 43809939. Both SQLite failures matched the local missing-table reproduction. CI must validate the absolute-path correction.
+
+The SQLite absolute URL fix is published as 1ac0ee2e. The replacement PR database run is 46029983562 and all three jobs were running at inspection. The browser script now has local, syntax-checked assertions for real WireGuard TCP/UDP ownership and durable sample rendering. The Docker Desktop Linux engine pipe was unavailable, so that mode has not been run.
+
+NEXT_ACTION: check run 46029983562. Restore access to a disposable Linux lab, connect the existing WireGuard fixture to the real panel browser harness and execute network-intelligence-live.mjs with --real-wireguard. The script changes are local until that mode passes. Continue the open Stage 0-15 gates and keep PR Draft.
+
+Database compatibility update: corrected PR run 46029983562 passed all three expanded jobs on 1ac0ee2e (SQLite, MySQL 8.4, MariaDB 10.6). This includes migration 95 and the production repository tests for capacity, concurrent admission, idempotency, ordered scoped reads and retention. No re-run on 1ac0ee2e is required.
+
+The local browser integration now has a test-binary handoff. The Linux Node Agent test can keep its mTLS endpoint live after collection and invoke the API test binary with its migrated fixture SQLite file. The API test starts the actual panel and uses the existing Playwright script in real WireGuard mode. The refactored controlled scenario passed in Chrome. The new live mode remains unexecuted.
+
+NEXT_ACTION: in a disposable Linux guest with WireGuard, Node and Chromium, build the API test binary with go test -c ./internal/app/api and point ANTIMAGE_NI_BROWSER_PANEL_TEST to its absolute path. Build dashboard assets and set ANTIMAGE_NI_BROWSER_DASHBOARD to the dashboard directory. Run TestNetworkIntelligenceRealWireGuardPublication with ANTIMAGE_WIREGUARD_NI_E2E=1, then run adjacent regression checks before publishing the local browser integration. The only local WSL distribution is Docker Desktop and is stopped. The existing disposable guest CI route remains available for provisioning the combined test. Continue open Stage 0-15 acceptance and keep the PR Draft.
+
+The disposable guest CI job now packages the Linux API test binary, Node, Playwright and a fresh dashboard build. It installs Chromium inside the guest and invokes the authenticated browser against the real WireGuard Node Agent while its RPC server is still live. The Windows host could not execute the Linux guest cleanup tests because it lacks POSIX process-group operations. The existing guest workflow will execute them on Linux.
+
+NEXT_ACTION: inspect the new Network Intelligence Isolation result. Fix and rerun any guest provisioning, live flow, or history browser failures. The replacement three-engine database matrix is already verified on 1ac0ee2e. Once the combined test passes, continue the open stage acceptance gates. Keep PR Draft.

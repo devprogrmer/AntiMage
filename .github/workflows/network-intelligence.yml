@@ -17,6 +17,7 @@ on:
       - 'dashboard/playwright.config.ts'
       - 'dashboard/package*.json'
       - 'scripts/ci/network-intelligence-e2e.sh'
+      - 'scripts/ci/native-linux-guest.sh'
       - '.github/workflows/network-intelligence.yml'
 
 permissions:
@@ -51,12 +52,22 @@ jobs:
 
   isolated-wireguard:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - name: Build the dashboard for the disposable guest
+        working-directory: dashboard
+        run: |
+          npm ci
+          npm run build
       - name: Install disposable guest tooling
         run: |
           sudo apt-get update
@@ -66,11 +77,14 @@ jobs:
           python3 scripts/ci/test-native-linux-guest.py
           go test -race -c -o "$RUNNER_TEMP/networkintelligence.test" ./internal/app/networkintelligence
           go test -race -c -o "$RUNNER_TEMP/nodeagent.test" ./internal/app/nodeagent
+          go test -race -c -o "$RUNNER_TEMP/api.test" ./internal/app/api
       - name: Real WireGuard reassignment in disposable Linux guest
         run: |
           sudo env RUNNER_TEMP="$RUNNER_TEMP" \
             ANTIMAGE_NI_TEST_BINARY="$RUNNER_TEMP/networkintelligence.test" \
             ANTIMAGE_NI_NODE_TEST_BINARY="$RUNNER_TEMP/nodeagent.test" \
+            ANTIMAGE_NI_API_TEST_BINARY="$RUNNER_TEMP/api.test" \
+            ANTIMAGE_NI_NODE_BINARY="$(command -v node)" \
             bash scripts/ci/native-linux-guest.sh network-intelligence
       - name: Retain isolated guest evidence
         if: failure()

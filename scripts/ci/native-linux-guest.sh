@@ -92,6 +92,16 @@ cp -a scripts/ci "$root/package/scripts/"
 if [ "$mode" = network-intelligence ]; then
   install -m 0755 "$ANTIMAGE_NI_TEST_BINARY" "$root/package/bin/networkintelligence.test"
   install -m 0755 "$ANTIMAGE_NI_NODE_TEST_BINARY" "$root/package/bin/nodeagent.test"
+  if [ -n "${ANTIMAGE_NI_API_TEST_BINARY:-}" ]; then
+    : "${ANTIMAGE_NI_NODE_BINARY:?}"
+    install -m 0755 "$ANTIMAGE_NI_API_TEST_BINARY" "$root/package/bin/api.test"
+    install -m 0755 "$ANTIMAGE_NI_NODE_BINARY" "$root/package/bin/node"
+    mkdir -p "$root/package/dashboard/node_modules/@playwright" "$root/package/dashboard/e2e"
+    cp -a dashboard/build "$root/package/dashboard/"
+    cp -a dashboard/e2e/network-intelligence-live.mjs "$root/package/dashboard/e2e/"
+    cp -a dashboard/node_modules/playwright dashboard/node_modules/playwright-core "$root/package/dashboard/node_modules/"
+    cp -a dashboard/node_modules/@playwright/test "$root/package/dashboard/node_modules/@playwright/"
+  fi
 else
   install -m 0755 "$ANTIMAGE_L2TP_TEST_BINARY" "$root/package/bin/nodeagent.test"
   install -m 0755 "$ANTIMAGE_L2TP_PANEL_TEST_BINARY" "$root/package/bin/nodecontroller.test"
@@ -108,6 +118,12 @@ if [ "$1" = network-intelligence ]; then
   # This marker exists only in the fresh disposable VM created above.
   touch /run/antimage-disposable-network-lab
   export ANTIMAGE_WIREGUARD_NI_E2E=1 ANTIMAGE_CAPTURE_E2E=1
+  if [ -x bin/api.test ]; then
+    export PATH="$PWD/bin:$PATH"
+    export ANTIMAGE_NI_BROWSER_PANEL_TEST="$PWD/bin/api.test"
+    export ANTIMAGE_NI_BROWSER_DASHBOARD="$PWD/dashboard"
+    node dashboard/node_modules/playwright/cli.js install --with-deps chromium
+  fi
   bin/networkintelligence.test -test.v
   bin/nodeagent.test -test.v -test.run 'TestNetworkIntelligence|TestNetworkInfrastructure'
   exit

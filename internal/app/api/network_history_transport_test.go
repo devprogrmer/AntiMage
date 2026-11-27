@@ -114,48 +114,8 @@ func TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	dataDir := t.TempDir()
-	t.Setenv("ANTIMAGE_DATA_DIR", dataDir)
-	s, err := New(Config{
-		Database: "sqlite:///" + filepath.ToSlash(path), CertificateBase: filepath.Join(dataDir, "certificates"),
-		NetworkIntelligenceEnabled: true, NetworkHistoryPersistence: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.db.Close()
-	hash, err := adminapp.HashPassword("fixture-admin-password")
-	if err != nil {
-		t.Fatal(err)
-	}
-	perms, err := json.Marshal(adminapp.RoleDefaultPermissions(adminapp.RoleFullAccess))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.db.Exec(`INSERT INTO admins (
-		username, hashed_password, role, permissions, status, subscription_settings,
-		users_usage, lifetime_usage, created_traffic, deleted_users_usage
-	) VALUES ('history-admin', ?, 'full_access', ?, 'active', '{}', 0, 0, 0, 0)`, hash, string(perms)); err != nil {
-		t.Fatal(err)
-	}
-	handler := s.Handler()
 	browserDashboard := os.Getenv("ANTIMAGE_NI_BROWSER_DASHBOARD")
-	if browserDashboard != "" {
-		if _, err := s.db.Exec(`INSERT INTO users (id, username) VALUES (42, 'history-user');
-			INSERT INTO user_online_ips (node_id, user_id, protocol, ip, last_seen_at)
-			VALUES (7, 42, 'wireguard', '192.0.2.42', CURRENT_TIMESTAMP)`); err != nil {
-			t.Fatal(err)
-		}
-		mux := http.NewServeMux()
-		mux.Handle("/api/", handler)
-		mux.Handle("/statics/", http.FileServer(http.Dir(filepath.Join(browserDashboard, "build"))))
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			http.ServeFile(w, r, filepath.Join(browserDashboard, "build", "index.html"))
-		})
-		handler = mux
-	}
-	panel := httptest.NewServer(handler)
-	defer panel.Close()
+	panel := startNetworkHistoryBrowserPanel(t, path, browserDashboard)
 	client := panel.Client()
 	client.Timeout = 5 * time.Second
 	client.Jar, err = cookiejar.New(nil)
@@ -199,12 +159,81 @@ func TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen(t *testing.T) 
 		t.Fatalf("wrong persisted point: %s, error=%v", history.Points[0], err)
 	}
 	if browserDashboard != "" {
-		browserCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		browser := exec.CommandContext(browserCtx, "node", "e2e/network-intelligence-live.mjs", panel.URL)
-		browser.Dir = browserDashboard
-		if output, err := browser.CombinedOutput(); err != nil {
-			t.Fatalf("real dashboard browser test failed: %v\n%s", err, output)
+		runNetworkHistoryBrowser(t, browserDashboard, panel.URL)
+	}
+}
+
+func TestNetworkHistoryBrowserAgainstWireGuard(t *testing.T) {
+	path := os.Getenv("ANTIMAGE_NI_BROWSER_WIREGUARD_DB")
+	if path == "" {
+		t.Skip("requires a database owned by the disposable live WireGuard fixture")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	}
+	dashboard := os.Getenv("ANTIMAGE_NI_BROWSER_DASHBOARD")
+	if dashboard == "" {
+		t.Fatal("wireguard browser fixture requires the built dashboard")
+	}
+	panel := startNetworkHistoryBrowserPanel(t, path, dashboard)
+	runNetworkHistoryBrowser(t, dashboard, panel.URL, "--real-wireguard")
+}
+
+func startNetworkHistoryBrowserPanel(t *testing.T, path, browserDashboard string) *httptest.Server {
+	t.Helper()
+	dataDir := t.TempDir()
+	t.Setenv("ANTIMAGE_DATA_DIR", dataDir)
+	s, err := New(Config{
+		Database: "sqlite:///" + filepath.ToSlash(path), CertificateBase: filepath.Join(dataDir, "certificates"),
+		NetworkIntelligenceEnabled: true, NetworkHistoryPersistence: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.db.Close() })
+	hash, err := adminapp.HashPassword("fixture-admin-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	perms, err := json.Marshal(adminapp.RoleDefaultPermissions(adminapp.RoleFullAccess))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO admins (
+		username, hashed_password, role, permissions, status, subscription_settings,
+		users_usage, lifetime_usage, created_traffic, deleted_users_usage
+	) VALUES ('history-admin', ?, 'full_access', ?, 'active', '{}', 0, 0, 0, 0)`, hash, string(perms)); err != nil {
+		t.Fatal(err)
+	}
+	handler := s.Handler()
+
+	if browserDashboard != "" {
+		if _, err := s.db.Exec(`INSERT INTO users (id, username) VALUES (42, 'history-user');
+			INSERT INTO user_online_ips (node_id, user_id, protocol, ip, last_seen_at)
+			VALUES (7, 42, 'wireguard', '192.0.2.42', CURRENT_TIMESTAMP)`); err != nil {
+			t.Fatal(err)
 		}
+		mux := http.NewServeMux()
+		mux.Handle("/api/", handler)
+		mux.Handle("/statics/", http.FileServer(http.Dir(filepath.Join(browserDashboard, "build"))))
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFile(w, r, filepath.Join(browserDashboard, "build", "index.html"))
+		})
+		handler = mux
+	}
+	panel := httptest.NewServer(handler)
+	t.Cleanup(panel.Close)
+	return panel
+}
+
+func runNetworkHistoryBrowser(t *testing.T, dashboard, origin string, mode ...string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	args := append([]string{"e2e/network-intelligence-live.mjs", origin}, mode...)
+	browser := exec.CommandContext(ctx, "node", args...)
+	browser.Dir = dashboard
+	if output, err := browser.CombinedOutput(); err != nil {
+		t.Fatalf("real dashboard browser test failed: %v\n%s", err, output)
 	}
 }
