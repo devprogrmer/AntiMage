@@ -1,6 +1,33 @@
 package networkintelligence
 
-import "time"
+import (
+	"fmt"
+	"math"
+	"time"
+)
+
+// DiagnoseInfrastructure reports recent interval counter evidence at node scope.
+func DiagnoseInfrastructure(sampledAt, now time.Time, interval float64, rates map[string]float64) []Finding {
+	if sampledAt.IsZero() || sampledAt.After(now) || now.Sub(sampledAt) > time.Minute || interval <= 0 || interval > 60 || math.IsNaN(interval) {
+		return nil
+	}
+	var findings []Finding
+	for _, metric := range []struct{ key, code, label string }{
+		{"softnet.dropped", "node_softnet_drops", "Kernel receive backlog drops"},
+		{"ip.ReasmFails", "node_reassembly_failures", "IPv4 reassembly failures"},
+		{"ip.FragFails", "node_fragmentation_failures", "IPv4 fragmentation failures"},
+	} {
+		rate := rates[metric.key]
+		if rate > 0 && !math.IsInf(rate, 0) {
+			findings = append(findings, Finding{
+				Code: metric.code, Severity: "warning", Confidence: "observed",
+				Evidence:       fmt.Sprintf("%s averaged %.3g events/s over %.3g s on this node", metric.label, rate, interval),
+				Recommendation: "Compare node counters and tunnel observations over the same interval",
+			})
+		}
+	}
+	return findings
+}
 
 // DiagnosticInput contains observations, never cumulative host error counters.
 type DiagnosticInput struct {

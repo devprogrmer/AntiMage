@@ -33,8 +33,13 @@ func (s *Server) handleNetworkIntelligenceNode(w http.ResponseWriter, r *http.Re
 	}
 	if r.URL.Query().Get("diagnose") == "true" {
 		var telemetry struct {
-			ObservedAt time.Time `json:"observed_at"`
-			Flows      []struct {
+			ObservedAt     time.Time `json:"observed_at"`
+			Infrastructure *struct {
+				SampledAt time.Time          `json:"sampled_at"`
+				Interval  float64            `json:"interval_seconds"`
+				Rates     map[string]float64 `json:"counter_rates_per_second"`
+			} `json:"infrastructure"`
+			Flows []struct {
 				UserID      int64              `json:"user_id"`
 				Destination string             `json:"destination"`
 				ObservedAt  time.Time          `json:"observed_at"`
@@ -46,6 +51,13 @@ func (s *Server) handleNetworkIntelligenceNode(w http.ResponseWriter, r *http.Re
 			return
 		}
 		results := make([]map[string]any, 0, len(telemetry.Flows))
+		now := time.Now().UTC()
+		if infra := telemetry.Infrastructure; infra != nil {
+			findings := ni.DiagnoseInfrastructure(infra.SampledAt, now, infra.Interval, infra.Rates)
+			if len(findings) != 0 {
+				results = append(results, map[string]any{"scope": "node", "findings": findings})
+			}
+		}
 		for _, flow := range telemetry.Flows {
 			input := ni.DiagnosticInput{ObservedAt: flow.ObservedAt}
 			if flow.Quality != nil {
@@ -53,7 +65,7 @@ func (s *Server) handleNetworkIntelligenceNode(w http.ResponseWriter, r *http.Re
 				input.ACKRTT = millisecondsDuration(flow.Quality.UploadACK.Mean)
 				input.Jitter = millisecondsDuration(flow.Quality.UploadACK.Jitter)
 			}
-			results = append(results, map[string]any{"user_id": flow.UserID, "destination": flow.Destination, "findings": ni.Diagnose(input, time.Now().UTC())})
+			results = append(results, map[string]any{"user_id": flow.UserID, "destination": flow.Destination, "findings": ni.Diagnose(input, now)})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"node_id": id, "observed_at": telemetry.ObservedAt, "results": results})
 		return

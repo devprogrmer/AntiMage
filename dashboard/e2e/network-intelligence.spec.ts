@@ -60,6 +60,24 @@ test("standard admin cannot view telemetry", async ({ page }) => {
 	await expect(page.getByText("traffic-user", { exact: true })).toHaveCount(0);
 });
 
+test("one-click diagnostics displays node evidence without a user identity", async ({ page }) => {
+	await setup(page);
+	await page.route("**/api/network-intelligence/node?**", (route) => {
+		const query = new URL(route.request().url()).searchParams;
+		if (query.get("diagnose") !== "true") return route.fulfill({ json: { flows: [] } });
+		return route.fulfill({ json: { results: [{ scope: "node", findings: [{
+			code: "node_softnet_drops", severity: "warning", confidence: "observed",
+			evidence: "Kernel receive backlog drops averaged 1 events/s over 5 s on this node",
+			recommendation: "Compare node counters and tunnel observations over the same interval",
+		}] }] } });
+	});
+	await page.goto("/dashboard/network-intelligence/");
+	await page.getByLabel("Node", { exact: true }).selectOption("7");
+	await page.getByRole("button", { name: "Run network diagnostics" }).click();
+	await expect(page.getByText("Node · node_softnet_drops")).toBeVisible();
+	await expect(page.getByText("Kernel receive backlog drops averaged 1 events/s over 5 s on this node")).toBeVisible();
+});
+
 test("account history preserves unavailable measurements and reports retention limits", async ({ page }) => {
 	await setup(page);
 	await page.route("**/api/network-intelligence/history?**", async (route) => {

@@ -5,7 +5,13 @@ on:
   pull_request:
     paths:
       - 'internal/app/networkintelligence/**'
+      - 'internal/app/api/network_intelligence*'
       - 'internal/app/nodeagent/network_intelligence*'
+      - 'dashboard/src/**/Network*'
+      - 'dashboard/src/service/networkIntelligence*'
+      - 'dashboard/e2e/network-intelligence.spec.ts'
+      - 'dashboard/playwright.config.ts'
+      - 'dashboard/package*.json'
       - 'scripts/ci/network-intelligence-e2e.sh'
       - '.github/workflows/network-intelligence.yml'
 
@@ -13,6 +19,23 @@ permissions:
   contents: read
 
 jobs:
+  dashboard-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
   isolated-wireguard:
     runs-on: ubuntu-24.04
     timeout-minutes: 35

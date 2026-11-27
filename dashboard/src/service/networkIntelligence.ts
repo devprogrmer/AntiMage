@@ -97,8 +97,9 @@ export const getNetworkHistory = (
 export const getNetworkDiagnostics = (nodeID: number, signal: AbortSignal) =>
 	fetch<{
 		results: {
-			user_id: number;
-			destination: string;
+			scope?: "node";
+			user_id?: number;
+			destination?: string;
 			findings: DiagnosticFinding[];
 		}[];
 	}>("/network-intelligence/node", {

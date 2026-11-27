@@ -56,7 +56,12 @@ export default function NetworkIntelligencePage() {
 	const [loading, setLoading] = useState(false);
 	const [refresh, setRefresh] = useState(0);
 	const [diagnostics, setDiagnostics] = useState<
-		| { user_id: number; destination: string; findings: DiagnosticFinding[] }[]
+		| {
+				scope?: "node";
+				user_id?: number;
+				destination?: string;
+				findings: DiagnosticFinding[];
+		  }[]
 		| null
 	>(null);
 	const [diagnosing, setDiagnosing] = useState(false);
@@ -277,7 +282,10 @@ export default function NetworkIntelligencePage() {
 								<AlertIcon />
 								<Box>
 									<Text fontWeight="semibold">
-										{result.user_id} · {result.destination} · {finding.code}
+										{result.scope === "node"
+											? label("node", "Node")
+											: `${result.user_id} · ${result.destination}`}{" "}
+										· {finding.code}
 									</Text>
 									<Text>{finding.evidence}</Text>
 									<Text>{finding.recommendation}</Text>
