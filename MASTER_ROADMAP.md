@@ -161,3 +161,5 @@ Additional debugging found Windows loopback contention caused the targeted mTLS 
 NEXT_ACTION: commit this batch only after revalidating the guest mTLS+browser flow, and inspect workflow results for missing regressions. The guest network adjustment is currently uncommitted.
 
 Grouped pending batch verification: preserved selected durable history after user presence disappears, isolated the live mTLS RPC test address inside the disposable guest network, and retained the selected node option when presence records expire. The focused Chrome history test and TypeScript passed. API history mTLS test passed on Windows. Production shaping, full CI and live guest execution remain pending.
+
+The live Linux fixture ordering is now stronger. The WireGuard Node Agent remains active while the browser reads real TCP/UDP flows. The test then stops the agent, reopens SQLite, verifies durable history directly, starts a fresh panel over that database and asks Playwright to read/render the persisted history again.

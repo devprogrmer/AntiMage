@@ -268,21 +268,21 @@ func TestNetworkIntelligenceRealWireGuardPublication(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if panelTest := os.Getenv("ANTIMAGE_NI_BROWSER_PANEL_TEST"); panelTest != "" {
-		browserCtx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
-		defer cancel()
-		panel := exec.CommandContext(browserCtx, panelTest, "-test.run=^TestNetworkHistoryBrowserAgainstWireGuard$", "-test.v")
-		panel.Env = append(os.Environ(), "ANTIMAGE_NI_BROWSER_WIREGUARD_DB="+historyPath)
-		if output, err := panel.CombinedOutput(); err != nil {
-			t.Fatalf("live WireGuard dashboard test failed: %v\n%s", err, output)
-		}
-	}
 	rpcServer.Stop()
 	reopened, err := sql.Open("sqlite", historyPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
+	if panelTest := os.Getenv("ANTIMAGE_NI_BROWSER_PANEL_TEST"); panelTest != "" {
+		panelCtx, cancelPanel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancelPanel()
+		panel := exec.CommandContext(panelCtx, panelTest, "-test.run=^TestNetworkHistoryBrowserAgainstWireGuard$", "-test.v")
+		panel.Env = append(os.Environ(), "ANTIMAGE_NI_BROWSER_WIREGUARD_DB="+historyPath)
+		if output, err := panel.CombinedOutput(); err != nil {
+			t.Fatalf("live WireGuard browser history failed after database restart: %v\n%s", err, output)
+		}
+	}
 	historyCtx, cancelHistory := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancelHistory()
 	history, err := (&ni.HistoryRepository{DB: reopened}).List(historyCtx, 7, 42, historySince)
