@@ -110,13 +110,28 @@ func resourceTrial(t *testing.T, clients int, enabled bool) {
 		t.Fatal(err)
 	}
 	runtime.ReadMemStats(&memAfter)
-	if capture != nil {
-		_ = capture.Stop()
-	}
 	flows := tracker.Snapshot(time.Now())
+	if capture != nil {
+		// Stop revokes bindings and intentionally removes live flows. Capture the
+		// active snapshot first, and fail if the exercised traffic was not
+		// attributed before teardown.
+		deadline := time.Now().Add(2 * time.Second)
+		for len(flows) == 0 && time.Now().Before(deadline) {
+			time.Sleep(10 * time.Millisecond)
+			flows = tracker.Snapshot(time.Now())
+		}
+		if len(flows) == 0 {
+			t.Fatal("monitoring was enabled but no active flow was attributed")
+		}
+	}
 	telemetry, err := json.Marshal(flows)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if capture != nil {
+		if err := capture.Stop(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	cpu := func(r unix.Rusage) time.Duration {
 		return time.Duration(r.Utime.Sec+r.Stime.Sec)*time.Second + time.Duration(r.Utime.Usec+r.Stime.Usec)*time.Microsecond
