@@ -40,7 +40,7 @@ test("renders node MTU and interval counter telemetry", async ({ page }) => {
 			infrastructure: {
 				sampled_at: "2026-11-27T06:00:00Z",
 				interval_seconds: 5,
-				interfaces: [{ name: "wg-observed", mtu: 1420 }],
+				interfaces: [{ name: "wg-observed", mtu: 1420, oper_state: "up" }],
 				counter_rates_per_second: { "softnet.dropped": 0.5 },
 			},
 		} }),
@@ -49,6 +49,7 @@ test("renders node MTU and interval counter telemetry", async ({ page }) => {
 	await page.getByLabel("Node", { exact: true }).selectOption("7");
 	await expect(page.getByRole("cell", { name: "wg-observed" })).toBeVisible();
 	await expect(page.getByRole("cell", { name: "1420" })).toBeVisible();
+	await expect(page.getByRole("row", { name: "wg-observed 1420 up" })).toBeVisible();
 	await expect(page.getByRole("row", { name: "softnet.dropped 0.50" })).toBeVisible();
 });
 

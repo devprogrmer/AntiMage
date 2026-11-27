@@ -13,8 +13,9 @@ type networkInfrastructure struct {
 }
 
 type networkInterfaceInfrastructure struct {
-	Name string `json:"name"`
-	MTU  uint64 `json:"mtu"`
+	OperState string `json:"oper_state,omitempty"`
+	Name      string `json:"name"`
+	MTU       uint64 `json:"mtu"`
 }
 
 // Each sampler belongs to one node instance. The first sample has no rates.

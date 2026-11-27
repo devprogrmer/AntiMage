@@ -7,6 +7,23 @@ import (
 	"testing"
 )
 
+func TestNetworkInfrastructureReadsKernelLoopbackState(t *testing.T) {
+	_, interfaces, err := readNetworkInfrastructure()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range interfaces {
+		if item.Name == "lo" {
+			// Linux commonly reports "unknown" for loopback.
+			if item.MTU == 0 || item.OperState == "" {
+				t.Fatalf("missing kernel loopback metadata: %+v", item)
+			}
+			return
+		}
+	}
+	t.Fatal("loopback interface absent")
+}
+
 func TestNetworkInfrastructureParsers(t *testing.T) {
 	got, err := parseInfrastructureSNMP(strings.NewReader("Ip: Forwarding ReasmTimeout ReasmReqds ReasmOKs ReasmFails FragOKs FragFails FragCreates\nIp: 1 30 20 10 3 8 2 12\n"))
 	if err != nil || got["ip.ReasmFails"] != 3 || got["ip.FragCreates"] != 12 {

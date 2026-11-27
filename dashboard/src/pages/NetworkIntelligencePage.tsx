@@ -401,6 +401,7 @@ export default function NetworkIntelligencePage() {
 								<Tr>
 									<Th>{label("interface", "Interface")}</Th>
 									<Th>MTU</Th>
+									<Th>{label("interfaceState", "Interface state")}</Th>
 								</Tr>
 							</Thead>
 							<Tbody>
@@ -408,6 +409,7 @@ export default function NetworkIntelligencePage() {
 									<Tr key={item.name}>
 										<Td>{item.name}</Td>
 										<Td>{item.mtu}</Td>
+										<Td>{item.oper_state || "N/A"}</Td>
 									</Tr>
 								))}
 							</Tbody>

@@ -39,7 +39,7 @@ export type NetworkSnapshot = {
 	infrastructure?: {
 		sampled_at: string;
 		interval_seconds: number;
-		interfaces: { name: string; mtu: number }[];
+		interfaces: { name: string; mtu: number; oper_state?: string }[];
 		counter_rates_per_second?: Record<string, number>;
 	};
 	available?: boolean;

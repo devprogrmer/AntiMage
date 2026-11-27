@@ -100,7 +100,8 @@ func readNetworkInfrastructure() (map[string]uint64, []networkInterfaceInfrastru
 		if err != nil {
 			continue
 		}
-		interfaces = append(interfaces, networkInterfaceInfrastructure{Name: name, MTU: mtu})
+		state, _ := os.ReadFile(filepath.Join(base, "operstate"))
+		interfaces = append(interfaces, networkInterfaceInfrastructure{Name: name, MTU: mtu, OperState: strings.TrimSpace(string(state))})
 		for _, counter := range []string{"rx_dropped", "tx_dropped", "rx_errors", "tx_errors", "rx_bytes", "tx_bytes"} {
 			if value, err := readInfrastructureCounter(filepath.Join(base, "statistics", counter)); err == nil {
 				result["interface."+name+"."+counter] = value
