@@ -25,4 +25,4 @@ docker run --rm --network none --cap-add NET_ADMIN --cap-add NET_RAW \
   -e GOMODCACHE=/modules \
   --mount "type=volume,source=$cache,target=/modules" \
   --mount "type=bind,source=$repo,target=/checkout,readonly" \
-  "$image" bash -c 'cp -a /checkout /src; cd /src; go test -race -v ./internal/app/networkintelligence'
+  "$image" bash -c 'cp -a /checkout /src; cd /src; go test -race -v ./internal/app/networkintelligence && go test -race -run TestNetworkIntelligenceRealWireGuardPublication -v ./internal/app/nodeagent'
