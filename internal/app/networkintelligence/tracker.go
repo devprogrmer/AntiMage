@@ -150,7 +150,6 @@ func (t *Tracker) Observe(o Observation, now time.Time) bool {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.expire(now)
 	k := key(o.Binding)
 	b, ok := t.bindings[k]
 	if !ok || b != o.Binding || o.At.Before(b.Since) {

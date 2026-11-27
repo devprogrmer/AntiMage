@@ -2,9 +2,42 @@ package networkintelligence
 
 import (
 	"net/netip"
+	"strconv"
 	"testing"
 	"time"
 )
+
+func BenchmarkTrackerObserve(b *testing.B) {
+	for _, flowCount := range []int{1, 1024, 4096} {
+		b.Run(strconv.Itoa(flowCount), func(b *testing.B) {
+			now := time.Now()
+			tracker, err := New(flowCount, time.Minute)
+			if err != nil {
+				b.Fatal(err)
+			}
+			binding := Binding{1, "wg-a", netip.MustParseAddr("10.0.0.2"), 42, "session", 1, now}
+			if err := tracker.Bind(binding); err != nil {
+				b.Fatal(err)
+			}
+			observation := Observation{CollectorEpoch: tracker.Epoch(), Binding: binding, Tuple: Tuple{Source: netip.AddrPortFrom(binding.Address, 1000), Protocol: "udp"}, Sequence: 1, At: now}
+			destination := netip.MustParseAddr("192.0.2.1")
+			for port := 1; port <= flowCount; port++ {
+				observation.Tuple.Destination = netip.AddrPortFrom(destination, uint16(port))
+				if !tracker.Observe(observation, now) {
+					b.Fatal("could not populate tracker")
+				}
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				observation.Sequence++
+				if !tracker.Observe(observation, now) {
+					b.Fatal("could not update flow")
+				}
+			}
+		})
+	}
+}
 
 func TestOwnershipAndCounters(t *testing.T) {
 	now := time.Now()

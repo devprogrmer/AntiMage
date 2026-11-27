@@ -19,3 +19,5 @@ Linux race validation now covers real encrypted WireGuard traffic through gRPC s
 The remote dev ref was verified as c1a35e44. One-click diagnostics now report node-scoped infrastructure evidence. The six-case Playwright suite passed locally against intercepted API responses and is wired into PR CI. PR 147 remains Draft pending the full release gates.
 
 Measured node memory used and total are exposed only when valid counters exist. Tested over real Node Agent mTLS and in the dashboard browser fixture. PR remains Draft.
+
+Removed the per-observation full expiry scan. Targeted tests passed and Windows tracker cost at 4096 resident flows decreased from 90.3 us to 290 ns per update. The forwarding benchmark and full-stack gate remain open. See the final NEXT_ACTION in MASTER_ROADMAP.md.
