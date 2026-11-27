@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"net"
 	"os"
@@ -14,10 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/antimage/antimage/internal/app/migrations"
 	nodeapp "github.com/antimage/antimage/internal/app/node"
+	"github.com/antimage/antimage/internal/app/nodecontroller"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	_ "modernc.org/sqlite"
 )
 
 // This fixture owns its namespace and interface names. Run only in a disposable
@@ -109,16 +113,26 @@ func TestNetworkIntelligenceRealWireGuardPublication(t *testing.T) {
 		ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: roots,
 	})))
 	nodev1.RegisterNodeRuntimeServiceServer(rpcServer, s)
+	nodev1.RegisterNodeControlServiceServer(rpcServer, s)
 	go func() { _ = rpcServer.Serve(rpcListener) }()
 	defer rpcServer.Stop()
-	conn, err := grpc.NewClient(rpcListener.Addr().String(), grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
-		MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{pair}, RootCAs: roots,
-	})))
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
-	runtimeClient := nodev1.NewNodeRuntimeServiceClient(conn)
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if err := migrations.RunMigrations(ctx, db, "sqlite"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, "INSERT INTO tls (certificate,`key`) VALUES (?,?)", certificate, key); err != nil {
+		t.Fatal(err)
+	}
+	port := rpcListener.Addr().(*net.TCPAddr).Port
+	if _, err := db.ExecContext(ctx, "INSERT INTO nodes (id,name,address,port,api_port,status,certificate,certificate_key,xray_config_mode,usage_coefficient) VALUES (7,'wireguard-fixture','127.0.0.1',?,?,'connected',?,?,'custom',1)", port, port, certificate, key); err != nil {
+		t.Fatal(err)
+	}
+	controller := nodecontroller.NewController(nodecontroller.NewRepository(db, "sqlite"))
 	var oldPeer string
 	for generation := uint64(1); generation <= 2; generation++ {
 		private := run("", "wg", "genkey")
@@ -172,7 +186,7 @@ func TestNetworkIntelligenceRealWireGuardPublication(t *testing.T) {
 		if run("", "wg", "show", "ni-server", "latest-handshakes") == public+"\t0" {
 			t.Fatal("WireGuard handshake absent")
 		}
-		response, err := runtimeClient.Metrics(ctx, &nodev1.MetricsRequest{IncludeNetworkIntelligence: true})
+		response, err := controller.NetworkIntelligence(ctx, 7)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -183,7 +197,7 @@ func TestNetworkIntelligenceRealWireGuardPublication(t *testing.T) {
 				Protocol string `json:"protocol"`
 			} `json:"flows"`
 		}
-		if err := json.Unmarshal([]byte(response.GetNetworkIntelligenceJson()), &snapshot); err != nil {
+		if err := json.Unmarshal(response, &snapshot); err != nil {
 			t.Fatal(err)
 		}
 		protocols := map[string]bool{}

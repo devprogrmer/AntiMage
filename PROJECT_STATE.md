@@ -23,3 +23,5 @@ Measured node memory used and total are exposed only when valid counters exist. 
 Removed the per-observation full expiry scan. Targeted tests passed and Windows tracker cost at 4096 resident flows decreased from 90.3 us to 290 ns per update. The forwarding benchmark and full-stack gate remain open. See the final NEXT_ACTION in MASTER_ROADMAP.md.
 
 Real encrypted WireGuard reassignment telemetry passed over loopback mTLS with Linux race detection. Panel worker restart and live browser verification remain open.
+
+Live WireGuard flow ownership now passes through the production Node Controller over mTLS using migrated SQLite. Linux race validation passed. Durable worker, panel restart and browser remain open.

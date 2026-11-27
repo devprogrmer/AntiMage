@@ -88,3 +88,7 @@ NEXT_ACTION: extend TestNetworkIntelligenceReadsRealNodeMetricsOverMTLS with the
 The existing real encrypted WireGuard reassignment fixture now queries the real Node Agent over loopback mTLS and passed the Linux race test with 2 CPUs, 2 GiB RAM and no external network. Both TCP and UDP must match the new account and node after reassignment. The fixture still bypasses the panel.
 
 NEXT_ACTION: connect this fixture to the production Node Controller and the panel history worker in the disposable Linux lab. Verify SQLite persistence across a panel restart and use the authenticated dashboard without intercepted responses. Check PR CI alongside this work, then continue the remaining acceptance criteria in the table.
+
+The real WireGuard reassignment fixture now calls the production panel Node Controller, backed by migrated SQLite, to read TCP and UDP flow ownership over mTLS. The isolated Linux race run passed in 6.901 seconds with 2 CPUs and 2 GiB RAM.
+
+NEXT_ACTION: expose the disposable live Node Agent endpoint to an API-package integration fixture so the actual history worker can sample through the production controller. Reopen the panel database and verify authenticated history reads, then run the browser against that live API. Keep PR Draft pending all gates.
