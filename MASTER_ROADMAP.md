@@ -72,3 +72,5 @@ Dedicated gRPC Metrics requests now explicitly opt into sensitive Network Intell
 Stage 6 evidence: the node reads Linux interface operstate and the panel displays it alongside MTU. Real kernel loopback sampling passed under the race detector. Five browser tests passed with API fixtures. Interface operstate is a link indicator. Peer liveness and end-to-end GRE path validation remain separate acceptance criteria.
 
 Stage 12/14 evidence: controller-to-real-Node-Agent metrics over loopback mTLS passed with migrated SQLite state and two agents (enabled and disabled). NEXT_ACTION is staging with live attributed traffic through the same authenticated transport, durable storage, and browser. No stage-completion status changed.
+
+The isolated real WireGuard reassignment fixture now reads live TCP and UDP telemetry through the registered Node Agent gRPC service before and after peer reassignment. It checks both protocols and exact account/node identity. The fixture passed with Linux race detection in 2.337 seconds. Browser-to-panel execution, durable worker staging and the remaining release gates are still open.

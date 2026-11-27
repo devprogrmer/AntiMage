@@ -4,13 +4,18 @@ package nodeagent
 
 import (
 	"context"
-	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"encoding/json"
 	"net"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
+
+	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
 )
 
 // This fixture owns its namespace and interface names. Run only in a disposable
@@ -80,6 +85,19 @@ func TestNetworkIntelligenceRealWireGuardPublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	tracker := s.networkIntelligenceTracker
+	rpcListener := bufconn.Listen(1 << 20)
+	rpcServer := grpc.NewServer()
+	nodev1.RegisterNodeRuntimeServiceServer(rpcServer, s)
+	go func() { _ = rpcServer.Serve(rpcListener) }()
+	defer rpcServer.Stop()
+	conn, err := grpc.NewClient("passthrough:///wireguard-fixture", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+		return rpcListener.DialContext(ctx)
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	runtimeClient := nodev1.NewNodeRuntimeServiceClient(conn)
 	var oldPeer string
 	for generation := uint64(1); generation <= 2; generation++ {
 		private := run("", "wg", "genkey")
@@ -132,6 +150,30 @@ func TestNetworkIntelligenceRealWireGuardPublication(t *testing.T) {
 		}
 		if run("", "wg", "show", "ni-server", "latest-handshakes") == public+"\t0" {
 			t.Fatal("WireGuard handshake absent")
+		}
+		response, err := runtimeClient.Metrics(ctx, &nodev1.MetricsRequest{IncludeNetworkIntelligence: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var snapshot struct {
+			Flows []struct {
+				UserID   int64  `json:"user_id"`
+				NodeID   int64  `json:"node_id"`
+				Protocol string `json:"protocol"`
+			} `json:"flows"`
+		}
+		if err := json.Unmarshal([]byte(response.GetNetworkIntelligenceJson()), &snapshot); err != nil {
+			t.Fatal(err)
+		}
+		protocols := map[string]bool{}
+		for _, flow := range snapshot.Flows {
+			if flow.UserID != int64(40+generation) || flow.NodeID != 7 {
+				t.Fatalf("RPC exposed the wrong flow owner: %+v", flow)
+			}
+			protocols[flow.Protocol] = true
+		}
+		if !protocols["tcp"] || !protocols["udp"] {
+			t.Fatalf("RPC did not return both real flows: %v", protocols)
 		}
 		oldPeer = public
 	}

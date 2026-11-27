@@ -13,3 +13,5 @@ The dashboard renders measured MTU and counter rates, and the roadmap defines ev
 Interface operational state is now carried through the existing node telemetry and rendered in the panel. Real Linux kernel sampling passed under race detection. The browser UI was tested with intercepted responses. PR 147 was confirmed Draft. Full CI, tunnel and UDP quality, staging and release rollback remain unverified.
 
 The production panel controller read Network Intelligence metrics from a real Node Agent gRPC handler over loopback mTLS after applying SQLite migrations. Both enabled and disabled agents were exercised. This verifies the authenticated transport and no-data compatibility path. Full staging with live flow persistence and browser rendering remains open.
+
+Linux race validation now covers real encrypted WireGuard traffic through gRPC serialization and peer reassignment. This fixture uses an in-memory gRPC channel. The separate controller test covers mTLS. NEXT_ACTION is to exercise live flow persistence and browser rendering in one isolated staging run.
