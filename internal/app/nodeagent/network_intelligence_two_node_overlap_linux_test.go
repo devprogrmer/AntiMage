@@ -29,7 +29,7 @@ func TestNetworkIntelligenceRealWireGuardOverlappingAddressAcrossNodes(t *testin
 			t.Fatal("fixture requires a disposable Docker container or explicit disposable guest")
 		}
 	}
-	names := []string{"ni-root-overlap-a", "ni-root-overlap-b", "ni-node-overlap-a", "ni-node-overlap-b"}
+	names := []string{"nira", "nirb", "nina", "ninb"}
 	for _, name := range names {
 		if _, err := net.InterfaceByName(name); err == nil {
 			t.Fatalf("fixture interface %q already exists", name)
@@ -54,7 +54,7 @@ func TestNetworkIntelligenceRealWireGuardOverlappingAddressAcrossNodes(t *testin
 	}
 	for _, suffix := range []string{"a", "b"} {
 		namespace := "ni-client-overlap-" + suffix
-		rootIf, peerIf := "ni-root-overlap-"+suffix, "ni-peer-overlap-"+suffix
+		rootIf, peerIf := "nir"+suffix, "nip"+suffix
 		underlay := "172.31." + map[string]string{"a": "41", "b": "42"}[suffix]
 		run("", "ip", "netns", "add", namespace)
 		run("", "ip", "link", "add", rootIf, "type", "veth", "peer", "name", peerIf)
@@ -88,7 +88,7 @@ func TestNetworkIntelligenceRealWireGuardOverlappingAddressAcrossNodes(t *testin
 	}
 	newNode := func(suffix string, nodeID, userID int64, destination, underlayPeer, listenPort string) nodeFixture {
 		t.Helper()
-		iface := "ni-node-overlap-" + suffix
+		iface := "ni" + "n" + suffix
 		namespace := "ni-client-overlap-" + suffix
 		serverPrivate := run("", "wg", "genkey")
 		serverPublic := run(serverPrivate, "wg", "pubkey")
@@ -100,7 +100,7 @@ func TestNetworkIntelligenceRealWireGuardOverlappingAddressAcrossNodes(t *testin
 		run("", "ip", "addr", "add", destination+"/24", "dev", iface)
 		run("", "ip", "link", "set", iface, "alias", wireGuardOwnershipAlias("overlap-"+suffix))
 		run("", "ip", "link", "set", iface, "up")
-		clientIface := "ni-wg-overlap-" + suffix
+		clientIface := "niw" + suffix
 		run("", "ip", "-n", namespace, "link", "add", clientIface, "type", "wireguard")
 		run("", "ip", "-n", namespace, "addr", "add", "10.99.99.2/32", "dev", clientIface)
 		run("", "ip", "-n", namespace, "link", "set", clientIface, "up")
