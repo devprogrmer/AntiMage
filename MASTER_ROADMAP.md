@@ -92,3 +92,7 @@ NEXT_ACTION: connect this fixture to the production Node Controller and the pane
 The real WireGuard reassignment fixture now calls the production panel Node Controller, backed by migrated SQLite, to read TCP and UDP flow ownership over mTLS. The isolated Linux race run passed in 6.901 seconds with 2 CPUs and 2 GiB RAM.
 
 NEXT_ACTION: expose the disposable live Node Agent endpoint to an API-package integration fixture so the actual history worker can sample through the production controller. Reopen the panel database and verify authenticated history reads, then run the browser against that live API. Keep PR Draft pending all gates.
+
+The production history collector, controller and history handler now have a loopback mTLS integration test backed by migrated file SQLite. Two polls of the same fixture snapshot yield one point. The test closes the RPC server and database, reopens SQLite, and verifies timestamp, account, node and RTT through the full-access handler. Linux Race and Windows loopback tests passed. The source snapshot is controlled by the test, and the handler is invoked with a supplied authenticated principal.
+
+NEXT_ACTION: feed the existing live WireGuard agent into this history transport test instead of the controlled snapshot. Use the real admin login and browser against the running API, then continue the remaining acceptance gates. Keep PR Draft.

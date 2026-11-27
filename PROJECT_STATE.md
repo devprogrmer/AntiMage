@@ -25,3 +25,5 @@ Removed the per-observation full expiry scan. Targeted tests passed and Windows 
 Real encrypted WireGuard reassignment telemetry passed over loopback mTLS with Linux race detection. Panel worker restart and live browser verification remain open.
 
 Live WireGuard flow ownership now passes through the production Node Controller over mTLS using migrated SQLite. Linux race validation passed. Durable worker, panel restart and browser remain open.
+
+The history integration suite now validates duplicate suppression and durable reads after reopening SQLite over the production collector and mTLS controller path with a test snapshot. Linux Race and Windows loopback passed. The combined live WireGuard-to-browser path remains open.
