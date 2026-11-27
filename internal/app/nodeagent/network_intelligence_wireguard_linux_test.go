@@ -4,6 +4,8 @@ package nodeagent
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"net"
 	"os"
@@ -12,10 +14,10 @@ import (
 	"testing"
 	"time"
 
+	nodeapp "github.com/antimage/antimage/internal/app/node"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/grpc/credentials"
 )
 
 // This fixture owns its namespace and interface names. Run only in a disposable
@@ -85,14 +87,33 @@ func TestNetworkIntelligenceRealWireGuardPublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	tracker := s.networkIntelligenceTracker
-	rpcListener := bufconn.Listen(1 << 20)
-	rpcServer := grpc.NewServer()
+	certificate, key, err := nodeapp.GenerateCertificate("127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair, err := tls.X509KeyPair([]byte(certificate), []byte(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM([]byte(certificate)) {
+		t.Fatal("could not trust fixture certificate")
+	}
+	rpcListener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rpcListener.Close()
+	rpcServer := grpc.NewServer(grpc.Creds(credentials.NewTLS(&tls.Config{
+		MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{pair},
+		ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: roots,
+	})))
 	nodev1.RegisterNodeRuntimeServiceServer(rpcServer, s)
 	go func() { _ = rpcServer.Serve(rpcListener) }()
 	defer rpcServer.Stop()
-	conn, err := grpc.NewClient("passthrough:///wireguard-fixture", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
-		return rpcListener.DialContext(ctx)
-	}))
+	conn, err := grpc.NewClient(rpcListener.Addr().String(), grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+		MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{pair}, RootCAs: roots,
+	})))
 	if err != nil {
 		t.Fatal(err)
 	}

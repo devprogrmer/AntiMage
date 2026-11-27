@@ -82,3 +82,9 @@ The Network Intelligence panel now shows valid node memory counters from the sam
 Stage 13 tracker microbenchmark on Windows: 1, 1024 and 4096 resident flows took 268 ns, 19.9 us and 90.3 us per observation before the change and 233 ns, 270 ns and 290 ns after it, with zero allocations per update. Snapshot still expires flows and replay high-water marks still bound admission. This isolates tracker cost. The Linux forwarding benchmark is still required.
 
 NEXT_ACTION: extend TestNetworkIntelligenceReadsRealNodeMetricsOverMTLS with the real traffic fixture from internal/app/nodeagent/network_intelligence_wireguard_linux_test.go in a disposable Linux VM. Assert attributed TCP/UDP telemetry, worker persistence after restart and live browser rendering without intercepted API responses. Check current PR CI while developing. Then proceed with the remaining acceptance criteria in the table. Keep PR Draft until all gates pass.
+
+## NEXT SESSION CONTINUATION
+
+The existing real encrypted WireGuard reassignment fixture now queries the real Node Agent over loopback mTLS and passed the Linux race test with 2 CPUs, 2 GiB RAM and no external network. Both TCP and UDP must match the new account and node after reassignment. The fixture still bypasses the panel.
+
+NEXT_ACTION: connect this fixture to the production Node Controller and the panel history worker in the disposable Linux lab. Verify SQLite persistence across a panel restart and use the authenticated dashboard without intercepted responses. Check PR CI alongside this work, then continue the remaining acceptance criteria in the table.

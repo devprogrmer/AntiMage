@@ -21,3 +21,5 @@ The remote dev ref was verified as c1a35e44. One-click diagnostics now report no
 Measured node memory used and total are exposed only when valid counters exist. Tested over real Node Agent mTLS and in the dashboard browser fixture. PR remains Draft.
 
 Removed the per-observation full expiry scan. Targeted tests passed and Windows tracker cost at 4096 resident flows decreased from 90.3 us to 290 ns per update. The forwarding benchmark and full-stack gate remain open. See the final NEXT_ACTION in MASTER_ROADMAP.md.
+
+Real encrypted WireGuard reassignment telemetry passed over loopback mTLS with Linux race detection. Panel worker restart and live browser verification remain open.
