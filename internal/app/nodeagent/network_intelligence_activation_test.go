@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,6 +16,69 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 )
+
+func TestNetworkIntelligenceUDPDetectionKeepsUnverifiedQualityUnavailable(t *testing.T) {
+	now := time.Now().UTC()
+	signatures := filepath.Join(t.TempDir(), "signatures.json")
+	database, err := json.Marshal(ni.SignatureDatabase{
+		Version: 1, Revision: "isolated-udp-fixture-v1", PublishedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Minute),
+		Rules: []ni.ApplicationRule{{Application: "Fixture UDP App", DestinationPrefix: "192.0.2.0/24", Protocol: "udp", Ports: []uint16{27051}, Source: "isolated test fixture; not a production game signature"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(signatures, database, 0600); err != nil {
+		t.Fatal(err)
+	}
+	agent := New(Config{NetworkIntelligenceEnabled: true, NetworkIntelligenceSignatures: signatures, DataDir: t.TempDir()})
+	defer agent.stopNetworkIntelligence()
+
+	tracker := agent.networkIntelligenceTracker
+	source := netip.MustParseAddr("10.0.0.2")
+	binding := ni.Binding{NodeID: 7, UserID: 42, Interface: "wg-test", Address: source, Session: "fixture", Generation: 1, Since: now.Add(-time.Second)}
+	if err := tracker.Bind(binding); err != nil {
+		t.Fatal(err)
+	}
+	for sequence, destination := range []string{"192.0.2.7:27051", "198.51.100.7:27051"} {
+		if !tracker.Observe(ni.Observation{CollectorEpoch: tracker.Epoch(), Binding: binding, Sequence: uint64(sequence + 1), At: now.Add(time.Duration(sequence) * time.Millisecond), Tuple: ni.Tuple{Source: netip.AddrPortFrom(source, uint16(40000+sequence)), Destination: netip.MustParseAddrPort(destination), Protocol: "udp"}, UploadPackets: 3, DownloadPackets: 2, UploadBytes: 300, DownloadBytes: 200}, now.Add(time.Second)) {
+			t.Fatalf("failed to seed UDP observation %s", destination)
+		}
+	}
+	var snapshot struct {
+		Flows []struct {
+			Destination string `json:"destination"`
+			Protocol    string `json:"protocol"`
+			TCPQuality  *any   `json:"tcp_quality"`
+			Application struct {
+				Application string `json:"application"`
+				Confidence  string `json:"confidence"`
+			} `json:"application"`
+		} `json:"flows"`
+	}
+	if err := json.Unmarshal([]byte(agent.networkIntelligenceSnapshot()), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Flows) != 2 {
+		t.Fatalf("flows=%+v", snapshot.Flows)
+	}
+	for _, flow := range snapshot.Flows {
+		if flow.Protocol != "udp" || flow.TCPQuality != nil {
+			t.Fatalf("UDP exposed unsupported TCP/UDP quality: %+v", flow)
+		}
+		switch flow.Destination {
+		case "192.0.2.7:27051":
+			if flow.Application.Application != "Fixture UDP App" || flow.Application.Confidence != "probable" {
+				t.Fatalf("signature match=%+v", flow.Application)
+			}
+		case "198.51.100.7:27051":
+			if flow.Application.Application != "Unknown" || flow.Application.Confidence != "unknown" {
+				t.Fatalf("port-only match was not Unknown: %+v", flow.Application)
+			}
+		default:
+			t.Fatalf("unexpected destination: %s", flow.Destination)
+		}
+	}
+}
 
 func TestNetworkIntelligenceSnapshotKeepsNewestFlowsAtLimit(t *testing.T) {
 	agent := New(Config{NetworkIntelligenceEnabled: true, DataDir: t.TempDir()})
