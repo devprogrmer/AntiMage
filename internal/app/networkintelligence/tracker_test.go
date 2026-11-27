@@ -104,6 +104,63 @@ func TestNodeInterfaceScopeCapacityAndExpiry(t *testing.T) {
 	}
 }
 
+func TestSameAddressAndFlowOnDifferentNodesRemainIsolated(t *testing.T) {
+	now := time.Now().UTC()
+	tracker, err := New(4, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := netip.MustParseAddr("10.0.0.2")
+	bindingA := Binding{NodeID: 1, Interface: "wg0", Address: address, UserID: 101, Session: "node-a-peer", Generation: 1, Since: now.Add(-time.Second)}
+	bindingB := Binding{NodeID: 2, Interface: "wg0", Address: address, UserID: 202, Session: "node-b-peer", Generation: 1, Since: now.Add(-time.Second)}
+	for _, binding := range []Binding{bindingA, bindingB} {
+		if err := tracker.Bind(binding); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tuple := Tuple{
+		Source:      netip.MustParseAddrPort("10.0.0.2:45000"),
+		Destination: netip.MustParseAddrPort("198.51.100.7:27051"),
+		Protocol:    "udp",
+	}
+	for _, observation := range []Observation{
+		{CollectorEpoch: tracker.Epoch(), Binding: bindingA, Tuple: tuple, Sequence: 1, At: now, UploadPackets: 3, UploadBytes: 300},
+		{CollectorEpoch: tracker.Epoch(), Binding: bindingB, Tuple: tuple, Sequence: 1, At: now, UploadPackets: 7, UploadBytes: 700},
+	} {
+		if !tracker.Observe(observation, now) {
+			t.Fatalf("overlapping node flow rejected: node=%d", observation.Binding.NodeID)
+		}
+	}
+
+	flows := tracker.Snapshot(now)
+	if len(flows) != 2 {
+		t.Fatalf("identical address and tuple on two nodes produced %d flows, want 2", len(flows))
+	}
+	byNode := make(map[int64]Flow, len(flows))
+	for _, flow := range flows {
+		byNode[flow.Binding.NodeID] = flow
+	}
+	if byNode[1].Binding.UserID != 101 || byNode[1].UploadBytes != 300 || byNode[2].Binding.UserID != 202 || byNode[2].UploadBytes != 700 {
+		t.Fatalf("overlapping node telemetry was mixed: node1=%+v node2=%+v", byNode[1], byNode[2])
+	}
+
+	replacement := bindingA
+	replacement.UserID = 303
+	replacement.Session = "node-a-reassigned-peer"
+	replacement.Generation++
+	replacement.Since = now.Add(time.Millisecond)
+	if err := tracker.Bind(replacement); err != nil {
+		t.Fatal(err)
+	}
+	if tracker.Observe(Observation{CollectorEpoch: tracker.Epoch(), Binding: bindingA, Tuple: tuple, Sequence: 2, At: now.Add(2 * time.Millisecond)}, now.Add(2*time.Millisecond)) {
+		t.Fatal("late observation from reassigned node A was accepted")
+	}
+	flows = tracker.Snapshot(now.Add(2 * time.Millisecond))
+	if len(flows) != 1 || flows[0].Binding.NodeID != 2 || flows[0].Binding.UserID != 202 || flows[0].UploadBytes != 700 {
+		t.Fatalf("node A reassignment disturbed overlapping node B: %+v", flows)
+	}
+}
+
 func TestExpiredFlowRetainsReplayHighWater(t *testing.T) {
 	now := time.Now()
 	tracker, _ := New(1, time.Second)
