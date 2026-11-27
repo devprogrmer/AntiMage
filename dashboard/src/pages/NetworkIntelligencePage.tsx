@@ -22,7 +22,7 @@ import {
 	Tr,
 } from "@chakra-ui/react";
 import useGetUser from "hooks/useGetUser";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AdminRole } from "types/Admin";
 import {
@@ -40,8 +40,8 @@ const bytes = (value: number) => new Intl.NumberFormat().format(value);
 
 export default function NetworkIntelligencePage() {
 	const { t } = useTranslation();
-	const label = (key: string, fallback: string) =>
-		t(`networkIntelligence.${key}`, { defaultValue: fallback });
+	const label = useCallback((key: string, fallback: string) =>
+		t(`networkIntelligence.${key}`, { defaultValue: fallback }), [t]);
 	const { userData, getUserIsSuccess } = useGetUser();
 	const allowed = getUserIsSuccess && userData.role === AdminRole.FullAccess;
 	const [presence, setPresence] = useState<NetworkPresence[]>([]);
@@ -57,12 +57,6 @@ export default function NetworkIntelligencePage() {
 	>(null);
 	const [diagnosing, setDiagnosing] = useState(false);
 	const diagnosticRequest = useRef<AbortController>();
-	useEffect(() => {
-		setDiagnostics(null);
-		diagnosticRequest.current?.abort();
-		setDiagnosing(false);
-		return () => diagnosticRequest.current?.abort();
-	}, [node]);
 	const diagnose = async () => {
 		diagnosticRequest.current?.abort();
 		const request = new AbortController();
@@ -81,11 +75,14 @@ export default function NetworkIntelligencePage() {
 		}
 	};
 	useEffect(() => {
+		setDiagnostics(null);
+		diagnosticRequest.current?.abort();
+		setDiagnosing(false);
 		if (!allowed) return;
 		let disposed = false;
 		let pending: AbortController | undefined;
 		let timer: ReturnType<typeof setTimeout>;
-		let sequence = 0;
+		let sequence = refresh;
 		const load = async () => {
 			if (document.hidden || disposed) return;
 			const currentSequence = ++sequence;
@@ -136,11 +133,12 @@ export default function NetworkIntelligencePage() {
 		document.addEventListener("visibilitychange", visible);
 		return () => {
 			disposed = true;
+			diagnosticRequest.current?.abort();
 			clearTimeout(timer);
 			pending?.abort();
 			document.removeEventListener("visibilitychange", visible);
 		};
-	}, [allowed, node, refresh]);
+	}, [allowed, node, refresh, label]);
 	const nodes = useMemo(
 		() =>
 			Array.from(
