@@ -3,6 +3,7 @@ package networkintelligence
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -23,6 +24,35 @@ func DiagnoseInfrastructure(sampledAt, now time.Time, interval float64, rates ma
 				Code: metric.code, Severity: "warning", Confidence: "observed",
 				Evidence:       fmt.Sprintf("%s averaged %.3g events/s over %.3g s on this node", metric.label, rate, interval),
 				Recommendation: "Compare node counters and tunnel observations over the same interval",
+			})
+		}
+	}
+	for _, metric := range []struct{ suffix, code, label string }{
+		{".rx_dropped", "interface_rx_drops", "receive drops"},
+		{".tx_dropped", "interface_tx_drops", "transmit drops"},
+		{".rx_errors", "interface_rx_errors", "receive errors"},
+		{".tx_errors", "interface_tx_errors", "transmit errors"},
+	} {
+		var iface string
+		var highest float64
+		for key, rate := range rates {
+			name, ok := strings.CutPrefix(key, "interface.")
+			if !ok {
+				continue
+			}
+			name, ok = strings.CutSuffix(name, metric.suffix)
+			if !ok || name == "" || !(rate > 0) || math.IsInf(rate, 0) {
+				continue
+			}
+			if rate > highest || (rate == highest && name < iface) {
+				iface, highest = name, rate
+			}
+		}
+		if iface != "" {
+			findings = append(findings, Finding{
+				Code: metric.code, Severity: "warning", Confidence: "observed",
+				Evidence:       fmt.Sprintf("Interface %s averaged %.3g %s/s over %.3g s", iface, highest, metric.label, interval),
+				Recommendation: "Compare interface counters with tunnel and traffic-control measurements over the same interval",
 			})
 		}
 	}

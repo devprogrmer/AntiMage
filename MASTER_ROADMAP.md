@@ -143,3 +143,7 @@ NEXT_ACTION: keep checking the combined live WireGuard/browser run and address a
 Combined run 46030755602 reached the real flow API and passed TCP/UDP and account attribution assertions. The browser then failed to locate the protocol badge using a word boundary on concatenated cell text. The locator now matches the actual badge inside the cell. The history assertion still requires successful guest execution.
 
 NEXT_ACTION: inspect the combined guest retry, validate the durable history browser assertion and address any remaining failures. Continue the open stage gates and keep PR Draft.
+
+While the guest retry was queued, Stage 9 gained evidence for measured per-interface RX/TX drops and errors. It reports the highest valid sampled rate per category with interface and interval, and filters unavailable values. Targeted diagnostics and API tests passed. This is interface evidence; path loss and GRE availability still require separate validation.
+
+NEXT_ACTION: check the live browser guest retry, then validate interface evidence with induced faults in staging and continue the open stage gates. Keep PR Draft.

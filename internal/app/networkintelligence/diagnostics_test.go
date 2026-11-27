@@ -1,9 +1,27 @@
 package networkintelligence
 
 import (
+	"math"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestInfrastructureDiagnosticsReportMeasuredInterfaceDrops(t *testing.T) {
+	now := time.Now()
+	got := DiagnoseInfrastructure(now, now, 5, map[string]float64{
+		"interface.eth0.rx_dropped":  2,
+		"interface.gre.1.rx_dropped": 4,
+		"interface.gre.1.tx_errors":  1,
+		"interface.eth0.tx_errors":   math.Inf(1),
+		"interface.eth0.rx_errors":   math.NaN(),
+		"interface.eth0.tx_dropped":  0,
+	})
+	if len(got) != 2 || got[0].Code != "interface_rx_drops" || got[1].Code != "interface_tx_errors" ||
+		!strings.Contains(got[0].Evidence, "gre.1 averaged 4 receive drops/s over 5 s") {
+		t.Fatalf("unexpected diagnostic findings: %+v", got)
+	}
+}
 
 func TestInfrastructureDiagnosticsRequireRecentCounterDeltas(t *testing.T) {
 	now := time.Now()
