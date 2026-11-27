@@ -27,6 +27,14 @@ func validMilliseconds(v *float64) bool {
 	return v == nil || (!math.IsNaN(*v) && !math.IsInf(*v, 0) && *v >= 0 && *v <= 600000)
 }
 
+// Prune removes expired records even when no new samples are written.
+func (r *HistoryRepository) Prune(ctx context.Context, now time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, err := r.DB.ExecContext(ctx, "DELETE FROM network_quality_history WHERE observed_at < ?", now.Add(-7*24*time.Hour).UnixMilli())
+	return err
+}
+
 // Add stores endpoint-free aggregates with seven-day retention and a hard
 // 100000-row admission bound. Duplicate timestamps are idempotent.
 func (r *HistoryRepository) Add(ctx context.Context, p DurableQualityPoint, now time.Time) error {

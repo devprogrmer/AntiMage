@@ -98,6 +98,10 @@ jobs:
         run: |
           go test ./internal/app/migrations -run TestRunMigrationsExternalDatabase
 
+      - name: Verify durable history worker and storage under race detection
+        if: matrix.db == 'sqlite'
+        run: go test -race ./internal/app/api ./internal/app/networkintelligence -run 'TestNetworkHistory|TestDurableHistory' -count=1
+
       - name: Verify runtime database queries
         if: matrix.db != 'sqlite'
         run: |

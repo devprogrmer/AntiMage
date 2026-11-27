@@ -2,6 +2,20 @@ package api
 
 import "testing"
 
+func TestNetworkHistoryPersistenceRequiresBothFlags(t *testing.T) {
+	t.Setenv("SQLALCHEMY_DATABASE_URL", "sqlite:///config-test.db")
+	for _, enabled := range []string{"true", "false"} {
+		for _, persistent := range []string{"true", "false", "invalid"} {
+			t.Setenv("ANTIMAGE_NETWORK_INTELLIGENCE_ENABLED", enabled)
+			t.Setenv("ANTIMAGE_NETWORK_HISTORY_PERSISTENCE", persistent)
+			cfg, err := LoadConfig()
+			if err != nil || cfg.NetworkHistoryPersistence != (persistent == "true") || cfg.networkHistoryWorkersEnabled() != (enabled == "true" && persistent == "true") {
+				t.Fatalf("enabled=%s persistence=%s err=%v", enabled, persistent, err)
+			}
+		}
+	}
+}
+
 func TestLoadConfigNetworkIntelligenceOptInPreservesProxyConfiguration(t *testing.T) {
 	t.Setenv("SQLALCHEMY_DATABASE_URL", "sqlite:///config-test.db")
 	t.Setenv("ANTIMAGE_TRUSTED_PROXY_CIDRS", "127.0.0.1/32, ::1/128")
