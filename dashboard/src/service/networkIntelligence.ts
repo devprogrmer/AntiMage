@@ -60,6 +60,34 @@ export type DiagnosticFinding = {
 	evidence: string;
 	recommendation: string;
 };
+
+export type NetworkHistoryPoint = {
+	node_id: number;
+	user_id: number;
+	at: string;
+	method: string;
+	ack_rtt_ms: number | null;
+	jitter_ms: number | null;
+	retransmission_delta: number | null;
+	findings: DiagnosticFinding[];
+};
+export type NetworkHistory = {
+	available: boolean;
+	storage: string;
+	collection: string;
+	truncated: boolean;
+	points: NetworkHistoryPoint[];
+};
+export const getNetworkHistory = (
+	nodeID: number,
+	userID: number,
+	signal: AbortSignal,
+) =>
+	fetch<NetworkHistory>("/network-intelligence/history", {
+		query: { node_id: nodeID, user_id: userID },
+		signal,
+		retry: 0,
+	});
 export const getNetworkDiagnostics = (nodeID: number, signal: AbortSignal) =>
 	fetch<{
 		results: {

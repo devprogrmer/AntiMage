@@ -38,3 +38,25 @@ test("standard admin cannot view telemetry", async ({ page }) => {
 	await expect(page.getByText("Full-access administrator permission is required.")).toBeVisible();
 	await expect(page.getByText("traffic-user", { exact: true })).toHaveCount(0);
 });
+
+test("account history preserves unavailable measurements and reports retention limits", async ({ page }) => {
+	await setup(page);
+	await page.route("**/api/network-intelligence/history?**", async (route) => {
+		const query = new URL(route.request().url()).searchParams;
+		expect(query.get("node_id")).toBe("7");
+		expect(query.get("user_id")).toBe("42");
+		await route.fulfill({ json: { available: true, storage: "volatile", collection: "on_telemetry_read", truncated: true, points: [
+			{ node_id: 7, user_id: 42, at: "2026-11-27T06:00:00Z", method: "tcp_ack_upload_observation", ack_rtt_ms: 123.4, jitter_ms: null, retransmission_delta: null, findings: [] },
+			{ node_id: 7, user_id: 42, at: "2026-11-27T06:00:05Z", method: "tcp_ack_upload_observation", ack_rtt_ms: null, jitter_ms: null, retransmission_delta: 1, findings: [{ code: "observed_tcp_retransmission", severity: "warning", confidence: "observed", evidence: "Repeated TCP sequence spans were observed", recommendation: "Inspect capture completeness and both network directions" }] },
+		] } });
+	});
+	await page.goto("/dashboard/network-intelligence/");
+	await page.getByLabel("Node", { exact: true }).selectOption("7");
+	await page.getByLabel("History account", { exact: true }).selectOption("42");
+	await expect(page.getByText("History is held in memory and clears when the node restarts.")).toBeVisible();
+	await expect(page.getByText("The response limit was reached. This account history may be incomplete.")).toBeVisible();
+	await expect(page.getByText("Repeated TCP sequence spans were observed", { exact: false })).toBeVisible();
+	await page.getByText("Observed samples", { exact: true }).click();
+	await expect(page.getByRole("cell", { name: "123.4", exact: true })).toBeVisible();
+	await expect(page.getByRole("cell", { name: "N/A", exact: true }).first()).toBeVisible();
+});

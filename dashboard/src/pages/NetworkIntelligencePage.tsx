@@ -22,6 +22,7 @@ import {
 	Tr,
 } from "@chakra-ui/react";
 import useGetUser from "hooks/useGetUser";
+import NetworkQualityHistory from "components/NetworkQualityHistory";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AdminRole } from "types/Admin";
@@ -382,6 +383,7 @@ export default function NetworkIntelligencePage() {
 					)}
 				</Alert>
 			)}
+			{node && <NetworkQualityHistory nodeID={Number(node)} users={presence} />}
 			<Text fontSize="sm" color="panel.textMuted">
 				{label(
 					"measurement",

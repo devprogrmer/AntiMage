@@ -1,5 +1,17 @@
 {
 	"networkIntelligence": {
+		"historySamples": "Observed samples",
+		"historyTitle": "User quality history",
+		"historyUser": "History account",
+		"historySelect": "Select an account",
+		"historyError": "Quality history is unavailable.",
+		"historyVolatile": "History is held in memory and clears when the node restarts.",
+		"historyPolling": "Samples are collected while telemetry is read. Gaps may occur between observations.",
+		"historyTruncated": "The response limit was reached. This account history may be incomplete.",
+		"historyEmpty": "No quality history is available for this account.",
+		"historyChart": "Observed TCP ACK timing history",
+		"historyRTT": "Upload ACK RTT",
+		"historyJitter": "ACK RTT variation",
 		"application": "Application",
 		"source": "Assigned source", "jitter": "ACK RTT variation", "retransmissions": "Observed retransmissions / duplicate ACKs",
 		"title": "Network Intelligence", "refresh": "Refresh", "user": "User", "node": "Node",
