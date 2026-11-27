@@ -35,6 +35,7 @@ type Server struct {
 	networkIntelligenceGeneration     uint64
 	networkIntelligenceDetector       *ni.ApplicationDetector
 	networkIntelligenceInfrastructure networkInfrastructureSampler
+	networkIntelligenceHistory        networkHistorySampler
 	nodev1.UnimplementedNodeControlServiceServer
 	nodev1.UnimplementedNodeRuntimeServiceServer
 	nodev1.UnimplementedNodeUsageServiceServer

@@ -102,6 +102,7 @@ func (s *Server) networkIntelligenceSnapshot() string {
 		return ""
 	}
 	flows := s.networkIntelligenceTracker.Snapshot(time.Now().UTC())
+	history := s.networkIntelligenceHistory.Snapshot(flows, s.networkIntelligenceTracker.Epoch(), time.Now().UTC())
 	truncated := len(flows) > 250
 	if truncated {
 		flows = flows[:250]
@@ -112,6 +113,7 @@ func (s *Server) networkIntelligenceSnapshot() string {
 		rows = append(rows, map[string]any{"user_id": flow.Binding.UserID, "node_id": flow.Binding.NodeID, "interface": flow.Binding.Interface, "source": flow.Tuple.Source.String(), "destination": flow.Tuple.Destination.String(), "protocol": flow.Tuple.Protocol, "upload_packets": flow.UploadPackets, "download_packets": flow.DownloadPackets, "upload_bytes": flow.UploadBytes, "download_bytes": flow.DownloadBytes, "observed_at": flow.At, "tcp_quality": flow.TCPQuality, "application": s.networkIntelligenceDetector.Detect(flow.Tuple, time.Now().UTC())})
 	}
 	snapshot := map[string]any{"version": 1, "observed_at": time.Now().UTC(), "truncated": truncated, "flows": rows}
+	snapshot["history"] = history
 	if infrastructure, err := s.networkIntelligenceInfrastructure.Sample(time.Now().UTC()); err == nil {
 		snapshot["infrastructure"] = infrastructure
 	}
