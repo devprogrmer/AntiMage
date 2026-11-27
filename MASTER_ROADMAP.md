@@ -96,3 +96,7 @@ NEXT_ACTION: expose the disposable live Node Agent endpoint to an API-package in
 The production history collector, controller and history handler now have a loopback mTLS integration test backed by migrated file SQLite. Two polls of the same fixture snapshot yield one point. The test closes the RPC server and database, reopens SQLite, and verifies timestamp, account, node and RTT through the full-access handler. Linux Race and Windows loopback tests passed. The source snapshot is controlled by the test, and the handler is invoked with a supplied authenticated principal.
 
 NEXT_ACTION: feed the existing live WireGuard agent into this history transport test instead of the controlled snapshot. Use the real admin login and browser against the running API, then continue the remaining acceptance gates. Keep PR Draft.
+
+The production history collector now runs in the live WireGuard reassignment fixture through the authenticated Node Controller. It saves one deduplicated sample for the new owner, shuts down the Node Agent RPC server, then reads that sample from reopened file SQLite. The same collector loop remains in use by the panel with its existing configuration and scheduling.
+
+NEXT_ACTION: verify the durable data through the real login and HTTP middleware with the running dashboard. Reuse the existing real WireGuard fixture and follow the login setup in internal/app/api/admin_auth_test.go. Confirm the browser reads live flow and history routes without interception. Continue the remaining stage gates and leave PR Draft.

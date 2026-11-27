@@ -46,7 +46,7 @@ func TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen(t *testing.T) 
 	at := now.Add(-time.Second)
 	rtt := 42.5
 	snapshot, err := json.Marshal(map[string]any{"history": map[string]any{
-		"points": []persistedNetworkPoint{{NodeID: 7, UserID: 42, At: at, RTT: &rtt}},
+		"points": []nodecontroller.NetworkHistoryPoint{{NodeID: 7, UserID: 42, At: at, RTT: &rtt}},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +103,7 @@ func TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen(t *testing.T) 
 	ticks <- now
 	ticks <- now
 	close(ticks)
-	runNetworkHistoryCollector(ctx, ticks, controller, &ni.HistoryRepository{DB: db}, func() time.Time { return now })
+	nodecontroller.RunNetworkHistoryCollector(ctx, ticks, controller, &ni.HistoryRepository{DB: db}, func() time.Time { return now })
 	rpc.Stop()
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
@@ -123,7 +123,7 @@ func TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen(t *testing.T) 
 	if err := json.Unmarshal(res.Body.Bytes(), &history); err != nil || res.Code != http.StatusOK || history.Storage != "durable" || len(history.Points) != 1 {
 		t.Fatalf("history after database reopen: status=%d body=%s error=%v", res.Code, res.Body, err)
 	}
-	var point persistedNetworkPoint
+	var point nodecontroller.NetworkHistoryPoint
 	if err := json.Unmarshal(history.Points[0], &point); err != nil || point.NodeID != 7 || point.UserID != 42 || !point.At.Equal(at) || point.RTT == nil || *point.RTT != rtt {
 		t.Fatalf("wrong persisted point: %s, error=%v", history.Points[0], err)
 	}

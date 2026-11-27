@@ -69,13 +69,13 @@ func (f *historyWorkerFixture) NetworkIntelligence(_ context.Context, id int64) 
 	if id == 2 {
 		return nil, errors.New("offline")
 	}
-	points := []persistedNetworkPoint{
+	points := []nodecontroller.NetworkHistoryPoint{
 		{NodeID: id, UserID: 99, At: f.now.Add(-2 * time.Minute)},
 		{NodeID: id, UserID: 98, At: f.now.Add(time.Second)},
 		{NodeID: id, UserID: 1, At: f.now.Add(-time.Second)},
 	}
 	for user := int64(1); user <= 10; user++ {
-		points = append(points, persistedNetworkPoint{NodeID: id, UserID: user, At: f.now})
+		points = append(points, nodecontroller.NetworkHistoryPoint{NodeID: id, UserID: user, At: f.now})
 	}
 	return json.Marshal(map[string]any{"history": map[string]any{"points": points}})
 }
@@ -96,7 +96,7 @@ func TestNetworkHistoryCollectorRotationAndRestart(t *testing.T) {
 			ticks <- f.now
 		}
 		close(ticks)
-		runNetworkHistoryCollector(context.Background(), ticks, f, &ni.HistoryRepository{DB: db}, func() time.Time { return f.now })
+		nodecontroller.RunNetworkHistoryCollector(context.Background(), ticks, f, &ni.HistoryRepository{DB: db}, func() time.Time { return f.now })
 	}
 	run(2)
 	if !slices.Equal(f.calls, []int64{1, 2, 3, 4, 5, 1, 2, 3}) {

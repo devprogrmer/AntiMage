@@ -27,3 +27,5 @@ Real encrypted WireGuard reassignment telemetry passed over loopback mTLS with L
 Live WireGuard flow ownership now passes through the production Node Controller over mTLS using migrated SQLite. Linux race validation passed. Durable worker, panel restart and browser remain open.
 
 The history integration suite now validates duplicate suppression and durable reads after reopening SQLite over the production collector and mTLS controller path with a test snapshot. Linux Race and Windows loopback passed. The combined live WireGuard-to-browser path remains open.
+
+The isolated Linux WireGuard race fixture verified live capture through mTLS, the production collector and reopened SQLite. Browser validation with real admin authentication remains outstanding.

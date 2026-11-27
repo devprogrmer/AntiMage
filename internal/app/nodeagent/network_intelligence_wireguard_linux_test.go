@@ -11,11 +11,13 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/antimage/antimage/internal/app/migrations"
+	ni "github.com/antimage/antimage/internal/app/networkintelligence"
 	nodeapp "github.com/antimage/antimage/internal/app/node"
 	"github.com/antimage/antimage/internal/app/nodecontroller"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
@@ -116,7 +118,8 @@ func TestNetworkIntelligenceRealWireGuardPublication(t *testing.T) {
 	nodev1.RegisterNodeControlServiceServer(rpcServer, s)
 	go func() { _ = rpcServer.Serve(rpcListener) }()
 	defer rpcServer.Stop()
-	db, err := sql.Open("sqlite", ":memory:")
+	historyPath := filepath.Join(t.TempDir(), "panel.sqlite")
+	db, err := sql.Open("sqlite", historyPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,5 +258,23 @@ func TestNetworkIntelligenceRealWireGuardPublication(t *testing.T) {
 			t.Fatal("missing second real WireGuard interface flow")
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	ticks := make(chan time.Time, 2)
+	ticks <- time.Now()
+	ticks <- time.Now()
+	close(ticks)
+	nodecontroller.RunNetworkHistoryCollector(ctx, ticks, controller, &ni.HistoryRepository{DB: db}, time.Now)
+	rpcServer.Stop()
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := sql.Open("sqlite", historyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	history, err := (&ni.HistoryRepository{DB: reopened}).List(ctx, 7, 42, time.Now().Add(-time.Minute))
+	if err != nil || len(history) != 1 || history[0].ObservedAt.IsZero() {
+		t.Fatalf("wanted one durable sample from real WireGuard traffic after reopening SQLite: %+v, %v", history, err)
 	}
 }

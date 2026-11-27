@@ -6,7 +6,10 @@ on:
     paths:
       - 'internal/app/networkintelligence/**'
       - 'internal/app/api/network_intelligence*'
+      - 'internal/app/api/network_history*'
       - 'internal/app/nodeagent/network_intelligence*'
+      - 'internal/app/nodecontroller/network_intelligence*'
+      - 'internal/app/nodecontroller/network_history*'
       - 'dashboard/src/**/Network*'
       - 'dashboard/src/service/networkIntelligence*'
       - 'dashboard/e2e/network-intelligence.spec.ts'
