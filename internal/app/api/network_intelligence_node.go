@@ -52,11 +52,12 @@ func (s *Server) handleNetworkIntelligenceNode(w http.ResponseWriter, r *http.Re
 		}
 		results := make([]map[string]any, 0, len(telemetry.Flows))
 		now := time.Now().UTC()
+		nodeFindings := ni.Diagnose(ni.DiagnosticInput{ObservedAt: telemetry.ObservedAt}, now)
 		if infra := telemetry.Infrastructure; infra != nil {
-			findings := ni.DiagnoseInfrastructure(infra.SampledAt, now, infra.Interval, infra.Rates)
-			if len(findings) != 0 {
-				results = append(results, map[string]any{"scope": "node", "findings": findings})
-			}
+			nodeFindings = append(nodeFindings, ni.DiagnoseInfrastructure(infra.SampledAt, now, infra.Interval, infra.Rates)...)
+		}
+		if len(nodeFindings) != 0 {
+			results = append(results, map[string]any{"scope": "node", "findings": nodeFindings})
 		}
 		for _, flow := range telemetry.Flows {
 			input := ni.DiagnosticInput{ObservedAt: flow.ObservedAt}

@@ -147,3 +147,7 @@ NEXT_ACTION: inspect the combined guest retry, validate the durable history brow
 While the guest retry was queued, Stage 9 gained evidence for measured per-interface RX/TX drops and errors. It reports the highest valid sampled rate per category with interface and interval, and filters unavailable values. Targeted diagnostics and API tests passed. This is interface evidence; path loss and GRE availability still require separate validation.
 
 NEXT_ACTION: check the live browser guest retry, then validate interface evidence with induced faults in staging and continue the open stage gates. Keep PR Draft.
+
+One-click diagnostics now report missing or stale node telemetry even when the node supplies no flows. The loopback mTLS integration verifies the node-scope finding. The live guest retry was still queued at inspection.
+
+NEXT_ACTION: read guest run 46031543178 and resolve any issues in the combined scenario, then proceed with induced-fault staging and the remaining release gates.

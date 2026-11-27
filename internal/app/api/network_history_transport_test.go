@@ -109,6 +109,21 @@ func TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen(t *testing.T) 
 	ticks <- now
 	close(ticks)
 	nodecontroller.RunNetworkHistoryCollector(ctx, ticks, controller, &ni.HistoryRepository{DB: db}, func() time.Time { return now })
+	nodeRequest := httptest.NewRequest(http.MethodGet, "/api/network-intelligence/node?node_id=7&diagnose=true", nil)
+	nodeRequest = nodeRequest.WithContext(context.WithValue(nodeRequest.Context(), adminContextKey, adminPrincipal{Role: "full_access"}))
+	nodeResponse := httptest.NewRecorder()
+	(&Server{nodeController: controller}).handleNetworkIntelligenceNode(nodeResponse, nodeRequest)
+	var diagnostics struct {
+		Results []struct {
+			Scope    string
+			Findings []ni.Finding
+		}
+	}
+	if err := json.Unmarshal(nodeResponse.Body.Bytes(), &diagnostics); err != nil || nodeResponse.Code != http.StatusOK ||
+		len(diagnostics.Results) != 1 || diagnostics.Results[0].Scope != "node" ||
+		len(diagnostics.Results[0].Findings) != 1 || diagnostics.Results[0].Findings[0].Code != "stale_telemetry" {
+		t.Fatalf("missing node telemetry must be reported: status=%d body=%s err=%v", nodeResponse.Code, nodeResponse.Body, err)
+	}
 	rpc.Stop()
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
