@@ -5,6 +5,7 @@ package networkintelligence
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/netip"
 	"os"
@@ -129,7 +130,7 @@ func resourceTrial(t *testing.T, clients int, enabled bool) {
 		t.Fatal(err)
 	}
 	if capture != nil {
-		if err := capture.Stop(); err != nil {
+		if err := capture.Stop(); err != nil && !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
 	}
