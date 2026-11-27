@@ -34,8 +34,9 @@ try {
 		expect(flows.length).toBeGreaterThan(0);
 		expect(flows.every((flow) => flow.user_id === 42 && flow.node_id === 7)).toBe(true);
 		expect(flows.map((flow) => flow.protocol)).toEqual(expect.arrayContaining(["tcp", "udp"]));
-		await expect(page.getByRole("cell").filter({ hasText: /\btcp\b/ }).first()).toBeVisible();
-		await expect(page.getByRole("cell").filter({ hasText: /\budp\b/ }).first()).toBeVisible();
+		const cells = page.getByRole("cell");
+		await expect(cells.getByText("tcp", { exact: true }).first()).toBeVisible();
+		await expect(cells.getByText("udp", { exact: true }).first()).toBeVisible();
 	} else {
 		await node.selectOption("7");
 	}

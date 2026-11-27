@@ -139,3 +139,7 @@ NEXT_ACTION: inspect the new Network Intelligence Isolation result. Fix and reru
 While combined staging CI 46030755602 ran, the node snapshot was made newest-first before applying its 250-flow API cap. History still aggregates the full bounded set. A 251-flow Node Agent regression verifies that the oldest flow is omitted and the newest appears first. Targeted Node Agent tests passed on Windows.
 
 NEXT_ACTION: keep checking the combined live WireGuard/browser run and address any failures, then finish the open stage gates in the table. The 250-flow ordering fix is independent of guest provisioning. Keep PR Draft.
+
+Combined run 46030755602 reached the real flow API and passed TCP/UDP and account attribution assertions. The browser then failed to locate the protocol badge using a word boundary on concatenated cell text. The locator now matches the actual badge inside the cell. The history assertion still requires successful guest execution.
+
+NEXT_ACTION: inspect the combined guest retry, validate the durable history browser assertion and address any remaining failures. Continue the open stage gates and keep PR Draft.
