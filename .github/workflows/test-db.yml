@@ -71,10 +71,17 @@ jobs:
           go-version-file: "go.mod"
 
       - name: Set SQLALCHEMY_DATABASE_URL
+        env:
+          MATRIX_DATABASE_URL: ${{ matrix.url }}
         run: |
+          database_url="$MATRIX_DATABASE_URL"
+          if [[ "${{ matrix.db }}" == "sqlite" ]]; then
+            # go test runs each test binary in its package directory.
+            database_url="sqlite:///$GITHUB_WORKSPACE/test.db"
+          fi
           echo "TEST_FROM=github" >> $GITHUB_ENV
-          echo "ANTIMAGE_TEST_DATABASE_URL=${{ matrix.url }}" >> $GITHUB_ENV
-          echo "SQLALCHEMY_DATABASE_URL=${{ matrix.url }}" >> $GITHUB_ENV
+          echo "ANTIMAGE_TEST_DATABASE_URL=$database_url" >> $GITHUB_ENV
+          echo "SQLALCHEMY_DATABASE_URL=$database_url" >> $GITHUB_ENV
 
       - name: Verify database connection
         run: |

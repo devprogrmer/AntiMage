@@ -37,3 +37,6 @@ The built dashboard passed a real authenticated Playwright history read on loopb
 The history integration test uses a temporary certificate directory. The SQLite history worker and storage race selection passed as unprivileged Linux, and the authenticated Chrome history scenario passed.
 
 The migration matrix passed all three engines on c164e01c. The expanded same-matrix repository test passed locally on migrated SQLite. Await expanded MySQL and MariaDB results.
+
+Expanded matrix observation on 43809939: MySQL passed, SQLite failed, and MariaDB was running. An absolute workspace SQLite URL correction is in the worktree. CI failure logs and publication remained pending when automatic approval review hit its usage limit.
+Expanded MySQL and MariaDB jobs passed on 43809939. GitHub reproduced the SQLite missing-table error.
