@@ -35,6 +35,9 @@ func TestWireGuardRealPeerReassignment(t *testing.T) {
 		cmd.Stdin = strings.NewReader(input)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
+			if command == "ip" {
+				t.Logf("namespace command output: %s", strings.TrimSpace(string(out)))
+			}
 			t.Fatalf("fixture command %s failed: %v", command, err)
 		}
 		return strings.TrimSpace(string(out))
