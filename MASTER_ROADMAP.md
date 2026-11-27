@@ -112,3 +112,7 @@ NEXT_ACTION: reuse the Playwright scenario with a panel started from the live Li
 SQLite migration CI, PR Build, Binary Build and dashboard-browser failed on the same test setup issue: the temporary panel constructor tried to create /var/lib/antimage/certificates on a non-root runner. The integration test now supplies a temporary CertificateBase. The exact SQLite race test selection passed in isolated Linux as UID 65534, and Windows Chrome passed the real panel browser scenario again.
 
 NEXT_ACTION: inspect CI for the certificate fixture fix, and continue combining the real WireGuard fixture with the authenticated dashboard browser scenario. Preserve the Stage 0-15 acceptance gates above and keep PR Draft.
+
+PR database matrix 46003449308 passed SQLite, MySQL 8.4 and MariaDB 10.6 on c164e01c. The matrix now also runs the production history repository against each migrated disposable database, including the 100000-row boundary under concurrent admission, duplicate suppression, scoped reads, ordering and retention. The expanded tests passed locally on a freshly migrated SQLite file. MySQL and MariaDB results for the expanded tests are pending.
+
+NEXT_ACTION: verify the expanded three-engine CI matrix. Continue combining the live WireGuard fixture with the authenticated browser, then work through the remaining acceptance gates. Keep PR Draft.

@@ -3,29 +3,60 @@ package networkintelligence
 import (
 	"context"
 	"database/sql"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
+	database "github.com/antimage/antimage/internal/platform/db"
 	_ "modernc.org/sqlite"
 )
 
-func TestDurableHistoryConcurrentAdmissionAtCapacity(t *testing.T) {
+func openDurableHistoryTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	if url := os.Getenv("ANTIMAGE_HISTORY_TEST_DATABASE_URL"); url != "" {
+		pool, err := database.Open(url)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Open caches pools by URL. Both external cases share this process-owned pool.
+		var count int
+		if err := pool.DB.QueryRow("SELECT COUNT(*) FROM network_quality_history").Scan(&count); err != nil || count != 0 {
+			t.Fatalf("expected empty migrated test database: rows=%d error=%v", count, err)
+		}
+		t.Cleanup(func() {
+			if _, err := pool.DB.Exec("DELETE FROM network_quality_history WHERE node_id IN (1,2,7)"); err != nil {
+				t.Error(err)
+			}
+		})
+		return pool.DB
+	}
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	db.SetMaxOpenConns(1)
-	now := time.Now().UTC()
 	_, err = db.Exec(`CREATE TABLE network_quality_history(node_id BIGINT,user_id BIGINT,observed_at BIGINT,ack_rtt_ms DOUBLE,jitter_ms DOUBLE,retransmission_delta BIGINT,PRIMARY KEY(node_id,user_id,observed_at))`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = db.Exec(`WITH RECURSIVE ids(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM ids WHERE n<99999)
-		INSERT INTO network_quality_history(node_id,user_id,observed_at) SELECT 1,n,? FROM ids`, now.UnixMilli())
-	if err != nil {
+	return db
+}
+
+func TestDurableHistoryConcurrentAdmissionAtCapacity(t *testing.T) {
+	db := openDurableHistoryTestDB(t)
+	now := time.Now().UTC()
+	if _, err := db.Exec("INSERT INTO network_quality_history (node_id,user_id,observed_at) VALUES (1,1,?)", now.UnixMilli()); err != nil {
 		t.Fatal(err)
+	}
+	for seeded := 1; seeded < 99999; {
+		add := min(seeded, 99999-seeded)
+		if _, err := db.Exec(`INSERT INTO network_quality_history (node_id,user_id,observed_at)
+			SELECT node_id,user_id+?,observed_at FROM network_quality_history WHERE node_id=1 AND user_id<=?`, seeded, add); err != nil {
+			t.Fatal(err)
+		}
+		seeded += add
 	}
 	repo := &HistoryRepository{DB: db}
 	var wg sync.WaitGroup
@@ -58,15 +89,7 @@ func TestDurableHistoryConcurrentAdmissionAtCapacity(t *testing.T) {
 }
 
 func TestDurableHistoryRetentionIdempotencyAndScope(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	_, err = db.Exec(`CREATE TABLE network_quality_history(node_id BIGINT,user_id BIGINT,observed_at BIGINT,ack_rtt_ms DOUBLE,jitter_ms DOUBLE,retransmission_delta BIGINT,PRIMARY KEY(node_id,user_id,observed_at))`)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := openDurableHistoryTestDB(t)
 	r := &HistoryRepository{DB: db}
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	rtt := 123.5

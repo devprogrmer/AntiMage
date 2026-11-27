@@ -35,3 +35,5 @@ The history transport integration now exercises panel startup after database reo
 The built dashboard passed a real authenticated Playwright history read on loopback with a controlled mTLS fixture. The combined browser run with live WireGuard traffic remains open.
 
 The history integration test uses a temporary certificate directory. The SQLite history worker and storage race selection passed as unprivileged Linux, and the authenticated Chrome history scenario passed.
+
+The migration matrix passed all three engines on c164e01c. The expanded same-matrix repository test passed locally on migrated SQLite. Await expanded MySQL and MariaDB results.
