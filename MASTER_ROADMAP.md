@@ -68,3 +68,5 @@ Database CI 45982997192 passed on e850e185. MySQL and MariaDB verified the migra
 The dashboard now renders sampled interface MTU and interval counter rates. Lint, TypeScript and five intercepted Playwright scenarios passed. NEXT_ACTION is a live full-stack check of node history and interface telemetry, followed by the outstanding tunnel and UDP measurement gates.
 
 Dedicated gRPC Metrics requests now explicitly opt into sensitive Network Intelligence snapshots. Health and ordinary Metrics preserve the existing runtime response and avoid collecting or serializing flow metadata. The real gRPC handler passed the in-memory transport regression. Full live browser-to-node staging and final CI remain acceptance gates.
+
+Stage 6 evidence: the node reads Linux interface operstate and the panel displays it alongside MTU. Real kernel loopback sampling passed under the race detector. Five browser tests passed with API fixtures. Interface operstate is a link indicator. Peer liveness and end-to-end GRE path validation remain separate acceptance criteria.
