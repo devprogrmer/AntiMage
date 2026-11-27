@@ -36,6 +36,11 @@ export type NetworkFlow = {
 	} | null;
 };
 export type NetworkSnapshot = {
+	node_resources?: {
+		memory_used_bytes: number;
+		memory_total_bytes: number;
+		sampled_at_unix: number;
+	};
 	infrastructure?: {
 		sampled_at: string;
 		interval_seconds: number;

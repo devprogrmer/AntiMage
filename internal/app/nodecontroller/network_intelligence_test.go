@@ -73,12 +73,23 @@ func TestNetworkIntelligenceReadsRealNodeMetricsOverMTLS(t *testing.T) {
 		var snapshot struct {
 			Version   int
 			Available *bool
+			Resources *struct {
+				Used      uint64 `json:"memory_used_bytes"`
+				Total     uint64 `json:"memory_total_bytes"`
+				SampledAt int64  `json:"sampled_at_unix"`
+			} `json:"node_resources"`
 		}
 		if err := json.Unmarshal(raw, &snapshot); err != nil {
 			t.Fatal(err)
 		}
 		if enabled && snapshot.Version != 1 || !enabled && (snapshot.Available == nil || *snapshot.Available) {
 			t.Fatalf("enabled=%t snapshot=%s", enabled, raw)
+		}
+		if enabled && (snapshot.Resources == nil || snapshot.Resources.Total == 0 || snapshot.Resources.Used > snapshot.Resources.Total || snapshot.Resources.SampledAt <= 0) {
+			t.Fatalf("missing or invalid node resource sample: %s", raw)
+		}
+		if !enabled && snapshot.Resources != nil {
+			t.Fatal("disabled snapshot unexpectedly included resources")
 		}
 	}
 }

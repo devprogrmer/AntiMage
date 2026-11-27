@@ -26,5 +26,19 @@ func (c Controller) NetworkIntelligence(ctx context.Context, nodeID int64) (json
 	if len(raw) > 512*1024 || !json.Valid([]byte(raw)) {
 		return nil, errors.New("invalid network intelligence snapshot")
 	}
-	return json.RawMessage(raw), nil
+	var snapshot map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &snapshot); err != nil || snapshot == nil {
+		return nil, errors.New("network intelligence snapshot must be an object")
+	}
+	if system := res.GetSystem(); system.GetMemoryTotal() > 0 {
+		data, err := json.Marshal(struct {
+			MemoryUsed  uint64 `json:"memory_used_bytes"`
+			MemoryTotal uint64 `json:"memory_total_bytes"`
+			SampledAt   int64  `json:"sampled_at_unix"`
+		}{system.GetMemoryUsed(), system.GetMemoryTotal(), res.GetSampledAtUnix()})
+		if err == nil {
+			snapshot["node_resources"] = data
+		}
+	}
+	return json.Marshal(snapshot)
 }

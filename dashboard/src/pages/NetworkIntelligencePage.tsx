@@ -394,6 +394,13 @@ export default function NetworkIntelligencePage() {
 					)}
 				</Alert>
 			)}
+			{snapshot?.node_resources && (
+				<Text fontSize="sm">
+					{label("nodeMemory", "Node memory used / total")}{" "}
+					{bytes(snapshot.node_resources.memory_used_bytes)} /{" "}
+					{bytes(snapshot.node_resources.memory_total_bytes)} B
+				</Text>
+			)}
 			{snapshot?.infrastructure && (
 				<Stack spacing={3}>
 					<Heading size="md">

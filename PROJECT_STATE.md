@@ -17,3 +17,5 @@ The production panel controller read Network Intelligence metrics from a real No
 Linux race validation now covers real encrypted WireGuard traffic through gRPC serialization and peer reassignment. This fixture uses an in-memory gRPC channel. The separate controller test covers mTLS. NEXT_ACTION is to exercise live flow persistence and browser rendering in one isolated staging run.
 
 The remote dev ref was verified as c1a35e44. One-click diagnostics now report node-scoped infrastructure evidence. The six-case Playwright suite passed locally against intercepted API responses and is wired into PR CI. PR 147 remains Draft pending the full release gates.
+
+Measured node memory used and total are exposed only when valid counters exist. Tested over real Node Agent mTLS and in the dashboard browser fixture. PR remains Draft.

@@ -37,6 +37,7 @@ test("renders node MTU and interval counter telemetry", async ({ page }) => {
 	await page.route("**/api/network-intelligence/node?**", (route) =>
 		route.fulfill({ json: {
 			flows: [],
+			node_resources: { memory_used_bytes: 1024, memory_total_bytes: 2048, sampled_at_unix: 1795759200 },
 			infrastructure: {
 				sampled_at: "2026-11-27T06:00:00Z",
 				interval_seconds: 5,
@@ -49,6 +50,7 @@ test("renders node MTU and interval counter telemetry", async ({ page }) => {
 	await page.getByLabel("Node", { exact: true }).selectOption("7");
 	await expect(page.getByRole("cell", { name: "wg-observed" })).toBeVisible();
 	await expect(page.getByRole("cell", { name: "1420" })).toBeVisible();
+	await expect(page.getByText("Node memory used / total 1,024 / 2,048 B")).toBeVisible();
 	await expect(page.getByRole("row", { name: "wg-observed 1420 up" })).toBeVisible();
 	await expect(page.getByRole("row", { name: "softnet.dropped 0.50" })).toBeVisible();
 });
