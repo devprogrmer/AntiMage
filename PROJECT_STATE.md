@@ -42,3 +42,4 @@ Expanded matrix observation on 43809939: MySQL passed, SQLite failed, and MariaD
 Expanded MySQL and MariaDB jobs passed on 43809939. GitHub reproduced the SQLite missing-table error.
 
 Corrected expanded database CI passed SQLite, MySQL 8.4 and MariaDB 10.6 on 1ac0ee2e (run 46029983562). The local WireGuard-to-browser handoff is implemented and awaits an isolated Linux run. The controlled Chrome path passed after refactoring.
+The capped live snapshot now prioritizes recent flows. Node Agent regression coverage passed on Windows.

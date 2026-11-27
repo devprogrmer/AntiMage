@@ -1,11 +1,14 @@
 package nodeagent
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
-	ni "github.com/antimage/antimage/internal/app/networkintelligence"
+	"slices"
 	"time"
+
+	ni "github.com/antimage/antimage/internal/app/networkintelligence"
 )
 
 // Monitoring is absent by default. Its lifecycle barrier joins old capture
@@ -101,8 +104,24 @@ func (s *Server) networkIntelligenceSnapshot() string {
 	if s.networkIntelligenceTracker == nil || s.networkIntelligenceLifecycle == nil || !s.networkIntelligenceLifecycle.Enabled() {
 		return ""
 	}
-	flows := s.networkIntelligenceTracker.Snapshot(time.Now().UTC())
-	history := s.networkIntelligenceHistory.Snapshot(flows, s.networkIntelligenceTracker.Epoch(), time.Now().UTC())
+	now := time.Now().UTC()
+	flows := s.networkIntelligenceTracker.Snapshot(now)
+	history := s.networkIntelligenceHistory.Snapshot(flows, s.networkIntelligenceTracker.Epoch(), now)
+	slices.SortFunc(flows, func(a, b ni.Flow) int {
+		if order := b.At.Compare(a.At); order != 0 {
+			return order
+		}
+		if order := a.Tuple.Source.Compare(b.Tuple.Source); order != 0 {
+			return order
+		}
+		if order := a.Tuple.Destination.Compare(b.Tuple.Destination); order != 0 {
+			return order
+		}
+		if order := cmp.Compare(a.Binding.Interface, b.Binding.Interface); order != 0 {
+			return order
+		}
+		return cmp.Compare(a.Tuple.Protocol, b.Tuple.Protocol)
+	})
 	truncated := len(flows) > 250
 	if truncated {
 		flows = flows[:250]
@@ -110,9 +129,9 @@ func (s *Server) networkIntelligenceSnapshot() string {
 	// Binding session identities remain local to the collector.
 	rows := make([]map[string]any, 0, len(flows))
 	for _, flow := range flows {
-		rows = append(rows, map[string]any{"user_id": flow.Binding.UserID, "node_id": flow.Binding.NodeID, "interface": flow.Binding.Interface, "source": flow.Tuple.Source.String(), "destination": flow.Tuple.Destination.String(), "protocol": flow.Tuple.Protocol, "upload_packets": flow.UploadPackets, "download_packets": flow.DownloadPackets, "upload_bytes": flow.UploadBytes, "download_bytes": flow.DownloadBytes, "observed_at": flow.At, "tcp_quality": flow.TCPQuality, "application": s.networkIntelligenceDetector.Detect(flow.Tuple, time.Now().UTC())})
+		rows = append(rows, map[string]any{"user_id": flow.Binding.UserID, "node_id": flow.Binding.NodeID, "interface": flow.Binding.Interface, "source": flow.Tuple.Source.String(), "destination": flow.Tuple.Destination.String(), "protocol": flow.Tuple.Protocol, "upload_packets": flow.UploadPackets, "download_packets": flow.DownloadPackets, "upload_bytes": flow.UploadBytes, "download_bytes": flow.DownloadBytes, "observed_at": flow.At, "tcp_quality": flow.TCPQuality, "application": s.networkIntelligenceDetector.Detect(flow.Tuple, now)})
 	}
-	snapshot := map[string]any{"version": 1, "observed_at": time.Now().UTC(), "truncated": truncated, "flows": rows}
+	snapshot := map[string]any{"version": 1, "observed_at": now, "truncated": truncated, "flows": rows}
 	snapshot["history"] = history
 	if infrastructure, err := s.networkIntelligenceInfrastructure.Sample(time.Now().UTC()); err == nil {
 		snapshot["infrastructure"] = infrastructure

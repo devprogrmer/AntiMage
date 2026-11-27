@@ -135,3 +135,7 @@ NEXT_ACTION: in a disposable Linux guest with WireGuard, Node and Chromium, buil
 The disposable guest CI job now packages the Linux API test binary, Node, Playwright and a fresh dashboard build. It installs Chromium inside the guest and invokes the authenticated browser against the real WireGuard Node Agent while its RPC server is still live. The Windows host could not execute the Linux guest cleanup tests because it lacks POSIX process-group operations. The existing guest workflow will execute them on Linux.
 
 NEXT_ACTION: inspect the new Network Intelligence Isolation result. Fix and rerun any guest provisioning, live flow, or history browser failures. The replacement three-engine database matrix is already verified on 1ac0ee2e. Once the combined test passes, continue the open stage acceptance gates. Keep PR Draft.
+
+While combined staging CI 46030755602 ran, the node snapshot was made newest-first before applying its 250-flow API cap. History still aggregates the full bounded set. A 251-flow Node Agent regression verifies that the oldest flow is omitted and the newest appears first. Targeted Node Agent tests passed on Windows.
+
+NEXT_ACTION: keep checking the combined live WireGuard/browser run and address any failures, then finish the open stage gates in the table. The 250-flow ordering fix is independent of guest provisioning. Keep PR Draft.
