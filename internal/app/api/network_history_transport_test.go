@@ -68,7 +68,11 @@ func TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen(t *testing.T) 
 	if !roots.AppendCertsFromPEM([]byte(cert)) {
 		t.Fatal("invalid fixture certificate")
 	}
-	listener, err := net.Listen("tcp4", "0.0.0.0:0")
+	listenAddress := "127.0.0.1:0"
+	if os.Getenv("ANTIMAGE_DISPOSABLE_GUEST") == "1" {
+		listenAddress = "0.0.0.0:0"
+	}
+	listener, err := net.Listen("tcp4", listenAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,9 +101,12 @@ func TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen(t *testing.T) 
 		t.Fatal(err)
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
-	nodeAddress := "127.31.0.2"
-	if os.Getenv("ANTIMAGE_DISPOSABLE_GUEST") != "1" {
-		nodeAddress = "127.0.0.1"
+	nodeAddress := "127.0.0.1"
+	if os.Getenv("ANTIMAGE_DISPOSABLE_GUEST") == "1" {
+		nodeAddress = strings.TrimSpace(os.Getenv("ANTIMAGE_NI_TEST_NODE_ADDRESS"))
+		if nodeAddress == "" {
+			t.Fatal("disposable guest node address is required")
+		}
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO nodes (id,name,address,port,api_port,status,certificate,certificate_key,xray_config_mode,usage_coefficient) VALUES (7,'history-fixture',?,?,?,'connected',?,?,'custom',1)`, nodeAddress, port, port, cert, key); err != nil {
 		t.Fatal(err)

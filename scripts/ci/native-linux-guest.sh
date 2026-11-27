@@ -71,7 +71,7 @@ qemu-system-x86_64 -enable-kvm -cpu host -smp 2 -m "$memory" -display none -no-r
   -serial "file:$evidence/serial.log" \
   -drive "file=$root/disk.qcow2,format=qcow2,if=virtio" \
   -drive "file=$root/seed.img,format=raw,if=virtio" \
-  -netdev "user,id=net0,host=127.31.0.1,net=127.31.0.0/24,hostfwd=tcp:127.0.0.1:$port-:22" -device virtio-net-pci,netdev=net0 \
+  -netdev "user,id=net0,host=10.31.0.1,net=10.31.0.0/24,hostfwd=tcp:127.0.0.1:$port-:22" -device virtio-net-pci,netdev=net0 \
   >"$evidence/qemu.log" 2>&1 &
 vm_pid=$!
 ssh_args=(-i "$root/key" -p "$port" -o BatchMode=yes -o StrictHostKeyChecking=yes
@@ -118,6 +118,8 @@ if [ "$1" = network-intelligence ]; then
   # This marker exists only in the fresh disposable VM created above.
   touch /run/antimage-disposable-network-lab
   export ANTIMAGE_WIREGUARD_NI_E2E=1 ANTIMAGE_CAPTURE_E2E=1
+  export ANTIMAGE_NI_TEST_NODE_ADDRESS="$(ip -o -4 addr show dev eth0 scope global | awk 'NR == 1 { split($4, address, "/"); print address[1] }')"
+  test -n "$ANTIMAGE_NI_TEST_NODE_ADDRESS" || { echo 'Disposable guest has no IPv4 address on eth0' >&2; exit 1; }
   if [ -x bin/api.test ]; then
     export PATH="$PWD/bin:$PATH"
     export ANTIMAGE_NI_BROWSER_PANEL_TEST="$PWD/bin/api.test"
