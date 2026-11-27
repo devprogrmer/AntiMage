@@ -540,6 +540,9 @@ func TestAdminSessionLoginBehindReverseProxy(t *testing.T) {
 	insertMasterAPIAdmin(t, db, 42, "proxy-admin", "session-pass", adminapp.RoleFullAccess, adminapp.StatusActive)
 
 	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8000/api/auth/login", strings.NewReader(`{"username":"proxy-admin","password":"session-pass"}`))
+	// Model the local reverse proxy peer explicitly. httptest defaults to a
+	// remote documentation address, whose forwarding headers must be rejected.
+	req.RemoteAddr = "127.0.0.1:9000"
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", "https://panel.example")
 	req.Header.Set("X-Forwarded-Host", "panel.example")
