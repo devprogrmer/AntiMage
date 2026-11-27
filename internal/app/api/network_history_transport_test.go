@@ -114,8 +114,12 @@ func TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	t.Setenv("ANTIMAGE_DATA_DIR", t.TempDir())
-	s, err := New(Config{Database: "sqlite:///" + filepath.ToSlash(path), NetworkIntelligenceEnabled: true, NetworkHistoryPersistence: true})
+	dataDir := t.TempDir()
+	t.Setenv("ANTIMAGE_DATA_DIR", dataDir)
+	s, err := New(Config{
+		Database: "sqlite:///" + filepath.ToSlash(path), CertificateBase: filepath.Join(dataDir, "certificates"),
+		NetworkIntelligenceEnabled: true, NetworkHistoryPersistence: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

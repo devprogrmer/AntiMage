@@ -33,3 +33,5 @@ The isolated Linux WireGuard race fixture verified live capture through mTLS, th
 The history transport integration now exercises panel startup after database reopen, real administrator session login and the protected history HTTP route. A combined real-traffic browser run is still required.
 
 The built dashboard passed a real authenticated Playwright history read on loopback with a controlled mTLS fixture. The combined browser run with live WireGuard traffic remains open.
+
+The history integration test uses a temporary certificate directory. The SQLite history worker and storage race selection passed as unprivileged Linux, and the authenticated Chrome history scenario passed.
