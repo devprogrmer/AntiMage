@@ -29,11 +29,12 @@ import (
 )
 
 type Server struct {
-	networkIntelligenceLifecycle  *ni.Lifecycle
-	networkIntelligenceTracker    *ni.Tracker
-	networkIntelligenceMu         sync.Mutex
-	networkIntelligenceGeneration uint64
-	networkIntelligenceDetector   *ni.ApplicationDetector
+	networkIntelligenceLifecycle      *ni.Lifecycle
+	networkIntelligenceTracker        *ni.Tracker
+	networkIntelligenceMu             sync.Mutex
+	networkIntelligenceGeneration     uint64
+	networkIntelligenceDetector       *ni.ApplicationDetector
+	networkIntelligenceInfrastructure networkInfrastructureSampler
 	nodev1.UnimplementedNodeControlServiceServer
 	nodev1.UnimplementedNodeRuntimeServiceServer
 	nodev1.UnimplementedNodeUsageServiceServer
