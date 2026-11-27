@@ -18,6 +18,46 @@ type historyWorkerFixture struct {
 	calls []int64
 }
 
+func TestNetworkHistoryRetentionRunsWithoutTrafficOnlyWithBothFlags(t *testing.T) {
+	for _, cfg := range []Config{
+		{}, {NetworkIntelligenceEnabled: true}, {NetworkHistoryPersistence: true},
+		{NetworkIntelligenceEnabled: true, NetworkHistoryPersistence: true},
+	} {
+		db, err := sql.Open("sqlite", ":memory:")
+		if err != nil {
+			t.Fatal(err)
+		}
+		db.SetMaxOpenConns(1)
+		ctx, cancel := context.WithCancel(context.Background())
+		_, err = db.Exec("CREATE TABLE network_quality_history (observed_at BIGINT); INSERT INTO network_quality_history VALUES (0)")
+		if err != nil {
+			cancel()
+			db.Close()
+			t.Fatal(err)
+		}
+		s := &Server{cfg: cfg, db: db}
+		s.startNetworkHistoryWorkers(ctx)
+		want := 1
+		if cfg.NetworkIntelligenceEnabled && cfg.NetworkHistoryPersistence {
+			want = 0
+		}
+		deadline := time.Now().Add(2 * time.Second)
+		var count int
+		for {
+			err = db.QueryRow("SELECT COUNT(*) FROM network_quality_history").Scan(&count)
+			if err != nil || count == want || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel()
+		db.Close()
+		if err != nil || count != want {
+			t.Fatalf("flag=%t persistence=%t rows=%d want=%d err=%v", cfg.NetworkIntelligenceEnabled, cfg.NetworkHistoryPersistence, count, want, err)
+		}
+	}
+}
+
 func (f *historyWorkerFixture) List(context.Context, nodecontroller.Request) (nodecontroller.NodeListResult, error) {
 	return nodecontroller.NodeListResult{Nodes: []nodecontroller.NodeListItem{
 		{ID: 99, Status: "disabled"}, {ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}, {ID: 5},

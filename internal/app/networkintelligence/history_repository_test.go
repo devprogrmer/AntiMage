@@ -92,6 +92,10 @@ func TestDurableHistoryRetentionIdempotencyAndScope(t *testing.T) {
 	if err := r.Add(ctx, p, p.ObservedAt); err != nil {
 		t.Fatal(err)
 	}
+	points, err = (&HistoryRepository{DB: db}).List(ctx, 7, 42, now.Add(-time.Hour))
+	if err != nil || len(points) != 2 || !points[0].ObservedAt.Equal(p.ObservedAt) || !points[1].ObservedAt.Equal(now) {
+		t.Fatalf("history ordering after repository restart: %v, %v", points, err)
+	}
 	var count int
 	if err := db.QueryRow("SELECT COUNT(*) FROM network_quality_history").Scan(&count); err != nil || count != 2 {
 		t.Fatal(count, err)
