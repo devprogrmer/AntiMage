@@ -11,3 +11,5 @@ NEXT_ACTION is to verify the final-head database matrix, run a full worker-to-no
 The dashboard renders measured MTU and counter rates, and the roadmap defines evidence gates for every stage. Dedicated gRPC requests opt into Network Intelligence metadata. The targeted API/node tests and the in-memory gRPC transport regression passed. Five browser scenarios passed with API fixtures. Latest full CI was pending at inspection.
 
 Interface operational state is now carried through the existing node telemetry and rendered in the panel. Real Linux kernel sampling passed under race detection. The browser UI was tested with intercepted responses. PR 147 was confirmed Draft. Full CI, tunnel and UDP quality, staging and release rollback remain unverified.
+
+The production panel controller read Network Intelligence metrics from a real Node Agent gRPC handler over loopback mTLS after applying SQLite migrations. Both enabled and disabled agents were exercised. This verifies the authenticated transport and no-data compatibility path. Full staging with live flow persistence and browser rendering remains open.
