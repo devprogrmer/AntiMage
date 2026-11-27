@@ -78,6 +78,7 @@ jobs:
           go test -race -c -o "$RUNNER_TEMP/networkintelligence.test" ./internal/app/networkintelligence
           go test -c -o "$RUNNER_TEMP/networkintelligence-resource.test" ./internal/app/networkintelligence
           go test -race -c -o "$RUNNER_TEMP/nodeagent.test" ./internal/app/nodeagent
+          go test -c -o "$RUNNER_TEMP/nodeagent-resource.test" ./internal/app/nodeagent
           go test -race -c -o "$RUNNER_TEMP/api.test" ./internal/app/api
       - name: Real WireGuard reassignment in disposable Linux guest
         run: |
@@ -85,6 +86,7 @@ jobs:
             ANTIMAGE_NI_TEST_BINARY="$RUNNER_TEMP/networkintelligence.test" \
             ANTIMAGE_NI_RESOURCE_TEST_BINARY="$RUNNER_TEMP/networkintelligence-resource.test" \
             ANTIMAGE_NI_NODE_TEST_BINARY="$RUNNER_TEMP/nodeagent.test" \
+            ANTIMAGE_NI_NODE_RESOURCE_TEST_BINARY="$RUNNER_TEMP/nodeagent-resource.test" \
             ANTIMAGE_NI_API_TEST_BINARY="$RUNNER_TEMP/api.test" \
             ANTIMAGE_NI_NODE_BINARY="$(command -v node)" \
             bash scripts/ci/native-linux-guest.sh network-intelligence
