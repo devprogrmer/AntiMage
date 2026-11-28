@@ -19,6 +19,9 @@ service NodeRuntimeService {
   rpc UpdateUser(InboundUserRequest) returns (RuntimeActionResponse);
   rpc RemoveUser(RemoveInboundUserRequest) returns (RuntimeActionResponse);
   rpc Metrics(MetricsRequest) returns (MetricsResponse);
+  // Optional, fail-closed per-user network optimization control. Older agents
+  // remain wire-compatible and return UNIMPLEMENTED for this additive method.
+  rpc ManageNetworkOptimization(NetworkOptimizationRequest) returns (NetworkOptimizationResponse);
   rpc PublicIPs(PublicIPsRequest) returns (PublicIPsResponse);
   rpc TestOutbound(OutboundTestRequest) returns (OutboundTestResponse);
   rpc TestRoute(RouteTestRequest) returns (RouteTestResponse);
@@ -144,6 +147,33 @@ message MetricsResponse {
   AccountingHealth accounting = 5;
   // Versioned, bounded metadata snapshot. Empty when monitoring is disabled.
   string network_intelligence_json = 6;
+}
+
+message NetworkOptimizationRequest {
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    APPLY_TCP_MSS = 1;
+    ROLLBACK = 2;
+    LIST_USER = 3;
+  }
+  Action action = 1;
+  int64 node_id = 2;
+  int64 user_id = 3;
+  string operation_id = 4;
+  uint32 tcp_mss = 5;
+}
+
+message NetworkOptimizationResponse {
+  string operation_id = 1;
+  string state = 2;
+  bool applied = 3;
+  repeated NetworkOptimizationOperation operations = 4;
+}
+
+message NetworkOptimizationOperation {
+  string operation_id = 1;
+  uint32 tcp_mss = 2;
+  string state = 3;
 }
 
 message AccountingHealth {

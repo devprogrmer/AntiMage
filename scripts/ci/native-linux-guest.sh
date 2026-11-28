@@ -136,6 +136,7 @@ if [ "$1" = network-intelligence ]; then
     bin/networkintelligence-resource.test -test.run '^TestCaptureResourceComparison$' -test.v \
     | tee evidence/network-intelligence-resource.log
   bin/nodeagent.test -test.v -test.run 'TestNetworkIntelligence|TestNetworkInfrastructure'
+  bin/api.test -test.v -test.run '^TestNetworkOptimizationAuditRollbackIsIdempotent$'
   ANTIMAGE_NI_WG_RESOURCE_E2E=1 bin/nodeagent-resource.test -test.run '^TestNetworkIntelligenceWireGuardForwardingResourceComparison$' -test.v \
     | tee evidence/network-intelligence-wireguard-forwarding-resource.log
   exit

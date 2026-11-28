@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/netip"
+	"sort"
 	"sync"
 	"time"
 )
@@ -100,6 +101,48 @@ func New(capacity int, timeout time.Duration) (*Tracker, error) {
 // Epoch is negotiated with collectors before accepting their observations.
 // A new Tracker rejects all telemetry captured for a previous instance.
 func (t *Tracker) Epoch() string { return t.epoch }
+
+// BindingsForUser returns a copy of all currently authenticated address leases
+// for one account on one node. Node scope is mandatory because tunnel address
+// ranges may overlap across nodes. The result contains no flow-derived owners.
+func (t *Tracker) BindingsForUser(nodeID, userID int64) []Binding {
+	if nodeID <= 0 || userID <= 0 {
+		return nil
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	result := make([]Binding, 0, 2)
+	for _, binding := range t.bindings {
+		if binding.NodeID == nodeID && binding.UserID == userID && binding.Session != "" {
+			result = append(result, binding)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Interface != result[j].Interface {
+			return result[i].Interface < result[j].Interface
+		}
+		return result[i].Address.Compare(result[j].Address) < 0
+	})
+	return result
+}
+
+// BindingsForAddress returns every current owner candidate for one node-local
+// address. Callers that apply address-scoped kernel rules must require exactly
+// one matching account, even when the address is present on multiple links.
+func (t *Tracker) BindingsForAddress(nodeID int64, address netip.Addr) []Binding {
+	if nodeID <= 0 || !address.IsValid() {
+		return nil
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	result := make([]Binding, 0, 1)
+	for _, binding := range t.bindings {
+		if binding.NodeID == nodeID && binding.Address == address && binding.Session != "" {
+			result = append(result, binding)
+		}
+	}
+	return result
+}
 
 func key(b Binding) leaseKey { return leaseKey{b.NodeID, b.Interface, b.Address} }
 

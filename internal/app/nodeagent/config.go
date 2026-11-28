@@ -24,6 +24,7 @@ type Config struct {
 	Version                       string
 	NetworkIntelligenceEnabled    bool
 	NetworkIntelligenceSignatures string
+	NetworkOptimizationEnabled    bool
 }
 
 func LoadConfig() Config {
@@ -36,6 +37,7 @@ func LoadConfig() Config {
 	)
 	return Config{
 		NetworkIntelligenceEnabled:    strings.EqualFold(envString("ANTIMAGE_NETWORK_INTELLIGENCE_ENABLED", "false"), "true"),
+		NetworkOptimizationEnabled:    strings.EqualFold(envString("ANTIMAGE_NETWORK_OPTIMIZATION_ENABLED", "false"), "true"),
 		NetworkIntelligenceSignatures: envString("ANTIMAGE_NETWORK_INTELLIGENCE_SIGNATURES", ""),
 		Name:                          envString("ANTIMAGE_NODE_NAME", envString("ANTIMAGE_NODE_APP_NAME", "antimage-node")),
 		ListenHost:                    envString("SERVICE_HOST", "0.0.0.0"),

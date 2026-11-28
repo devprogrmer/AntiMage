@@ -23,6 +23,15 @@ func TestLoadConfigMasterCertificateTrustPrecedence(t *testing.T) {
 	}
 }
 
+func TestLoadConfigNetworkOptimizationIsDefaultOff(t *testing.T) {
+	for _, value := range []string{"", "true", "false", "invalid"} {
+		t.Setenv("ANTIMAGE_NETWORK_OPTIMIZATION_ENABLED", value)
+		if got := LoadConfig().NetworkOptimizationEnabled; got != (value == "true") {
+			t.Fatalf("optimization flag %q => %t", value, got)
+		}
+	}
+}
+
 func TestConfiguredNodeVersion(t *testing.T) {
 	metadataPath := filepath.Join(t.TempDir(), ".binary-release.json")
 	if err := os.WriteFile(metadataPath, []byte(`{"tag":"dev-ad4bf47"}`), 0o600); err != nil {

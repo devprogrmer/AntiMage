@@ -14,6 +14,14 @@ import (
 // Monitoring is absent by default. Its lifecycle barrier joins old capture
 // before a kernel ownership mutation, while preserving the runtime result.
 func (s *Server) withNetworkIntelligenceMutation(interfaceName string, mutate func() error) error {
+	if s.cfg.NetworkOptimizationEnabled {
+		s.networkOptimizationMu.Lock()
+		err := resetNetworkOptimizationsForInterface(s.cfg.DataDir, interfaceName)
+		s.networkOptimizationMu.Unlock()
+		if err != nil {
+			return err
+		}
+	}
 	if s.networkIntelligenceLifecycle == nil {
 		return mutate()
 	}

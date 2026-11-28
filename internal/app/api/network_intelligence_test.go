@@ -35,6 +35,36 @@ func TestNetworkIntelligenceRouteIsOptInAndAuthenticated(t *testing.T) {
 	}
 }
 
+func TestNetworkOptimizationRouteRequiresBothFlagsAndFullAdmin(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		network, optimization bool
+		role                  string
+		want                  int
+	}{
+		{name: "network flag off but rollback route stays authenticated", optimization: true, want: http.StatusUnauthorized},
+		{name: "optimization flag off but history route stays authenticated", network: true, want: http.StatusUnauthorized},
+		{name: "both flags on requires auth", network: true, optimization: true, want: http.StatusUnauthorized},
+		{name: "restricted role forbidden", network: true, optimization: true, role: string(adminapp.RoleSudo), want: http.StatusForbidden},
+		{name: "full access validates request", network: true, optimization: true, role: string(adminapp.RoleFullAccess), want: http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &Server{cfg: Config{NetworkIntelligenceEnabled: tc.network, NetworkOptimizationEnabled: tc.optimization}}
+			r := httptest.NewRequest(http.MethodPost, "/api/network-intelligence/optimization", strings.NewReader(`{"action":"unknown","node_id":1,"user_id":2}`))
+			w := httptest.NewRecorder()
+			if tc.role != "" {
+				r = r.WithContext(context.WithValue(r.Context(), adminContextKey, adminPrincipal{ID: 9, Role: tc.role}))
+				s.handleNetworkIntelligenceOptimization(w, r)
+			} else {
+				s.Handler().ServeHTTP(w, r)
+			}
+			if w.Code != tc.want {
+				t.Fatalf("status=%d want=%d body=%s", w.Code, tc.want, w.Body.String())
+			}
+		})
+	}
+}
+
 func TestNetworkIntelligencePresenceUsesExistingRecordsWithoutExposingIPs(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {

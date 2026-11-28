@@ -32,6 +32,7 @@ type Server struct {
 	networkIntelligenceLifecycle      *ni.Lifecycle
 	networkIntelligenceTracker        *ni.Tracker
 	networkIntelligenceMu             sync.Mutex
+	networkOptimizationMu             sync.Mutex
 	networkIntelligenceGeneration     uint64
 	networkIntelligenceDetector       *ni.ApplicationDetector
 	networkIntelligenceInfrastructure networkInfrastructureSampler

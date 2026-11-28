@@ -67,6 +67,43 @@ func TestRecordRecentActionStoresCompressedBeforeAndAfter(t *testing.T) {
 	}
 }
 
+func TestNetworkOptimizationAuditRollbackIsIdempotent(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createRecentActionsTable(t, db)
+	server := &Server{db: db}
+	ctx := context.WithValue(context.Background(), adminContextKey, adminPrincipal{ID: 9, Username: "operator"})
+	input := networkOptimizationRequest{NodeID: 7, UserID: 42, OperationID: "0123456789abcdef0123456789abcdef"}
+	if err := server.recordNetworkOptimizationAudit(ctx, "network.optimization.apply", input, "Requested per-user MSS"); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.markNetworkOptimizationRolledBack(ctx, input, 9); err != nil {
+		t.Fatal(err)
+	}
+	// Retried HTTP rollback after a lost response must reconcile successfully
+	// without adding a duplicate rollback action.
+	if err := server.markNetworkOptimizationRolledBack(ctx, input, 9); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err := db.QueryRow(`SELECT rollback_status FROM recent_actions WHERE action_type = 'network.optimization.apply'`).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "undone" {
+		t.Fatalf("rollback status=%q, want undone", status)
+	}
+	var rollbackActions int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM recent_actions WHERE action_type = 'network.optimization.rollback'`).Scan(&rollbackActions); err != nil {
+		t.Fatal(err)
+	}
+	if rollbackActions != 1 {
+		t.Fatalf("rollback audit entries=%d, want exactly one", rollbackActions)
+	}
+}
+
 func TestRecordRecentActionEventStoresHistoryOnly(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {

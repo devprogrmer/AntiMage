@@ -16,6 +16,18 @@ func TestNetworkHistoryPersistenceRequiresBothFlags(t *testing.T) {
 	}
 }
 
+func TestNetworkOptimizationIsIndependentlyOptIn(t *testing.T) {
+	t.Setenv("SQLALCHEMY_DATABASE_URL", "sqlite:///config-test.db")
+	t.Setenv("ANTIMAGE_NETWORK_INTELLIGENCE_ENABLED", "true")
+	for _, value := range []string{"", "true", "false", "invalid"} {
+		t.Setenv("ANTIMAGE_NETWORK_OPTIMIZATION_ENABLED", value)
+		cfg, err := LoadConfig()
+		if err != nil || cfg.NetworkOptimizationEnabled != (value == "true") {
+			t.Fatalf("optimization flag %q => %t, err=%v", value, cfg.NetworkOptimizationEnabled, err)
+		}
+	}
+}
+
 func TestLoadConfigNetworkIntelligenceOptInPreservesProxyConfiguration(t *testing.T) {
 	t.Setenv("SQLALCHEMY_DATABASE_URL", "sqlite:///config-test.db")
 	t.Setenv("ANTIMAGE_TRUSTED_PROXY_CIDRS", "127.0.0.1/32, ::1/128")

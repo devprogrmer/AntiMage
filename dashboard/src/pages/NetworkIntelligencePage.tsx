@@ -23,6 +23,7 @@ import {
 } from "@chakra-ui/react";
 import useGetUser from "hooks/useGetUser";
 import NetworkQualityHistory from "components/NetworkQualityHistory";
+import NetworkOptimizationPanel from "components/NetworkOptimizationPanel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AdminRole } from "types/Admin";
@@ -463,6 +464,9 @@ export default function NetworkIntelligencePage() {
 			)}
 			{node && (
 				<NetworkQualityHistory key={node} nodeID={Number(node)} users={presence} />
+			)}
+			{node && (
+				<NetworkOptimizationPanel key={node} nodeID={Number(node)} users={presence} />
 			)}
 			<Text fontSize="sm" color="panel.textMuted">
 				{label(

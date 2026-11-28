@@ -112,3 +112,39 @@ export const getNetworkDiagnostics = (nodeID: number, signal: AbortSignal) =>
 		signal,
 		retry: 0,
 	});
+
+export type NetworkOptimizationOperation = {
+	operation_id: string;
+	tcp_mss: number;
+	state: string;
+};
+
+export const getNetworkOptimizations = (
+	nodeID: number,
+	userID: number,
+	signal: AbortSignal,
+) =>
+	fetch<{ node_id: number; user_id: number; operations: NetworkOptimizationOperation[] }>(
+		"/network-intelligence/optimization",
+		{ query: { node_id: nodeID, user_id: userID }, signal, retry: 0 },
+	);
+
+export const applyNetworkTCPMSS = (
+	nodeID: number,
+	userID: number,
+	tcpMSS: number,
+) =>
+	fetch<{ operation_id: string; state: string; applied: boolean }>(
+		"/network-intelligence/optimization",
+		{ method: "POST", body: { action: "apply_tcp_mss", node_id: nodeID, user_id: userID, tcp_mss: tcpMSS } },
+	);
+
+export const rollbackNetworkOptimization = (
+	nodeID: number,
+	userID: number,
+	operationID: string,
+) =>
+	fetch<{ operation_id: string; state: string; applied: boolean }>(
+		"/network-intelligence/optimization",
+		{ method: "POST", body: { action: "rollback", node_id: nodeID, user_id: userID, operation_id: operationID } },
+	);

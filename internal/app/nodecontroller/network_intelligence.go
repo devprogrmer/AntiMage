@@ -42,3 +42,23 @@ func (c Controller) NetworkIntelligence(ctx context.Context, nodeID int64) (json
 	}
 	return json.Marshal(snapshot)
 }
+
+// ManageNetworkOptimization invokes only the additive, optional Node Agent
+// operation. Older agents return UNIMPLEMENTED; callers must fail closed.
+func (c Controller) ManageNetworkOptimization(ctx context.Context, request *nodev1.NetworkOptimizationRequest) (*nodev1.NetworkOptimizationResponse, error) {
+	if request == nil || request.GetNodeId() <= 0 {
+		return nil, errors.New("valid optimization node is required")
+	}
+	client, _, err := c.dial(ctx, request.GetNodeId())
+	if err != nil {
+		return nil, err
+	}
+	response, err := client.Runtime().ManageNetworkOptimization(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	if response == nil || response.GetOperationId() != request.GetOperationId() {
+		return nil, errors.New("node returned an invalid optimization operation identity")
+	}
+	return response, nil
+}

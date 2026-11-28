@@ -161,6 +161,58 @@ func TestSameAddressAndFlowOnDifferentNodesRemainIsolated(t *testing.T) {
 	}
 }
 
+func TestBindingsForUserAreScopedToNodeAndIncludeAllInterfaces(t *testing.T) {
+	tracker, err := New(8, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	bindings := []Binding{
+		{NodeID: 7, Interface: "wg-a", Address: netip.MustParseAddr("10.0.0.1"), UserID: 42, Session: "session-a", Generation: 1, Since: now},
+		{NodeID: 7, Interface: "wg-b", Address: netip.MustParseAddr("10.0.1.1"), UserID: 42, Session: "session-b", Generation: 1, Since: now},
+		{NodeID: 8, Interface: "wg-a", Address: netip.MustParseAddr("10.0.0.1"), UserID: 42, Session: "session-c", Generation: 1, Since: now},
+	}
+	for _, binding := range bindings {
+		if err := tracker.Bind(binding); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := tracker.BindingsForUser(7, 42)
+	if len(got) != 2 {
+		t.Fatalf("node 7 bindings = %d, want 2: %+v", len(got), got)
+	}
+	if got[0].NodeID != 7 || got[1].NodeID != 7 || got[0].UserID != 42 || got[1].UserID != 42 {
+		t.Fatalf("lookup crossed authoritative node/account scope: %+v", got)
+	}
+	if got[0].Interface == got[1].Interface || got[0].Address == got[1].Address {
+		t.Fatalf("lookup omitted one of the user's interfaces/addresses: %+v", got)
+	}
+}
+
+func TestBindingsForAddressDetectsSameNodeAmbiguityButNotOtherNodes(t *testing.T) {
+	tracker, err := New(8, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	address := netip.MustParseAddr("10.0.0.9")
+	for _, binding := range []Binding{
+		{NodeID: 7, Interface: "wg-a", Address: address, UserID: 42, Session: "a", Generation: 1, Since: now},
+		{NodeID: 7, Interface: "wg-b", Address: address, UserID: 43, Session: "b", Generation: 1, Since: now},
+		{NodeID: 8, Interface: "wg-a", Address: address, UserID: 44, Session: "c", Generation: 1, Since: now},
+	} {
+		if err := tracker.Bind(binding); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := tracker.BindingsForAddress(7, address); len(got) != 2 {
+		t.Fatalf("node-local ambiguity candidates=%+v, want both owners", got)
+	}
+	if got := tracker.BindingsForAddress(8, address); len(got) != 1 || got[0].UserID != 44 {
+		t.Fatalf("other node overlap was mixed: %+v", got)
+	}
+}
+
 func TestExpiredFlowRetainsReplayHighWater(t *testing.T) {
 	now := time.Now()
 	tracker, _ := New(1, time.Second)

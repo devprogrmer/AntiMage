@@ -13,7 +13,9 @@ import (
 	ni "github.com/antimage/antimage/internal/app/networkintelligence"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -161,6 +163,22 @@ func TestNetworkIntelligenceActivationOptInAndSnapshot(t *testing.T) {
 	enabled.stopNetworkIntelligence()
 	if enabled.networkIntelligenceLifecycle.Enabled() {
 		t.Fatal("kill switch did not disable")
+	}
+}
+
+func TestNetworkOptimizationRPCFailsClosedUnlessBothFlagsAreEnabled(t *testing.T) {
+	for _, cfg := range []Config{
+		{},
+		{NetworkIntelligenceEnabled: true},
+		{NetworkOptimizationEnabled: true},
+	} {
+		agent := New(cfg)
+		_, err := agent.ManageNetworkOptimization(context.Background(), &nodev1.NetworkOptimizationRequest{
+			Action: nodev1.NetworkOptimizationRequest_APPLY_TCP_MSS, NodeId: 7, UserId: 42, OperationId: "0123456789abcdef0123456789abcdef", TcpMss: 1340,
+		})
+		if status.Code(err) != codes.FailedPrecondition {
+			t.Fatalf("flags NI=%t optimization=%t err=%v", cfg.NetworkIntelligenceEnabled, cfg.NetworkOptimizationEnabled, err)
+		}
 	}
 }
 

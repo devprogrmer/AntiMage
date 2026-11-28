@@ -157,6 +157,7 @@ func (s *Server) registerSystemRoutes(r chi.Router) {
 		r.Get("/network-intelligence/node", s.requireAdmin(s.handleNetworkIntelligenceNode))
 		r.Get("/network-intelligence/history", s.requireAdmin(s.handleNetworkIntelligenceHistory))
 	}
+	r.HandleFunc("/network-intelligence/optimization", s.networkIntelligenceOptimizationRoute())
 	r.HandleFunc("/system/metrics", s.requireAdmin(s.handleSystemMetricsWebSocket))
 	r.HandleFunc("/system", s.requireAdmin(s.handleSystemStats))
 	r.HandleFunc("/maintenance/info", s.requireSudo(s.handleMaintenanceInfo))
