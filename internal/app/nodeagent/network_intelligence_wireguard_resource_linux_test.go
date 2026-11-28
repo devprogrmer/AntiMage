@@ -384,6 +384,14 @@ print(json.dumps({'sent':n,'received':len(seen),'lost':n-len(seen),'loss_pct':10
 	}
 
 	offTrials, onTrials := make([]trial, 0, 3), make([]trial, 0, 3)
+	// Profile a separate, longer observation workload. Keep profiler overhead
+	// out of the paired OFF/ON performance measurements below.
+	if os.Getenv("ANTIMAGE_NI_WG_PROFILE") == "1" {
+		for range 30 {
+			measure(true)
+		}
+		return
+	}
 	for range 3 {
 		offTrials = append(offTrials, measure(false))
 		onTrials = append(onTrials, measure(true))

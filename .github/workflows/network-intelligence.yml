@@ -90,6 +90,13 @@ jobs:
             ANTIMAGE_NI_API_TEST_BINARY="$RUNNER_TEMP/api.test" \
             ANTIMAGE_NI_NODE_BINARY="$(command -v node)" \
             bash scripts/ci/native-linux-guest.sh network-intelligence
+      - name: Summarize collector CPU and allocation profiles
+        if: always()
+        run: |
+          for profile in "$RUNNER_TEMP/antimage-guest-failure/"*.pprof; do
+            [ -f "$profile" ] || continue
+            go tool pprof -top "$RUNNER_TEMP/nodeagent-resource.test" "$profile" > "$profile.top.txt"
+          done
       - name: Retain isolated guest evidence and resource measurements
         if: always()
         uses: actions/upload-artifact@v4

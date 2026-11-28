@@ -139,6 +139,11 @@ if [ "$1" = network-intelligence ]; then
   bin/nodeagent.test -test.v -test.run 'TestNetworkIntelligence|TestNetworkInfrastructure'
   ANTIMAGE_NI_WG_RESOURCE_E2E=1 bin/nodeagent-resource.test -test.run '^TestNetworkIntelligenceWireGuardForwardingResourceComparison$' -test.v \
     | tee evidence/network-intelligence-wireguard-forwarding-resource.log
+  ANTIMAGE_NI_WG_RESOURCE_E2E=1 ANTIMAGE_NI_WG_PROFILE=1 bin/nodeagent-resource.test \
+    -test.run '^TestNetworkIntelligenceWireGuardForwardingResourceComparison$' -test.v \
+    -test.cpuprofile=evidence/wireguard-collector.cpu.pprof \
+    -test.memprofile=evidence/wireguard-collector.heap.pprof \
+    | tee evidence/network-intelligence-wireguard-profile.log
   exit
 fi
 export ANTIMAGE_L2TP_TEST_BINARY="$PWD/bin/nodeagent.test"
