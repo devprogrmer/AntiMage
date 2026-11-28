@@ -11,7 +11,7 @@ import (
 	"unsafe"
 )
 
-// V3 packs variable-sized records into bounded blocks. The 1 ms retirement
+// V3 packs variable-sized records into bounded blocks. The 32 ms retirement
 // timeout affects telemetry delivery only; RTT uses each kernel packet timestamp.
 const captureRingFrameSize = 256 * 1024
 
@@ -40,7 +40,7 @@ func newCaptureRing(fd, requested int) (*captureRing, error) {
 	if requested == 0 {
 		blocks = 4
 	}
-	req := unix.TpacketReq3{Block_size: captureRingFrameSize, Block_nr: uint32(blocks), Frame_size: 2048, Frame_nr: uint32(blocks * captureRingFrameSize / 2048), Retire_blk_tov: 1}
+	req := unix.TpacketReq3{Block_size: captureRingFrameSize, Block_nr: uint32(blocks), Frame_size: 2048, Frame_nr: uint32(blocks * captureRingFrameSize / 2048), Retire_blk_tov: 32}
 	if err := unix.SetsockoptTpacketReq3(fd, unix.SOL_PACKET, unix.PACKET_RX_RING, &req); err != nil {
 		return nil, err
 	}

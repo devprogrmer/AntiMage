@@ -26,7 +26,8 @@ type CaptureConfig struct {
 	// Zero preserves uncapped explicit capture. Exceeding the limit closes the
 	// observation socket and requires an explicit restart by its owner.
 	MaxPacketsPerSecond int
-	// ReceiveBufferBytes defaults to 256 KiB. Linux may clamp this value.
+	// ReceiveBufferBytes requests bounded Linux ring memory (default 1 MiB).
+	// It is rounded down to 256 KiB blocks with a minimum of two blocks.
 	ReceiveBufferBytes int
 	// Statistics receives cumulative collector counters once per second and
 	// when capture stops. It runs synchronously and must return promptly.
