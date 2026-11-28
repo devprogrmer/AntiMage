@@ -124,6 +124,43 @@ test("standard admin cannot view telemetry", async ({ page }) => {
 	await expect(page.getByText("traffic-user", { exact: true })).toHaveCount(0);
 });
 
+test("full-access admin applies and rolls back a scoped user optimization", async ({ page }) => {
+	await setup(page);
+	let operations: { operation_id: string; tcp_mss: number; state: string }[] = [];
+	const mutations: unknown[] = [];
+	await page.route("**/api/network-intelligence/optimization**", async (route) => {
+		const request = route.request();
+		if (request.method() === "GET") {
+			await route.fulfill({ json: { node_id: 7, user_id: 42, operations } });
+			return;
+		}
+		const body = request.postDataJSON() as { action: string; tcp_mss?: number; operation_id?: string };
+		mutations.push(body);
+		if (body.action === "apply_tcp_mss") {
+			operations = [{ operation_id: "1234567890abcdef1234567890abcdef", tcp_mss: body.tcp_mss ?? 0, state: "active" }];
+			await route.fulfill({ json: { operation_id: operations[0].operation_id, state: "active", applied: true } });
+			return;
+		}
+		operations = [{ ...operations[0], state: "rolled_back" }];
+		await route.fulfill({ json: { operation_id: body.operation_id, state: "rolled_back", applied: false } });
+	});
+	page.on("dialog", (dialog) => dialog.accept());
+	await page.goto("/dashboard/network-intelligence/");
+	await page.getByLabel("Node", { exact: true }).selectOption("7");
+	await page.getByLabel("WireGuard user").selectOption("42");
+	await expect(page.getByRole("button", { name: "Apply TCP MSS" })).toBeEnabled();
+	await page.getByRole("button", { name: "Apply TCP MSS" }).click();
+	await expect(page.getByText("Applied. Operation", { exact: false })).toBeVisible();
+	await expect(page.getByText("TCP MSS: 1340", { exact: true })).toBeVisible();
+	await page.getByRole("button", { name: "Rollback" }).click();
+	await expect(page.getByText("Optimization rolled back.", { exact: true })).toBeVisible();
+	await expect(page.getByText("rolled_back", { exact: true })).toBeVisible();
+	expect(mutations).toEqual([
+		{ action: "apply_tcp_mss", node_id: 7, user_id: 42, tcp_mss: 1340 },
+		{ action: "rollback", node_id: 7, user_id: 42, operation_id: "1234567890abcdef1234567890abcdef" },
+	]);
+});
+
 test("one-click diagnostics displays node evidence without a user identity", async ({ page }) => {
 	await setup(page);
 	await page.route("**/api/network-intelligence/node?**", (route) => {
