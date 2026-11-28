@@ -24,6 +24,7 @@ type SessionCapture struct {
 	done       chan struct{}
 	err        error
 	stopped    bool
+	dirty      map[Tuple]struct{}
 }
 
 type capturedTCPQuality struct {
@@ -35,7 +36,7 @@ func NewSessionCapture(tracker *Tracker, bindings []Binding, capacity int) (*Ses
 	if tracker == nil || capacity < 1 || len(bindings) == 0 || len(bindings) > capacity {
 		return nil, errors.New("tracker, bounded capacity and bindings required")
 	}
-	c := &SessionCapture{tracker: tracker, bindings: make(map[netip.Addr]Binding), flows: make(map[Tuple]Observation), quality: make(map[Tuple]*capturedTCPQuality), capacity: capacity}
+	c := &SessionCapture{tracker: tracker, bindings: make(map[netip.Addr]Binding), flows: make(map[Tuple]Observation), quality: make(map[Tuple]*capturedTCPQuality), capacity: capacity, dirty: make(map[Tuple]struct{})}
 	first := bindings[0]
 	for _, b := range bindings {
 		if b.NodeID != first.NodeID || b.Interface != first.Interface {
@@ -59,7 +60,9 @@ func NewSessionCapture(tracker *Tracker, bindings []Binding, capacity int) (*Ses
 // Consume counts each delivered observation once. Socket observation points
 // must be selected so the same packet is not delivered twice. Downloads are
 // admitted only after an upload established the tuple in this generation.
-func (c *SessionCapture) Consume(p CapturedPacket) bool {
+func (c *SessionCapture) Consume(p CapturedPacket) bool { return c.consume(p, false) }
+
+func (c *SessionCapture) consume(p CapturedPacket, deferred bool) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := time.Now().UTC()
@@ -73,7 +76,7 @@ func (c *SessionCapture) Consume(p CapturedPacket) bool {
 		address = tuple.Source.Addr()
 	}
 	b, ok := c.bindings[address]
-	if !ok {
+	if !ok || p.At.Before(b.Since) {
 		return false
 	}
 	o, exists := c.flows[tuple]
@@ -83,7 +86,7 @@ func (c *SessionCapture) Consume(p CapturedPacket) bool {
 		}
 		o = Observation{CollectorEpoch: c.tracker.Epoch(), Binding: b, Tuple: tuple}
 	}
-	if p.At.Before(o.At) || o.Sequence == math.MaxUint64 {
+	if o.Sequence == math.MaxUint64 {
 		return false
 	}
 	bytes := uint64(p.Metadata.WireLength)
@@ -101,15 +104,39 @@ func (c *SessionCapture) Consume(p CapturedPacket) bool {
 		o.UploadBytes += bytes
 	}
 	o.Sequence++
-	o.At = p.At
-	if tuple.Protocol == "tcp" {
+	reordered := p.At.Before(o.At)
+	if !reordered {
+		o.At = p.At
+	}
+	if reordered {
+		delete(c.quality, tuple)
+		o.TCPQuality = nil
+	} else if tuple.Protocol == "tcp" {
 		o.TCPQuality = c.observeTCP(tuple, p)
 	}
-	if !c.tracker.Observe(o, now) {
+	if !deferred && !c.tracker.Observe(o, now) {
 		return false
 	}
 	c.flows[tuple] = o
+	if deferred {
+		c.dirty[tuple] = struct{}{}
+	}
 	return true
+}
+
+// flush publishes cumulative counters once per observed kernel block rather
+// than acquiring the global tracker and hashing the same flow twice per packet.
+func (c *SessionCapture) flush() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now().UTC()
+	for tuple := range c.dirty {
+		if !c.stopped && !c.tracker.Observe(c.flows[tuple], now) {
+			delete(c.flows, tuple)
+			delete(c.quality, tuple)
+		}
+		delete(c.dirty, tuple)
+	}
 }
 
 func milliseconds(s QualitySummary) LatencyMilliseconds {
@@ -160,11 +187,12 @@ func (c *SessionCapture) Start(ctx context.Context, cfg CaptureConfig) error {
 	}
 	ctx, c.cancel = context.WithCancel(ctx)
 	cfg.Statistics = c.captureStatisticsCallback(cfg.Statistics)
+	cfg.afterBatch = c.flush
 	c.done = make(chan struct{})
 	done := c.done
 	ready := make(chan struct{})
 	go func() {
-		err := runCapture(ctx, cfg, func(p CapturedPacket) { c.Consume(p) }, func() { close(ready) })
+		err := runCapture(ctx, cfg, func(p CapturedPacket) { c.consume(p, true) }, func() { close(ready) })
 		c.mu.Lock()
 		c.err = err
 		c.stopped = true
@@ -175,6 +203,7 @@ func (c *SessionCapture) Start(ctx context.Context, cfg CaptureConfig) error {
 		}
 		clear(c.flows)
 		clear(c.quality)
+		clear(c.dirty)
 		c.mu.Unlock()
 		close(done)
 	}()

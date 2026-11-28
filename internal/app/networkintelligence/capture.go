@@ -19,7 +19,9 @@ type CapturedPacket struct {
 // CaptureConfig selects one observation point. Capture is started only by an
 // explicit RunCapture call, independently of the VPN forwarding path.
 type CaptureConfig struct {
-	Interface string
+	// Internal cumulative-publication hook; packet decoding remains synchronous.
+	afterBatch func()
+	Interface  string
 	// MaxPacketsPerSecond limits received observations in a one-second window.
 	// Zero preserves uncapped explicit capture. Exceeding the limit closes the
 	// observation socket and requires an explicit restart by its owner.

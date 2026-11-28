@@ -117,9 +117,15 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 		packet, err := ring.packet(iface.Index)
 		if err != nil {
 			statistics.RejectedPackets++
+			if ring.remaining == 0 && cfg.afterBatch != nil {
+				cfg.afterBatch()
+			}
 			continue
 		}
 		statistics.DecodedPackets++
 		consume(packet)
+		if ring.remaining == 0 && cfg.afterBatch != nil {
+			cfg.afterBatch()
+		}
 	}
 }
