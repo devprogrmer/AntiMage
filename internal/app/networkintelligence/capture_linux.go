@@ -84,8 +84,11 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 	if ready != nil {
 		ready()
 	}
+	now := time.Now().UTC()
 	for {
-		now := time.Now().UTC()
+		if ring.remaining == 0 {
+			now = time.Now().UTC()
+		}
 		if now.After(nextReport) {
 			report()
 			nextReport = now.Add(time.Second)
@@ -108,6 +111,11 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 			}
 			continue
 		}
+		// Read wall time after acquiring ownership of a fresh block so no
+		// packet timestamp can be newer than the validation bound.
+		if ring.remaining == 0 {
+			now = time.Now().UTC()
+		}
 		statistics.ReceivedPackets++
 		if !budget.allow(now) {
 			ring.release()
@@ -123,7 +131,11 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 			continue
 		}
 		statistics.DecodedPackets++
-		consume(packet)
+		if cfg.consumeTimed != nil {
+			cfg.consumeTimed(packet, now)
+		} else {
+			consume(packet)
+		}
 		if ring.remaining == 0 && cfg.afterBatch != nil {
 			cfg.afterBatch()
 		}

@@ -30,6 +30,7 @@ type SessionCapture struct {
 type capturedTCPQuality struct {
 	estimator *TCPQuality
 	windows   [2]*QualityWindow
+	result    TCPQualityResult
 }
 
 func NewSessionCapture(tracker *Tracker, bindings []Binding, capacity int) (*SessionCapture, error) {
@@ -63,9 +64,12 @@ func NewSessionCapture(tracker *Tracker, bindings []Binding, capacity int) (*Ses
 func (c *SessionCapture) Consume(p CapturedPacket) bool { return c.consume(p, false) }
 
 func (c *SessionCapture) consume(p CapturedPacket, deferred bool) bool {
+	return c.consumeAt(p, deferred, time.Now().UTC())
+}
+
+func (c *SessionCapture) consumeAt(p CapturedPacket, deferred bool, now time.Time) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := time.Now().UTC()
 	if c.stopped || p.Metadata.WireLength == 0 || p.At.IsZero() || p.At.After(now) || !p.At.After(now.Add(-c.tracker.timeout)) {
 		return false
 	}
@@ -112,7 +116,7 @@ func (c *SessionCapture) consume(p CapturedPacket, deferred bool) bool {
 		delete(c.quality, tuple)
 		o.TCPQuality = nil
 	} else if tuple.Protocol == "tcp" {
-		o.TCPQuality = c.observeTCP(tuple, p)
+		o.TCPQuality = c.observeTCP(tuple, p, deferred)
 	}
 	if !deferred && !c.tracker.Observe(o, now) {
 		return false
@@ -131,7 +135,12 @@ func (c *SessionCapture) flush() {
 	defer c.mu.Unlock()
 	now := time.Now().UTC()
 	for tuple := range c.dirty {
-		if !c.stopped && !c.tracker.Observe(c.flows[tuple], now) {
+		observation := c.flows[tuple]
+		if q := c.quality[tuple]; q != nil {
+			observation.TCPQuality = q.snapshot(observation.At)
+			c.flows[tuple] = observation
+		}
+		if !c.stopped && !c.tracker.Observe(observation, now) {
 			delete(c.flows, tuple)
 			delete(c.quality, tuple)
 		}
@@ -150,14 +159,14 @@ func milliseconds(s QualitySummary) LatencyMilliseconds {
 	return LatencyMilliseconds{s.Samples, convert(s.Min), convert(s.Mean), convert(s.Max), convert(s.P50), convert(s.P95), convert(s.P99), convert(s.Jitter)}
 }
 
-func (c *SessionCapture) observeTCP(tuple Tuple, packet CapturedPacket) *TCPFlowQuality {
+func (c *SessionCapture) observeTCP(tuple Tuple, packet CapturedPacket, deferred bool) *TCPFlowQuality {
 	q := c.quality[tuple]
 	previous := c.flows[tuple]
 	if q == nil || packet.At.Sub(previous.At) >= c.tracker.timeout {
 		estimator, _ := NewTCPQuality(32)
 		up, _ := NewQualityWindow(32, time.Minute)
 		down, _ := NewQualityWindow(32, time.Minute)
-		q = &capturedTCPQuality{estimator, [2]*QualityWindow{up, down}}
+		q = &capturedTCPQuality{estimator: estimator, windows: [2]*QualityWindow{up, down}}
 		c.quality[tuple] = q
 	}
 	direction := 0
@@ -169,7 +178,17 @@ func (c *SessionCapture) observeTCP(tuple Tuple, packet CapturedPacket) *TCPFlow
 	for _, rtt := range result.ACKRTT {
 		q.windows[1-direction].Add(rtt, packet.At, packet.At)
 	}
-	return &TCPFlowQuality{Method: "tcp_ack_observation", UploadACK: milliseconds(q.windows[0].Snapshot(packet.At)), DownloadACK: milliseconds(q.windows[1].Snapshot(packet.At)), Retransmissions: result.ObservedRetransmissions, DuplicateACKs: result.ObservedDuplicateACKs, DiscardedSegments: result.DiscardedSegments}
+	result.ACKRTT = nil
+	q.result = result
+	if deferred {
+		return nil
+	}
+	return q.snapshot(packet.At)
+}
+
+func (q *capturedTCPQuality) snapshot(at time.Time) *TCPFlowQuality {
+	result := q.result
+	return &TCPFlowQuality{Method: "tcp_ack_observation", UploadACK: milliseconds(q.windows[0].Snapshot(at)), DownloadACK: milliseconds(q.windows[1].Snapshot(at)), Retransmissions: result.ObservedRetransmissions, DuplicateACKs: result.ObservedDuplicateACKs, DiscardedSegments: result.DiscardedSegments}
 }
 
 // Start starts a single socket. Stop cancels and joins it before returning.
@@ -188,6 +207,7 @@ func (c *SessionCapture) Start(ctx context.Context, cfg CaptureConfig) error {
 	ctx, c.cancel = context.WithCancel(ctx)
 	cfg.Statistics = c.captureStatisticsCallback(cfg.Statistics)
 	cfg.afterBatch = c.flush
+	cfg.consumeTimed = func(p CapturedPacket, now time.Time) { c.consumeAt(p, true, now) }
 	c.done = make(chan struct{})
 	done := c.done
 	ready := make(chan struct{})
