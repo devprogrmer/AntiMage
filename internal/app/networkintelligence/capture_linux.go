@@ -71,12 +71,13 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 	if err := unix.Bind(fd, &unix.SockaddrLinklayer{Protocol: uint16(protocol), Ifindex: iface.Index}); err != nil {
 		return fmt.Errorf("bind metadata socket: %w", err)
 	}
-	if err := unix.SetsockoptTimeval(fd, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Usec: 200000}); err != nil {
-		return err
+	ring, err := newCaptureRing(fd, cfg.ReceiveBufferBytes)
+	if err != nil {
+		return fmt.Errorf("create metadata ring: %w", err)
 	}
-	batch := new(captureBatch)
+	defer ring.close()
+	statistics.ReceiveBufferBytes = len(ring.data)
 	budget := captureBudget{limit: cfg.MaxPacketsPerSecond}
-	defer batch.clear()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -84,48 +85,41 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 		ready()
 	}
 	for {
-		if time.Now().After(nextReport) {
+		now := time.Now().UTC()
+		if now.After(nextReport) {
 			report()
-			nextReport = time.Now().Add(time.Second)
+			nextReport = now.Add(time.Second)
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		count, err := batch.receive(fd)
-		if errors.Is(err, unix.EINTR) || errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EWOULDBLOCK) {
+		if !ring.ready() {
+			poll := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+			_, err := unix.Poll(poll, 200)
+			if errors.Is(err, unix.EINTR) {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("poll metadata ring: %w", err)
+			}
+			if poll[0].Revents&(unix.POLLERR|unix.POLLHUP|unix.POLLNVAL) != 0 {
+				return errors.New("metadata ring socket failed")
+			}
 			continue
 		}
+		statistics.ReceivedPackets++
+		if !budget.allow(now) {
+			ring.release()
+			statistics.BudgetExceeded = true
+			return ErrCaptureBudget
+		}
+		metadata, outgoing, err := decodeRingFrame(ring.frame(), iface.Index)
+		ring.release()
 		if err != nil {
-			return fmt.Errorf("receive metadata: %w", err)
+			statistics.RejectedPackets++
+			continue
 		}
-		for i := 0; i < count; i++ {
-			message := batch.messages[i]
-			n := int(message.Length)
-			buffer := batch.buffers[i][:]
-			statistics.ReceivedPackets++
-			if !budget.allow(time.Now()) {
-				statistics.BudgetExceeded = true
-				return ErrCaptureBudget
-			}
-			if message.Header.Flags&unix.MSG_TRUNC != 0 || n == 0 || n > len(buffer) {
-				statistics.RejectedPackets++
-				clear(buffer)
-				continue
-			}
-			link := batch.sources[i]
-			if message.Header.Namelen < uint32(20) || link.Family != unix.AF_PACKET || int(link.Ifindex) != iface.Index {
-				statistics.RejectedPackets++
-				clear(buffer[:n])
-				continue
-			}
-			metadata, err := DecodePacket(buffer[:n])
-			clear(buffer[:n])
-			if err != nil {
-				statistics.RejectedPackets++
-				continue
-			}
-			statistics.DecodedPackets++
-			consume(CapturedPacket{Metadata: metadata, At: time.Now().UTC(), Outgoing: link.Pkttype == unix.PACKET_OUTGOING})
-		}
+		statistics.DecodedPackets++
+		consume(CapturedPacket{Metadata: metadata, At: now, Outgoing: outgoing})
 	}
 }
