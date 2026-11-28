@@ -60,7 +60,15 @@ try {
 			page.getByLabel("History account", { exact: true }).selectOption("42"),
 		]);
 	} catch (error) {
-		throw new Error(`history request was not observed; API requests: ${apiRequests.join(" | ") || "none"}; browser failures: ${failedRequests.join(" | ") || "none"}; cause: ${error}`);
+		const historyState = await page.evaluate(() => {
+			const select = document.querySelector("#network-history-user");
+			return {
+				value: select?.value ?? null,
+				options: select ? Array.from(select.options, (option) => `${option.value}:${option.text}`) : [],
+				pageText: document.body.innerText.slice(-2000),
+			};
+		});
+		throw new Error(`history request was not observed; API requests: ${apiRequests.join(" | ") || "none"}; browser failures: ${failedRequests.join(" | ") || "none"}; history select: ${JSON.stringify(historyState)}; cause: ${error}`);
 	}
 	expect(response.status()).toBe(200);
 	const sample = await response.json();

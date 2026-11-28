@@ -135,8 +135,8 @@ if [ "$1" = network-intelligence ]; then
   ANTIMAGE_NI_RESOURCE_E2E=1 ANTIMAGE_NI_RESOURCE_PACED=1 \
     bin/networkintelligence-resource.test -test.run '^TestCaptureResourceComparison$' -test.v \
     | tee evidence/network-intelligence-resource.log
-  bin/nodeagent.test -test.v -test.run 'TestNetworkIntelligence|TestNetworkInfrastructure'
   bin/api.test -test.v -test.run '^TestNetworkOptimizationAuditRollbackIsIdempotent$'
+  bin/nodeagent.test -test.v -test.run 'TestNetworkIntelligence|TestNetworkInfrastructure'
   ANTIMAGE_NI_WG_RESOURCE_E2E=1 bin/nodeagent-resource.test -test.run '^TestNetworkIntelligenceWireGuardForwardingResourceComparison$' -test.v \
     | tee evidence/network-intelligence-wireguard-forwarding-resource.log
   exit
