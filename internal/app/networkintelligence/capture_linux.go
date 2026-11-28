@@ -74,9 +74,9 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 	if err := unix.SetsockoptTimeval(fd, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Usec: 200000}); err != nil {
 		return err
 	}
-	buffer := make([]byte, 65535)
+	batch := new(captureBatch)
 	budget := captureBudget{limit: cfg.MaxPacketsPerSecond}
-	defer clear(buffer)
+	defer batch.clear()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -91,36 +91,41 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		n, _, flags, source, err := unix.Recvmsg(fd, buffer, nil, 0)
+		count, err := batch.receive(fd)
 		if errors.Is(err, unix.EINTR) || errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EWOULDBLOCK) {
 			continue
 		}
 		if err != nil {
 			return fmt.Errorf("receive metadata: %w", err)
 		}
-		statistics.ReceivedPackets++
-		if !budget.allow(time.Now()) {
-			statistics.BudgetExceeded = true
-			return ErrCaptureBudget
-		}
-		if flags&unix.MSG_TRUNC != 0 || n == 0 {
-			statistics.RejectedPackets++
-			clear(buffer)
-			continue
-		}
-		link, ok := source.(*unix.SockaddrLinklayer)
-		if !ok || link.Ifindex != iface.Index {
-			statistics.RejectedPackets++
+		for i := 0; i < count; i++ {
+			message := batch.messages[i]
+			n := int(message.Length)
+			buffer := batch.buffers[i][:]
+			statistics.ReceivedPackets++
+			if !budget.allow(time.Now()) {
+				statistics.BudgetExceeded = true
+				return ErrCaptureBudget
+			}
+			if message.Header.Flags&unix.MSG_TRUNC != 0 || n == 0 || n > len(buffer) {
+				statistics.RejectedPackets++
+				clear(buffer)
+				continue
+			}
+			link := batch.sources[i]
+			if message.Header.Namelen < uint32(20) || link.Family != unix.AF_PACKET || int(link.Ifindex) != iface.Index {
+				statistics.RejectedPackets++
+				clear(buffer[:n])
+				continue
+			}
+			metadata, err := DecodePacket(buffer[:n])
 			clear(buffer[:n])
-			continue
+			if err != nil {
+				statistics.RejectedPackets++
+				continue
+			}
+			statistics.DecodedPackets++
+			consume(CapturedPacket{Metadata: metadata, At: time.Now().UTC(), Outgoing: link.Pkttype == unix.PACKET_OUTGOING})
 		}
-		metadata, err := DecodePacket(buffer[:n])
-		clear(buffer[:n])
-		if err != nil {
-			statistics.RejectedPackets++
-			continue
-		}
-		statistics.DecodedPackets++
-		consume(CapturedPacket{Metadata: metadata, At: time.Now().UTC(), Outgoing: link.Pkttype == unix.PACKET_OUTGOING})
 	}
 }

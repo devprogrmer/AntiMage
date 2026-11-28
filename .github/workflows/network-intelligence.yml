@@ -95,11 +95,13 @@ jobs:
         run: |
           for profile in "$RUNNER_TEMP/antimage-guest-failure/"*.pprof; do
             [ -f "$profile" ] || continue
-            go tool pprof -top "$RUNNER_TEMP/nodeagent-resource.test" "$profile" > "$profile.top.txt"
+            go tool pprof -top "$RUNNER_TEMP/nodeagent-resource.test" "$profile" > "$RUNNER_TEMP/$(basename "$profile").top.txt"
           done
       - name: Retain isolated guest evidence and resource measurements
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: network-intelligence-guest-evidence
-          path: ${{ runner.temp }}/antimage-guest-failure/
+          path: |
+            ${{ runner.temp }}/antimage-guest-failure/
+            ${{ runner.temp }}/*.pprof.top.txt
