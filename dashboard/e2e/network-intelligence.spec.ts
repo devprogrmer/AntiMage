@@ -71,10 +71,22 @@ test("keeps selected history readable after presence disappears", async ({ page 
 	const node = page.getByLabel("Node", { exact: true });
 	const account = page.getByLabel("History account", { exact: true });
 	await node.selectOption("7");
-	await account.selectOption("42");
+	const [historyResponse] = await Promise.all([
+		page.waitForResponse((response) => {
+			const url = new URL(response.url());
+			return url.pathname.endsWith("/network-intelligence/history") && url.searchParams.get("node_id") === "7" && url.searchParams.get("user_id") === "42";
+		}),
+		account.selectOption("42"),
+	]);
+	expect(historyResponse.status()).toBe(200);
+	expect(await historyResponse.json()).toMatchObject({ available: true, storage: "durable", points: [{ node_id: 7, user_id: 42 }] });
 	await expect(page.getByText("Observed samples", { exact: true })).toBeVisible();
 	online = false;
-	await page.getByRole("button", { name: "Refresh", exact: true }).click();
+	const [presenceResponse] = await Promise.all([
+		page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/network-intelligence/presence")),
+		page.getByRole("button", { name: "Refresh", exact: true }).click(),
+	]);
+	expect((await presenceResponse.json()).observations).toEqual([]);
 	await expect(account.locator("option:checked")).toHaveText("Account 42 (no recent presence)");
 	await expect(node).toHaveValue("7");
 	await expect(account).toHaveValue("42");
@@ -138,7 +150,15 @@ test("account history preserves unavailable measurements and reports retention l
 		] }));
 	await page.goto("/dashboard/network-intelligence/");
 	await page.getByLabel("Node", { exact: true }).selectOption("7");
-	await page.getByLabel("History account", { exact: true }).selectOption("42");
+	const [historyResponse] = await Promise.all([
+		page.waitForResponse((response) => {
+			const url = new URL(response.url());
+			return url.pathname.endsWith("/network-intelligence/history") && url.searchParams.get("node_id") === "7" && url.searchParams.get("user_id") === "42";
+		}),
+		page.getByLabel("History account", { exact: true }).selectOption("42"),
+	]);
+	expect(historyResponse.status()).toBe(200);
+	expect(await historyResponse.json()).toMatchObject({ available: true, storage: "volatile", truncated: true, points: [{ ack_rtt_ms: 123.4 }, { retransmission_delta: 1 }] });
 	await expect(page.getByText("History is held in memory and clears when the node restarts.")).toBeVisible();
 	await expect(page.getByText("The response limit was reached. This account history may be incomplete.")).toBeVisible();
 	await expect(page.getByText("Repeated TCP sequence spans were observed", { exact: false })).toBeVisible();
