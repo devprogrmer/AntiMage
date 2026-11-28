@@ -17,6 +17,35 @@ async function setup(page: Page, role = "full_access", disabled = false) {
 	});
 }
 
+async function setupHistoryScenario(
+	page: Page,
+	getPresence: () => boolean,
+	history: () => unknown,
+) {
+	// Replace the broad baseline route with one URL-dispatching fixture. This
+	// keeps the history response deterministic alongside the periodic presence
+	// refreshes made by the page.
+	await page.unroute("**/api/**");
+	await page.route("**/api/**", async (route) => {
+		const url = new URL(route.request().url());
+		let body: unknown = {};
+		if (url.pathname.endsWith("/auth/session")) {
+			body = { state: "active", admin: { id: 1, username: "test-admin", role: "full_access", status: "active" } };
+		} else if (url.pathname.endsWith("/network-intelligence/presence")) {
+			body = { observations: getPresence() ? [
+				{ user_id: 42, username: "traffic-user", node_id: 7, node_name: "isolated-node", vpn_protocol: "wireguard", last_seen_at: new Date().toISOString() },
+			] : [], limit: 250 };
+		} else if (url.pathname.endsWith("/network-intelligence/node")) {
+			body = { available: false };
+		} else if (url.pathname.endsWith("/network-intelligence/history")) {
+			expect(url.searchParams.get("node_id")).toBe("7");
+			expect(url.searchParams.get("user_id")).toBe("42");
+			body = history();
+		}
+		await route.fulfill({ json: body });
+	});
+}
+
 test("full access displays presence and unavailable node telemetry", async ({ page }) => {
 	await setup(page);
 	await page.goto("/dashboard/network-intelligence/");
@@ -35,16 +64,9 @@ test("disabled panel reports feature flag status", async ({ page }) => {
 test("keeps selected history readable after presence disappears", async ({ page }) => {
 	await setup(page);
 	let online = true;
-	await page.route("**/api/network-intelligence/presence", (route) =>
-		route.fulfill({ json: { observations: online ? [
-			{ user_id: 42, username: "traffic-user", node_id: 7, node_name: "isolated-node", vpn_protocol: "wireguard", last_seen_at: new Date().toISOString() },
-		] : [], limit: 250 } }),
-	);
-	await page.route("**/api/network-intelligence/history?**", (route) =>
-		route.fulfill({ json: { available: true, storage: "durable", collection: "background", truncated: false, points: [
+	await setupHistoryScenario(page, () => online, () => ({ available: true, storage: "durable", collection: "background", truncated: false, points: [
 			{ node_id: 7, user_id: 42, at: "2026-11-27T06:00:00Z", method: "tcp_ack_upload_observation", ack_rtt_ms: 42.5, jitter_ms: null, retransmission_delta: null, findings: [] },
-		] } }),
-	);
+		] }));
 	await page.goto("/dashboard/network-intelligence/");
 	const node = page.getByLabel("Node", { exact: true });
 	const account = page.getByLabel("History account", { exact: true });
@@ -110,15 +132,10 @@ test("one-click diagnostics displays node evidence without a user identity", asy
 
 test("account history preserves unavailable measurements and reports retention limits", async ({ page }) => {
 	await setup(page);
-	await page.route("**/api/network-intelligence/history?**", async (route) => {
-		const query = new URL(route.request().url()).searchParams;
-		expect(query.get("node_id")).toBe("7");
-		expect(query.get("user_id")).toBe("42");
-		await route.fulfill({ json: { available: true, storage: "volatile", collection: "on_telemetry_read", truncated: true, points: [
+	await setupHistoryScenario(page, () => true, () => ({ available: true, storage: "volatile", collection: "on_telemetry_read", truncated: true, points: [
 			{ node_id: 7, user_id: 42, at: "2026-11-27T06:00:00Z", method: "tcp_ack_upload_observation", ack_rtt_ms: 123.4, jitter_ms: null, retransmission_delta: null, findings: [] },
 			{ node_id: 7, user_id: 42, at: "2026-11-27T06:00:05Z", method: "tcp_ack_upload_observation", ack_rtt_ms: null, jitter_ms: null, retransmission_delta: 1, findings: [{ code: "observed_tcp_retransmission", severity: "warning", confidence: "observed", evidence: "Repeated TCP sequence spans were observed", recommendation: "Inspect capture completeness and both network directions" }] },
-		] } });
-	});
+		] }));
 	await page.goto("/dashboard/network-intelligence/");
 	await page.getByLabel("Node", { exact: true }).selectOption("7");
 	await page.getByLabel("History account", { exact: true }).selectOption("42");
