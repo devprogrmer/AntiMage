@@ -22,6 +22,12 @@ type PacketMetadata struct {
 // transport attribution cannot be established from their fixed headers alone.
 // Checksums are not validated here because capture offload can defer them.
 func DecodePacket(packet []byte) (PacketMetadata, error) {
+	return decodePacketHeaders(packet, uint32(len(packet)))
+}
+
+// decodePacketHeaders accepts a bounded header snapshot only when the capture
+// source supplies the original datagram length independently of the snapshot.
+func decodePacketHeaders(packet []byte, wireLength uint32) (PacketMetadata, error) {
 	var metadata PacketMetadata
 	if len(packet) == 0 {
 		return metadata, errors.New("empty IP packet")
@@ -36,7 +42,7 @@ func DecodePacket(packet []byte) (PacketMetadata, error) {
 		}
 		offset = int(packet[0]&15) * 4
 		total = int(binary.BigEndian.Uint16(packet[2:4]))
-		if offset < 20 || total < offset || len(packet) < total {
+		if offset < 20 || total < offset || offset > len(packet) || uint32(total) > wireLength {
 			return metadata, errors.New("invalid IPv4 length")
 		}
 		fragment := binary.BigEndian.Uint16(packet[6:8])
@@ -51,7 +57,7 @@ func DecodePacket(packet []byte) (PacketMetadata, error) {
 			return metadata, errors.New("truncated IPv6 header")
 		}
 		payload := int(binary.BigEndian.Uint16(packet[4:6]))
-		if payload == 0 || len(packet) < 40+payload {
+		if payload == 0 || uint32(40+payload) > wireLength {
 			return metadata, errors.New("invalid IPv6 length")
 		}
 		offset, total = 40, 40+payload
@@ -61,7 +67,8 @@ func DecodePacket(packet []byte) (PacketMetadata, error) {
 	default:
 		return metadata, errors.New("unsupported IP version")
 	}
-	transport := packet[offset:total]
+	transport := packet[offset:min(total, len(packet))]
+	transportLength := total - offset
 	var name string
 	switch protocol {
 	case 6:
@@ -76,13 +83,13 @@ func DecodePacket(packet []byte) (PacketMetadata, error) {
 		metadata.TCPSequence = binary.BigEndian.Uint32(transport[4:8])
 		metadata.TCPAcknowledgment = binary.BigEndian.Uint32(transport[8:12])
 		metadata.TCPFlags = transport[13]
-		metadata.TransportPayloadLength = uint32(len(transport) - headerLength)
+		metadata.TransportPayloadLength = uint32(transportLength - headerLength)
 	case 17:
 		if len(transport) < 8 {
 			return metadata, errors.New("truncated UDP header")
 		}
 		udpLength := int(binary.BigEndian.Uint16(transport[4:6]))
-		if udpLength < 8 || udpLength != len(transport) {
+		if udpLength < 8 || udpLength != transportLength {
 			return metadata, errors.New("invalid UDP length")
 		}
 		name = "udp"

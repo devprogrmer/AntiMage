@@ -15,6 +15,9 @@ import (
 // timeout affects telemetry delivery only; RTT uses each kernel packet timestamp.
 const captureRingFrameSize = 256 * 1024
 
+// IPv4 with maximum IP and TCP options needs at most 120 header bytes.
+const captureHeaderBytes = 128
+
 type captureRing struct {
 	data      []byte
 	index     int
@@ -25,6 +28,12 @@ type captureRing struct {
 
 func newCaptureRing(fd, requested int) (*captureRing, error) {
 	if err := unix.SetsockoptInt(fd, unix.SOL_PACKET, unix.PACKET_VERSION, unix.TPACKET_V3); err != nil {
+		return nil, err
+	}
+	// Socket-local classic BPF truncates copies, never packets in the VPN path.
+	// Every packet is still observed; original lengths remain in tpacket headers.
+	filter := []unix.SockFilter{{Code: unix.BPF_RET | unix.BPF_K, K: captureHeaderBytes}}
+	if err := unix.SetsockoptSockFprog(fd, unix.SOL_SOCKET, unix.SO_ATTACH_FILTER, &unix.SockFprog{Len: uint16(len(filter)), Filter: &filter[0]}); err != nil {
 		return nil, err
 	}
 	blocks := max(2, requested/captureRingFrameSize)
@@ -55,13 +64,13 @@ func decodeRingFrame(frame []byte, interfaceIndex int) (CapturedPacket, error) {
 	net := uint64(binary.NativeEndian.Uint16(frame[26:28]))
 	sec := binary.NativeEndian.Uint32(frame[4:8])
 	nsec := binary.NativeEndian.Uint32(frame[8:12])
-	if snap == 0 || snap != wire || net < 68 || net > uint64(len(frame)) || snap > uint64(len(frame))-net || sec == 0 || nsec >= 1000000000 {
+	if snap == 0 || snap != min(wire, captureHeaderBytes) || net < 68 || net > uint64(len(frame)) || snap > uint64(len(frame))-net || sec == 0 || nsec >= 1000000000 {
 		return CapturedPacket{}, errors.New("invalid ring packet bounds or timestamp")
 	}
 	if binary.NativeEndian.Uint16(frame[48:50]) != unix.AF_PACKET || int(int32(binary.NativeEndian.Uint32(frame[52:56]))) != interfaceIndex {
 		return CapturedPacket{}, errors.New("ring interface mismatch")
 	}
-	metadata, err := DecodePacket(frame[net : net+snap])
+	metadata, err := decodePacketHeaders(frame[net:net+snap], uint32(wire))
 	return CapturedPacket{Metadata: metadata, Outgoing: frame[58] == unix.PACKET_OUTGOING, At: time.Unix(int64(sec), int64(nsec)).UTC()}, err
 }
 
