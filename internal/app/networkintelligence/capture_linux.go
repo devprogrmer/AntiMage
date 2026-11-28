@@ -55,7 +55,7 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 	}
 	statistics := CaptureStatistics{ReceiveBufferBytes: actualBuffer}
 	report := func() {
-		kernel, err := unix.GetsockoptTpacketStats(fd, unix.SOL_PACKET, unix.PACKET_STATISTICS)
+		kernel, err := unix.GetsockoptTpacketStatsV3(fd, unix.SOL_PACKET, unix.PACKET_STATISTICS)
 		statistics.KernelStatisticsAvailable = err == nil
 		if err == nil {
 			// PACKET_STATISTICS resets kernel counters on every read.
@@ -114,13 +114,12 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 			statistics.BudgetExceeded = true
 			return ErrCaptureBudget
 		}
-		metadata, outgoing, err := decodeRingFrame(ring.frame(), iface.Index)
-		ring.release()
+		packet, err := ring.packet(iface.Index)
 		if err != nil {
 			statistics.RejectedPackets++
 			continue
 		}
 		statistics.DecodedPackets++
-		consume(CapturedPacket{Metadata: metadata, At: now, Outgoing: outgoing})
+		consume(packet)
 	}
 }

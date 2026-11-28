@@ -6,9 +6,10 @@ import (
 	"time"
 )
 
-// CapturedPacket contains metadata only. At is userspace receipt time, so it
-// cannot establish which address ownership epoch applied when a queued packet
-// entered the kernel. Collectors need a lifecycle barrier before attribution.
+// CapturedPacket contains metadata only. Linux RX-ring capture uses the
+// kernel packet timestamp; externally supplied observations must also provide
+// their capture time. Timestamp alone does not authenticate an ownership epoch:
+// collectors still need a lifecycle barrier before attribution.
 type CapturedPacket struct {
 	Metadata PacketMetadata
 	At       time.Time

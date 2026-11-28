@@ -47,62 +47,105 @@ func TestCaptureRingIdleWaitDoesNotSpin(t *testing.T) {
 }
 
 func ringFixture() []byte {
-	frame := make([]byte, captureRingFrameSize)
+	frame := make([]byte, 256)
 	packet := packetFixture(false, false)
-	binary.NativeEndian.PutUint32(frame, unix.TP_STATUS_USER)
-	binary.NativeEndian.PutUint32(frame[4:], uint32(len(packet)))
-	binary.NativeEndian.PutUint32(frame[8:], uint32(len(packet)))
-	binary.NativeEndian.PutUint16(frame[14:], 64)
-	binary.NativeEndian.PutUint16(frame[32:], unix.AF_PACKET)
-	binary.NativeEndian.PutUint32(frame[36:], 7)
-	frame[42] = unix.PACKET_OUTGOING
-	copy(frame[64:], packet)
+	binary.NativeEndian.PutUint32(frame[4:], 1795850000)
+	binary.NativeEndian.PutUint32(frame[8:], 123456789)
+	binary.NativeEndian.PutUint32(frame[12:], uint32(len(packet)))
+	binary.NativeEndian.PutUint32(frame[16:], uint32(len(packet)))
+	binary.NativeEndian.PutUint16(frame[26:], 80)
+	binary.NativeEndian.PutUint16(frame[48:], unix.AF_PACKET)
+	binary.NativeEndian.PutUint32(frame[52:], 7)
+	frame[58] = unix.PACKET_OUTGOING
+	copy(frame[80:], packet)
 	return frame
 }
 
 func TestCaptureRingMetadataBoundsAndRelease(t *testing.T) {
-	frame := ringFixture()
+	record := ringFixture()
 	want, _ := DecodePacket(packetFixture(false, false))
-	got, outgoing, err := decodeRingFrame(frame, 7)
-	if err != nil || !outgoing || got != want {
-		t.Fatalf("metadata=%+v outgoing=%t err=%v", got, outgoing, err)
+	packet, err := decodeRingFrame(record, 7)
+	if err != nil || !packet.Outgoing || packet.Metadata != want || !packet.At.Equal(time.Unix(1795850000, 123456789)) {
+		t.Fatalf("packet=%+v err=%v", packet, err)
 	}
-	r := captureRing{data: frame}
+	block := make([]byte, captureRingFrameSize)
+	binary.NativeEndian.PutUint32(block, unix.TPACKET_V3)
+	binary.NativeEndian.PutUint32(block[8:], unix.TP_STATUS_USER)
+	binary.NativeEndian.PutUint32(block[12:], 2)
+	binary.NativeEndian.PutUint32(block[16:], 48)
+	binary.NativeEndian.PutUint32(block[20:], 560)
+	copy(block[48:], record)
+	copy(block[304:], record)
+	binary.NativeEndian.PutUint32(block[48:], 256)
+	binary.NativeEndian.PutUint32(block[304+8:], 143456789)
+	r := captureRing{data: block}
 	if !r.ready() {
-		t.Fatal("user frame not ready")
+		t.Fatal("block not owned by user")
 	}
-	r.release()
-	if r.ready() || r.index != 0 {
-		t.Fatal("frame ownership not returned or cursor failed to wrap")
+	first, err := r.packet(7)
+	if err != nil || first.Metadata != want || !r.ready() {
+		t.Fatalf("first packet=%+v err=%v", first, err)
 	}
-	for _, value := range frame {
-		if value != 0 {
-			t.Fatal("frame retained packet data")
+	second, err := r.packet(7)
+	if err != nil || second.Metadata != want || second.At.Sub(first.At) != 20*time.Millisecond {
+		t.Fatalf("kernel packet timestamps not preserved: %v %v %v", first.At, second.At, err)
+	}
+	if r.ready() || r.index != 0 || r.remaining != 0 {
+		t.Fatal("block not returned or wrapped")
+	}
+	for _, v := range block[12:] {
+		if v != 0 {
+			t.Fatal("retained packet data")
 		}
 	}
-	if got != want {
-		t.Fatal("metadata retained shared frame memory")
+	if first.Metadata != want {
+		t.Fatal("metadata retained mapped memory")
 	}
 }
 
 func TestCaptureRingRejectsTruncationAndInvalidOffsets(t *testing.T) {
 	for _, change := range []func([]byte){
-		func(b []byte) { binary.NativeEndian.PutUint32(b[8:], 1) },
+		func(b []byte) { binary.NativeEndian.PutUint32(b[12:], 1) },
 		func(b []byte) {
-			binary.NativeEndian.PutUint32(b[8:], ^uint32(0))
-			binary.NativeEndian.PutUint32(b[4:], ^uint32(0))
+			binary.NativeEndian.PutUint32(b[12:], ^uint32(0))
+			binary.NativeEndian.PutUint32(b[16:], ^uint32(0))
 		},
-		func(b []byte) { binary.NativeEndian.PutUint16(b[14:], 0) },
-		func(b []byte) { binary.NativeEndian.PutUint32(b[36:], 8) },
-		func(b []byte) { binary.NativeEndian.PutUint16(b[32:], unix.AF_INET) },
+		func(b []byte) { binary.NativeEndian.PutUint16(b[26:], 0) },
+		func(b []byte) { binary.NativeEndian.PutUint32(b[52:], 8) },
+		func(b []byte) { binary.NativeEndian.PutUint16(b[48:], unix.AF_INET) },
+		func(b []byte) { binary.NativeEndian.PutUint32(b[8:], 1000000000) },
 	} {
 		frame := ringFixture()
 		change(frame)
-		if _, _, err := decodeRingFrame(frame, 7); err == nil {
-			t.Fatal("invalid ring frame accepted")
+		if _, err := decodeRingFrame(frame, 7); err == nil {
+			t.Fatal("invalid record accepted")
 		}
 	}
-	if _, _, err := decodeRingFrame(make([]byte, 51), 7); err == nil {
-		t.Fatal("short frame accepted")
+	if _, err := decodeRingFrame(make([]byte, 67), 7); err == nil {
+		t.Fatal("short record accepted")
+	}
+}
+
+func TestCaptureRingRejectsInvalidBlockAndStride(t *testing.T) {
+	for _, change := range []func([]byte){
+		func(b []byte) { binary.NativeEndian.PutUint32(b[12:], 0) },
+		func(b []byte) { binary.NativeEndian.PutUint32(b[16:], ^uint32(0)) },
+		func(b []byte) { binary.NativeEndian.PutUint32(b[20:], ^uint32(0)) },
+		func(b []byte) { binary.NativeEndian.PutUint32(b[48:], 1) },
+	} {
+		block := make([]byte, captureRingFrameSize)
+		binary.NativeEndian.PutUint32(block, unix.TPACKET_V3)
+		binary.NativeEndian.PutUint32(block[8:], unix.TP_STATUS_USER)
+		binary.NativeEndian.PutUint32(block[12:], 2)
+		binary.NativeEndian.PutUint32(block[16:], 48)
+		binary.NativeEndian.PutUint32(block[20:], 560)
+		change(block)
+		r := captureRing{data: block}
+		if _, err := r.packet(7); err == nil {
+			t.Fatal("invalid block/stride accepted")
+		}
+		if r.ready() {
+			t.Fatal("invalid block not released")
+		}
 	}
 }
