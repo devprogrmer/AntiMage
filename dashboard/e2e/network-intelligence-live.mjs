@@ -11,6 +11,15 @@ const browser = await chromium.launch({
 });
 try {
 	const page = await browser.newPage();
+	const failedRequests = [];
+	const apiRequests = [];
+	page.on("request", (request) => {
+		if (new URL(request.url()).pathname.startsWith("/api/")) {
+			apiRequests.push(`${request.method()} ${request.url()}`);
+		}
+	});
+	page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()}: ${request.failure()?.errorText || "failed"}`));
+	page.on("pageerror", (error) => failedRequests.push(`page error: ${error.message}`));
 	await page.addInitScript(() => localStorage.setItem("i18nextLng", "en"));
 	const login = await page.request.post(origin + "/api/auth/login", {
 		headers: { Origin: origin },
@@ -40,14 +49,19 @@ try {
 	} else {
 		await node.selectOption("7");
 	}
-	const [response] = await Promise.all([
-		page.waitForResponse((res) => {
-			const url = new URL(res.url());
-			return url.origin === origin && url.pathname === "/api/network-intelligence/history"
-				&& url.searchParams.get("node_id") === "7" && url.searchParams.get("user_id") === "42";
-		}),
-		page.getByLabel("History account", { exact: true }).selectOption("42"),
-	]);
+	let response;
+	try {
+		[response] = await Promise.all([
+			page.waitForResponse((res) => {
+				const url = new URL(res.url());
+				return url.origin === origin && url.pathname === "/api/network-intelligence/history"
+					&& url.searchParams.get("node_id") === "7" && url.searchParams.get("user_id") === "42";
+			}),
+			page.getByLabel("History account", { exact: true }).selectOption("42"),
+		]);
+	} catch (error) {
+		throw new Error(`history request was not observed; API requests: ${apiRequests.join(" | ") || "none"}; browser failures: ${failedRequests.join(" | ") || "none"}; cause: ${error}`);
+	}
 	expect(response.status()).toBe(200);
 	const sample = await response.json();
 	expect(sample.storage).toBe("durable");

@@ -126,7 +126,10 @@ func TestNetworkIntelligenceOptimizationApplyRollbackInDisposableGuest(t *testin
 
 	// Existing terminal mangle verdicts can bypass appended rules; they must
 	// cause a safe refusal and be left untouched.
-	if err := agent.networkIntelligenceTracker.Bind(binding); err != nil {
+	conflictBinding := binding
+	conflictBinding.Generation++
+	conflictBinding.Since = time.Now().UTC()
+	if err := agent.networkIntelligenceTracker.Bind(conflictBinding); err != nil {
 		t.Fatal(err)
 	}
 	run("iptables", "-w", "-t", "mangle", "-I", "POSTROUTING", "1", "-s", "10.77.0.2", "-j", "ACCEPT")
