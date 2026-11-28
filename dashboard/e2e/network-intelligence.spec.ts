@@ -1,0 +1,229 @@
+import { expect, test, type Page } from "@playwright/test";
+
+test("UDP evidence distinguishes transaction RTT, server query and unknown traffic", async ({ page }) => {
+	await setup(page);
+	const empty = { samples: 0, mean_ms: null, p95_ms: null, jitter_ms: null };
+	const base = { user_id: 42, node_id: 7, interface: "wg-test", source: "10.0.0.2:45000", protocol: "udp", upload_packets: 2, download_packets: 2, upload_bytes: 100, download_bytes: 100, observed_at: new Date().toISOString() };
+	await page.route("**/api/network-intelligence/node?**", route => route.fulfill({ json: { available: true, flows: [
+		{ ...base, destination: "192.0.2.1:3478", application: { application: "STUN connectivity checks", confidence: "probable", revision: "udp-protocols-v1", evidence: ["Matched request/response transaction identifier"] }, udp_quality: { method: "udp_request_response_observation", protocol: "stun_binding", upload_exchange: { ...empty, samples: 2, mean_ms: 23, jitter_ms: 2 }, download_exchange: empty, packet_loss: null, limited: false } },
+		{ ...base, destination: "192.0.2.2:27015", application: { application: "Counter-Strike 2 (server query)", confidence: "probable", evidence: ["Server-advertised full AppID 730; server browsing is not proof of playing"] }, udp_quality: { method: "udp_request_response_observation", protocol: "source_server_query", upload_exchange: empty, download_exchange: empty, packet_loss: null, limited: false } },
+		{ ...base, destination: "162.254.199.170:27051", application: { application: "Unknown", confidence: "unknown", evidence: [] }, udp_quality: null },
+	] } }));
+	await page.goto("/dashboard/network-intelligence/");
+	await page.getByLabel("Node", { exact: true }).selectOption("7");
+	const stun = page.getByRole("row").filter({ hasText: "192.0.2.1:3478" });
+	await expect(stun.getByRole("cell", { name: "23.0 ms Samples: 2", exact: true })).toBeVisible();
+	await expect(stun.getByText("UDP transaction timing; not in-game ping. Packet loss: N/A.")).toBeVisible();
+	await stun.getByText("Detection evidence", { exact: true }).click();
+	await expect(stun.getByText("Matched request/response transaction identifier")).toBeVisible();
+	const query = page.getByRole("row").filter({ hasText: "192.0.2.2:27015" });
+	await expect(query.getByText("Counter-Strike 2 (server query)", { exact: true })).toBeVisible();
+	await expect(query.getByText(/ms$/)).toHaveCount(0);
+	const unknown = page.getByRole("row").filter({ hasText: "162.254.199.170:27051" });
+	await expect(unknown.getByText("Unknown", { exact: true })).toBeVisible();
+	await expect(unknown.getByText(/ms$/)).toHaveCount(0);
+});
+
+// These UI fixtures validate rendering and permission handling. Real capture
+// and backend attribution are covered by separate Linux traffic tests.
+async function setup(page: Page, role = "full_access", disabled = false) {
+	await page.addInitScript(() => localStorage.setItem("i18nextLng", "en"));
+	await page.route("**/api/**", async (route) => {
+		const path = new URL(route.request().url()).pathname;
+		let body: unknown = {};
+		if (path.endsWith("/auth/session")) body = { state: "active", admin: { id: 1, username: "test-admin", role, status: "active" } };
+		if (path.endsWith("/network-intelligence/presence")) {
+			if (disabled) { await route.fulfill({ status: 404, json: { detail: "disabled" } }); return; }
+			body = { observations: [{ user_id: 42, username: "traffic-user", node_id: 7, node_name: "isolated-node", vpn_protocol: "wireguard", last_seen_at: new Date().toISOString() }], limit: 250 };
+		}
+		if (path.endsWith("/network-intelligence/node")) body = { available: false };
+		await route.fulfill({ json: body });
+	});
+}
+
+async function setupHistoryScenario(
+	page: Page,
+	getPresence: () => boolean,
+	history: () => unknown,
+) {
+	// Replace the broad baseline route with one URL-dispatching fixture. This
+	// keeps the history response deterministic alongside the periodic presence
+	// refreshes made by the page.
+	await page.unroute("**/api/**");
+	await page.route("**/api/**", async (route) => {
+		const url = new URL(route.request().url());
+		let body: unknown = {};
+		if (url.pathname.endsWith("/auth/session")) {
+			body = { state: "active", admin: { id: 1, username: "test-admin", role: "full_access", status: "active" } };
+		} else if (url.pathname.endsWith("/network-intelligence/presence")) {
+			body = { observations: getPresence() ? [
+				{ user_id: 42, username: "traffic-user", node_id: 7, node_name: "isolated-node", vpn_protocol: "wireguard", last_seen_at: new Date().toISOString() },
+			] : [], limit: 250 };
+		} else if (url.pathname.endsWith("/network-intelligence/node")) {
+			body = { available: false };
+		} else if (url.pathname.endsWith("/network-intelligence/history")) {
+			expect(url.searchParams.get("node_id")).toBe("7");
+			expect(url.searchParams.get("user_id")).toBe("42");
+			body = history();
+		}
+		await route.fulfill({ json: body });
+	});
+}
+
+test("full access displays presence and unavailable node telemetry", async ({ page }) => {
+	await setup(page);
+	await page.goto("/dashboard/network-intelligence/");
+	await expect(page.getByRole("heading", { name: "Network Intelligence" })).toBeVisible();
+	await expect(page.getByText("traffic-user", { exact: true })).toBeVisible();
+	await page.getByLabel("Node", { exact: true }).selectOption("7");
+	await expect(page.getByText("This node has no Network Intelligence snapshot.", { exact: false })).toBeVisible();
+});
+
+test("disabled panel reports feature flag status", async ({ page }) => {
+	await setup(page, "full_access", true);
+	await page.goto("/dashboard/network-intelligence/");
+	await expect(page.getByText("Network Intelligence is disabled on the panel.")).toBeVisible();
+});
+
+test("keeps selected history readable after presence disappears", async ({ page }) => {
+	await setup(page);
+	let online = true;
+	await setupHistoryScenario(page, () => online, () => ({ available: true, storage: "durable", collection: "background", truncated: false, points: [
+			{ node_id: 7, user_id: 42, at: "2026-11-27T06:00:00Z", method: "tcp_ack_upload_observation", ack_rtt_ms: 42.5, jitter_ms: null, retransmission_delta: null, findings: [] },
+		] }));
+	await page.goto("/dashboard/network-intelligence/");
+	const node = page.getByLabel("Node", { exact: true });
+	const account = page.getByLabel("History account", { exact: true });
+	await node.selectOption("7");
+	const [historyResponse] = await Promise.all([
+		page.waitForResponse((response) => {
+			const url = new URL(response.url());
+			return url.pathname.endsWith("/network-intelligence/history") && url.searchParams.get("node_id") === "7" && url.searchParams.get("user_id") === "42";
+		}),
+		account.selectOption("42"),
+	]);
+	expect(historyResponse.status()).toBe(200);
+	expect(await historyResponse.json()).toMatchObject({ available: true, storage: "durable", points: [{ node_id: 7, user_id: 42 }] });
+	await expect(page.getByText("Observed samples", { exact: true })).toBeVisible();
+	online = false;
+	const [presenceResponse] = await Promise.all([
+		page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/network-intelligence/presence")),
+		page.getByRole("button", { name: "Refresh", exact: true }).click(),
+	]);
+	expect((await presenceResponse.json()).observations).toEqual([]);
+	await expect(account.locator("option:checked")).toHaveText("Account 42 (no recent presence)");
+	await expect(node).toHaveValue("7");
+	await expect(account).toHaveValue("42");
+	await page.getByText("Observed samples", { exact: true }).click();
+	await expect(page.getByRole("cell", { name: "42.5", exact: true })).toBeVisible();
+});
+
+test("renders node MTU and interval counter telemetry", async ({ page }) => {
+	await setup(page);
+	await page.route("**/api/network-intelligence/node?**", (route) =>
+		route.fulfill({ json: {
+			flows: [],
+			node_resources: { memory_used_bytes: 1024, memory_total_bytes: 2048, sampled_at_unix: 1795759200 },
+			infrastructure: {
+				sampled_at: "2026-11-27T06:00:00Z",
+				interval_seconds: 5,
+				interfaces: [{ name: "wg-observed", mtu: 1420, oper_state: "up" }],
+				counter_rates_per_second: { "softnet.dropped": 0.5 },
+			},
+		} }),
+	);
+	await page.goto("/dashboard/network-intelligence/");
+	await page.getByLabel("Node", { exact: true }).selectOption("7");
+	await expect(page.getByRole("cell", { name: "wg-observed" })).toBeVisible();
+	await expect(page.getByRole("cell", { name: "1420" })).toBeVisible();
+	await expect(page.getByText("Node memory used / total 1,024 / 2,048 B")).toBeVisible();
+	await expect(page.getByRole("row", { name: "wg-observed 1420 up" })).toBeVisible();
+	await expect(page.getByRole("row", { name: "softnet.dropped 0.50" })).toBeVisible();
+});
+
+test("standard admin cannot view telemetry", async ({ page }) => {
+	await setup(page, "standard");
+	await page.goto("/dashboard/network-intelligence/");
+	await expect(page.getByText("Full-access administrator permission is required.")).toBeVisible();
+	await expect(page.getByText("traffic-user", { exact: true })).toHaveCount(0);
+});
+
+test("full-access admin applies and rolls back a scoped user optimization", async ({ page }) => {
+	await setup(page);
+	let operations: { operation_id: string; tcp_mss: number; state: string }[] = [];
+	const mutations: unknown[] = [];
+	await page.route("**/api/network-intelligence/optimization**", async (route) => {
+		const request = route.request();
+		if (request.method() === "GET") {
+			await route.fulfill({ json: { node_id: 7, user_id: 42, operations } });
+			return;
+		}
+		const body = request.postDataJSON() as { action: string; tcp_mss?: number; operation_id?: string };
+		mutations.push(body);
+		if (body.action === "apply_tcp_mss") {
+			operations = [{ operation_id: "1234567890abcdef1234567890abcdef", tcp_mss: body.tcp_mss ?? 0, state: "active" }];
+			await route.fulfill({ json: { operation_id: operations[0].operation_id, state: "active", applied: true } });
+			return;
+		}
+		operations = [{ ...operations[0], state: "rolled_back" }];
+		await route.fulfill({ json: { operation_id: body.operation_id, state: "rolled_back", applied: false } });
+	});
+	page.on("dialog", (dialog) => dialog.accept());
+	await page.goto("/dashboard/network-intelligence/");
+	await page.getByLabel("Node", { exact: true }).selectOption("7");
+	await page.getByLabel("WireGuard user").selectOption("42");
+	await expect(page.getByRole("button", { name: "Apply TCP MSS" })).toBeEnabled();
+	await page.getByRole("button", { name: "Apply TCP MSS" }).click();
+	await expect(page.getByText("Applied. Operation", { exact: false })).toBeVisible();
+	await expect(page.getByText("TCP MSS: 1340", { exact: true })).toBeVisible();
+	await page.getByRole("button", { name: "Rollback" }).click();
+	await expect(page.getByText("Optimization rolled back.", { exact: true })).toBeVisible();
+	await expect(page.getByText("rolled_back", { exact: true })).toBeVisible();
+	expect(mutations).toEqual([
+		{ action: "apply_tcp_mss", node_id: 7, user_id: 42, tcp_mss: 1340 },
+		{ action: "rollback", node_id: 7, user_id: 42, operation_id: "1234567890abcdef1234567890abcdef" },
+	]);
+});
+
+test("one-click diagnostics displays node evidence without a user identity", async ({ page }) => {
+	await setup(page);
+	await page.route("**/api/network-intelligence/node?**", (route) => {
+		const query = new URL(route.request().url()).searchParams;
+		if (query.get("diagnose") !== "true") return route.fulfill({ json: { flows: [] } });
+		return route.fulfill({ json: { results: [{ scope: "node", findings: [{
+			code: "node_softnet_drops", severity: "warning", confidence: "observed",
+			evidence: "Kernel receive backlog drops averaged 1 events/s over 5 s on this node",
+			recommendation: "Compare node counters and tunnel observations over the same interval",
+		}] }] } });
+	});
+	await page.goto("/dashboard/network-intelligence/");
+	await page.getByLabel("Node", { exact: true }).selectOption("7");
+	await page.getByRole("button", { name: "Run network diagnostics" }).click();
+	await expect(page.getByText("Node · node_softnet_drops")).toBeVisible();
+	await expect(page.getByText("Kernel receive backlog drops averaged 1 events/s over 5 s on this node")).toBeVisible();
+});
+
+test("account history preserves unavailable measurements and reports retention limits", async ({ page }) => {
+	await setup(page);
+	await setupHistoryScenario(page, () => true, () => ({ available: true, storage: "volatile", collection: "on_telemetry_read", truncated: true, points: [
+			{ node_id: 7, user_id: 42, at: "2026-11-27T06:00:00Z", method: "tcp_ack_upload_observation", ack_rtt_ms: 123.4, jitter_ms: null, retransmission_delta: null, findings: [] },
+			{ node_id: 7, user_id: 42, at: "2026-11-27T06:00:05Z", method: "tcp_ack_upload_observation", ack_rtt_ms: null, jitter_ms: null, retransmission_delta: 1, findings: [{ code: "observed_tcp_retransmission", severity: "warning", confidence: "observed", evidence: "Repeated TCP sequence spans were observed", recommendation: "Inspect capture completeness and both network directions" }] },
+		] }));
+	await page.goto("/dashboard/network-intelligence/");
+	await page.getByLabel("Node", { exact: true }).selectOption("7");
+	const [historyResponse] = await Promise.all([
+		page.waitForResponse((response) => {
+			const url = new URL(response.url());
+			return url.pathname.endsWith("/network-intelligence/history") && url.searchParams.get("node_id") === "7" && url.searchParams.get("user_id") === "42";
+		}),
+		page.getByLabel("History account", { exact: true }).selectOption("42"),
+	]);
+	expect(historyResponse.status()).toBe(200);
+	expect(await historyResponse.json()).toMatchObject({ available: true, storage: "volatile", truncated: true, points: [{ ack_rtt_ms: 123.4 }, { retransmission_delta: 1 }] });
+	await expect(page.getByText("History is held in memory and clears when the node restarts.")).toBeVisible();
+	await expect(page.getByText("The response limit was reached. This account history may be incomplete.")).toBeVisible();
+	await expect(page.getByText("Repeated TCP sequence spans were observed", { exact: false })).toBeVisible();
+	await page.getByText("Observed samples", { exact: true }).click();
+	await expect(page.getByRole("cell", { name: "123.4", exact: true })).toBeVisible();
+	await expect(page.getByRole("cell", { name: "N/A", exact: true }).first()).toBeVisible();
+});

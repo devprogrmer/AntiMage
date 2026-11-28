@@ -2,14 +2,21 @@
 # Run real kernel VPN tests in a disposable Linux guest, retaining its serial
 # console even if the guest kernel stalls. Never touch production services.
 set -euo pipefail
-mode="${1:?expected l2tp or combined}"
-case "$mode" in l2tp|combined) ;; *) exit 2 ;; esac
+mode="${1:?expected l2tp, combined or network-intelligence}"
+case "$mode" in l2tp|combined|network-intelligence) ;; *) exit 2 ;; esac
 [ "$(id -u)" -eq 0 ] || { echo 'Run as root' >&2; exit 2; }
 : "${RUNNER_TEMP:?}"
-: "${ANTIMAGE_L2TP_TEST_BINARY:?}"
-: "${ANTIMAGE_L2TP_PANEL_TEST_BINARY:?}"
-: "${ANTIMAGE_L2TP_API_TEST_BINARY:?}"
-: "${ANTIMAGE_NODE_HELPER_BINARY:?}"
+if [ "$mode" = network-intelligence ]; then
+  : "${ANTIMAGE_NI_TEST_BINARY:?}"
+  : "${ANTIMAGE_NI_RESOURCE_TEST_BINARY:?}"
+  : "${ANTIMAGE_NI_NODE_TEST_BINARY:?}"
+  : "${ANTIMAGE_NI_NODE_RESOURCE_TEST_BINARY:?}"
+else
+  : "${ANTIMAGE_L2TP_TEST_BINARY:?}"
+  : "${ANTIMAGE_L2TP_PANEL_TEST_BINARY:?}"
+  : "${ANTIMAGE_L2TP_API_TEST_BINARY:?}"
+  : "${ANTIMAGE_NODE_HELPER_BINARY:?}"
+fi
 test -c /dev/kvm || { echo 'KVM is required for the native Linux guest' >&2; exit 1; }
 root="$(mktemp -d "$RUNNER_TEMP/native-linux-guest.XXXXXX")"
 evidence="$RUNNER_TEMP/antimage-guest-failure"
@@ -60,11 +67,13 @@ EOF
 printf 'instance-id: antimage-native\nlocal-hostname: antimage-native\n' >"$root/meta-data"
 cloud-localds "$root/seed.img" "$root/user-data" "$root/meta-data"
 port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-qemu-system-x86_64 -enable-kvm -cpu host -smp 2 -m 3072 -display none -no-reboot \
+memory=3072
+if [ "$mode" = network-intelligence ]; then memory=2048; fi
+qemu-system-x86_64 -enable-kvm -cpu host -smp 2 -m "$memory" -display none -no-reboot \
   -serial "file:$evidence/serial.log" \
   -drive "file=$root/disk.qcow2,format=qcow2,if=virtio" \
   -drive "file=$root/seed.img,format=raw,if=virtio" \
-  -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:$port-:22" -device virtio-net-pci,netdev=net0 \
+  -netdev "user,id=net0,host=10.31.0.1,net=10.31.0.0/24,hostfwd=tcp:127.0.0.1:$port-:22" -device virtio-net-pci,netdev=net0 \
   >"$evidence/qemu.log" 2>&1 &
 vm_pid=$!
 ssh_args=(-i "$root/key" -p "$port" -o BatchMode=yes -o StrictHostKeyChecking=yes
@@ -82,16 +91,61 @@ done
 ssh "${ssh_args[@]}" root@127.0.0.1 'set -eu; uname -a; apt-get update; DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends iproute2 iptables nftables iputils-ping tcpdump ppp xl2tpd strongswan pptp-linux pptpd wireguard-tools openvpn openssl netcat-openbsd python3 "linux-modules-extra-$(uname -r)"' \
   2>&1 | tee "$evidence/provision.log"
 cp -a scripts/ci "$root/package/scripts/"
-install -m 0755 "$ANTIMAGE_L2TP_TEST_BINARY" "$root/package/bin/nodeagent.test"
-install -m 0755 "$ANTIMAGE_L2TP_PANEL_TEST_BINARY" "$root/package/bin/nodecontroller.test"
-install -m 0755 "$ANTIMAGE_L2TP_API_TEST_BINARY" "$root/package/bin/api.test"
-install -m 0755 "$ANTIMAGE_NODE_HELPER_BINARY" "$root/package/bin/node-helper"
+if [ "$mode" = network-intelligence ]; then
+  install -m 0755 "$ANTIMAGE_NI_TEST_BINARY" "$root/package/bin/networkintelligence.test"
+  install -m 0755 "$ANTIMAGE_NI_RESOURCE_TEST_BINARY" "$root/package/bin/networkintelligence-resource.test"
+  install -m 0755 "$ANTIMAGE_NI_NODE_TEST_BINARY" "$root/package/bin/nodeagent.test"
+  install -m 0755 "$ANTIMAGE_NI_NODE_RESOURCE_TEST_BINARY" "$root/package/bin/nodeagent-resource.test"
+  if [ -n "${ANTIMAGE_NI_API_TEST_BINARY:-}" ]; then
+    : "${ANTIMAGE_NI_NODE_BINARY:?}"
+    install -m 0755 "$ANTIMAGE_NI_API_TEST_BINARY" "$root/package/bin/api.test"
+    install -m 0755 "$ANTIMAGE_NI_NODE_BINARY" "$root/package/bin/node"
+    mkdir -p "$root/package/dashboard/node_modules/@playwright" "$root/package/dashboard/e2e"
+    cp -a dashboard/build "$root/package/dashboard/"
+    cp -a dashboard/e2e/network-intelligence-live.mjs "$root/package/dashboard/e2e/"
+    cp -a dashboard/node_modules/playwright dashboard/node_modules/playwright-core "$root/package/dashboard/node_modules/"
+    cp -a dashboard/node_modules/@playwright/test "$root/package/dashboard/node_modules/@playwright/"
+  fi
+else
+  install -m 0755 "$ANTIMAGE_L2TP_TEST_BINARY" "$root/package/bin/nodeagent.test"
+  install -m 0755 "$ANTIMAGE_L2TP_PANEL_TEST_BINARY" "$root/package/bin/nodecontroller.test"
+  install -m 0755 "$ANTIMAGE_L2TP_API_TEST_BINARY" "$root/package/bin/api.test"
+  install -m 0755 "$ANTIMAGE_NODE_HELPER_BINARY" "$root/package/bin/node-helper"
+fi
 cat >"$root/package/run.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 cd /root/antimage-native
 export RUNNER_TEMP="$PWD/evidence"
 mkdir -p "$RUNNER_TEMP"
+if [ "$1" = network-intelligence ]; then
+  # This marker exists only in the fresh disposable VM created above.
+  touch /run/antimage-disposable-network-lab
+  export ANTIMAGE_WIREGUARD_NI_E2E=1 ANTIMAGE_CAPTURE_E2E=1
+  export ANTIMAGE_NI_TEST_NODE_ADDRESS="$(ip -o -4 addr show scope global | awk '$2 != "lo" { split($4, address, "/"); if (address[1] != "") { print address[1]; exit } }')"
+  test -n "$ANTIMAGE_NI_TEST_NODE_ADDRESS" || { echo 'Disposable guest has no global IPv4 address' >&2; exit 1; }
+  if [ -x bin/api.test ]; then
+    export PATH="$PWD/bin:$PATH"
+    export ANTIMAGE_NI_BROWSER_PANEL_TEST="$PWD/bin/api.test"
+    export ANTIMAGE_NI_BROWSER_DASHBOARD="$PWD/dashboard"
+    export ANTIMAGE_DISPOSABLE_GUEST=1
+    node dashboard/node_modules/playwright/cli.js install --with-deps chromium
+  fi
+  bin/networkintelligence.test -test.v
+  ANTIMAGE_NI_RESOURCE_E2E=1 ANTIMAGE_NI_RESOURCE_PACED=1 \
+    bin/networkintelligence-resource.test -test.run '^TestCaptureResourceComparison$' -test.v \
+    | tee evidence/network-intelligence-resource.log
+  bin/api.test -test.v -test.run '^TestNetworkOptimizationAuditRollbackIsIdempotent$'
+  bin/nodeagent.test -test.v -test.run 'TestNetworkIntelligence|TestNetworkInfrastructure'
+  ANTIMAGE_NI_WG_RESOURCE_E2E=1 bin/nodeagent-resource.test -test.run '^TestNetworkIntelligenceWireGuardForwardingResourceComparison$' -test.v \
+    | tee evidence/network-intelligence-wireguard-forwarding-resource.log
+  ANTIMAGE_NI_WG_RESOURCE_E2E=1 ANTIMAGE_NI_WG_PROFILE=1 bin/nodeagent-resource.test \
+    -test.run '^TestNetworkIntelligenceWireGuardForwardingResourceComparison$' -test.v \
+    -test.cpuprofile=evidence/wireguard-collector.cpu.pprof \
+    -test.memprofile=evidence/wireguard-collector.heap.pprof \
+    | tee evidence/network-intelligence-wireguard-profile.log
+  exit
+fi
 export ANTIMAGE_L2TP_TEST_BINARY="$PWD/bin/nodeagent.test"
 export ANTIMAGE_L2TP_PANEL_TEST_BINARY="$PWD/bin/nodecontroller.test"
 export ANTIMAGE_L2TP_API_TEST_BINARY="$PWD/bin/api.test"

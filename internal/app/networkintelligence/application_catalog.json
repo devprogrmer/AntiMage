@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "revision": "steam-query-titles-2026-11-28",
+  "published_at": "2026-11-28T00:00:00Z",
+  "expires_at": "2027-02-26T00:00:00Z",
+  "rules": [
+    {"application": "Counter-Strike 2", "steam_app_id": 730, "protocol": "udp", "source": "https://store.steampowered.com/app/730/CounterStrike_2/"},
+    {"application": "Dota 2", "steam_app_id": 570, "protocol": "udp", "source": "https://store.steampowered.com/app/570/Dota_2/"}
+  ]
+}

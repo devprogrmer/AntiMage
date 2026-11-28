@@ -46,6 +46,7 @@ func withAPIRequestBodyLimit(next http.Handler) http.Handler {
 
 func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
+	r.Use(s.trustedProxyHeaders)
 
 	r.HandleFunc("/__antimage_api/healthz", s.handleHealth)
 	r.HandleFunc("/metrics", s.handlePrometheusMetrics)
@@ -151,6 +152,12 @@ func (s *Server) registerInboundHostRoutes(r chi.Router) {
 }
 
 func (s *Server) registerSystemRoutes(r chi.Router) {
+	r.Get("/network-intelligence/presence", s.networkIntelligencePresenceRoute())
+	if s.cfg.NetworkIntelligenceEnabled {
+		r.Get("/network-intelligence/node", s.requireAdmin(s.handleNetworkIntelligenceNode))
+		r.Get("/network-intelligence/history", s.requireAdmin(s.handleNetworkIntelligenceHistory))
+	}
+	r.HandleFunc("/network-intelligence/optimization", s.networkIntelligenceOptimizationRoute())
 	r.HandleFunc("/system/metrics", s.requireAdmin(s.handleSystemMetricsWebSocket))
 	r.HandleFunc("/system", s.requireAdmin(s.handleSystemStats))
 	r.HandleFunc("/maintenance/info", s.requireSudo(s.handleMaintenanceInfo))

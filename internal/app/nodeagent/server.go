@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	ni "github.com/antimage/antimage/internal/app/networkintelligence"
 	nodev1 "github.com/antimage/antimage/internal/proto/node/v1"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/host"
@@ -28,6 +29,14 @@ import (
 )
 
 type Server struct {
+	networkIntelligenceLifecycle      *ni.Lifecycle
+	networkIntelligenceTracker        *ni.Tracker
+	networkIntelligenceMu             sync.Mutex
+	networkOptimizationMu             sync.Mutex
+	networkIntelligenceGeneration     uint64
+	networkIntelligenceDetector       *ni.ApplicationDetector
+	networkIntelligenceInfrastructure networkInfrastructureSampler
+	networkIntelligenceHistory        networkHistorySampler
 	nodev1.UnimplementedNodeControlServiceServer
 	nodev1.UnimplementedNodeRuntimeServiceServer
 	nodev1.UnimplementedNodeUsageServiceServer
@@ -178,7 +187,7 @@ var (
 )
 
 func New(cfg Config) *Server {
-	return &Server{
+	s := &Server{
 		cfg:                             cfg,
 		xrayAPIPortFallback:             cfg.XrayAPIPort,
 		startedAt:                       time.Now(),
@@ -210,9 +219,12 @@ func New(cfg Config) *Server {
 		torProxies:                      make(map[uint32]*exec.Cmd),
 		logs:                            []string{"AntiMage-node agent initialized"},
 	}
+	s.initializeNetworkIntelligence()
+	return s
 }
 
 func (s *Server) Run(ctx context.Context) error {
+	defer s.stopNetworkIntelligence()
 	checkpointInterval, err := nodeAccountingCheckpointInterval()
 	if err != nil {
 		return err
@@ -409,8 +421,12 @@ func (s *Server) RemoveUser(context.Context, *nodev1.RemoveInboundUserRequest) (
 	return nil, status.Error(codes.Unimplemented, "user mutations require durable config sync")
 }
 
-func (s *Server) Metrics(context.Context, *nodev1.MetricsRequest) (*nodev1.MetricsResponse, error) {
-	return s.metrics(true), nil
+func (s *Server) Metrics(_ context.Context, request *nodev1.MetricsRequest) (*nodev1.MetricsResponse, error) {
+	result := s.metrics(true)
+	if request.GetIncludeNetworkIntelligence() {
+		result.NetworkIntelligenceJson = s.networkIntelligenceSnapshot()
+	}
+	return result, nil
 }
 
 func (s *Server) PublicIPs(context.Context, *nodev1.PublicIPsRequest) (*nodev1.PublicIPsResponse, error) {

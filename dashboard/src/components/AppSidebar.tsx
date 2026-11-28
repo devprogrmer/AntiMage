@@ -210,6 +210,9 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 					icon: InsightsIconStyled,
 				}
 			: null,
+		isFullAccess
+			? { title: t("networkIntelligence.title", { defaultValue: "Network Intelligence" }), url: "/network-intelligence", icon: InsightsIconStyled }
+			: null,
 		canViewRecentActions
 			? {
 					title: t("recentActions.title"),
@@ -373,6 +376,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 				pickSetting("/haproxy"),
 				pickSetting("/xray-logs"),
 				pickSetting("/access-insights"),
+				pickSetting("/network-intelligence"),
 				pickSetting("/recent-actions"),
 				pickSetting("/accounting-alerts"),
 				pickSetting("/phpmyadmin"),

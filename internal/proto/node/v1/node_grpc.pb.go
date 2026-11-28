@@ -197,26 +197,27 @@ var NodeControlService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	NodeRuntimeService_StartRuntime_FullMethodName        = "/antimage.node.v1.NodeRuntimeService/StartRuntime"
-	NodeRuntimeService_RestartRuntime_FullMethodName      = "/antimage.node.v1.NodeRuntimeService/RestartRuntime"
-	NodeRuntimeService_StopRuntime_FullMethodName         = "/antimage.node.v1.NodeRuntimeService/StopRuntime"
-	NodeRuntimeService_SyncConfig_FullMethodName          = "/antimage.node.v1.NodeRuntimeService/SyncConfig"
-	NodeRuntimeService_AddUser_FullMethodName             = "/antimage.node.v1.NodeRuntimeService/AddUser"
-	NodeRuntimeService_UpdateUser_FullMethodName          = "/antimage.node.v1.NodeRuntimeService/UpdateUser"
-	NodeRuntimeService_RemoveUser_FullMethodName          = "/antimage.node.v1.NodeRuntimeService/RemoveUser"
-	NodeRuntimeService_Metrics_FullMethodName             = "/antimage.node.v1.NodeRuntimeService/Metrics"
-	NodeRuntimeService_PublicIPs_FullMethodName           = "/antimage.node.v1.NodeRuntimeService/PublicIPs"
-	NodeRuntimeService_TestOutbound_FullMethodName        = "/antimage.node.v1.NodeRuntimeService/TestOutbound"
-	NodeRuntimeService_TestRoute_FullMethodName           = "/antimage.node.v1.NodeRuntimeService/TestRoute"
-	NodeRuntimeService_UpdateRuntime_FullMethodName       = "/antimage.node.v1.NodeRuntimeService/UpdateRuntime"
-	NodeRuntimeService_UpdateGeo_FullMethodName           = "/antimage.node.v1.NodeRuntimeService/UpdateGeo"
-	NodeRuntimeService_RestartService_FullMethodName      = "/antimage.node.v1.NodeRuntimeService/RestartService"
-	NodeRuntimeService_UpdateService_FullMethodName       = "/antimage.node.v1.NodeRuntimeService/UpdateService"
-	NodeRuntimeService_RebootHost_FullMethodName          = "/antimage.node.v1.NodeRuntimeService/RebootHost"
-	NodeRuntimeService_ApplyIPBlocks_FullMethodName       = "/antimage.node.v1.NodeRuntimeService/ApplyIPBlocks"
-	NodeRuntimeService_ApplyTorProxy_FullMethodName       = "/antimage.node.v1.NodeRuntimeService/ApplyTorProxy"
-	NodeRuntimeService_ConfigureWindscribe_FullMethodName = "/antimage.node.v1.NodeRuntimeService/ConfigureWindscribe"
-	NodeRuntimeService_ConfigurePsiphon_FullMethodName    = "/antimage.node.v1.NodeRuntimeService/ConfigurePsiphon"
+	NodeRuntimeService_StartRuntime_FullMethodName              = "/antimage.node.v1.NodeRuntimeService/StartRuntime"
+	NodeRuntimeService_RestartRuntime_FullMethodName            = "/antimage.node.v1.NodeRuntimeService/RestartRuntime"
+	NodeRuntimeService_StopRuntime_FullMethodName               = "/antimage.node.v1.NodeRuntimeService/StopRuntime"
+	NodeRuntimeService_SyncConfig_FullMethodName                = "/antimage.node.v1.NodeRuntimeService/SyncConfig"
+	NodeRuntimeService_AddUser_FullMethodName                   = "/antimage.node.v1.NodeRuntimeService/AddUser"
+	NodeRuntimeService_UpdateUser_FullMethodName                = "/antimage.node.v1.NodeRuntimeService/UpdateUser"
+	NodeRuntimeService_RemoveUser_FullMethodName                = "/antimage.node.v1.NodeRuntimeService/RemoveUser"
+	NodeRuntimeService_Metrics_FullMethodName                   = "/antimage.node.v1.NodeRuntimeService/Metrics"
+	NodeRuntimeService_ManageNetworkOptimization_FullMethodName = "/antimage.node.v1.NodeRuntimeService/ManageNetworkOptimization"
+	NodeRuntimeService_PublicIPs_FullMethodName                 = "/antimage.node.v1.NodeRuntimeService/PublicIPs"
+	NodeRuntimeService_TestOutbound_FullMethodName              = "/antimage.node.v1.NodeRuntimeService/TestOutbound"
+	NodeRuntimeService_TestRoute_FullMethodName                 = "/antimage.node.v1.NodeRuntimeService/TestRoute"
+	NodeRuntimeService_UpdateRuntime_FullMethodName             = "/antimage.node.v1.NodeRuntimeService/UpdateRuntime"
+	NodeRuntimeService_UpdateGeo_FullMethodName                 = "/antimage.node.v1.NodeRuntimeService/UpdateGeo"
+	NodeRuntimeService_RestartService_FullMethodName            = "/antimage.node.v1.NodeRuntimeService/RestartService"
+	NodeRuntimeService_UpdateService_FullMethodName             = "/antimage.node.v1.NodeRuntimeService/UpdateService"
+	NodeRuntimeService_RebootHost_FullMethodName                = "/antimage.node.v1.NodeRuntimeService/RebootHost"
+	NodeRuntimeService_ApplyIPBlocks_FullMethodName             = "/antimage.node.v1.NodeRuntimeService/ApplyIPBlocks"
+	NodeRuntimeService_ApplyTorProxy_FullMethodName             = "/antimage.node.v1.NodeRuntimeService/ApplyTorProxy"
+	NodeRuntimeService_ConfigureWindscribe_FullMethodName       = "/antimage.node.v1.NodeRuntimeService/ConfigureWindscribe"
+	NodeRuntimeService_ConfigurePsiphon_FullMethodName          = "/antimage.node.v1.NodeRuntimeService/ConfigurePsiphon"
 )
 
 // NodeRuntimeServiceClient is the client API for NodeRuntimeService service.
@@ -231,6 +232,9 @@ type NodeRuntimeServiceClient interface {
 	UpdateUser(ctx context.Context, in *InboundUserRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
 	RemoveUser(ctx context.Context, in *RemoveInboundUserRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
 	Metrics(ctx context.Context, in *MetricsRequest, opts ...grpc.CallOption) (*MetricsResponse, error)
+	// Optional, fail-closed per-user network optimization control. Older agents
+	// remain wire-compatible and return UNIMPLEMENTED for this additive method.
+	ManageNetworkOptimization(ctx context.Context, in *NetworkOptimizationRequest, opts ...grpc.CallOption) (*NetworkOptimizationResponse, error)
 	PublicIPs(ctx context.Context, in *PublicIPsRequest, opts ...grpc.CallOption) (*PublicIPsResponse, error)
 	TestOutbound(ctx context.Context, in *OutboundTestRequest, opts ...grpc.CallOption) (*OutboundTestResponse, error)
 	TestRoute(ctx context.Context, in *RouteTestRequest, opts ...grpc.CallOption) (*RouteTestResponse, error)
@@ -327,6 +331,16 @@ func (c *nodeRuntimeServiceClient) Metrics(ctx context.Context, in *MetricsReque
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(MetricsResponse)
 	err := c.cc.Invoke(ctx, NodeRuntimeService_Metrics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeRuntimeServiceClient) ManageNetworkOptimization(ctx context.Context, in *NetworkOptimizationRequest, opts ...grpc.CallOption) (*NetworkOptimizationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NetworkOptimizationResponse)
+	err := c.cc.Invoke(ctx, NodeRuntimeService_ManageNetworkOptimization_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -465,6 +479,9 @@ type NodeRuntimeServiceServer interface {
 	UpdateUser(context.Context, *InboundUserRequest) (*RuntimeActionResponse, error)
 	RemoveUser(context.Context, *RemoveInboundUserRequest) (*RuntimeActionResponse, error)
 	Metrics(context.Context, *MetricsRequest) (*MetricsResponse, error)
+	// Optional, fail-closed per-user network optimization control. Older agents
+	// remain wire-compatible and return UNIMPLEMENTED for this additive method.
+	ManageNetworkOptimization(context.Context, *NetworkOptimizationRequest) (*NetworkOptimizationResponse, error)
 	PublicIPs(context.Context, *PublicIPsRequest) (*PublicIPsResponse, error)
 	TestOutbound(context.Context, *OutboundTestRequest) (*OutboundTestResponse, error)
 	TestRoute(context.Context, *RouteTestRequest) (*RouteTestResponse, error)
@@ -510,6 +527,9 @@ func (UnimplementedNodeRuntimeServiceServer) RemoveUser(context.Context, *Remove
 }
 func (UnimplementedNodeRuntimeServiceServer) Metrics(context.Context, *MetricsRequest) (*MetricsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Metrics not implemented")
+}
+func (UnimplementedNodeRuntimeServiceServer) ManageNetworkOptimization(context.Context, *NetworkOptimizationRequest) (*NetworkOptimizationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ManageNetworkOptimization not implemented")
 }
 func (UnimplementedNodeRuntimeServiceServer) PublicIPs(context.Context, *PublicIPsRequest) (*PublicIPsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PublicIPs not implemented")
@@ -708,6 +728,24 @@ func _NodeRuntimeService_Metrics_Handler(srv interface{}, ctx context.Context, d
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NodeRuntimeServiceServer).Metrics(ctx, req.(*MetricsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodeRuntimeService_ManageNetworkOptimization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NetworkOptimizationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeRuntimeServiceServer).ManageNetworkOptimization(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeRuntimeService_ManageNetworkOptimization_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeRuntimeServiceServer).ManageNetworkOptimization(ctx, req.(*NetworkOptimizationRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -966,6 +1004,10 @@ var NodeRuntimeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Metrics",
 			Handler:    _NodeRuntimeService_Metrics_Handler,
+		},
+		{
+			MethodName: "ManageNetworkOptimization",
+			Handler:    _NodeRuntimeService_ManageNetworkOptimization_Handler,
 		},
 		{
 			MethodName: "PublicIPs",

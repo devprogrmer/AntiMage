@@ -3,6 +3,7 @@ package migrations
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -174,6 +175,30 @@ func TestRunMigrationsExternalDatabase(t *testing.T) {
 	}
 	if !version.HasGoose || version.GooseVersion != latestGooseVersion {
 		t.Fatalf("unexpected external version: %#v", version)
+	}
+	if NormalizeDialect(pool.Dialect) == "mysql" {
+		var indexCount int
+		if err := pool.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='network_quality_history' AND index_name='ix_network_quality_history_time' AND column_name='observed_at'`).Scan(&indexCount); err != nil || indexCount != 1 {
+			t.Fatalf("history index count=%d err=%v", indexCount, err)
+		}
+		tx, err := pool.DB.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		if _, err := tx.ExecContext(ctx, "INSERT INTO network_quality_history (node_id,user_id,observed_at,ack_rtt_ms) VALUES (7,42,12345,12.5)"); err != nil {
+			t.Fatal(err)
+		}
+		var rtt float64
+		if err := tx.QueryRowContext(ctx, "SELECT ack_rtt_ms FROM network_quality_history WHERE node_id=7 AND user_id=42 AND observed_at=12345").Scan(&rtt); err != nil || rtt != 12.5 {
+			t.Fatalf("history value=%v err=%v", rtt, err)
+		}
+		if err := tx.Rollback(); err != nil {
+			t.Fatal(err)
+		}
+		if err := pool.DB.QueryRowContext(ctx, "SELECT ack_rtt_ms FROM network_quality_history WHERE node_id=7 AND user_id=42 AND observed_at=12345").Scan(&rtt); !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("history rollback: %v", err)
+		}
 	}
 	for _, table := range []string{"admins", "users", "nodes", "services", "subscription_settings", "goose_db_version"} {
 		hasTable, err := HasTable(ctx, pool.DB, pool.Dialect, table)

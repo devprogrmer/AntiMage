@@ -9,19 +9,22 @@ import (
 )
 
 type Config struct {
-	Name           string
-	ListenHost     string
-	ServicePort    int
-	DataDir        string
-	CertFile       string
-	KeyFile        string
-	MasterCertFile string
-	XrayPath       string
-	XrayAssetsDir  string
-	XrayAPIPort    int
-	InstallMode    string
-	UpdateChannel  string
-	Version        string
+	Name                          string
+	ListenHost                    string
+	ServicePort                   int
+	DataDir                       string
+	CertFile                      string
+	KeyFile                       string
+	MasterCertFile                string
+	XrayPath                      string
+	XrayAssetsDir                 string
+	XrayAPIPort                   int
+	InstallMode                   string
+	UpdateChannel                 string
+	Version                       string
+	NetworkIntelligenceEnabled    bool
+	NetworkIntelligenceSignatures string
+	NetworkOptimizationEnabled    bool
 }
 
 func LoadConfig() Config {
@@ -33,19 +36,22 @@ func LoadConfig() Config {
 		filepath.Join(appDir, ".binary-release.json"),
 	)
 	return Config{
-		Name:           envString("ANTIMAGE_NODE_NAME", envString("ANTIMAGE_NODE_APP_NAME", "antimage-node")),
-		ListenHost:     envString("SERVICE_HOST", "0.0.0.0"),
-		ServicePort:    envInt("SERVICE_PORT", 62050),
-		DataDir:        dataDir,
-		CertFile:       envString("SSL_CERT_FILE", filepath.Join(dataDir, "cert.pem")),
-		KeyFile:        envString("SSL_KEY_FILE", filepath.Join(dataDir, "cert.key")),
-		MasterCertFile: envString("ANTIMAGE_NODE_MASTER_CERT_FILE", envString("SSL_CLIENT_CERT_FILE", envString("SSL_CERT_FILE", filepath.Join(dataDir, "cert.pem")))),
-		XrayPath:       envString("XRAY_EXECUTABLE_PATH", filepath.Join(dataDir, "xray-core", executableName("xray"))),
-		XrayAssetsDir:  envString("XRAY_ASSETS_PATH", filepath.Join(dataDir, "xray-core")),
-		XrayAPIPort:    envInt("XRAY_API_PORT", 10085),
-		InstallMode:    installMode,
-		UpdateChannel:  envString("ANTIMAGE_NODE_UPDATE_CHANNEL", "stable"),
-		Version:        configuredNodeVersion(installMode, metadataFile, envString("ANTIMAGE_NODE_VERSION", "dev")),
+		NetworkIntelligenceEnabled:    strings.EqualFold(envString("ANTIMAGE_NETWORK_INTELLIGENCE_ENABLED", "false"), "true"),
+		NetworkOptimizationEnabled:    strings.EqualFold(envString("ANTIMAGE_NETWORK_OPTIMIZATION_ENABLED", "false"), "true"),
+		NetworkIntelligenceSignatures: envString("ANTIMAGE_NETWORK_INTELLIGENCE_SIGNATURES", ""),
+		Name:                          envString("ANTIMAGE_NODE_NAME", envString("ANTIMAGE_NODE_APP_NAME", "antimage-node")),
+		ListenHost:                    envString("SERVICE_HOST", "0.0.0.0"),
+		ServicePort:                   envInt("SERVICE_PORT", 62050),
+		DataDir:                       dataDir,
+		CertFile:                      envString("SSL_CERT_FILE", filepath.Join(dataDir, "cert.pem")),
+		KeyFile:                       envString("SSL_KEY_FILE", filepath.Join(dataDir, "cert.key")),
+		MasterCertFile:                envString("ANTIMAGE_NODE_MASTER_CERT_FILE", envString("SSL_CLIENT_CERT_FILE", envString("SSL_CERT_FILE", filepath.Join(dataDir, "cert.pem")))),
+		XrayPath:                      envString("XRAY_EXECUTABLE_PATH", filepath.Join(dataDir, "xray-core", executableName("xray"))),
+		XrayAssetsDir:                 envString("XRAY_ASSETS_PATH", filepath.Join(dataDir, "xray-core")),
+		XrayAPIPort:                   envInt("XRAY_API_PORT", 10085),
+		InstallMode:                   installMode,
+		UpdateChannel:                 envString("ANTIMAGE_NODE_UPDATE_CHANNEL", "stable"),
+		Version:                       configuredNodeVersion(installMode, metadataFile, envString("ANTIMAGE_NODE_VERSION", "dev")),
 	}
 }
 
