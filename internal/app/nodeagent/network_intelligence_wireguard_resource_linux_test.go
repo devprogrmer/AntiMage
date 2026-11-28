@@ -293,7 +293,11 @@ print(json.dumps({'sent':n,'received':len(seen),'lost':n-len(seen),'loss_pct':10
 			deadline := time.Now().Add(2 * time.Second)
 			for {
 				flows = tracker.Snapshot(time.Now().UTC())
-				if len(flows) > 0 || time.Now().After(deadline) {
+				var observed uint64
+				for _, flow := range flows {
+					observed += flow.UploadPackets + flow.DownloadPackets
+				}
+				if observed >= uint64(result.Sent+result.Received) || time.Now().After(deadline) {
 					break
 				}
 				time.Sleep(10 * time.Millisecond)
@@ -313,6 +317,9 @@ print(json.dumps({'sent':n,'received':len(seen),'lost':n-len(seen),'loss_pct':10
 			statsMu.Unlock()
 			if result.AttributedFlows == 0 || result.FlowObservedPackets == 0 || result.CaptureReceivedPackets == 0 {
 				t.Fatalf("enabled collector did not observe forwarded WireGuard traffic: %+v", result)
+			}
+			if expected := uint64(result.Sent + result.Received); result.FlowObservedPackets != expected || result.CaptureReceivedPackets != expected || result.CollectorKernelDrops != 0 {
+				t.Fatalf("capture did not publish every workload packet exactly once: expected=%d result=%+v", expected, result)
 			}
 		}
 		if err := unix.Getrusage(unix.RUSAGE_SELF, &usageAfter); err != nil {
