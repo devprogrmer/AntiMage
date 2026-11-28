@@ -1,5 +1,29 @@
 # Anti-Mage Network Intelligence
 
+## Merge-gate verification in progress — 2026-11-28
+
+Inspected PR head 12ec9ea1 and its actual Linux logs, not just check colors:
+Network Intelligence run 46145078044 passed raw UDP capture, real WireGuard
+publication/reassignment, two-node overlapping addresses, GRE fault injection,
+real WireGuard-to-browser history and audited optimization rollback. The 2-vCPU/
+2-GiB forwarding fixture measured median OFF/ON 570.680/569.177 Mbps (-0.263%),
+agent CPU 1.293/7.070 ms, zero echo-loss delta and exact 10000-packet observation
+in ON trials. These results supersede earlier uninspected-Linux/benchmark notes.
+Database, protocol, build and browser checks were also successful on that head.
+
+The newly added subprocess/binary/browser recovery tests were skipped in that
+Linux job because opt-in binaries/env were absent. The dashboard-browser job now
+builds pinned baseline/current panel/node binaries and a race-enabled helper,
+then explicitly executes those recovery tests on Linux and retains logs and
+source/checksum evidence. New workflow scripts are not a pass until CI executes.
+
+Tracked dev workflows publish build images/artifacts/manifests and GitHub Pages;
+no direct operational-server SSH/deployment step was found. External deployment
+hooks/watchers are outside this source inspection. No Production action is
+authorized or performed. Keep the PR Draft until the new-head merge gates pass.
+NEXT_ACTION: inspect the new Linux recovery job, fix reproduced failures, and
+reconcile remaining acceptance criteria before Ready/Merge. No admin bypass.
+
 ## Delivery instruction — 2026-11-28
 
 User explicitly authorized committing/pushing all accumulated Network

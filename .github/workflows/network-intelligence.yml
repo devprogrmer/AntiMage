@@ -13,7 +13,7 @@ on:
       - 'dashboard/src/**/Network*'
       - 'dashboard/src/service/networkIntelligence*'
       - 'dashboard/e2e/network-intelligence.spec.ts'
-      - 'dashboard/e2e/network-intelligence-live.mjs'
+      - 'dashboard/e2e/network-intelligence-*.mjs'
       - 'dashboard/playwright.config.ts'
       - 'dashboard/package*.json'
       - 'scripts/ci/network-intelligence-e2e.sh'
@@ -26,12 +26,14 @@ permissions:
 jobs:
   dashboard-browser:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: dashboard
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
@@ -49,6 +51,55 @@ jobs:
         env:
           ANTIMAGE_NI_BROWSER_DASHBOARD: ${{ github.workspace }}/dashboard
         run: go test ./internal/app/api -run '^TestNetworkHistoryWorkerPersistsThroughMTLSAndDatabaseReopen$' -count=1
+
+      - name: Build actual baseline and current binaries for isolated recovery
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline=1c1dd80f693d5ea760a088241e2705e5be49420b
+          lab="$RUNNER_TEMP/ni-recovery"
+          mkdir -p "$lab/source" "$lab/evidence"
+          git cat-file -e "$baseline^{commit}"
+          git archive "$baseline" | tar -x -C "$lab/source"
+          (
+            cd "$lab/source"
+            go build -buildvcs=false -o "$lab/baseline-node" ./cmd/antimage_node
+            go build -buildvcs=false -o "$lab/baseline-panel" ./cmd/antimage_gateway
+          )
+          go build -buildvcs=false -o "$lab/current-node" ./cmd/antimage_node
+          go build -buildvcs=false -o "$lab/current-panel" ./cmd/antimage_gateway
+          go test -race -c -o "$lab/node-recovery.test" ./internal/app/nodeagent
+          sha256sum "$lab/"{baseline,current}-{node,panel} > "$lab/evidence/SHA256SUMS"
+          printf 'baseline=%s\ncurrent=%s\n' "$baseline" "$(git rev-parse HEAD)" > "$lab/evidence/source-shas.txt"
+          {
+            echo "ANTIMAGE_NI_BASELINE_NODE=$lab/baseline-node"
+            echo "ANTIMAGE_NI_CURRENT_NODE=$lab/current-node"
+            echo "ANTIMAGE_NI_BASELINE_PANEL=$lab/baseline-panel"
+            echo "ANTIMAGE_NI_CURRENT_PANEL=$lab/current-panel"
+            echo "ANTIMAGE_NI_NODE_TEST_BINARY=$lab/node-recovery.test"
+            echo "ANTIMAGE_NI_LOCAL_DASHBOARD=$GITHUB_WORKSPACE/dashboard"
+          } >> "$GITHUB_ENV"
+
+      - name: Real Linux process, binary, backup and browser recovery
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -race -v ./internal/app/nodeagent \
+            -run '^TestNetworkIntelligence(LocalTrafficToAuthenticatedPanel|ProcessRecoveryAndVersionRollback)$' -count=1 \
+            | tee "$RUNNER_TEMP/ni-recovery/evidence/node-recovery.log"
+          go test -race -v ./internal/app/api \
+            -run '^TestNetworkIntelligence(PanelRestartBackupAndFlagRollback|PanelBinaryVersionRollback|BrowserRecoversFromNodeFailures)$' -count=1 \
+            | tee "$RUNNER_TEMP/ni-recovery/evidence/panel-recovery.log"
+
+      - name: Retain Linux staging recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: network-intelligence-linux-recovery
+          path: ${{ runner.temp }}/ni-recovery/evidence/
+          retention-days: 14
 
   isolated-wireguard:
     runs-on: ubuntu-24.04
