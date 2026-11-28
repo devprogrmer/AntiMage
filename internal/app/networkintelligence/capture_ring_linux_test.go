@@ -3,11 +3,40 @@
 package networkintelligence
 
 import (
+	"context"
 	"encoding/binary"
+	"errors"
+	"os"
+	"os/exec"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
+
+func TestCaptureRingIdleWaitDoesNotSpin(t *testing.T) {
+	if os.Getenv("ANTIMAGE_CAPTURE_E2E") != "1" {
+		t.Skip("requires isolated Linux capture guest")
+	}
+	if _, err := os.Stat("/run/antimage-disposable-network-lab"); err != nil {
+		t.Fatal("requires disposable guest marker")
+	}
+	const name = "ni-ring-idle"
+	if output, err := exec.Command("ip", "link", "add", name, "type", "dummy").CombinedOutput(); err != nil {
+		t.Fatalf("create fixture: %v %s", err, output)
+	}
+	defer exec.Command("ip", "link", "del", name).Run()
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	var final CaptureStatistics
+	err := RunCapture(ctx, CaptureConfig{Interface: name, Statistics: func(s CaptureStatistics) { final = s }}, func(CapturedPacket) { t.Error("unexpected traffic on idle fixture") })
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("capture did not stop: %v", err)
+	}
+	if final.PollCalls == 0 || final.PollCalls > 4 {
+		t.Fatalf("idle collector spun or failed to wait: poll calls=%d", final.PollCalls)
+	}
+}
 
 func ringFixture() []byte {
 	frame := make([]byte, captureRingFrameSize)

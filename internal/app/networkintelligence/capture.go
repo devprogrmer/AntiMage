@@ -32,6 +32,8 @@ type CaptureConfig struct {
 
 // CaptureStatistics describes observation loss, not VPN packet loss.
 type CaptureStatistics struct {
+	// PollCalls exposes observation wake-ups, never VPN packet loss.
+	PollCalls                 uint64
 	ReceivedPackets           uint64
 	DecodedPackets            uint64
 	RejectedPackets           uint64

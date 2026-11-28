@@ -37,7 +37,7 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 	}
 	// AF_PACKET protocol is in network byte order, independent of host endian.
 	protocol := int(binary.NativeEndian.Uint16([]byte{0, unix.ETH_P_ALL}))
-	fd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, protocol)
+	fd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
 	if err != nil {
 		return fmt.Errorf("open metadata socket: %w", err)
 	}
@@ -68,14 +68,14 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 	}
 	defer report()
 	nextReport := time.Now().Add(time.Second)
-	if err := unix.Bind(fd, &unix.SockaddrLinklayer{Protocol: uint16(protocol), Ifindex: iface.Index}); err != nil {
-		return fmt.Errorf("bind metadata socket: %w", err)
-	}
 	ring, err := newCaptureRing(fd, cfg.ReceiveBufferBytes)
 	if err != nil {
 		return fmt.Errorf("create metadata ring: %w", err)
 	}
 	defer ring.close()
+	if err := unix.Bind(fd, &unix.SockaddrLinklayer{Protocol: uint16(protocol), Ifindex: iface.Index}); err != nil {
+		return fmt.Errorf("bind metadata socket: %w", err)
+	}
 	statistics.ReceiveBufferBytes = len(ring.data)
 	budget := captureBudget{limit: cfg.MaxPacketsPerSecond}
 	if err := ctx.Err(); err != nil {
@@ -95,6 +95,7 @@ func runCapture(ctx context.Context, cfg CaptureConfig, consume func(CapturedPac
 		}
 		if !ring.ready() {
 			poll := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+			statistics.PollCalls++
 			_, err := unix.Poll(poll, 200)
 			if errors.Is(err, unix.EINTR) {
 				continue
