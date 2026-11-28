@@ -463,10 +463,10 @@ export default function NetworkIntelligencePage() {
 				</Stack>
 			)}
 			{node && (
-				<NetworkQualityHistory key={node} nodeID={Number(node)} users={presence} />
+				<NetworkQualityHistory key={`history-${node}`} nodeID={Number(node)} users={presence} />
 			)}
 			{node && (
-				<NetworkOptimizationPanel key={node} nodeID={Number(node)} users={presence} />
+				<NetworkOptimizationPanel key={`optimization-${node}`} nodeID={Number(node)} users={presence} />
 			)}
 			<Text fontSize="sm" color="panel.textMuted">
 				{label(
