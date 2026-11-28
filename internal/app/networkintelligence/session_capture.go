@@ -13,18 +13,20 @@ import (
 // verified binding snapshot. The caller must close and join the old capture
 // before changing kernel ownership. This adapter cannot verify that contract.
 type SessionCapture struct {
-	mu         sync.Mutex
-	tracker    *Tracker
-	bindings   map[netip.Addr]Binding
-	flows      map[Tuple]Observation
-	quality    map[Tuple]*capturedTCPQuality
-	statistics CaptureStatistics
-	capacity   int
-	cancel     context.CancelFunc
-	done       chan struct{}
-	err        error
-	stopped    bool
-	dirty      map[Tuple]struct{}
+	mu          sync.Mutex
+	tracker     *Tracker
+	bindings    map[netip.Addr]Binding
+	flows       map[Tuple]Observation
+	quality     map[Tuple]*capturedTCPQuality
+	statistics  CaptureStatistics
+	capacity    int
+	cancel      context.CancelFunc
+	done        chan struct{}
+	err         error
+	stopped     bool
+	dirty       map[Tuple]struct{}
+	udp         map[Tuple]*udpQuality
+	udpPrunedAt time.Time
 }
 
 type capturedTCPQuality struct {
@@ -37,7 +39,7 @@ func NewSessionCapture(tracker *Tracker, bindings []Binding, capacity int) (*Ses
 	if tracker == nil || capacity < 1 || len(bindings) == 0 || len(bindings) > capacity {
 		return nil, errors.New("tracker, bounded capacity and bindings required")
 	}
-	c := &SessionCapture{tracker: tracker, bindings: make(map[netip.Addr]Binding), flows: make(map[Tuple]Observation), quality: make(map[Tuple]*capturedTCPQuality), capacity: capacity, dirty: make(map[Tuple]struct{})}
+	c := &SessionCapture{tracker: tracker, bindings: make(map[netip.Addr]Binding), flows: make(map[Tuple]Observation), quality: make(map[Tuple]*capturedTCPQuality), capacity: capacity, dirty: make(map[Tuple]struct{}), udp: make(map[Tuple]*udpQuality)}
 	first := bindings[0]
 	for _, b := range bindings {
 		if b.NodeID != first.NodeID || b.Interface != first.Interface {
@@ -115,8 +117,16 @@ func (c *SessionCapture) consumeAt(p CapturedPacket, deferred bool, now time.Tim
 	if reordered {
 		delete(c.quality, tuple)
 		o.TCPQuality = nil
+		if state := c.udp[tuple]; state != nil {
+			*state = udpQuality{}
+			delete(c.udp, tuple)
+		}
+		o.UDPQuality = nil
 	} else if tuple.Protocol == "tcp" {
 		o.TCPQuality = c.observeTCP(tuple, p, deferred)
+	}
+	if !reordered && tuple.Protocol == "udp" {
+		o.UDPQuality = c.observeUDP(tuple, p, deferred)
 	}
 	if !deferred && !c.tracker.Observe(o, now) {
 		return false
@@ -136,6 +146,10 @@ func (c *SessionCapture) flush() {
 	now := time.Now().UTC()
 	for tuple := range c.dirty {
 		observation := c.flows[tuple]
+		if q := c.udp[tuple]; q != nil {
+			observation.UDPQuality = q.snapshot(observation.At)
+			c.flows[tuple] = observation
+		}
 		if q := c.quality[tuple]; q != nil {
 			observation.TCPQuality = q.snapshot(observation.At)
 			c.flows[tuple] = observation
@@ -143,6 +157,10 @@ func (c *SessionCapture) flush() {
 		if !c.stopped && !c.tracker.Observe(observation, now) {
 			delete(c.flows, tuple)
 			delete(c.quality, tuple)
+			if q := c.udp[tuple]; q != nil {
+				*q = udpQuality{}
+				delete(c.udp, tuple)
+			}
 		}
 		delete(c.dirty, tuple)
 	}
@@ -224,6 +242,7 @@ func (c *SessionCapture) Start(ctx context.Context, cfg CaptureConfig) error {
 		clear(c.flows)
 		clear(c.quality)
 		clear(c.dirty)
+		c.clearUDP()
 		c.mu.Unlock()
 		close(done)
 	}()
@@ -262,18 +281,22 @@ func (c *SessionCapture) observeStatistics(s CaptureStatistics) {
 		return
 	}
 	clear(c.quality)
+	c.clearUDP()
 	c.tracker.mu.Lock()
 	defer c.tracker.mu.Unlock()
 	for tuple, observation := range c.flows {
 		observation.TCPQuality = nil
+		observation.UDPQuality = nil
 		c.flows[tuple] = observation
 		key := flowKey{key(observation.Binding), observation.Binding.Generation, tuple}
 		if flow, ok := c.tracker.flows[key]; ok && flow.Binding == observation.Binding {
 			flow.TCPQuality = nil
+			flow.UDPQuality = nil
 			c.tracker.flows[key] = flow
 		}
 		if highWater, ok := c.tracker.highWater[key]; ok && highWater.Binding == observation.Binding {
 			highWater.TCPQuality = nil
+			highWater.UDPQuality = nil
 			c.tracker.highWater[key] = highWater
 		}
 	}
@@ -292,5 +315,6 @@ func (c *SessionCapture) Stop() error {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.clearUDP()
 	return c.err
 }

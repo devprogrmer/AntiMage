@@ -23,6 +23,7 @@ type SignatureDatabase struct {
 }
 
 type ApplicationRule struct {
+	SteamAppID        uint32   `json:"steam_app_id,omitempty"`
 	Application       string   `json:"application"`
 	DestinationPrefix string   `json:"destination_prefix"`
 	Protocol          string   `json:"protocol"`
@@ -42,6 +43,7 @@ type ApplicationDetector struct {
 }
 
 type ApplicationDetection struct {
+	Scope       string   `json:"scope,omitempty"`
 	Application string   `json:"application"`
 	Confidence  string   `json:"confidence"`
 	Revision    string   `json:"revision"`
@@ -69,11 +71,18 @@ func LoadApplicationDetector(reader io.Reader, now time.Time) (*ApplicationDetec
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("trailing signature database content")
 	}
-	if database.Version != 1 || strings.TrimSpace(database.Revision) == "" || len(database.Revision) > 128 || database.PublishedAt.IsZero() || database.PublishedAt.After(now) || !database.ExpiresAt.After(now) || !database.ExpiresAt.After(database.PublishedAt) || len(database.Rules) == 0 || len(database.Rules) > maxSignatureRules {
+	if (database.Version != 1 && database.Version != 2) || strings.TrimSpace(database.Revision) == "" || len(database.Revision) > 128 || database.PublishedAt.IsZero() || database.PublishedAt.After(now) || !database.ExpiresAt.After(now) || !database.ExpiresAt.After(database.PublishedAt) || len(database.Rules) == 0 || len(database.Rules) > maxSignatureRules {
 		return nil, errors.New("invalid signature version, revision, validity or rule count")
 	}
 	detector := &ApplicationDetector{revision: database.Revision, publishedAt: database.PublishedAt, expiresAt: database.ExpiresAt}
 	for _, rule := range database.Rules {
+		if rule.SteamAppID != 0 {
+			if database.Version != 2 || rule.SteamAppID > 0xffffff || rule.Protocol != "udp" || rule.DestinationPrefix != "" || len(rule.Ports) != 0 || strings.TrimSpace(rule.Application) == "" || len(rule.Application) > 128 || strings.TrimSpace(rule.Source) == "" || len(rule.Source) > 2048 {
+				return nil, errors.New("invalid Steam query application signature")
+			}
+			detector.rules = append(detector.rules, compiledApplicationRule{rule: rule})
+			continue
+		}
 		prefix, err := netip.ParsePrefix(rule.DestinationPrefix)
 		if err != nil || prefix != prefix.Masked() || prefix.Bits() == 0 || prefix.Addr().Is4In6() || !prefix.Addr().IsGlobalUnicast() || strings.TrimSpace(rule.Application) == "" || len(rule.Application) > 128 || strings.TrimSpace(rule.Source) == "" || len(rule.Source) > 2048 || (rule.Protocol != "tcp" && rule.Protocol != "udp") || len(rule.Ports) == 0 || len(rule.Ports) > 128 {
 			return nil, errors.New("invalid application signature")
@@ -105,7 +114,7 @@ func (d *ApplicationDetector) Detect(tuple Tuple, now time.Time) ApplicationDete
 	application := ""
 	for _, compiled := range d.rules {
 		rule := compiled.rule
-		if tuple.Protocol != rule.Protocol || !compiled.prefix.Contains(tuple.Destination.Addr()) {
+		if rule.SteamAppID != 0 || tuple.Protocol != rule.Protocol || !compiled.prefix.Contains(tuple.Destination.Addr()) {
 			continue
 		}
 		for _, port := range rule.Ports {
@@ -116,11 +125,66 @@ func (d *ApplicationDetector) Detect(tuple Tuple, now time.Time) ApplicationDete
 				return ApplicationDetection{Application: "Unknown", Confidence: "unknown", Revision: d.revision, Evidence: []string{"conflicting destination signatures"}}
 			}
 			application = rule.Application
-			result.Evidence = append(result.Evidence, rule.DestinationPrefix+" "+rule.Protocol+" destination port match; source "+rule.Source)
+			result.Evidence = addDetectionEvidence(result.Evidence, rule.DestinationPrefix+" "+rule.Protocol+" destination port match; source "+rule.Source)
 		}
 	}
 	if application != "" {
-		result.Application, result.Confidence = application, "probable"
+		result.Application, result.Confidence, result.Scope = application, "probable", "destination_signature"
 	}
 	return result
+}
+
+// Evidence is bounded even if many administrator rules overlap a single flow.
+func addDetectionEvidence(evidence []string, value string) []string {
+	if len(value) > 256 {
+		value = strings.ToValidUTF8(value[:256], "?") + "..."
+	}
+	for _, existing := range evidence {
+		if existing == value {
+			return evidence
+		}
+	}
+	if len(evidence) < 4 {
+		return append(evidence, value)
+	}
+	return evidence
+}
+
+// DetectObserved uses a full server-advertised AppID only after a matched
+// Source query exchange. A port, truncated ID or shared transport never names a game.
+func (d *ApplicationDetector) DetectObserved(tuple Tuple, quality *UDPFlowQuality, now time.Time) ApplicationDetection {
+	destination := d.Detect(tuple, now)
+	if tuple.Protocol != "udp" {
+		return destination
+	}
+	protocol := UDPApplicationDetection(quality, now)
+	if protocol.Application == "Unknown" {
+		return destination
+	}
+	if destination.Application == "Unknown" && len(destination.Evidence) > 0 {
+		return destination
+	}
+	if quality.Protocol == "source_server_query" && quality.AdvertisedAppID != 0 && d != nil && !now.Before(d.publishedAt) && now.Before(d.expiresAt) {
+		var matched *ApplicationRule
+		for i := range d.rules {
+			rule := &d.rules[i].rule
+			if rule.SteamAppID == quality.AdvertisedAppID {
+				if matched != nil && matched.Application != rule.Application {
+					return ApplicationDetection{Application: "Unknown", Confidence: "unknown", Revision: d.revision, Evidence: []string{"conflicting Steam AppID query signatures"}}
+				}
+				matched = rule
+			}
+		}
+		if matched != nil {
+			if destination.Application != "Unknown" && destination.Application != matched.Application {
+				return ApplicationDetection{Application: "Unknown", Confidence: "unknown", Revision: d.revision, Evidence: []string{"conflicting destination and server-advertised AppID signatures"}}
+			}
+			evidence := addDetectionEvidence(protocol.Evidence, "Application catalogue: "+matched.Source)
+			return ApplicationDetection{Application: matched.Application + " (server query)", Confidence: "probable", Scope: "game_server_query", Revision: d.revision, Evidence: evidence}
+		}
+	}
+	if destination.Application != "Unknown" || len(destination.Evidence) > 0 {
+		return destination
+	}
+	return protocol
 }

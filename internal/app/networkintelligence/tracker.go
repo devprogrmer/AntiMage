@@ -40,6 +40,7 @@ type Observation struct {
 	UploadPackets, DownloadPackets uint64
 	UploadBytes, DownloadBytes     uint64
 	TCPQuality                     *TCPFlowQuality
+	UDPQuality                     *UDPFlowQuality
 }
 
 // TCPFlowQuality keeps the two observation legs separate. Durations are in

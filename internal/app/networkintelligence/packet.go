@@ -9,6 +9,7 @@ import (
 // PacketMetadata contains copied network and transport headers only. No packet
 // buffer or application payload is retained.
 type PacketMetadata struct {
+	udp                    udpProtocolMetadata
 	Tuple                  Tuple
 	WireLength             uint32
 	TCPSequence            uint32
@@ -94,6 +95,7 @@ func decodePacketHeaders(packet []byte, wireLength uint32) (PacketMetadata, erro
 		}
 		name = "udp"
 		metadata.TransportPayloadLength = uint32(udpLength - 8)
+		metadata.udp = parseUDPProtocol(transport[8:], udpLength-8)
 	default:
 		return metadata, errors.New("unsupported transport or IPv6 extension header")
 	}

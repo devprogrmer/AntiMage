@@ -1,5 +1,61 @@
 # Anti-Mage Network Intelligence project state
 
+Latest delivery authorization (2026-11-28): user requested all accumulated local
+Network Intelligence changes be committed/pushed to the existing feature branch
+and PR 147. Earlier local-only holds below are historical. New-head CI and the
+remaining Linux/full-staging/release gates still require validation; no release
+readiness or merge claim. Existing unrelated native-session-outbox and ignored
+binary/source test artifacts are excluded. No Production action authorized.
+
+Newest local item 4 evidence (2026-11-28): actual node subprocess disconnect,
+RPC deadline, reconnect, peer/account reassignment, changed IP and empty restart
+passed. Real browser/API recovery also passed: 503 clears stale rows, reconnect
+restores fresh flows, replacement account stays separate, no browser errors.
+Actual current/baseline/current binary rollback passed for both panel and node.
+Baseline is archived HEAD 1c1dd80f; test artifact checksums are documented.
+Full backup/restore across four fresh panel processes preserved config flags,
+accounting and scoped durable history. API/agent regressions, backup rollback/
+crash-recovery tests and vet passed; Linux API/agent tests cross-compiled.
+No commit/push, Production action, host network change or service-manager change.
+NEXT_ACTION: retain local work; await delivery approval and a disposable Linux
+runtime for kernel WireGuard, real tunnel recovery, service rollback and full
+multi-node staging. Local results do not complete Stage 14/release acceptance.
+See docs/network-intelligence-local-recovery.md and newest MASTER_ROADMAP entry.
+
+Newest local item 3 update (2026-11-28): actual local sockets→SessionCapture test
+adapter→real Node Agent→mTLS→authenticated API→built dashboard passed. Four flows,
+two users, three sessions and a shared UDP destination stayed separate. Delayed
+UDP mean 300.41645 ms/variation 99.6395 ms; only that session raised the two
+matching observation findings. Diagnostics now consumes validated UDP quality
+and includes interface/source/protocol; panel finding keys distinguish sessions.
+Unknown UDP/unobserved TCP ACK timing stay unavailable. Real anonymous and
+restricted-admin requests returned 401/403; no API/Node response mocks.
+Module/agent/API regressions, vet, build, service test, lint (2 existing warnings)
+and 9 UI tests passed. This is application-socket integration, not raw Linux,
+WireGuard/TCP ACK capture or GRE fault E2E. Docker Linux runtime is unavailable.
+NEXT_ACTION: retain changes without commit/push; use a disposable Linux runtime
+for remaining kernel/WireGuard/fault-to-dashboard acceptance when available.
+No Production action or release-complete claim. See newest MASTER_ROADMAP entry
+and docs/network-intelligence-local-panel-validation.md.
+
+Latest local-only update (2026-11-28): application/UDP evidence work is prepared
+without commit/push, CI inspection or Production action, as explicitly requested.
+Paired STUN, direct GNS and Discord discovery expose transaction RTT/variation;
+Source query full AppID supports versioned CS2/Dota 2 server-query labels with
+no invented query RTT. Unknown traffic stays Unknown; UDP loss is null/N/A.
+Metadata reaches Node Agent snapshots and the existing dashboard, with evidence,
+method, samples and limitations. No network setting, worker or migration added.
+Local full module and focused agent tests, actual loopback exchange, build,
+service test, lint (two existing warnings), 9/9 UI scenarios and bounded fuzz
+passed. Linux amd64/arm64 tests compiled. Race remains blocked by absent CGO/C
+compiler; raw Linux capture, real-client and forwarding benchmarks for this
+change remain pending. Stage 4/5 release acceptance is not declared complete.
+NEXT_ACTION: preserve uncommitted local work and wait for explicit push approval;
+then execute isolated Linux/raw UDP, race and real-client/forwarding validation.
+Do not inspect CI or push automatically. Details: MASTER_ROADMAP.md latest
+local-only section and docs/network-intelligence-udp-evidence.md. Older entries
+below are historical and do not supersede this delivery boundary.
+
 PR #147 remains Draft. Durable history starts only when both Network Intelligence flags are enabled. The writer polls at most four eligible nodes per tick and selects at most eight users per node in user-ID rotation. A separate worker prunes at startup and hourly. Per-node cursors are volatile and restart from the beginning. Timestamp keys make repeat writes idempotent.
 
 Local tests passed for the collector loop against SQLite with a simulated node transport, API, config, the 100000-row boundary with concurrent requests to one repository, startup retention without traffic, and restart ordering. The worker transport fixture does not exercise a live Node Agent connection. Multiple panel writers are outside the tested storage contract.

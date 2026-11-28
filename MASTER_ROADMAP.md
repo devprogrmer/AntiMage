@@ -1,5 +1,157 @@
 # Anti-Mage Network Intelligence
 
+## Delivery instruction — 2026-11-28
+
+User explicitly authorized committing/pushing all accumulated Network
+Intelligence changes to feature/network-intelligence-dev / PR 147. This
+supersedes earlier local-only delivery holds below, but does not authorize
+Production deployment or imply release readiness. Final pre-commit module,
+API Network and focused Node Agent tests passed. Existing local integration,
+browser, backup and binary rollback evidence remains documented below.
+NEXT_ACTION after push: validate CI for the new head, retain Draft/release gates,
+and complete outstanding disposable Linux WireGuard/full-staging acceptance.
+Exclude the unrelated pre-existing native-session-outbox and ignored test
+artifacts. No merge or Production operation is included in this delivery.
+
+## Newest continuation: local staging recovery — 2026-11-28
+
+Local-only item 4 work; no commit/push, CI inspection, merge or Production action.
+Added and ran real subprocess/RPC/backup/binary/browser recovery tests:
+
+- Node process termination rejects telemetry; reconnect on the same mTLS
+  endpoint/client works. Actual stalled RPC returns DeadlineExceeded. Reused IP
+  owner/peer and changed IP/peer publish only fresh owner counters/UDP quality;
+  old unsolicited replies are rejected. Empty restart does not resurrect flows.
+- Actual current node binary → archived HEAD baseline node with flags off →
+  current binary passed on the same temporary data directory/mTLS endpoint.
+- Full panel backup/restore uses four independent processes (prepare, restore,
+  disabled rollback, re-enable); owned config flags, accounting and scoped
+  migration-95 history survive. The previous same-process attempt exposed the
+  process-scoped closed DB cache; the test now uses actual process restarts,
+  without changing DB pool behavior or weakening an assertion.
+- Actual current panel binary → baseline flags off → baseline history enabled →
+  current passed. HTTP authentication, scoped history and accounting remained
+  correct across versions. Baseline is 1c1dd80f693d5ea760a088241e2705e5be49420b,
+  built from git archive; no checkout switch. Explicit -buildvcs=false was used
+  after automatic VCS metadata lookup failed, with SHA/checksums recorded.
+- Real authenticated API/built-dashboard browser recovery passed after owned
+  node process death, actual RPC timeout, reconnect, IP reassignment and empty
+  restart. Stale flows disappeared on 503; the replacement account was isolated;
+  recovery restored fresh rows. No API/Node response mocks or browser page errors.
+
+Tests: ProcessRecoveryAndVersionRollback 8.92s; PanelRestartBackupAndFlagRollback
+0.90s; PanelBinaryVersionRollback 2.08s; BrowserRecoversFromNodeFailures 14.82s.
+API Network regression, focused agent tests, existing backup interrupted-restore
+and DB/file rollback tests passed; Go vet passed. Linux amd64 API/agent test
+binaries cross-compiled (runtime execution not implied). Full checksums and local
+reproduction: docs/network-intelligence-local-recovery.md. Test binaries/source
+archives live under ignored artifacts/ni-recovery-1c1dd80f.
+
+Boundary: portable socket/session adapters and Windows binaries are tested;
+live kernel WireGuard ownership changes, routed tunnel continuity, Linux
+systemd update/rollback, full multi-node staging and MySQL/MariaDB backup recovery
+still need a suitable disposable runtime. No claim that Stage 14 or the entire
+item 4 is release-complete. No production configuration or TC rule changed.
+
+NEXT SESSION CONTINUATION (newest): preserve all local changes, await explicit
+push approval. Do not repeat verified local process/browser/binary recovery
+without a change. Remaining acceptance: disposable Linux WireGuard/kernel/tunnel
+recovery and full multi-node staging; then final release/security/database and
+update/rollback validation. Preserve unrelated untracked native-session-outbox.
+
+## Latest continuation: local panel/Diagnostics — 2026-11-28
+
+User reports existing remote CI green. Local item 3 was authorized; no remote
+CI inspection, commit, push, merge or deployment was performed.
+
+Fixed a missing connection: Diagnostics consumed TCP quality only. It now
+consumes fresh supported UDP transaction RTT/variation, rejects invalid, stale,
+future, absent and Source-query timing, and reports observations without
+inventing loss, in-game ping or a definitive cause. Responses add optional
+interface/source/protocol fields; the panel displays them and uses full flow
+identity for finding keys so shared destinations do not mix sessions.
+
+Verified `TestNetworkIntelligenceLocalTrafficToAuthenticatedPanel` and child
+`TestNetworkLiveBrowserAgainstLocalNode`: actual local UDP/TCP socket I/O feeds
+the decoder/session test adapter; the real Node Agent serves mTLS gRPC and the
+real SQLite-backed authenticated API serves the built dashboard. No Metrics
+response or browser API route is mocked. Four flows, two users and three session
+interfaces sharing one UDP destination remained separate. The delayed session
+had mean UDP transaction RTT 300.41645 ms and variation 99.6395 ms; only it
+produced high_udp_transaction_rtt and variable_udp_transaction_rtt. Browser
+assertions verified values, samples, evidence and diagnostic flow identity.
+Unknown UDP quality and unobserved TCP ACK timing remained unavailable; UDP
+loss stayed null. Anonymous/restricted authenticated requests returned 401/403.
+Private bodies/session identifiers were absent; no browser page errors.
+
+Other checks passed: full networkintelligence suite, focused agent tests, API
+Network regression (including real mTLS history fixture), Go vet module/API,
+production dashboard build, service Vitest and all nine Network Intelligence
+Playwright regressions. Lint passed with two existing unrelated warnings;
+build retained existing CSS/chunk warnings. UDP Diagnostic tests cover invalid
+values/protocols/methods/times/sample counts and both measurement directions.
+
+Boundary: the portable test uses application-socket receive times with test
+IP/TCP headers and bindings. It does NOT exercise Linux raw capture, WireGuard
+peer publication, actual TCP ACK timing or GRE faults. Docker Linux daemon was
+unavailable; WSL inventory showed only docker-desktop. No service was started
+or host network changed. Full item 3 kernel/WireGuard-quality/fault-to-dashboard
+acceptance remains pending; no stage is declared release-complete from this.
+
+NEXT SESSION CONTINUATION (newest): retain all changes locally until explicit
+push approval. Local socket→agent→mTLS→API→browser acceptance has passed; do not
+repeat without changes. Remaining: disposable Linux capture/WireGuard quality
+and fault-to-dashboard validation, then staging recovery/release gates. Preserve
+untracked native-session-outbox. Reproduction/bounds are documented in
+docs/network-intelligence-local-panel-validation.md.
+
+## Local-only continuation — 2026-11-28
+
+User explicitly requested application/UDP work locally, with no push until a
+later instruction. No commit, push, CI inspection, merge or Production action
+was performed in this continuation. Existing remote head remains unchanged.
+
+Stages 4/5: added bounded paired STUN, Valve **direct** GameNetworkingSockets
+challenge and Discord Voice discovery parsing/correlation; full Source query
+GameIDs use the existing signature engine's versioned v2 catalogue (CS2/Dota 2
+server-query scope). Shared transports never establish the game executable.
+Port-only/unknown/truncated/conflicting evidence remains Unknown. UDP RTT and
+variation require fresh unambiguous transactions; Packet Loss remains null/N/A.
+Retries, duplicate replies, reordering, capture gaps and lease replacement are
+covered. No extra worker or forwarding/configuration operation was added.
+Node telemetry and the existing dashboard expose method, samples, evidence,
+revision, timestamps and limitations. TCP ACK history semantics are unchanged.
+
+Verified locally: full networkintelligence tests including real UDP loopback;
+Node Agent NetworkIntelligence/NetworkApplication tests; Go vet; dashboard
+production build and TypeScript check; service Vitest; lint (two pre-existing
+warnings); all nine Network Intelligence Playwright scenarios using installed
+Chrome, including UDP evidence/query/Unknown rendering and existing permissions,
+history, optimization/rollback and diagnostics UI scenarios. Fuzz parser passed
+86,556 executions over 11 seconds. Unknown-header parser benchmark: 3.337 ns/op,
+0 B/op, 0 allocs/op on this Windows i5-13400F; this is not a forwarding benchmark.
+Linux amd64/arm64 networkintelligence test binaries cross-compiled.
+
+Failures/limits: normal restricted loopback timed out; the same test passed via
+authorized local execution. Initial Playwright attempts encountered restricted
+loopback, an owned prior test's occupied port, and missing bundled Chromium;
+after closing that test and using installed Chrome, all nine scenarios passed.
+The new UI test initially selected exact text from a cell that also contained
+the sample count; corrected to assert the complete cell RTT AND sample count.
+Race could not execute because CGO and a C compiler are unavailable. The added
+Linux raw-capture UDP test requires the disposable guest marker and was compiled,
+not executed here. Real game clients/SDR, full WireGuard-to-dashboard E2E for
+these protocol measurements and OFF/ON forwarding overhead remain unverified.
+Neither Stage 4 nor Stage 5 is declared release-complete from local fixtures.
+
+NEXT SESSION CONTINUATION (latest): retain this local working tree; do not push
+or inspect CI unless the user explicitly resumes those actions. On authorization,
+run the new raw UDP capture test and race/forwarding suites in the disposable
+Linux guest; validate supported real-client exchanges and catalogue evidence.
+Do not name an encrypted/shared application without proof. See
+docs/network-intelligence-udp-evidence.md for supported measurements and limits.
+Preserve the unrelated untracked native-session-outbox directory.
+
 Base commit is c1a35e44dd644c2a41bc99a4987d613e4d8b79fc. Development branch is feature/network-intelligence-dev. Previous commits 30541f4d and 008d012e remain on feature/network-intelligence.
 
 | Stage | Verified progress | Release acceptance still required |

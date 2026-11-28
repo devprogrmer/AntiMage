@@ -26,7 +26,19 @@ export type NetworkFlow = {
 	upload_bytes: number;
 	download_bytes: number;
 	observed_at: string;
-	application?: { application: string; confidence: string };
+	application?: { application: string; confidence: string; scope?: string; revision?: string; evidence?: string[] };
+	protocol_detection?: { application: string; confidence: string; evidence?: string[] };
+	udp_quality?: {
+		method: string;
+		protocol: string;
+		observed_at: string;
+		measurement_at: string | null;
+		upload_exchange: ACKQuality;
+		download_exchange: ACKQuality;
+		packet_loss: number | null;
+		limited: boolean;
+		timing_unavailable_reason?: string;
+	} | null;
 	tcp_quality?: {
 		method: string;
 		upload_ack: ACKQuality;
@@ -105,6 +117,9 @@ export const getNetworkDiagnostics = (nodeID: number, signal: AbortSignal) =>
 			scope?: "node";
 			user_id?: number;
 			destination?: string;
+			interface?: string;
+			source?: string;
+			protocol?: string;
 			findings: DiagnosticFinding[];
 		}[];
 	}>("/network-intelligence/node", {

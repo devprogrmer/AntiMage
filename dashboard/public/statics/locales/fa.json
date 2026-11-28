@@ -1,5 +1,8 @@
 {
 	"networkIntelligence": {
+		"exchangeDestination": "RTT از نود به مقصد", "exchangeClient": "RTT از نود به کاربر", "exchangeVariation": "نوسان RTT (آپلود / دانلود)",
+		"detectionEvidence": "شواهد تشخیص", "timingSamples": "تعداد نمونه", "samplingLimited": "نمونه‌برداری محدود شده",
+		"udpExchangeOnly": "زمان تبادل UDP؛ پینگ داخل بازی نیست. افت بسته: N/A.",
 		"historySamples": "نمونه‌های مشاهده‌شده",
 		"historyTitle": "تاریخچه کیفیت اتصال کاربر",
 		"historyUser": "حساب تاریخچه",

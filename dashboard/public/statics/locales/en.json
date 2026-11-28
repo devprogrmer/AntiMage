@@ -1,5 +1,8 @@
 {
 	"networkIntelligence": {
+		"exchangeDestination": "Node → destination RTT", "exchangeClient": "Node → client RTT", "exchangeVariation": "RTT variation (upload / download)",
+		"detectionEvidence": "Detection evidence", "timingSamples": "Samples", "samplingLimited": "Sampling limited",
+		"udpExchangeOnly": "UDP transaction timing; not in-game ping. Packet loss: N/A.",
 		"historySamples": "Observed samples",
 		"historyTitle": "User quality history",
 		"historyUser": "History account",

@@ -62,7 +62,7 @@ func TestApplicationDetectionRejectsAmbiguousSharedRanges(t *testing.T) {
 func TestApplicationDatabaseValidation(t *testing.T) {
 	now := time.Now().UTC()
 	for name, mutate := range map[string]func(*SignatureDatabase){
-		"version":       func(d *SignatureDatabase) { d.Version = 2 },
+		"version":       func(d *SignatureDatabase) { d.Version = 999 },
 		"expired":       func(d *SignatureDatabase) { d.ExpiresAt = now },
 		"future":        func(d *SignatureDatabase) { d.PublishedAt = now.Add(time.Minute) },
 		"all addresses": func(d *SignatureDatabase) { d.Rules[0].DestinationPrefix = "0.0.0.0/0" },

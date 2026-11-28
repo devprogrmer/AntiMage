@@ -1,5 +1,29 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test("UDP evidence distinguishes transaction RTT, server query and unknown traffic", async ({ page }) => {
+	await setup(page);
+	const empty = { samples: 0, mean_ms: null, p95_ms: null, jitter_ms: null };
+	const base = { user_id: 42, node_id: 7, interface: "wg-test", source: "10.0.0.2:45000", protocol: "udp", upload_packets: 2, download_packets: 2, upload_bytes: 100, download_bytes: 100, observed_at: new Date().toISOString() };
+	await page.route("**/api/network-intelligence/node?**", route => route.fulfill({ json: { available: true, flows: [
+		{ ...base, destination: "192.0.2.1:3478", application: { application: "STUN connectivity checks", confidence: "probable", revision: "udp-protocols-v1", evidence: ["Matched request/response transaction identifier"] }, udp_quality: { method: "udp_request_response_observation", protocol: "stun_binding", upload_exchange: { ...empty, samples: 2, mean_ms: 23, jitter_ms: 2 }, download_exchange: empty, packet_loss: null, limited: false } },
+		{ ...base, destination: "192.0.2.2:27015", application: { application: "Counter-Strike 2 (server query)", confidence: "probable", evidence: ["Server-advertised full AppID 730; server browsing is not proof of playing"] }, udp_quality: { method: "udp_request_response_observation", protocol: "source_server_query", upload_exchange: empty, download_exchange: empty, packet_loss: null, limited: false } },
+		{ ...base, destination: "162.254.199.170:27051", application: { application: "Unknown", confidence: "unknown", evidence: [] }, udp_quality: null },
+	] } }));
+	await page.goto("/dashboard/network-intelligence/");
+	await page.getByLabel("Node", { exact: true }).selectOption("7");
+	const stun = page.getByRole("row").filter({ hasText: "192.0.2.1:3478" });
+	await expect(stun.getByRole("cell", { name: "23.0 ms Samples: 2", exact: true })).toBeVisible();
+	await expect(stun.getByText("UDP transaction timing; not in-game ping. Packet loss: N/A.")).toBeVisible();
+	await stun.getByText("Detection evidence", { exact: true }).click();
+	await expect(stun.getByText("Matched request/response transaction identifier")).toBeVisible();
+	const query = page.getByRole("row").filter({ hasText: "192.0.2.2:27015" });
+	await expect(query.getByText("Counter-Strike 2 (server query)", { exact: true })).toBeVisible();
+	await expect(query.getByText(/ms$/)).toHaveCount(0);
+	const unknown = page.getByRole("row").filter({ hasText: "162.254.199.170:27051" });
+	await expect(unknown.getByText("Unknown", { exact: true })).toBeVisible();
+	await expect(unknown.getByText(/ms$/)).toHaveCount(0);
+});
+
 // These UI fixtures validate rendering and permission handling. Real capture
 // and backend attribution are covered by separate Linux traffic tests.
 async function setup(page: Page, role = "full_access", disabled = false) {

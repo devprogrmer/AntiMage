@@ -42,8 +42,12 @@ func (s *Server) handleNetworkIntelligenceNode(w http.ResponseWriter, r *http.Re
 			Flows []struct {
 				UserID      int64              `json:"user_id"`
 				Destination string             `json:"destination"`
+				Interface   string             `json:"interface"`
+				Source      string             `json:"source"`
 				ObservedAt  time.Time          `json:"observed_at"`
 				Quality     *ni.TCPFlowQuality `json:"tcp_quality"`
+				Protocol    string             `json:"protocol"`
+				UDPQuality  *ni.UDPFlowQuality `json:"udp_quality"`
 			} `json:"flows"`
 		}
 		if err := json.Unmarshal(snapshot, &telemetry); err != nil {
@@ -66,7 +70,11 @@ func (s *Server) handleNetworkIntelligenceNode(w http.ResponseWriter, r *http.Re
 				input.ACKRTT = millisecondsDuration(flow.Quality.UploadACK.Mean)
 				input.Jitter = millisecondsDuration(flow.Quality.UploadACK.Jitter)
 			}
-			results = append(results, map[string]any{"user_id": flow.UserID, "destination": flow.Destination, "findings": ni.Diagnose(input, now)})
+			findings := ni.Diagnose(input, now)
+			if flow.Protocol == "udp" && !flow.ObservedAt.IsZero() && !flow.ObservedAt.After(now) && now.Sub(flow.ObservedAt) <= time.Minute {
+				findings = append(findings, ni.DiagnoseUDP(flow.UDPQuality, now)...)
+			}
+			results = append(results, map[string]any{"user_id": flow.UserID, "destination": flow.Destination, "interface": flow.Interface, "source": flow.Source, "protocol": flow.Protocol, "findings": findings})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"node_id": id, "observed_at": telemetry.ObservedAt, "results": results})
 		return

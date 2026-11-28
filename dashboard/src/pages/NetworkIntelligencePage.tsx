@@ -61,6 +61,9 @@ export default function NetworkIntelligencePage() {
 				scope?: "node";
 				user_id?: number;
 				destination?: string;
+				interface?: string;
+				source?: string;
+				protocol?: string;
 				findings: DiagnosticFinding[];
 		  }[]
 		| null
@@ -282,7 +285,7 @@ export default function NetworkIntelligencePage() {
 					{diagnostics.flatMap((result) =>
 						result.findings.map((finding, index) => (
 							<Alert
-								key={`${result.user_id}-${result.destination}-${index}`}
+								key={`${result.scope}-${result.user_id}-${result.interface}-${result.source}-${result.destination}-${result.protocol}-${index}`}
 								status={finding.severity === "critical" ? "error" : "warning"}
 							>
 								<AlertIcon />
@@ -293,6 +296,7 @@ export default function NetworkIntelligencePage() {
 											: `${result.user_id} · ${result.destination}`}{" "}
 										· {finding.code}
 									</Text>
+									{result.interface && <Text dir="ltr">{result.interface} · {result.source} · {result.protocol}</Text>}
 									<Text>{finding.evidence}</Text>
 									<Text>{finding.recommendation}</Text>
 									<Text fontSize="sm">{finding.confidence}</Text>
@@ -323,9 +327,9 @@ export default function NetworkIntelligencePage() {
 									<Th>{label("interface", "Interface")}</Th>
 									<Th>{label("traffic", "Upload / download bytes")}</Th>
 									<Th>{label("packets", "Upload / download packets")}</Th>
-									<Th>{label("serverRTT", "Node → destination ACK RTT")}</Th>
-									<Th>{label("clientRTT", "Node → client ACK RTT")}</Th>
-									<Th>{label("jitter", "ACK RTT variation")}</Th>
+									<Th>{label("exchangeDestination", "Node → destination RTT")}</Th>
+									<Th>{label("exchangeClient", "Node → client RTT")}</Th>
+									<Th>{label("exchangeVariation", "RTT variation (upload / download)")}</Th>
 									<Th>
 										{label(
 											"retransmissions",
@@ -353,6 +357,17 @@ export default function NetworkIntelligencePage() {
 											{flow.application && (
 												<Badge>{flow.application.confidence}</Badge>
 											)}
+											{flow.application?.evidence?.length ? (
+												<details><summary>{label("detectionEvidence", "Detection evidence")}</summary>
+													<Text fontSize="xs">{flow.application.revision}</Text>
+													{flow.application.evidence.map((evidence, index) => <Text fontSize="xs" key={`${index}-${evidence}`}>{evidence}</Text>)}
+												</details>
+											) : null}
+											<Text fontSize="xs">{flow.protocol === "tcp" ? "TCP ACK" : flow.udp_quality?.protocol || "N/A"}</Text>
+											{flow.udp_quality && <Text fontSize="xs">{label("udpExchangeOnly", "UDP transaction timing; not in-game ping. Packet loss: N/A.")}</Text>}
+											{flow.udp_quality?.measurement_at && <Text fontSize="xs" dir="ltr">{flow.udp_quality.measurement_at}</Text>}
+											{flow.udp_quality?.timing_unavailable_reason && <Text fontSize="xs">{flow.udp_quality.timing_unavailable_reason}</Text>}
+											{flow.udp_quality?.limited && <Badge>{label("samplingLimited", "Sampling limited")}</Badge>}
 										</Td>
 										<Td dir="ltr">{flow.source}</Td>
 										<Td dir="ltr">{flow.interface}</Td>
@@ -364,14 +379,15 @@ export default function NetworkIntelligencePage() {
 											{bytes(flow.download_packets)}
 										</Td>
 										<Td>
-											{milliseconds(flow.tcp_quality?.upload_ack.mean_ms)}
+											{milliseconds(flow.protocol === "tcp" ? flow.tcp_quality?.upload_ack.mean_ms : flow.udp_quality?.upload_exchange.mean_ms)}
+											{flow.udp_quality && <Text fontSize="xs">{label("timingSamples", "Samples")}: {flow.udp_quality.upload_exchange.samples}</Text>}
 										</Td>
 										<Td>
-											{milliseconds(flow.tcp_quality?.download_ack.mean_ms)}
+											{milliseconds(flow.protocol === "tcp" ? flow.tcp_quality?.download_ack.mean_ms : flow.udp_quality?.download_exchange.mean_ms)}
 										</Td>
 										<Td>
-											{milliseconds(flow.tcp_quality?.upload_ack.jitter_ms)} /{" "}
-											{milliseconds(flow.tcp_quality?.download_ack.jitter_ms)}
+											{milliseconds(flow.protocol === "tcp" ? flow.tcp_quality?.upload_ack.jitter_ms : flow.udp_quality?.upload_exchange.jitter_ms)} /{" "}
+											{milliseconds(flow.protocol === "tcp" ? flow.tcp_quality?.download_ack.jitter_ms : flow.udp_quality?.download_exchange.jitter_ms)}
 										</Td>
 										<Td>
 											{flow.tcp_quality
