@@ -26,6 +26,14 @@ func TestCaptureRingIdleWaitDoesNotSpin(t *testing.T) {
 		t.Fatalf("create fixture: %v %s", err, output)
 	}
 	defer exec.Command("ip", "link", "del", name).Run()
+	// A down interface reports POLLERR immediately. Bring up only the private
+	// dummy, disabling its IPv6 autoconfiguration to keep the fixture idle.
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/"+name+"/disable_ipv6", []byte("1"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("ip", "link", "set", name, "up").CombinedOutput(); err != nil {
+		t.Fatalf("activate fixture: %v %s", err, output)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	var final CaptureStatistics
